@@ -448,6 +448,142 @@ test("a text alone isn't a change: a sync that only gives texts counts nothing",
   );
 });
 
+test("an item matches by its key and title, or with its text too, and every term must be somewhere", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([
+    {
+      records: [record("7", "SYN-7", "Rebooking fares")],
+      texts: { "7": "Only on the long crossings. Café waivers." },
+    },
+  ]);
+  const matched = (q: string) => index.matches(workspaceId, q).get("jira:SYN-7") ?? null;
+  assert.equal(matched("syn-7 fares"), "title");
+  assert.equal(matched("rebooking crossings"), "text");
+  assert.equal(matched("cafe"), "text");
+  assert.equal(matched("crossings sms"), null);
+  assert.equal(matched(""), null);
+  // A term finds the start of a word, as a thread's search does.
+  assert.equal(matched("booking"), null);
+  assert.equal(matched("rebook cross"), "text");
+});
+
+test("search folds the index as it folds the query, so résumé is resume, й is и, and a title's script needn't have spaces", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([
+    {
+      records: [
+        record("1", "SYN-1", "Hiring"),
+        record("2", "SYN-2", "Ночной рейс"),
+        record("3", "SYN-3", "運航スケジュール"),
+      ],
+      texts: { "1": "Send the RÉSUMÉ to Dara", "2": "Мой рейс отменён", "3": "ガイドの更新" },
+    },
+  ]);
+  const found = (q: string) => index.search(workspaceId, q, 10).map((r) => [r.id, r.excerpt]);
+  assert.deepEqual(found("resume"), [["jira:SYN-1", "Send the RÉSUMÉ to Dara"]]);
+  assert.deepEqual(found("résumé"), [["jira:SYN-1", "Send the RÉSUMÉ to Dara"]]);
+  assert.deepEqual(found("мои"), [["jira:SYN-2", "Мой рейс отменён"]]);
+  assert.deepEqual(found("スケジュール"), [["jira:SYN-3", undefined]]);
+  assert.deepEqual(found("更新"), [["jira:SYN-3", "ガイドの更新"]]);
+  // A voicing mark is kept: "ガ" isn't "カ".
+  assert.deepEqual(found("ガイド"), [["jira:SYN-3", "ガイドの更新"]]);
+  assert.deepEqual(found("カイト"), []);
+});
+
+test("what anyone types is words, never the full-text query's syntax", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([
+    {
+      records: [
+        record("1", "SYN-1", "Salt and pepper"),
+        record("2", "SYN-2", "Title pepper notes"),
+        record("3", "SYN-3", "Salt only"),
+      ],
+      texts: { "3": 'near the "quay" ^first' },
+    },
+  ]);
+  const found = (q: string) =>
+    index
+      .search(workspaceId, q, 10)
+      .map((r) => r.id)
+      .sort();
+  // As syntax, "-pepper" would leave pepper out, and "title:pepper" read a column.
+  assert.deepEqual(found("salt -pepper"), ["jira:SYN-1"]);
+  assert.deepEqual(found("title:pepper"), ["jira:SYN-2"]);
+  assert.deepEqual(found("salt AND"), ["jira:SYN-1"]);
+  assert.deepEqual(found("salt OR pepper"), []);
+  assert.deepEqual(found("salt NOT pepper"), []);
+  assert.deepEqual(found("NEAR(salt pepper)"), []);
+  assert.deepEqual(found('"quay'), ["jira:SYN-3"]);
+  assert.deepEqual(found('quay" OR "salt'), []);
+  assert.deepEqual(found("^first"), ["jira:SYN-3"]);
+  assert.deepEqual(found("{key}:syn-1"), []);
+  assert.deepEqual(found("pep*"), ["jira:SYN-1", "jira:SYN-2"]);
+  for (const q of [
+    "AND",
+    "OR",
+    "NOT",
+    "NEAR",
+    "*",
+    '"',
+    '""',
+    "-",
+    "(",
+    ")",
+    ":",
+    "^",
+    "a\u0000b",
+    "+",
+  ])
+    assert.doesNotThrow(() => index.search(workspaceId, q, 10), q);
+  assert.deepEqual(found("*"), []);
+});
+
+test("search's index follows every way an item goes: gone, its handle taken, forgotten, and back", () => {
+  const { index, workspaceId, sync } = fresh();
+  const found = (q: string) => index.search(workspaceId, q, 10).map((r) => r.id);
+  sync([{ records: [record("1", "SYN-1", "Harbour wall")], texts: { "1": "tide tables" } }]);
+  // Another stable ID takes SYN-1's handle: the old one is retired.
+  sync([{ records: [record("9", "SYN-1", "Ferry ramp")] }]);
+  assert.deepEqual(found("harbour"), []);
+  assert.deepEqual(found("tide"), []);
+  assert.deepEqual(found("ramp"), ["jira:SYN-1"]);
+  sync([{ records: [], gone: ["9"] }]);
+  assert.deepEqual(found("ramp"), []);
+  // Back from gone, with its title and the text it is given.
+  sync([{ records: [record("9", "SYN-1", "Ferry ramp")], texts: { "9": "slipway" } }]);
+  assert.deepEqual(found("ramp slipway"), ["jira:SYN-1"]);
+  // A new key and title replace the old ones.
+  sync([{ records: [record("9", "SYN-2", "Pier lights")] }]);
+  assert.deepEqual(found("ramp"), []);
+  assert.deepEqual(found("syn-2 pier slipway"), ["jira:SYN-2"]);
+  index.forget(workspaceId, "jira", t1);
+  assert.deepEqual(found("pier"), []);
+});
+
+test("the migration indexes the items already there, and only the live ones", () => {
+  const db = open(":memory:");
+  const migrations = loadMigrations();
+  const before = migrations.findIndex((m) => m.name === "item_search");
+  assert.ok(before > 0);
+  migrate(db, migrations.slice(0, before), t0);
+  const workspaceId = ulid(0, new Uint8Array(10));
+  ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
+  const item = db.prepare(`
+    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at,
+      attrs, snapshot, gone_at, text)
+    values (?, ?, ?, ?, ?, 'https://example.com', ?, '{}', 1, ?, ?)`);
+  item.run(workspaceId, "jira", "1", "jira:SYN-1", "Café rota", t0, null, "Night crossings");
+  item.run(workspaceId, "jira.2", "2", "jira.2:ACME-4", "Billing", t0, null, null);
+  item.run(workspaceId, "jira", "3", "jira:SYN-3", "Café gone", t0, t0, "Night crossings");
+  migrate(db, migrations, t0);
+  const index = indexStore(db);
+  const found = (q: string) => index.search(workspaceId, q, 10).map((r) => r.id);
+  assert.deepEqual(found("cafe night"), ["jira:SYN-1"]);
+  assert.deepEqual(found("jira.2:acme-4"), ["jira.2:ACME-4"]);
+  assert.deepEqual(found("jira"), []);
+});
+
 test("only the first 256 characters of a query count", () => {
   const { index, workspaceId, sync } = fresh();
   sync([{ records: [record("1", "SYN-1", "Story")] }]);

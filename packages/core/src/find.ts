@@ -27,7 +27,14 @@ const excerptChars = 140;
 // about something repeats its words (as the thread asking does).
 const weight: Record<MatchedIn, number> = { "change-set": 3, name: 2, chat: 1 };
 
-const fold = (text: string) => text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+// Case- and accent-folded, for every search Oriel runs, over threads here
+// and over items in search.ts: NFKD, then the Combining Diacritical Marks
+// block (U+0300–U+036F) is dropped. So "cafe" finds "Café", Cyrillic "й"
+// folds to "и", and Japanese voicing marks, which sit outside the block,
+// survive.
+const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
+export const searchFold = (text: string) =>
+  text.normalize("NFKD").replace(diacritics, "").toLocaleLowerCase("en");
 
 // Words a question is asked with, which say nothing about what it is
 // after: "where did I approve the post?" looks for "approve" and "post".
@@ -38,13 +45,15 @@ const asking = new Set(
   ).split(" "),
 );
 
-// The words of a query, folded: letters and digits, so punctuation and
-// accents don't stop a match. A question's own words are left out, unless
+// The words of a query, folded: letters, digits and the marks folding
+// keeps, so punctuation and accents don't stop a match. A question's own words are left out, unless
 // they are all it has.
 export function words(query: string): string[] {
   const found = [
     ...new Set(
-      (fold(query).match(/[\p{L}\p{N}]+/gu) ?? []).map((word) => word.slice(0, maxWordChars)),
+      (searchFold(query).match(/[\p{L}\p{N}\p{M}]+/gu) ?? []).map((word) =>
+        word.slice(0, maxWordChars),
+      ),
     ),
   ];
   const meant = found.filter((word) => !asking.has(word));
@@ -52,17 +61,13 @@ export function words(query: string): string[] {
 }
 
 // A field folded character by character, with where each folded unit came
-// from, so a match points back into the text as written. The index's search
-// folds its own way (search.ts).
-export function folded(
-  text: string,
-  by: (text: string) => string = fold,
-): { text: string; from: number[] } {
+// from, so a match points back into the text as written.
+export function folded(text: string): { text: string; from: number[] } {
   let out = "";
   const from: number[] = [];
   let at = 0;
   for (const char of text) {
-    const unit = by(char);
+    const unit = searchFold(char);
     out += unit;
     for (let i = 0; i < unit.length; i++) from.push(at);
     at += char.length;
@@ -71,16 +76,17 @@ export function folded(
 }
 
 // Scripts written without spaces between words, where a word may start
-// anywhere in a run of letters.
-const unspaced =
+// anywhere in a run of letters. The index's search sets each of their
+// characters apart (search.ts).
+export const unspaced =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 // Where `word` starts a word in `text`, or -1. In a script without spaces,
 // anywhere it appears.
-function startOf(text: string, word: string): number {
+export function startOf(text: string, word: string): number {
   const anywhere = unspaced.test(word);
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1))
-    if (anywhere || at === 0 || !/[\p{L}\p{N}]/u.test(text[at - 1] ?? "")) return at;
+    if (anywhere || at === 0 || !/[\p{L}\p{N}\p{M}]/u.test(text[at - 1] ?? "")) return at;
   return -1;
 }
 

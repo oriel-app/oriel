@@ -1,17 +1,18 @@
-// The one search over the index's items (decision 0027, OA-242): search()
-// in every thread and Browse's item search both match with it, and an eval's
-// world searches its fixtures with it. Pure, so it is tested without a
-// database: the index store gives it the records and their texts.
-import { excerpt, folded } from "./find.ts";
-import { type ItemId, parseItemId, type SourceKind } from "./ids.ts";
+// The one search over the index's items (decision 0027, OA-242, OA-264):
+// search() in every thread, Browse's item search and an eval's world all
+// match with the index's full-text table, item_search, over each item's
+// key, title and text as `indexFold` folds them. This is the pure part: the
+// query the table is asked, and how what it finds is ranked.
+import { excerpt, folded, searchFold, startOf, unspaced } from "./find.ts";
+import { parseItemId, type SourceKind } from "./ids.ts";
 import type { IndexRecord, Searched } from "./source.ts";
 
-// Case- and accent-folded: NFKD, then the Combining Diacritical Marks block
-// (U+0300–U+036F) is dropped. So "cafe" finds "Café", Cyrillic "й" folds to
-// "и", and Japanese voicing marks, which sit outside the block, survive.
-const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
-export const searchFold = (text: string) =>
-  text.normalize("NFKD").replace(diacritics, "").toLocaleLowerCase("en");
+// What the index holds of a key, a title or a text, and how it reads a
+// query's term: searchFold, with each character of a script written without
+// spaces set apart, with the marks it carries, so a term there is found
+// wherever it starts, as a thread's search finds it (find.ts).
+const everyUnspaced = new RegExp(`${unspaced.source}\\p{M}*`, "gu");
+export const indexFold = (text: string) => searchFold(text).replace(everyUnspaced, " $& ");
 
 // The model writes search queries, and synced content can steer it, so search
 // work is bounded.
@@ -20,7 +21,7 @@ const maxTerms = 8;
 export const maxSearchResults = 50;
 
 // How much of an item's text the index keeps for search: synced text is
-// anyone's, and the index holds every item's in memory, folded.
+// anyone's.
 export const maxSearchText = 8192;
 
 // The connections records are from, by their IDs' prefixes.
@@ -30,8 +31,9 @@ export const prefixesOf = (records: readonly { id: string }[]): Set<string> =>
 // A query as search() takes it: at most 256 characters and 8 distinct
 // terms, folded, with the prefix of a connection in `prefixes` dropped from
 // a term, so a full item ID, such as "jira:syn-12", works as a query. Text
-// that only looks like one, such as "fix:login", stays as written. `whole`
-// is the query as one key.
+// that only looks like one, such as "fix:login", stays as written. A term
+// with no letter or digit, such as "-" or "✨", can't be found, so it isn't
+// one. `whole` is the query as one key.
 export function searchTerms(
   query: string,
   prefixes: ReadonlySet<string>,
@@ -40,43 +42,35 @@ export function searchTerms(
     const at = term.indexOf(":");
     return at > 0 && prefixes.has(term.slice(0, at)) ? term.slice(at + 1) : term;
   };
-  const bounded = searchFold(query.slice(0, maxQueryChars));
-  const stripped = bounded.split(/\s+/).map(keyOf).filter(Boolean);
+  // A control character, NUL among them, is a space.
+  const bounded = searchFold(query.slice(0, maxQueryChars)).replace(/\p{Cc}/gu, " ");
+  const stripped = bounded
+    .split(/\s+/)
+    .map(keyOf)
+    .filter((term) => /[\p{L}\p{N}]/u.test(term));
   return {
     terms: [...new Set(stripped)].slice(0, maxTerms),
     whole: keyOf(bounded.trim()),
   };
 }
 
-// An item's key and title, folded, as search() matches them.
-const searchable = (record: IndexRecord<SourceKind, unknown>) => ({
-  key: searchFold(parseItemId(record.id)?.key ?? ""),
-  title: searchFold(record.title),
-});
-
-// Where every term is: in the item's key or title, "title"; only with its
-// text too, "text"; otherwise null. `text` is the item's text as the index
-// keeps it, folded. How often a term appears never counts, so text can't
-// rank itself by repeating a word.
-export function matchOf(
-  record: IndexRecord<SourceKind, unknown>,
-  text: string,
-  terms: readonly string[],
-): "title" | "text" | null {
-  if (!terms.length) return null;
-  const { key, title } = searchable(record);
-  const named = `${key} ${title}`;
-  const missing = terms.filter((term) => !named.includes(term));
-  if (!missing.length) return "title";
-  return missing.every((term) => text.includes(term)) ? "text" : null;
+// The full-text query for `terms`, or null for none: every term must be
+// in the item's key, title or text, each as a phrase of its words whose
+// last may run on, so "syn-1" finds SYN-12 and "resume" finds "résumés".
+// Each is quoted, so nothing a person or the model types is the table's
+// query syntax: AND, NEAR, *, ", -, ^ and a column's name are words.
+// `titled` asks the same of the key and title alone.
+export function matchQuery(terms: readonly string[]): { any: string; titled: string } | null {
+  const phrases = terms.map((term) => `"${indexFold(term).replaceAll('"', '""')}"*`);
+  if (!phrases.length) return null;
+  const all = phrases.join(" AND ");
+  return { any: all, titled: `{key title} : (${all})` };
 }
 
-// What the index gives a search of each item's text: the text folded, ""
-// when it keeps none, and, for the few found by it, the text as written.
-export type SearchTexts = {
-  folded(id: ItemId): string;
-  written(id: ItemId): string | undefined;
-};
+// What the index found: a live record; whether every term was in its key or
+// title ("title") or needed its text too ("text"); and its key and title,
+// searchFold-ed, to rank it by.
+export type Found<R> = { record: R; matched: "title" | "text"; key: string; title: string };
 
 // A search's record as the agent's search() returns it (`Searched`).
 export const searchedOf = (
@@ -89,41 +83,50 @@ export const searchedOf = (
   ...(record.excerpt === undefined ? {} : { excerpt: record.excerpt }),
 });
 
-// The escape hatch's search, across `records`. Every term must appear in
-// the item's key, title or text. Key and title hits come first, then text
-// hits; within each, an exact key, then titles starting with the first term,
-// then the most recently updated. A text hit carries Oriel's excerpt of the
-// words around the first term its key and title lack: at most 140
-// characters of its text, with an ellipsis where it was cut. At most 256 characters, 8 distinct terms and 50 results.
-export function searchRecords<R extends IndexRecord<SourceKind, unknown>>(
-  records: readonly R[],
-  query: string,
+// The escape hatch's results, from what the index found for `terms`. Key
+// and title hits come first, then text hits; within each, an exact key, then
+// titles starting with the first term, then the most recently updated, then
+// by item ID. How
+// often a term appears never counts, so text can't rank itself by repeating
+// a word. A text hit carries Oriel's excerpt of the words around the first
+// term its key and title lack: at most 140 characters of its text (`written`,
+// as the index keeps it), with an ellipsis where it was cut. At most 50.
+export function ranked<R extends IndexRecord<SourceKind, unknown>>(
+  found: readonly Found<R>[],
+  { terms, whole }: { terms: readonly string[]; whole: string },
   limit: number,
-  texts: SearchTexts,
+  written: (id: R["id"]) => string | undefined,
 ): (R & { excerpt?: string })[] {
-  const { terms, whole } = searchTerms(query, prefixesOf(records));
   const first = terms[0];
   const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxSearchResults);
-  if (!first) return [];
-  const found = records
-    .flatMap((record) => {
-      const matched = matchOf(record, texts.folded(record.id), terms);
-      return matched ? [{ record, matched, ...searchable(record) }] : [];
-    })
-    .sort(
+  if (first === undefined) return [];
+  return found
+    .toSorted(
       (a, b) =>
         Number(b.matched === "title") - Number(a.matched === "title") ||
         Number(b.key === whole) - Number(a.key === whole) ||
         Number(b.title.startsWith(first)) - Number(a.title.startsWith(first)) ||
-        b.record.updatedAt.localeCompare(a.record.updatedAt),
+        b.record.updatedAt.localeCompare(a.record.updatedAt) ||
+        (a.record.id < b.record.id ? -1 : a.record.id > b.record.id ? 1 : 0),
     )
-    .slice(0, count);
-  return found.map(({ record, matched, key, title }) => {
-    const text = matched === "text" ? texts.written(record.id) : undefined;
-    if (text === undefined) return record;
-    const term = terms.find((each) => !`${key} ${title}`.includes(each)) ?? first;
-    const { text: flat, from } = folded(text, searchFold);
-    const at = flat.indexOf(term);
-    return { ...record, excerpt: excerpt(text, at >= 0 ? (from[at] ?? 0) : 0) };
-  });
+    .slice(0, count)
+    .map(({ record, matched, key, title }) => {
+      const text = matched === "text" ? written(record.id) : undefined;
+      if (text === undefined) return record;
+      const { text: flat, from } = folded(text);
+      // A key, title or term as the index reads it, its words alone.
+      const wordsOf = (of: string) => (of.match(/[\p{L}\p{N}\p{M}]+/gu) ?? []).join(" ");
+      const named = wordsOf(`${key} ${title}`);
+      // Where a term is in the text: as written, or else its first word, so
+      // "SMS-wording" and '"SMS"' find "SMS wording".
+      const where = (term: string) => {
+        const whole = startOf(flat, term);
+        return whole >= 0 ? whole : startOf(flat, wordsOf(term).split(" ")[0] ?? term);
+      };
+      const term =
+        terms.find((each) => startOf(named, wordsOf(each)) < 0 && where(each) >= 0) ??
+        terms.find((each) => where(each) >= 0);
+      const at = term === undefined ? 0 : where(term);
+      return { ...record, excerpt: excerpt(text, from[at] ?? 0) };
+    });
 }

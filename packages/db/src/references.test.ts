@@ -105,10 +105,13 @@ test("a message naming SYN-54 references it by stable ID, and keeps its text onl
     { id: "slack:C0FW1WEATHR-1788344100.000100", stableId: "C0FW1WEATHR-1788344100.000100" },
   ]);
   assert.equal(references("slack:C0FW1WEATHR-1788344100.000100"), undefined);
-  // Everything but the items' text column (OA-242).
+  // Everything but the items' text column (OA-242) and search's index of it
+  // (OA-264).
   const stored = JSON.stringify(
     db
-      .prepare("select name from sqlite_master where type = 'table'")
+      .prepare(
+        "select name from sqlite_master where type = 'table' and name not like 'item_search%'",
+      )
       .all()
       .flatMap((table) =>
         db
