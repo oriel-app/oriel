@@ -833,6 +833,7 @@ export function views(deps: ViewDeps) {
                 : null,
             kind: line.kind,
             makes: line.makes,
+            source: line.source,
             applied,
             error,
             brought: named(line),

@@ -3,7 +3,7 @@ title: Thread messages
 status: stable
 group: Thread
 order: 60
-classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
+classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
 summary: What a thread's conversation holds, entry by entry: the person's message, the agent's reply, its runs, Oriel's own lines, held messages and drafts, and "Working…".
 ---
 
@@ -67,7 +67,7 @@ The page is `.thread-layout`: the thread in the middle (`main.thread`, at most `
     </li>
     <li>
       <details class="run" data-outcome="ok">
-        <summary>Ran a script · 1 read · 3 changes · 174 ms</summary>
+        <summary>Ran a script · 1 read · 3 changes</summary>
         <div class="run-body">
           <pre class="code">const stories = await jira.search({ estimate: null });</pre>
         </div>
@@ -135,10 +135,21 @@ The page is `.thread-layout`: the thread in the middle (`main.thread`, at most `
       >
     </li>
   </ol>
-  <form class="composer">
-    <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-    <button type="submit" class="button primary" disabled>Send</button>
-  </form>
+  <div class="chat-dock">
+    <form class="chat-input" data-lines="grow" data-elevation="raised">
+      <textarea
+        class="chat-input-field"
+        rows="2"
+        placeholder="Ask about 17 items…"
+        aria-label="Message"
+      ></textarea>
+      <div class="chat-input-foot">
+        <span class="chat-input-reads">Reads 17 items · v3</span>
+        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+        <button type="submit" class="button" disabled>Send</button>
+      </div>
+    </form>
+  </div>
 </main>
 ```
 
@@ -272,13 +283,13 @@ When the agent quotes an item (decision 0032), Oriel captions the quote itself, 
 
 ### A run
 
-What the agent ran, in one faint line until opened: "Ran a script · 1 read · 3 changes · 174 ms". Opened, it shows the script (`pre.code`, bordered), what it logged and returned (`pre.output`), and an error with its hint. A run that failed, timed out, hit a limit or was stopped turns its line `--danger`.
+What the agent ran, in one faint line until opened: "Ran a script · 1 read · 3 changes", or "· no changes". The line leaves out what tells a person nothing: no "0 reads", and no milliseconds. Both are inside the fold, on its first line (`.run-meta`): "0 reads · 40 ms". Opened, it shows that, the script (`pre.code`, bordered), what it logged and returned (`pre.output`), and an error with its hint. A run that failed, timed out, hit a limit or was stopped turns its line `--danger`.
 
 ```html specimen id=run title="A run: folded, opened, failed, running"
 <ol class="chat">
   <li>
     <details class="run" data-outcome="ok">
-      <summary>Ran a script · 1 read · 3 changes · 174 ms</summary>
+      <summary>Ran a script · 1 read · 3 changes</summary>
       <div class="run-body">
         <pre class="code">const stories = await jira.search({ estimate: null });</pre>
       </div>
@@ -286,8 +297,9 @@ What the agent ran, in one faint line until opened: "Ran a script · 1 read · 3
   </li>
   <li>
     <details class="run" data-outcome="ok" open>
-      <summary>Ran a script · 1 read · 56 ms</summary>
+      <summary>Ran a script · 1 read · no changes</summary>
       <div class="run-body">
+        <p class="run-meta">1 read · 56 ms</p>
         <pre class="code">
 const all = await items.list();
 return all.map((item) => `${item.id}: ${item.text.length} characters`);</pre>
@@ -301,8 +313,9 @@ return all.map((item) => `${item.id}: ${item.text.length} characters`);</pre>
   </li>
   <li>
     <details class="run" data-outcome="threw" open>
-      <summary>Script failed · 0 reads · 12 ms</summary>
+      <summary>Script failed · no changes</summary>
       <div class="run-body">
+        <p class="run-meta">0 reads · 12 ms</p>
         <pre class="code">await jira.update("SYN-23", { points: "three" });</pre>
         <!-- prettier-ignore -->
         <p class="run-error">points must be a number<span class="hint"> Pass 3, not "three".</span></p>
@@ -456,46 +469,57 @@ What the agent found outside the thread's workstream, through `search()` or `win
 
 ### A held message
 
-A message from anyone but the person (decision 0024, OA-87). The agent never sees it until the person sends it on, as it is or edited, as their own message; or they discard it. Today the only sender is someone who rejected a change set on its [review link](/components/change-set#the-review-link-page). It's set apart from both voices: a **dashed** `--line-strong` box on `--surface`, its sender in strong text, its words as a quote.
+A message from anyone but the person (decision 0024, OA-87). The agent never sees it until the person sends it on, as it is or edited, as their own message; or they discard it. Today the only sender is someone who rejected a change set on its [review link](/components/change-set#the-review-link-page). While it waits it's the person's move, so it's **tinted and edged as theirs**: `--accent-soft`, an accent start edge, who it's from at the top, and its state chip, **Message held**. Its words are a quote. Settled, it goes back to a dashed `--line-strong` box on `--surface`.
 
-```html specimen id=held title="Held: waiting, editing, sent, discarded"
+**Edit moves the words into the composer**, the one field the person always writes in, rather than opening a second field inside the card. The card then says "Editing in the message box. Send there sends it as yours.", Cancel puts back what the composer held, and Send, in the composer or on the card, sends what's there as the held message, edited (`updateThread` in `packages/web/src/thread.ts`). Settled from another page meanwhile, the words stay in the composer as the person's own.
+
+```html specimen id=held title="Held: waiting, editing in the composer, sent, discarded"
 <ol class="chat">
   <li class="held-block" data-outcome="held">
     <section class="held-message" aria-busy="false">
-      <p class="held-by"><strong>Priya Shah</strong> rejected this on the review link:</p>
+      <p class="held-by">
+        <span><strong>Priya Shah</strong> rejected this on the review link, and wrote:</span
+        ><span class="state-chip" data-waiting="held">Message held</span>
+      </p>
       <!-- prettier-ignore -->
       <blockquote class="held-text">The estimate is wrong; it's 5. 3-D Secure needs the bank's test cards.</blockquote>
       <div class="held-actions">
-        <span class="held-note">The agent won't see this until you send it.</span>
         <button type="button" class="button primary">Send to agent</button>
         <button type="button" class="button">Edit</button>
         <button type="button" class="quiet-action">Discard</button>
+        <span class="held-note">The agent won't see this until you send it.</span>
       </div>
     </section>
   </li>
   <li class="held-block" data-outcome="held">
     <section class="held-message" aria-busy="false">
-      <p class="held-by"><strong>Priya Shah</strong> rejected this on the review link:</p>
-      <textarea class="held-field" rows="3" maxlength="8000" aria-label="Edit Priya Shah's reason">
-The estimate is wrong; it's 5.</textarea>
+      <p class="held-by">
+        <span><strong>Priya Shah</strong> rejected this on the review link, and wrote:</span
+        ><span class="state-chip" data-waiting="held">Message held</span>
+      </p>
+      <blockquote class="held-text">The estimate is wrong; it's 5.</blockquote>
       <div class="held-actions">
-        <span class="held-note">The agent won't see this until you send it.</span>
         <button type="button" class="button primary">Send to agent</button>
         <button type="button" class="button">Cancel</button>
         <button type="button" class="quiet-action">Discard</button>
+        <span class="held-note">Editing in the message box. Send there sends it as yours.</span>
       </div>
     </section>
   </li>
   <li class="held-block" data-outcome="sent">
     <section class="held-message" aria-busy="false">
-      <p class="held-by"><strong>Priya Shah</strong> rejected this on the review link:</p>
+      <p class="held-by">
+        <span><strong>Priya Shah</strong> rejected this on the review link, and wrote:</span>
+      </p>
       <blockquote class="held-text">The estimate is wrong; it's 5.</blockquote>
       <p class="held-note">Sent to the agent.</p>
     </section>
   </li>
   <li class="held-block" data-outcome="discarded">
     <section class="held-message" aria-busy="false">
-      <p class="held-by"><strong>Dana Reyes</strong> rejected this on the review link:</p>
+      <p class="held-by">
+        <span><strong>Dana Reyes</strong> rejected this on the review link, and wrote:</span>
+      </p>
       <blockquote class="held-text">Not this sprint.</blockquote>
       <p class="held-note">Discarded. The agent never saw it.</p>
     </section>
@@ -505,7 +529,7 @@ The estimate is wrong; it's 5.</textarea>
 
 ### A draft
 
-A draft of the agent's (decision 0051): one of the person's own actions, such as how a connection reads its source, which only they apply. It's held the same way, in `.held-message` (the app adds `draft-card`, which has no rules), and Oriel draws it from its own data: each option, as it is and as drafted. It's never approved and never goes through a review link: see [Approval](/patterns/approval#where-approve-is-deliberately-absent). A connector that drafts in its own form, as a spreadsheet's columns by letter, shows the source's tables instead; see [Connect steps](/patterns/connect-steps).
+A draft of the agent's (decision 0051): one of the person's own actions, such as how a connection reads its source, which only they apply. It's held the same way, in `.held-message.draft-card`, but isn't tinted as a held message is: its tables and options read on `--surface`, and Oriel draws it from its own data: each option, as it is and as drafted. It's never approved and never goes through a review link: see [Approval](/patterns/approval#where-approve-is-deliberately-absent). A connector that drafts in its own form, as a spreadsheet's columns by letter, shows the source's tables instead; see [Connect steps](/patterns/connect-steps).
 
 ```html specimen id=draft title="A draft: waiting, applied, stale"
 <ol class="chat">
@@ -581,7 +605,7 @@ The drafted value is `<span class="draft-to">` in the app (`DraftCard` in `packa
 
 ### The window chat's head
 
-The window chat draws its entries with the same renderer, in its own panel at the window's right (`aside.window-chat`, the item panel's width, on `--surface`). Its head (`.window-chat-head`) is one `--head-row` line: the title, **Ask about your window** (`h2.window-chat-title`, `--text-lg` at `--weight-strong`, taking the room), then **Open as a thread** once there's a chat to open, **New chat**, and the close (see [Icon button](/components/icon-button)). The entries follow in `ol.chat.window-chat-entries`, which scrolls; its composer is on [Chat input](/components/chat-input).
+The window chat draws its entries with the same renderer, in its own panel at the window's right (`aside.window-chat`, the item panel's width, on `--surface`). Its head (`.window-chat-head`) is one `--head-row` line: the title, **Ask about your window** (`h2.window-chat-title`, `--text-lg` at `--weight-strong`, taking the room), then **Open as a thread** once there's a chat to open, **New chat**, and the close (see [Icon button](/components/icon-button)). Open as a thread opens the window chat's own thread. It isn't **Continue in…** (SPEC §2, decision 0027), which carries the conversation to a workstream the person picks, as a held message, and starts the window chat afresh; that isn't built yet, so the link keeps the words for what it does. The entries follow in `ol.chat.window-chat-entries`, which scrolls; its composer is on [Chat input](/components/chat-input).
 
 ```html specimen id=window-chat-head title="The window chat, before the first question" width=390 height=260
 <aside class="window-chat" aria-label="Ask about your window">
@@ -622,7 +646,7 @@ The window chat draws its entries with the same renderer, in its own panel at th
 <ol class="chat">
   <li>
     <details class="run" data-outcome="ok">
-      <summary class="ws-focus-visible">Ran a script · 1 read · 3 changes · 174 ms</summary>
+      <summary class="ws-focus-visible">Ran a script · 1 read · 3 changes</summary>
       <div class="run-body">
         <pre class="code">const stories = await jira.search({ estimate: null });</pre>
       </div>
@@ -630,7 +654,7 @@ The window chat draws its entries with the same renderer, in its own panel at th
   </li>
   <li>
     <details class="run" data-outcome="ok">
-      <summary class="ws-hover">Ran a script · 2 reads · 81 ms</summary>
+      <summary class="ws-hover">Ran a script · 2 reads · no changes</summary>
       <div class="run-body"><pre class="code">await items.list();</pre></div>
     </details>
   </li>
@@ -654,7 +678,7 @@ The window chat draws its entries with the same renderer, in its own panel at th
 - A run is a native `<details>`: Enter or Space opens it.
 - The action list is an `<li>` named "What the agent did in Oriel" (`aria-label`), so it's never read as the agent's words.
 - In a diff value or a marker, an item's key is a link (`.key.source-link`) that opens the item in the panel; with ⌘ or a middle click it opens in its source.
-- The held message's edit box is named for whose words it holds: "Edit Priya Shah's reason". After a rejection, focus moves to the composer, so the person can say what was wrong (`perform` in `packages/web/src/effects.ts`).
+- A held message's Edit moves focus to the composer, which then holds its words. After a rejection, focus moves to the composer, so the person can say what was wrong (`perform` in `packages/web/src/effects.ts`).
 - A sketch's frame is titled "A sketch by the agent"; see [Block](/components/block#sketch).
 
 ## Content
@@ -662,7 +686,7 @@ The window chat draws its entries with the same renderer, in its own panel at th
 - The agent's words are the agent's. Oriel never edits a reply, and never puts its own sentences in one.
 - Oriel's lines are plain and short, and say what happened, not what the agent "thinks": "Change rejected. You can ask the agent to make changes or close the thread." / "Change rejected on its review link."
 - A marker names items by key and, when it has one, title: "Added SYN-3 Weather disruptions and rebooking · Removed SYN-12".
-- A run's line is counts, joined with " · ": "Ran a script · 1 read · 3 changes · 174 ms". Not run: "Running a script…"; failed: "Script failed", "Script timed out", "Script hit a limit"; cut off: "Script stopped before it finished".
+- A run's line is counts, joined with " · ": "Ran a script · 1 read · 3 changes", with no "0 reads" and no milliseconds, which are inside the fold. Not run: "Running a script…"; failed: "Script failed", "Script timed out", "Script hit a limit"; cut off: "Script stopped before it finished".
 - Busy is "Working…" (with U+2026), never "Thinking…" or "Loading…".
 - A held message says who and how: "**Priya Shah** rejected this on the review link:", then "The agent won't see this until you send it." Its button is **Send to agent**.
 - A draft says whose and what: "**The agent drafted** how Jira · synthetic reads its source. Nothing changes until you apply it." then "Only you can apply it." Its button is **Apply**, never Approve.
@@ -679,5 +703,5 @@ The window chat draws its entries with the same renderer, in its own panel at th
 - `.actions-block`: `ActionLines` in `packages/web/src/thread-page.tsx`; CSS `.actions-block`, `.action-lines`, `.action-lines li`, `.action-lines li[data-undone="yes"] .action-text`, `.action-lines .undo-action`, `.action-lines .undo-action:disabled`, `.action-lines li[data-applied="no"]` and `.action-lines a` in `window.css`.
 - `.oriel-note`: `OrielNote` in `packages/web/src/thread-page.tsx`; CSS `.oriel-note` in `window.css`.
 - `.notice`: `ChatEntryItem` in `packages/web/src/thread-page.tsx`; CSS `.notice` in `window.css`.
-- `.held-message`: `HeldMessage` in `packages/web/src/thread-page.tsx`; CSS `.held-message`, `.held-by`, `.held-text`, `.held-block[data-outcome="discarded"] .held-text`, `.held-field`, `.held-actions` and `.held-note` in `window.css`.
+- `.held-message`: `HeldMessage` in `packages/web/src/thread-page.tsx`; CSS `.held-message`, `.held-by`, `.held-text`, `.held-block[data-outcome="discarded"] .held-text`, `.held-block[data-outcome="held"] > .held-message:not(.draft-card)`, `.held-actions` and `.held-note` in `window.css`. A draft's option fields are `.held-field`.
 - The draft: `DraftCard` in `packages/web/src/thread-page.tsx`; `.draft-changes` in `window.css`.

@@ -3300,13 +3300,14 @@ const scenes: Scene[] = [
     act: (page) => page.getByRole("button", { name: "Send to agent" }).waitFor(),
   },
   {
-    // The held reason, being edited before it is sent.
+    // The held reason, moved into the composer by Edit, being edited there
+    // before it is sent.
     name: "thread-held-editing",
     path: `/threads/${heldFromLink}`,
     act: async (page) => {
       await page.getByRole("button", { name: "Edit" }).click();
       await page
-        .getByRole("textbox", { name: "Edit Dana's reason" })
+        .getByRole("textbox", { name: "Message" })
         .fill("Plan only the gift card story, and estimate it.");
     },
   },
@@ -3341,9 +3342,10 @@ const scenes: Scene[] = [
     path: new URL(link.url).pathname,
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
+      await page.getByRole("radio", { name: "Approve and apply" }).check();
       await page.getByRole("textbox", { name: "Your name" }).fill("Dana");
       await hang(page, "/api/review/decide");
-      await page.getByRole("button", { name: "Approve" }).click();
+      await page.getByRole("button", { name: "Approve and apply" }).click();
       await page.getByText("Approving and applying…").waitFor();
     },
   },
@@ -3353,10 +3355,11 @@ const scenes: Scene[] = [
     path: new URL(toReject.url).pathname,
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
-      await page.getByRole("textbox", { name: "Your name" }).fill("Dana");
+      await page.getByRole("radio", { name: "Reject" }).check();
       await page
-        .getByRole("textbox", { name: "If you reject it, what's wrong? (optional)" })
+        .getByRole("textbox", { name: "What's wrong? (optional)" })
         .fill("One story too many: the balance can wait.");
+      await page.getByRole("textbox", { name: "Your name" }).fill("Dana");
     },
   },
   {
@@ -3390,7 +3393,7 @@ const scenes: Scene[] = [
     on: refusing.serving,
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
-      await page.getByRole("button", { name: "Dismiss" }).waitFor();
+      await page.getByRole("radio", { name: "Dismiss" }).waitFor();
     },
   },
   // These last: the sidebar remembers them in the browser, and every

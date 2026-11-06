@@ -61,16 +61,20 @@ The top strip (tabs and counts) is on [Page head](/components/page-head), and th
     </p>
   </div>
   <section class="ask" aria-label="Ask about your window">
-    <form class="ask-bar">
+    <form class="chat-input" data-lines="one" data-size="lg" data-marked>
       <input
         type="text"
-        class="ask-input"
+        class="chat-input-field"
         placeholder="Ask about your window"
         aria-label="Ask about your window"
       />
-      <button type="submit" class="button primary" disabled>Ask</button>
+      <div class="chat-input-foot">
+        <span class="chat-input-reads">Reads your whole window</span>
+        <button type="submit" class="button" disabled>Ask</button>
+      </div>
     </form>
-    <ul class="ask-questions" aria-label="Questions to start from">
+    <h2 class="ask-starts-head">Questions to start from</h2>
+    <ul class="ask-questions">
       <li>
         <button type="button" class="ask-question">
           Chart what moved since I looked, by workstream

@@ -55,9 +55,13 @@ export type ThreadModel = {
   landing: Readonly<Record<string, "beat" | "closing">>;
   // Change sets that folded themselves here, which the page says once.
   landed: readonly string[];
-  // A held message being edited before it is sent, by its place in the chat;
-  // a draft's options, by its place and each option's name (`optionKey`).
+  // A draft's options being edited before it applies, by its place and each
+  // option's name (`optionKey`).
   editing: Readonly<Record<string, string>>;
+  // The held message whose words Edit put in the composer, which Send there
+  // sends in its place, and what the composer held before, which Cancel
+  // puts back.
+  composing: { seq: number; was: string } | null;
   // Drafts applied from this page, by place, with the Undo the apply gave
   // (decision 0051).
   applied: Readonly<Record<string, UndoView>>;
@@ -118,11 +122,10 @@ export type ThreadMsg =
   | { type: "lookDismissed"; changeSetId: string; look: string }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string }
-  // A held message, from anyone but the user: sent to the agent as it is, edited
-  // first, or discarded. Each is the person's.
+  // A held message, from anyone but the user: sent to the agent as it is,
+  // edited first in the composer, or discarded. Each is the person's.
   | { type: "heldSendClicked"; seq: number }
   | { type: "heldEditClicked"; seq: number }
-  | { type: "heldEdited"; seq: number; text: string }
   | { type: "heldEditCancelled"; seq: number }
   | { type: "heldDiscardClicked"; seq: number }
   // A draft of the agent's (decision 0051): applied as it is, its options
@@ -162,6 +165,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       landing: {},
       landed: [],
       editing: {},
+      composing: null,
       applied: {},
       settling: [],
       undoing: [],
@@ -303,8 +307,12 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
     // Sending takes the page to the latest entry, where what was said and the
-    // reply to it show, and keeps it there.
+    // reply to it show, and keeps it there. Words Edit put here from a held
+    // message that still waits send it.
     case "sendClicked": {
+      const { composing } = model;
+      if (composing && heldAt(model.view?.entries ?? [], composing.seq))
+        return updateThread(model, { type: "heldSendClicked", seq: composing.seq });
       const text = model.draft.trim();
       if (text === "" || model.sending || model.view?.running) return [model, []];
       return [
@@ -493,7 +501,7 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       if (model.settling.includes(seq) || (heldAt(entries, seq) === null && !discarding))
         return [model, []];
       const sending = msg.type === "heldSendClicked";
-      const edited = model.editing[seq]?.trim();
+      const edited = model.composing?.seq === seq ? model.draft.trim() : undefined;
       // Sending is a message: not while the agent answers, nor as nothing.
       if (sending && (model.view?.running || edited === "")) return [model, []];
       return [
@@ -538,9 +546,14 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         ]);
         return [{ ...model, editing: { ...model.editing, ...Object.fromEntries(options) } }, []];
       }
+      // Its words go to the composer, the one field the user writes in.
       const held = heldAt(entries, msg.seq);
-      if (held === null || msg.seq in model.editing) return [model, []];
-      return [{ ...model, editing: { ...model.editing, [msg.seq]: held.text } }, []];
+      if (held === null || model.composing?.seq === msg.seq) return [model, []];
+      const was = model.composing ? model.composing.was : model.draft;
+      return [
+        { ...model, draft: held.text, composing: { seq: msg.seq, was } },
+        [{ type: "focusComposer" }],
+      ];
     }
     case "heldOptionEdited": {
       const key = optionKey(msg.seq, msg.option);
@@ -574,10 +587,9 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         [undoing(undo, { kind: "draftUndone", threadId: model.id, seq })],
       ];
     }
-    case "heldEdited":
-      if (!(msg.seq in model.editing)) return [model, []];
-      return [{ ...model, editing: { ...model.editing, [msg.seq]: msg.text } }, []];
     case "heldEditCancelled":
+      if (model.composing?.seq === msg.seq)
+        return [{ ...model, draft: model.composing.was, composing: null }, []];
       return [{ ...model, editing: notEditing(model.editing, msg.seq) }, []];
     case "dropped": {
       if (model.view === null) return [model, []];
@@ -686,11 +698,17 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       const editing = Object.fromEntries(
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
       );
+      // Settled from another page, the words in the composer stay the
+      // user's own; sent from this one, its reply takes them.
+      const { composing: was } = model;
+      const composing =
+        was && (heldAt(merged.entries, was.seq) || model.settling.includes(was.seq)) ? was : null;
       const [next, beats] = watched({
         ...model,
         view: merged,
         status: "ready",
         editing,
+        composing,
         looking: stillLooking(model.looking, merged),
         notice: reached(model.notice),
       });
@@ -815,9 +833,16 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
     case "held": {
       if (tag.threadId !== model.id) return [model, []];
       const settling = model.settling.filter((seq) => seq !== tag.seq);
+      // Sent from the composer, its words leave it, as a message's do.
+      const composed = model.composing?.seq === tag.seq;
       return [
         msg.ok
-          ? { ...model, settling, editing: notEditing(model.editing, tag.seq) }
+          ? {
+              ...model,
+              settling,
+              editing: notEditing(model.editing, tag.seq),
+              ...(composed && { draft: "", composing: null }),
+            }
           : { ...model, settling, notice: errorOf(msg.body) },
         [refresh(model)],
       ];

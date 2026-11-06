@@ -1,220 +1,129 @@
 ---
 title: Chat input
-status: drifting
+status: stable
 group: Inputs
 order: 20
-classes: ask, ask-bar, ask-input, ask-questions, ask-question, ask-problem, composer, composer-notice, chat-input, chat-input-field, chat-input-notice
-summary: Where a person asks: the overview's ask bar, the window chat, a thread's composer and a workstream's Ask box. Four versions today; one ChatInput proposed.
+classes: ask, chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-key, chat-input-notice, ask-starts-head, ask-questions, ask-question, chat-dock, workstream-ask
+summary: Where a person asks the agent: one ChatInput for the overview's ask bar, the window chat, a thread's composer and a workstream's Ask box, with the same frame, focus, problem line and foot.
 ---
 
 # Chat input
 
 ## What it is
 
-The field a person asks in, with its submit button. It's where "point, don't prompt" turns into a question, so it's the most-used control in Oriel. There are four of them today:
+The field a person asks the agent in, with its button. It's where "point, don't prompt" turns into a question, so it's the most-used control in Oriel. One component, `ChatInput`, draws it in every place (DRIFT D3, done):
 
 1. **The ask bar** on the overview (decision 0030): one line, "Ask about your window", with questions to start from under it.
-2. **The window chat's composer**: the panel the ask bar opens, "Ask a follow-up".
-3. **A thread's composer**: sticky at the foot of the thread, "Ask about 17 items…".
-4. **A workstream's Ask box**: on the workstream's page, "Ask about these 6 items…". It starts a thread.
+2. **The window chat's composer**: its first ask, and its follow-ups once there's an answer.
+3. **A thread's composer**: in a dock at the foot of the thread.
+4. **A workstream's Ask box**: on the workstream's page. It starts a thread.
 
-They do one job and look like three different controls. The proposal below makes them one `ChatInput` with two shapes (one line, or growing) and two sizes.
+Every one has the same frame, the same focus ring, the same problem line and the same foot: on the left, what the agent will read; on the right, the send key from Settings and the button.
 
 ## When to use it
 
-- Wherever the person asks the agent something: a thread, the window chat, a workstream, the overview.
-- Use the **one-line, large** shape only for the overview's ask bar. Decision 0041 says "the ask bar is one line, so Enter always asks there".
+- Wherever the person asks the agent something: a thread, the window chat, a workstream, the overview. Import `ChatInput` from `packages/web/src/chat-input.tsx`; never copy it.
+- Use the **one-line, large** shape (`lines="one" size="lg" marked`) only for the overview's ask bar. Decision 0041 says "the ask bar is one line, so Enter always asks there".
 - Use the **growing** shape everywhere else. It follows Settings' send key (Enter, or ⌘Enter), read from `SendKeyContext` in `packages/web/src/parts.tsx`.
+- Raise it (`elevation="raised"`) only where it floats over a thread, in the thread's dock.
 
 ## When not to
 
-- Not for a field in a form, such as a draft's option, a held message's edit or the review link's reason. Those are [text fields](/components/text-field): they save, they don't ask.
+- Not for a field in a form, such as a draft's option or the review link's note. Those are [text fields](/components/text-field): they save, they don't ask. A held message's words aren't edited in a field of their own either: Edit moves them into the composer.
 - Not for search. The sidebar's and Browse's searches filter what's on the page; they never reach the agent. See [Text field](/components/text-field#search).
 - Not with a second submit button beside it. Stop replaces Send while the agent runs; it doesn't sit next to it.
 
 ## Anatomy and variants
 
-A frame holding the field and its submit button, then at most one line under them for a problem.
+A frame holding the field, then its foot, then at most one line for a problem.
 
-- **Frame:** `--border-thin` in `--line-strong`, `--radius-lg`, on `--surface`. In a thread it floats, with `--shadow`.
-- **Field:** a `<textarea rows="2">` that grows to 12rem (`field-sizing: content`), or one `<input>` for the ask bar.
-- **Submit:** a `.button.primary`, inside the frame, at its foot. "Ask" where a question starts something (the ask bar, a workstream), "Send" in a conversation.
+- **Frame** (`.chat-input`): `--border-thin` in `--line-strong`, `--radius-lg`, on `--surface`. In a thread it floats, with `--shadow`.
+- **Field** (`.chat-input-field`): a `<textarea rows="2">` that grows to 12rem (`field-sizing: content`), or one `<input>` for the ask bar. The app keeps `ask-input` on the ask bar's input, with no rules, for shots to find it.
+- **Foot** (`.chat-input-foot`): what the agent will read (`.chat-input-reads`, with the epic mark), anything beside it (Back to the chat), the send key (`.chat-input-key`), and the button.
+- **Button:** "Ask" where a question starts something (the ask bar, a workstream), "Send" in a conversation. A plain `.button` until something is written, and only then `.button.primary`: the accent means it's the person's move, and an empty field isn't one.
 - **Stop:** a `.button` in Send's place while the agent runs.
-- **Notice:** one `role="alert"` line in `--danger`.
+- **Notice** (`.chat-input-notice`): one `role="alert"` line in `--danger`, inside the frame.
+- **Dock** (`.chat-dock`): a thread's composer sits in it. It sticks at the thread's foot and fades from the page's colour over what scrolls under it, and writes `--dock-cover` on the thread, so a change set's actions can stick just above it.
 
-### Today, side by side
-
-Each specimen below is Oriel's markup as the app renders it, with Oriel's CSS. Compare the frame, where the button sits, and the focus.
-
-```html specimen id=today-ask-bar title="1. The ask bar (overview)" side=today
-<section class="ask" aria-label="Ask about your window">
-  <form class="ask-bar">
-    <input
-      type="text"
-      class="ask-input"
-      value=""
-      placeholder="Ask about your window"
-      aria-label="Ask about your window"
-    />
-    <button type="submit" class="button primary" disabled>Ask</button>
-  </form>
-  <ul class="ask-questions" aria-label="Questions to start from">
-    <li>
-      <button type="button" class="ask-question">
-        Chart what moved since I looked, by workstream
-      </button>
-    </li>
-    <li>
-      <button type="button" class="ask-question">
-        Should Vehicle and freight reservations become a workstream?
-      </button>
-    </li>
-  </ul>
-</section>
-```
-
-```html specimen id=proposed-ask-bar title="The ask bar as a ChatInput" side=proposed
+```html specimen id=ask-bar title="The ask bar (overview), one line, marked"
 <section class="ask" aria-label="Ask about your window">
   <form class="chat-input" data-lines="one" data-size="lg" data-marked>
-    <input
-      type="text"
-      class="chat-input-field ask-input"
-      placeholder="Ask about your window"
-      aria-label="Ask about your window"
-    />
-    <button type="submit" class="button primary" disabled>Ask</button>
-  </form>
-  <ul class="ask-questions" aria-label="Questions to start from">
-    <li>
-      <button type="button" class="ask-question">
-        Chart what moved since I looked, by workstream
-      </button>
-    </li>
-    <li>
-      <button type="button" class="ask-question">
-        Should Vehicle and freight reservations become a workstream?
-      </button>
-    </li>
-  </ul>
-</section>
-```
-
-```html specimen id=today-composer title="2 and 3. The thread's and the window chat's composer" side=today
-<form class="composer">
-  <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-  <button type="submit" class="button primary" disabled>Send</button>
-</form>
-```
-
-```html specimen id=proposed-composer title="The composer as a ChatInput (raised, in a thread)" side=proposed
-<form class="chat-input" data-lines="grow" data-elevation="raised">
-  <textarea
-    class="chat-input-field"
-    rows="2"
-    placeholder="Ask about 17 items…"
-    aria-label="Message"
-  ></textarea>
-  <button type="submit" class="button primary" disabled>Send</button>
-</form>
-```
-
-```html specimen id=today-workstream title="4. The workstream's Ask box" side=today
-<form class="composer ask">
-  <textarea
-    rows="2"
-    placeholder="Ask about these 6 items…"
-    aria-label="Ask about this workstream"
-  ></textarea>
-  <button type="submit" class="button primary" disabled>Ask</button>
-</form>
-<p class="notice" data-tone="error" role="alert">The agent couldn't start. Try again.</p>
-```
-
-```html specimen id=proposed-workstream title="The Ask box as a ChatInput (flat)" side=proposed
-<form class="chat-input" data-lines="grow">
-  <textarea
-    class="chat-input-field"
-    rows="2"
-    placeholder="Ask about these 6 items…"
-    aria-label="Ask about this workstream"
-  ></textarea>
-  <button type="submit" class="button primary" disabled>Ask</button>
-  <p class="chat-input-notice" role="alert">The agent couldn't start. Try again.</p>
-</form>
-```
-
-## States
-
-Focus is forced in these specimens (`.ws-focus` and `.ws-focus-within` carry window.css's own `:focus` and `:focus-within` rules). Click into any of them to see the real thing.
-
-```html specimen id=today-focus title="Focus today: a ring on the ask bar, a 1px tint on the composer" side=today state=focus
-<div class="ws-stack">
-  <form class="ask-bar">
-    <input
-      type="text"
-      class="ask-input ws-focus"
-      placeholder="Ask about your window"
-      aria-label="Ask about your window"
-    /><button type="submit" class="button primary" disabled>Ask</button>
-  </form>
-  <form class="composer ws-focus-within">
-    <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea
-    ><button type="submit" class="button primary" disabled>Send</button>
-  </form>
-</div>
-```
-
-```html specimen id=proposed-focus title="Focus proposed: one frame ring, in --focus" side=proposed state=focus
-<div class="ws-stack">
-  <form class="chat-input ws-focus-within" data-lines="one" data-size="lg" data-marked>
     <input
       type="text"
       class="chat-input-field"
       placeholder="Ask about your window"
       aria-label="Ask about your window"
-    /><button type="submit" class="button primary" disabled>Ask</button>
+    />
+    <div class="chat-input-foot">
+      <span class="chat-input-reads">Reads your whole window</span>
+      <button type="submit" class="button" disabled>Ask</button>
+    </div>
   </form>
-  <form class="chat-input ws-focus-within" data-lines="grow">
+  <h2 class="ask-starts-head" id="starts-head">Questions to start from</h2>
+  <ul class="ask-questions" aria-labelledby="starts-head">
+    <li>
+      <button type="button" class="ask-question">
+        Should Vehicle and freight reservations become a workstream?
+      </button>
+    </li>
+    <li>
+      <button type="button" class="ask-question">What moved in Checkout v2 this week?</button>
+    </li>
+  </ul>
+</section>
+```
+
+```html specimen id=composer title="A thread's composer, raised, in its dock"
+<div class="chat-dock">
+  <form class="chat-input" data-lines="grow" data-elevation="raised">
     <textarea
       class="chat-input-field"
       rows="2"
       placeholder="Ask about 17 items…"
       aria-label="Message"
-    ></textarea
-    ><button type="submit" class="button primary" disabled>Send</button>
+    ></textarea>
+    <div class="chat-input-foot">
+      <span class="chat-input-reads">Reads 17 items · v3</span>
+      <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+      <button type="submit" class="button" disabled>Send</button>
+    </div>
   </form>
 </div>
 ```
 
-```html specimen id=state-typed title="Written: Send is live, and the field grows" side=today state=filled
-<form class="composer">
-  <textarea rows="2" aria-label="Message">
-Which stories here still need estimates?
-And which of them are blocked on design?</textarea>
-  <button type="submit" class="button primary">Send</button>
+```html specimen id=workstream title="A workstream's Ask box, flat"
+<form class="chat-input workstream-ask" data-lines="grow">
+  <textarea
+    class="chat-input-field"
+    rows="2"
+    placeholder="Ask about these 6 items…"
+    aria-label="Ask about this workstream"
+  ></textarea>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 6 items · v2</span>
+    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+    <button type="submit" class="button" disabled>Ask</button>
+  </div>
 </form>
 ```
 
-```html specimen id=proposed-typed title="Written, proposed" side=proposed state=filled
-<form class="chat-input" data-lines="grow">
+## States
+
+Focus is forced in the first specimen (`.ws-focus-within` carries window.css's own `:focus-within` rule). Click into any of them to see the real thing.
+
+```html specimen id=state-focus title="Focus: one frame ring, in --focus, with something written" state=focus
+<form class="chat-input ws-focus-within" data-lines="grow">
   <textarea class="chat-input-field" rows="2" aria-label="Message">
-Which stories here still need estimates?
-And which of them are blocked on design?</textarea>
-  <button type="submit" class="button primary">Send</button>
+Estimate SYN-23 and SYN-104 like SYN-92</textarea>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+    <button type="submit" class="button primary">Send</button>
+  </div>
 </form>
 ```
 
-```html specimen id=state-running title="Busy: the agent is working, and Stop replaces Send" side=today state=busy
-<ol class="chat">
-  <li class="working" role="status"><span class="working-dot"></span> Working…</li>
-</ol>
-<form class="composer">
-  <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-  <button type="button" class="button">Stop</button>
-</form>
-```
-
-```html specimen id=proposed-running title="Busy, proposed" side=proposed state=busy
+```html specimen id=state-running title="Busy: the agent is working, and Stop replaces Send" state=busy
 <ol class="chat">
   <li class="working" role="status"><span class="working-dot"></span> Working…</li>
 </ol>
@@ -225,21 +134,15 @@ And which of them are blocked on design?</textarea>
     placeholder="Ask about 17 items…"
     aria-label="Message"
   ></textarea>
-  <button type="button" class="button">Stop</button>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+    <button type="button" class="button">Stop</button>
+  </div>
 </form>
 ```
 
-```html specimen id=state-error title="Error: one line, inside the frame" side=today state=error
-<form class="composer">
-  <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-  <button type="submit" class="button primary" disabled>Send</button>
-  <p class="composer-notice" role="alert">
-    Claude Code stopped before it answered. Send again to retry.
-  </p>
-</form>
-```
-
-```html specimen id=proposed-error title="Error, proposed" side=proposed state=error
+```html specimen id=state-error title="Error: one line, inside the frame" state=error
 <form class="chat-input" data-lines="grow">
   <textarea
     class="chat-input-field"
@@ -247,29 +150,18 @@ And which of them are blocked on design?</textarea>
     placeholder="Ask about 17 items…"
     aria-label="Message"
   ></textarea>
-  <button type="submit" class="button primary" disabled>Send</button>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+    <button type="submit" class="button" disabled>Send</button>
+  </div>
   <p class="chat-input-notice" role="alert">
     Claude Code stopped before it answered. Send again to retry.
   </p>
 </form>
 ```
 
-```html specimen id=state-off title="Off: no AI set up (decision 0038)" side=today state=disabled
-<section class="ask" aria-label="Ask about your window">
-  <div class="ask-bar" data-off="true">
-    <input
-      type="text"
-      class="ask-input"
-      disabled
-      placeholder="Set up Claude to ask about your window"
-      aria-label="Set up Claude to ask about your window"
-    />
-    <a href="/settings" class="button primary">Set up</a>
-  </div>
-</section>
-```
-
-```html specimen id=proposed-off title="Off, proposed" side=proposed state=disabled
+```html specimen id=state-off title="Off: no AI set up (decision 0038)" state=disabled
 <section class="ask" aria-label="Ask about your window">
   <div class="chat-input" data-lines="one" data-size="lg" data-marked data-off>
     <input
@@ -284,54 +176,40 @@ And which of them are blocked on design?</textarea>
 </section>
 ```
 
-- **Rest:** placeholder in the field, submit disabled until something is written (and not only spaces).
+- **Rest:** placeholder in the field, the button plain and disabled until something is written (and not only spaces): `sendable` in `packages/web/src/settings.ts`.
 - **Hover:** nothing; the frame doesn't change under the pointer.
-- **Focus:** today the ask bar shows a 2px ring on `:focus` (even on a click), and the composers only tint their border by half the accent: the weakest focus in the app. Proposed: one ring on the frame, in `--focus`, on `:focus-within`.
+- **Focus:** one ring on the frame, its border and a 1px ring in `--focus`, on `:focus-within`. The field inside has no outline.
 - **Active:** not styled.
-- **Disabled:** submit is disabled while the draft is blank or a send is under way. The field itself is never disabled, except with no AI set up ("off").
+- **Disabled:** the button is disabled while the draft is blank or a send is under way. The field itself is never disabled, except with no AI set up ("off").
+- **Filled:** the button turns primary.
 - **Busy:** "Working…" shows in the conversation above, and Stop replaces Send where the agent can be stopped (a thread, the window chat). The ask bar and the Ask box have no Stop.
-- **Error:** one line. Today it's `.composer-notice` in a thread, `.ask-problem` on the overview and in the window chat (which can show both at once), and `.notice[data-tone="error"]` under the workstream's box.
+- **Error:** one line, `.chat-input-notice`, everywhere. The window chat shows its own problem or its thread's, never both.
 - **Empty:** the window chat says what to ask about: "Ask about what changed, what needs you, or what should become a workstream."
+- **Narrow:** under 760px the send key isn't shown; there's seldom a keyboard to press it on.
 
 ## Keyboard and ARIA
 
-- **Growing shape:** Settings' send key decides. With "Enter", Enter sends and Shift+Enter makes a new line; with "⌘Enter", ⌘Enter (Ctrl+Enter) sends and Enter makes a new line. An IME composition never sends. The handler is `sends()` (`sends` in `packages/web/src/settings.ts`).
-- **One-line shape:** a form with one `<input>`, so Enter always submits (decision 0041).
+- **Growing shape:** Settings' send key decides. With "Enter", Enter sends and Shift+Enter makes a new line; with "⌘Enter", ⌘Enter (Ctrl+Enter) sends and Enter makes a new line. An IME composition never sends. The handler is `sends` in `packages/web/src/settings.ts`.
+- **One-line shape:** a form with one `<input>`, so Enter always submits (decision 0041). The foot shows no send key.
 - The keyboard path skips the button's `disabled`, so the reducer guards an empty or busy send (`updateThread` in `packages/web/src/thread.ts`). Keep that guard in the reducer.
-- The field's accessible name is its `aria-label`: "Ask about your window", "Message", "Ask about this workstream". No chat input has a visible `<label>`; its placeholder and place say what it's for, and the `aria-label` says it to a screen reader. Don't make the name the placeholder's exact words where the placeholder carries a count.
+- The field's accessible name is its `aria-label`: "Ask about your window", "Message", "Ask about this workstream". No chat input has a visible `<label>`; its placeholder and place say what it's for. Don't make the name the placeholder's exact words where the placeholder carries a count.
+- The send key is `aria-hidden`: it repeats what the key does, and a screen reader's user knows their keys.
 - The notice is `role="alert"`, so it's read out when it appears.
-- After a rejection, focus goes to the composer (`perform` in `packages/web/src/effects.ts`).
+- After a rejection, and after Edit on a held message, focus goes to the composer (`perform` in `packages/web/src/effects.ts`).
 
 ## Content
 
-- Placeholders say what the question is about, never how to ask: "Ask about your window", "Ask about 17 items…", "Ask about this item…". Use the count of items, from `askPrompt` in `packages/web/src/workstream.ts`.
+- Placeholders say what the question is about, never how to ask: "Ask about your window", "Ask about 17 items…", "Ask a follow-up". Use the count of items, from `askPrompt` in `packages/web/src/workstream.ts`.
 - Where there's nothing to ask about yet, the placeholder invites a plan: "What are you planning? Describe it, and ask for an epic and its stories…".
-- Submit says **Ask** where a question starts something, **Send** inside a conversation.
+- The foot says what the agent will read, in Oriel's own counts: "Reads 17 items · v3", "Reads your whole window". A thread behind its workstream says "Reads its workstream at v4", which the next message catches up with (`readsOf` in `packages/web/src/thread-page.tsx`). A thread with no items says nothing.
+- The button says **Ask** where a question starts something, **Send** inside a conversation.
 - A problem says what happened and what to do: "Claude Code stopped before it answered. Send again to retry." Not "Error" or "Something went wrong".
-- Questions to start from are whole questions in sentence case, about the person's own workstreams: "What moved in Payments?", "Why is Checkout v2 stalled?".
+- Questions to start from are whole questions in sentence case, about the person's own workstreams, as rows under "Questions to start from": "What moved in Payments?", "Why is Checkout v2 stalled?".
 
 ## Where the app uses it
 
-- The ask bar: `AskBar` in `packages/web/src/window-chat-view.tsx`, mounted on the overview by `OverviewPage` in `packages/web/src/overview-page.tsx`. CSS `.ask`, `.ask-bar`, `.ask-input`, `.ask-questions`, `.ask-question` and `.ask-problem` in `window.css`, and the off state, `.ask-bar[data-off] .ask-input` in `window.css`.
-- The thread composer: `Composer` in `packages/web/src/thread-page.tsx`, used by `ThreadPage` and `NewThreadPage`. CSS `.composer`, `.composer textarea`, `.composer-notice` and `.composer.ask` in `window.css`, made sticky by `.thread .composer` in `window.css`.
-- The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`.
-- The workstream's Ask box, a copy of `Composer`: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`.
-
-## Drift
-
-Status **drifting**: four versions of one control.
-
-|            | Ask bar                          | Window chat                                       | Thread               | Workstream                  |
-| ---------- | -------------------------------- | ------------------------------------------------- | -------------------- | --------------------------- |
-| Field      | `<input>`, 2.375rem, `--text-lg` | `<textarea>`, grows                               | `<textarea>`, grows  | `<textarea>`, grows         |
-| Frame on   | the input                        | the form, plus `--shadow` inside a shadowed panel | the form, `--shadow` | the form, no shadow         |
-| Submit     | outside the field, centred       | inside, at the foot                               | inside, at the foot  | inside, at the foot         |
-| Label      | Ask                              | Send                                              | Send                 | Ask                         |
-| Stop       | no                               | with a thread                                     | yes                  | no                          |
-| Focus      | 2px ring on `:focus`             | 1px border tint                                   | 1px border tint      | 1px border tint             |
-| Error line | `.ask-problem`                   | `.ask-problem` and `.composer-notice`             | `.composer-notice`   | `.notice` outside the form  |
-| Name       | "Ask about your window"          | "Message"                                         | "Message"            | "Ask about this workstream" |
-
-Two hidden couplings: the workstream's form is `class="composer ask"`, so it picks up the overview's `.ask` section margin (`.ask` in `window.css`); and the window chat imports `Composer` from the thread's page file.
-
-**Until ChatInput lands, copy the thread's `Composer`** (`Composer` in `packages/web/src/thread-page.tsx`) for any new place that asks: import it, don't hand-copy it. The full proposal, with its API, migration and the shots it touches, is [D3 in the drift report](/drift#d3-one-chatinput-for-the-four-places-a-person-asks).
+- The component: `ChatInput` in `packages/web/src/chat-input.tsx`. CSS `.chat-input`, `.chat-input-field`, `.chat-input-foot`, `.chat-input-reads`, `.chat-input-notice` and `.chat-input[data-off]` in `window.css`.
+- The ask bar: `AskBar` in `packages/web/src/window-chat-view.tsx`, mounted on the overview by `OverviewPage` in `packages/web/src/overview-page.tsx`. Its questions: `.ask-starts-head`, `.ask-questions` and `.ask-question` in `window.css`.
+- The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`, which imports only `ChatInput` for them.
+- The thread composer: `ThreadPage` and `NewThreadPage` in `packages/web/src/thread-page.tsx`, inside `Dock`. CSS `.chat-dock` in `window.css`. `composer` stays on the frame as a placement hook: the pill for a change set out of view (`ToReview`) and `focusComposer` find it.
+- The workstream's Ask box: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`, with `.workstream-ask` for its margin.

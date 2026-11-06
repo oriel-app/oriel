@@ -123,7 +123,7 @@ Settings › Appearance has a **Text size**: Small, Default or Large (`textSizeN
 
 Every size and space in window.css is in rem, so the whole window scales with it: type, padding, rows, the sidebar's width. Breakpoints are in px and don't move. The server writes the attribute, so the first paint is right.
 
-The workshop's **Text size** control at the top sets the same attribute on every specimen. Check anything you draw at Large: a row that fits at Default may wrap, and a bar may push past a narrow screen's edge. That's why `.ask-input` is `width: 0; flex: 1` (`.ask-input` in `window.css`).
+The workshop's **Text size** control at the top sets the same attribute on every specimen. Check anything you draw at Large: a row that fits at Default may wrap, and a bar may push past a narrow screen's edge. That's why a chat input's field is `width: 100%; min-width: 0` (`.chat-input-field` in `window.css`).
 
 ## Every type token
 

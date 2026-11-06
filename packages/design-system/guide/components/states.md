@@ -184,8 +184,7 @@ Inline lines, under or beside what failed, in `--danger` at `--text-sm` unless n
 
 | Class                      | Where                              | Example of what it says                                                                                                        | Role  |
 | -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----- |
-| `.ask-problem`             | the ask bar, the window chat       | the server's (`AskBar` in `packages/web/src/window-chat-view.tsx`)                                                             | alert |
-| `.composer-notice`         | a thread's composer                | the server's (`Composer` in `packages/web/src/thread-page.tsx`)                                                                | alert |
+| `.chat-input-notice`       | every chat input                   | the server's (`ChatInput` in `packages/web/src/chat-input.tsx`)                                                                | alert |
 | `.notice[data-tone=error]` | a workstream's page                | "Nothing that was dropped names an item. Drop an item, or a link to one." (`nothingToAdd` in `packages/web/src/workstream.ts`) | alert |
 | `.connect-problem`         | a connect step, the first run      | "Type your Jira address, like yourteam.atlassian.net." (`notASite` in `packages/jira/src/connecting.ts`)                       | alert |
 | `.connection-problem`      | a connection in Settings           | the server's (`ConnectionRow` in `packages/web/src/connections-page.tsx`)                                                      | alert |
@@ -321,7 +320,7 @@ The lines themselves have no states; their actions have their buttons' states. F
 
 - Empty: `.rail-empty`, `.sidebar .rail-empty`, `.search-results .rail-empty:empty`, `.rail-note`, `.window-chat-empty`, `.no-items`, `.no-matches`, `.overview-quiet`, `.panel-empty` and `.connect-none` in `window.css`.
 - Loading: `.loading`, `.more-items`, `.working`, `.working-dot` and `.spinner` in `window.css`. `Waiting` in `packages/web/src/cli-row.tsx`, copied into `BrowserStep` and `ReviewStep` in `packages/web/src/connect-steps.tsx`, and `YourWork` in `packages/web/src/setup-page.tsx`.
-- Error: `.failed`, `.notice`, `.source-problem`, `.selection-notice`, `.composer-notice`, `.run-error`, `.line-error`, `.apply-errors`, `.change-set-problem`, `.panel-problem`, `.overview-problem`, `.ask-problem`, `.settings-problem`, `.setup-problem` and `.cli-box` in `window.css`; `.connect-problem` in `window.css`; `.connection-problem` twice in `window.css`.
+- Error: `.failed`, `.notice`, `.source-problem`, `.selection-notice`, `.chat-input-notice`, `.run-error`, `.line-error`, `.apply-errors`, `.change-set-problem`, `.panel-problem`, `.overview-problem`, `.settings-problem`, `.setup-problem` and `.cli-box` in `window.css`; `.connect-problem` in `window.css`; `.connection-problem` twice in `window.css`.
 
 ## Drift
 

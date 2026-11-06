@@ -1331,6 +1331,17 @@ button.nav-more {
   white-space: nowrap;
 }
 
+/* A thread head's chip that goes to what waits, as Needs review ↓ does. */
+.state-chip[data-jump] {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.state-chip[data-jump]:hover {
+  text-decoration: underline;
+}
+
 .state-chip[data-state="working"] {
   background: var(--in-progress-soft);
   color: var(--in-progress);
@@ -2502,47 +2513,128 @@ a.replies:hover {
   padding: 0.1875rem 0;
 }
 
-/* Composers: where the user asks. */
+/* ChatInput (DRIFT D3): wherever a person asks the agent, one frame, one
+   focus ring, one problem line and one foot. The frame shows focus, as the
+   sidebar's search does, so the field inside needs no outline. */
 
-.composer {
+.chat-input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--space-2);
+  gap: var(--space-1);
   padding: var(--space-2);
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius-lg);
   background: var(--surface);
+}
+
+.chat-input:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 var(--border-thin) var(--focus);
+}
+
+/* Marked with the theme's --ask-mark: Broadsheet rules the ask bar's start
+   edge, Graphite leaves it. */
+.chat-input[data-marked] {
+  border-inline-start: var(--ask-mark);
+}
+
+.chat-input[data-elevation="raised"] {
   box-shadow: var(--shadow);
 }
 
-.composer:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--line-strong));
+.chat-input[data-elevation="raised"]:focus-within {
+  box-shadow:
+    0 0 0 var(--border-thin) var(--focus),
+    var(--shadow);
 }
 
-.composer textarea {
-  min-height: 2.5rem;
-  max-height: 12rem;
+.chat-input-field {
+  width: 100%;
+  min-width: 0;
   padding: var(--space-1) var(--space-2);
   border: 0;
   background: none;
+  color: var(--text);
+  font: inherit;
+  line-height: var(--leading);
+}
+
+.chat-input-field:focus-visible {
+  outline: none;
+}
+
+.chat-input-field::placeholder {
+  color: var(--text-faint);
+}
+
+/* Grows with what's written, up to a limit, then scrolls. */
+.chat-input[data-lines="grow"] .chat-input-field {
+  min-height: 2.5rem;
+  max-height: 12rem;
   resize: none;
   field-sizing: content;
 }
 
-.composer textarea:focus {
-  outline: none;
+.chat-input[data-size="lg"] .chat-input-field {
+  min-height: 1.875rem;
+  font-size: var(--text-lg);
 }
 
-.composer-notice {
-  grid-column: 1 / -1;
+/* What the agent will read on the left; the send key and the button on
+   the right. */
+.chat-input-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-left: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.chat-input-reads {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chat-input-reads::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--type-epic);
+}
+
+.chat-input-notice {
   margin: 0;
+  padding: 0 var(--space-2);
   color: var(--danger);
   font-size: var(--text-sm);
 }
 
-.composer.ask {
-  box-shadow: none;
+/* Off: no AI set up (decision 0038). The field can't be used, and the
+   frame's one button opens Settings. */
+.chat-input[data-off] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  background: var(--surface-sunk);
+}
+
+.chat-input[data-off] .chat-input-field {
+  opacity: 0.5;
+}
+
+/* On a narrow screen there's seldom a keyboard to press it on. */
+@media (max-width: 760px) {
+  .chat-input-key {
+    display: none;
+  }
+}
+
+.workstream-ask {
+  margin-bottom: var(--space-6);
 }
 
 /* A thread: the chat, with the region on the right. */
@@ -2827,6 +2919,13 @@ a.replies:hover {
 .run[data-outcome="limit"] summary,
 .run[data-outcome="stopped"] summary {
   color: var(--danger);
+}
+
+/* Inside the fold, what the line leaves out: every read, and how long. */
+.run-meta {
+  margin: 0 0 var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
 }
 
 .run-body {
@@ -3318,11 +3417,17 @@ a.replies:hover {
 
 /* A change set: its diff, and what can be done with it. */
 
+/* Clipped, not hidden, so its actions can stick inside it. */
 .change-set {
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  overflow: hidden;
+  overflow: clip;
+}
+
+/* Awaiting review, it's the person's move: the accent's edge. */
+.change-set[data-awaits] {
+  border-inline-start: var(--border-thick) solid var(--accent);
 }
 
 /* The change set a link opened the thread at: marked, and clear of the bar. */
@@ -3366,6 +3471,17 @@ a.replies:hover {
 .change-set-status {
   color: var(--text-faint);
   font-size: var(--text-sm);
+}
+
+/* What Approve writes, counted from the diff. */
+.change-set-writes {
+  margin-right: auto;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.change-set[data-awaits] > .change-set-head {
+  flex-wrap: wrap;
 }
 
 .change-set[data-status="applied"] .change-set-status {
@@ -3842,6 +3958,28 @@ a.replies:hover {
   display: none;
 }
 
+/* While any of a change set awaiting review shows, its actions stick above
+   the composer, which says how much of the window it covers. The keyboard
+   still reaches them in the card's order. */
+.change-set[data-awaits] > .change-set-actions {
+  position: sticky;
+  bottom: calc(var(--dock-cover, 0px) + var(--space-2));
+  z-index: var(--layer-raised);
+}
+
+.change-set-actions[data-stuck] {
+  border-top-color: var(--line-strong);
+  box-shadow: var(--shadow);
+}
+
+.change-set-foot {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  background: var(--surface-sunk);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
 /* A change set whose diff is still reading its source: its actions wait
    for it (OA-257). */
 .change-set-loading {
@@ -3879,10 +4017,20 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
-.thread .composer {
+/* The composer's dock: it sticks at the thread's foot and fades from the
+   page's colour over what scrolls under it, so nothing reads through it,
+   and the last entry stops above it. */
+.chat-dock {
   position: sticky;
-  bottom: var(--space-4);
-  margin-bottom: var(--space-4);
+  bottom: 0;
+  z-index: var(--layer-bar);
+  margin-top: var(--space-4);
+  padding: var(--space-6) 0 var(--space-4);
+  background: linear-gradient(to bottom, transparent, var(--bg) var(--space-6));
+}
+
+.chat-dock > .chat-input {
+  position: relative;
 }
 
 /* A change set to review out of view: a pill floating just over the
@@ -4074,6 +4222,37 @@ a.replies:hover {
 .review-actions {
   display: flex;
   gap: var(--space-2);
+}
+
+.review-card .review-writes {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+}
+
+/* The reviewer's answer, a row of its own above the note and the name. */
+.review-answer {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.review-answer legend {
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.review-answer .choices {
+  grid-auto-flow: column;
+  justify-content: start;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.name-field-help {
+  margin: 0;
+  font-size: var(--text-xs);
 }
 
 .review-card .change-set-problem {
@@ -5370,9 +5549,26 @@ a.replies:hover {
 }
 
 .held-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+
+/* A message held for the person waits on them: tinted and edged as their
+   move, its state at the top. */
+.held-block[data-outcome="held"] > .held-message:not(.draft-card) {
+  border: var(--border-thin) solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-inline-start: var(--border-thick) solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.held-by .state-chip {
+  margin-left: auto;
+  background: var(--surface);
 }
 
 .held-by strong {
@@ -6129,64 +6325,47 @@ button.overview-title:hover {
   margin: var(--space-3) 0 var(--space-6);
 }
 
-.ask-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-inline-start: var(--ask-mark);
-}
-
-/* No width of its own, or a narrow page's bar is as wide as the input's
-   natural size, past the screen's edge at a large text size. */
-.ask-input {
-  flex: 1;
-  width: 0;
-  min-width: 0;
-  height: 2.375rem;
-  padding: 0 var(--space-3);
-  border: var(--border-thin) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--text-lg);
-}
-
-.ask-input:focus {
-  outline: var(--border-thick) solid var(--focus);
-  outline-offset: -1px;
+/* Questions to start from: rows to scan and press, under a small head. */
+.ask-starts-head {
+  margin: var(--space-1) 0 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .ask-questions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .ask-question {
-  height: 1.375rem;
-  padding: 0 var(--space-3);
-  border: var(--border-thin) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
   color: var(--text-muted);
   font: inherit;
   font-size: var(--text-md);
+  text-align: left;
   cursor: pointer;
+}
+
+.ask-question::before {
+  content: "↳";
+  color: var(--text-faint);
 }
 
 .ask-question:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
-}
-
-.ask-problem {
-  margin: 0;
-  color: var(--danger);
-  font-size: var(--text-sm);
 }
 
 .window-chat {
@@ -7243,11 +7422,6 @@ a.button {
 
 a.button.primary {
   color: var(--on-accent);
-}
-
-/* With no AI set up, the ask bar says so and opens Settings. */
-.ask-bar[data-off] .ask-input {
-  opacity: 0.7;
 }
 
 /* How much of the plan Oriel has used, under Claude Code's row (decision

@@ -2,11 +2,15 @@
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
-import { useContext, useEffect } from "preact/hooks";
+import { useContext, useEffect, useRef } from "preact/hooks";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
+import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
+import { ChatInput } from "./chat-input.tsx";
 import { watchLatest } from "./effects.ts";
+import { kindOfItem } from "./item-id.ts";
 import {
   addressOf,
+  Chip,
   type Dispatch,
   DropZone,
   ItemKey,
@@ -22,11 +26,9 @@ import {
   Stamp,
   StateChip,
   waitingNames,
-  SendKeyContext,
 } from "./parts.tsx";
 import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
-import { sends } from "./settings.ts";
 import { Tooltip } from "./tooltip.tsx";
 import { ToReview } from "./to-review.tsx";
 import { SecondLook } from "./second-look.tsx";
@@ -55,6 +57,7 @@ import {
   type HeldFrom,
   type ItemRef,
   type ItemValue,
+  type MemberView,
   type NoteView,
   type RunView,
   type SecondLookView,
@@ -138,6 +141,14 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
         )}
       </main>
     );
+  const waiting = waitingOn({
+    state: view.state,
+    running: view.running,
+    held: holding(view.entries),
+    changeSets: view.changeSets,
+    windowChat: view.windowChat === true,
+  });
+  const review = view.changeSets.filter(toReview);
   return (
     <ItemLinksContext.Provider value={{ dispatch, items: itemsOf(view) }}>
       <DropZone
@@ -160,13 +171,12 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
               </h1>
               <StateChip
                 state={view.state}
-                waitingOn={waitingOn({
-                  state: view.state,
-                  running: view.running,
-                  held: holding(view.entries),
-                  changeSets: view.changeSets,
-                  windowChat: view.windowChat === true,
-                })}
+                waitingOn={waiting}
+                onJump={
+                  waiting === "review" && review[0]
+                    ? () => send({ type: "toReviewClicked", changeSetId: review[0]?.id ?? "" })
+                    : undefined
+                }
               />
               {view.state !== "done" && (
                 <button
@@ -189,26 +199,32 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
               </li>
             )}
           </ol>
-          <Composer
-            above={
-              <ToReview
-                ids={view.changeSets.filter(toReview).map((set) => set.id)}
-                onShow={(changeSetId) => send({ type: "toReviewClicked", changeSetId })}
-              />
-            }
-            draft={model.draft}
-            sending={model.sending}
-            running={view.running}
-            notice={model.notice}
-            placeholder={
-              view.members.length === 0
-                ? planPrompt
-                : `Ask about ${plural(view.members.length, "item")}…`
-            }
-            onDraft={(text) => send({ type: "draftChanged", text })}
-            onSend={() => send({ type: "sendClicked" })}
-            onStop={() => send({ type: "stopClicked" })}
-          />
+          <Dock>
+            <ChatInput
+              class="composer"
+              elevation="raised"
+              label="Message"
+              above={
+                <ToReview
+                  ids={review.map((set) => set.id)}
+                  onShow={(changeSetId) => send({ type: "toReviewClicked", changeSetId })}
+                />
+              }
+              draft={model.draft}
+              busy={model.sending}
+              running={view.running}
+              notice={model.notice}
+              placeholder={
+                view.members.length === 0
+                  ? planPrompt
+                  : `Ask about ${plural(view.members.length, "item")}…`
+              }
+              reads={readsOf(view)}
+              onDraft={(text) => send({ type: "draftChanged", text })}
+              onSubmit={() => send({ type: "sendClicked" })}
+              onStop={() => send({ type: "stopClicked" })}
+            />
+          </Dock>
         </main>
         <Region view={view} syncing={model.syncing} onSync={() => send({ type: "syncClicked" })} />
       </DropZone>
@@ -228,15 +244,19 @@ export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; disp
           </div>
         </header>
         <ol class="chat" />
-        <Composer
-          draft={model.draft}
-          sending={model.sending}
-          running={false}
-          notice={model.notice}
-          placeholder={planPrompt}
-          onDraft={(text) => dispatch({ type: "newThread", msg: { type: "draftChanged", text } })}
-          onSend={() => dispatch({ type: "newThread", msg: { type: "sendClicked" } })}
-        />
+        <Dock>
+          <ChatInput
+            class="composer"
+            elevation="raised"
+            label="Message"
+            draft={model.draft}
+            busy={model.sending}
+            notice={model.notice}
+            placeholder={planPrompt}
+            onDraft={(text) => dispatch({ type: "newThread", msg: { type: "draftChanged", text } })}
+            onSubmit={() => dispatch({ type: "newThread", msg: { type: "sendClicked" } })}
+          />
+        </Dock>
       </main>
       <aside class="rail" aria-label="This thread's items">
         <h2 class="rail-title">No items</h2>
@@ -417,25 +437,23 @@ function ActionLines(props: {
 export const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 
-// Who a held message is from, each kind of sender in its own words, and
-// whose words the edit box holds. A review link may be held by anyone.
+// Who a held message is from, each kind of sender in its own words. A
+// review link may be held by anyone.
 function heldFrom(from: HeldFrom) {
   switch (from.kind) {
     case "review-link":
-      return {
-        line: (
-          <>
-            <strong>{from.by}</strong> rejected this on the review link:
-          </>
-        ),
-        whose: `${from.by}'s reason`,
-      };
+      return (
+        <>
+          <strong>{from.by}</strong> rejected this on the review link, and wrote:
+        </>
+      );
   }
 }
 
-// A message from anyone but the user. The agent never sees it until the
-// user sends it, as it is or edited, as their own message; or they discard
-// it (decision 0024).
+// A message from anyone but the user, tinted and edged as their move. The
+// agent never sees it until the user sends it, as it is or edited, as their
+// own message; or they discard it (decision 0024). Edit puts its words in
+// the composer, the one field the user writes in, and Send there sends it.
 function HeldMessage(props: {
   block: Extract<Entry, { kind: "held" }>;
   model: ThreadModel;
@@ -444,30 +462,22 @@ function HeldMessage(props: {
 }) {
   const { block, model, view, send } = props;
   const { seq } = block;
-  const from = heldFrom(block.from);
-  // Settled, here or elsewhere, it is shown as it was held.
-  const editing = block.outcome === null ? model.editing[seq] : undefined;
+  const editing = block.outcome === null && model.composing?.seq === seq;
   const busy = model.settling.includes(seq);
-  const sendable = !busy && !view.running && editing?.trim() !== "";
+  const sendable = !busy && !view.running && (!editing || model.draft.trim() !== "");
   return (
     <section class="held-message" aria-busy={busy}>
-      <p class="held-by">{from.line}</p>
-      {editing === undefined ? (
-        <blockquote class="held-text">{block.text}</blockquote>
-      ) : (
-        <textarea
-          class="held-field"
-          value={editing}
-          rows={3}
-          maxLength={8000}
-          aria-label={`Edit ${from.whose}`}
-          disabled={busy}
-          onInput={(event) => send({ type: "heldEdited", seq, text: event.currentTarget.value })}
-        />
-      )}
+      <p class="held-by">
+        <span>{heldFrom(block.from)}</span>
+        {block.outcome === null && (
+          <span class="state-chip" data-waiting="held">
+            {waitingNames.held}
+          </span>
+        )}
+      </p>
+      <blockquote class="held-text">{block.text}</blockquote>
       {block.outcome === null ? (
         <div class="held-actions">
-          <span class="held-note">The agent won't see this until you send it.</span>
           <button
             type="button"
             class="button primary"
@@ -476,16 +486,7 @@ function HeldMessage(props: {
           >
             Send to agent
           </button>
-          {editing === undefined ? (
-            <button
-              type="button"
-              class="button"
-              disabled={busy}
-              onClick={() => send({ type: "heldEditClicked", seq })}
-            >
-              Edit
-            </button>
-          ) : (
+          {editing ? (
             <button
               type="button"
               class="button"
@@ -493,6 +494,15 @@ function HeldMessage(props: {
               onClick={() => send({ type: "heldEditCancelled", seq })}
             >
               Cancel
+            </button>
+          ) : (
+            <button
+              type="button"
+              class="button"
+              disabled={busy}
+              onClick={() => send({ type: "heldEditClicked", seq })}
+            >
+              Edit
             </button>
           )}
           <button
@@ -503,6 +513,11 @@ function HeldMessage(props: {
           >
             Discard
           </button>
+          <span class="held-note">
+            {editing
+              ? "Editing in the message box. Send there sends it as yours."
+              : "The agent won't see this until you send it."}
+          </span>
         </div>
       ) : (
         <p class="held-note">
@@ -679,9 +694,8 @@ function Run({ script, run, stopped }: { script: string; run: RunView | null; st
         : "Running a script…"
       : [
           run.outcome === "ok" ? "Ran a script" : `Script ${outcomeNames[run.outcome]}`,
-          plural(run.reads.length, "read"),
-          run.mutations > 0 ? plural(run.mutations, "change") : null,
-          `${Math.round(run.wallMs)} ms`,
+          run.reads.length > 0 ? plural(run.reads.length, "read") : null,
+          run.mutations > 0 ? plural(run.mutations, "change") : "no changes",
         ]
           .filter(Boolean)
           .join(" · ");
@@ -689,6 +703,11 @@ function Run({ script, run, stopped }: { script: string; run: RunView | null; st
     <details class="run" data-outcome={run?.outcome ?? (stopped ? "stopped" : "running")}>
       <summary>{summary}</summary>
       <div class="run-body">
+        {run && (
+          <p class="run-meta">
+            {plural(run.reads.length, "read")} · {Math.round(run.wallMs)} ms
+          </p>
+        )}
         <pre class="code">{script}</pre>
         {run && run.logs.length > 0 && <pre class="output">{run.logs.join("\n")}</pre>}
         {run?.returned && <pre class="output">{run.returned}</pre>}
@@ -756,11 +775,26 @@ function ChangeSet(props: {
   // click anywhere on it, to its diff and Revert.
   const shut = folded(model, set);
   const anchor = changeSetAnchor(set.id);
+  // Awaiting review, it's the user's move: its head says what Approve
+  // writes, and its actions stay in reach while any of it is on screen.
+  const awaits = set.status === "open" && !set.stalled;
+  const counted = awaits && diff ? writes(diff) : null;
+  const card = useRef<HTMLElement>(null);
+  const foot = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!awaits || shut || !card.current || !foot.current || !bar.current) return;
+    const actions = bar.current;
+    return stickTo(card.current, foot.current, actions, (on) =>
+      actions.toggleAttribute("data-stuck", on),
+    );
+  }, [awaits, shut, diff !== undefined, look !== null]);
   const head = (
     <header class="change-set-head">
       <h2 id={`${anchor}-title`} tabIndex={-1}>
         {set.revertOf ? "Undo" : "Proposed change"}
       </h2>
+      {counted && <span class="change-set-writes">{counted}</span>}
       {/* Announced as it moves, as when Approve and apply turns it to applying. */}
       <span id={`${anchor}-status`} class="change-set-status" role="status">
         {set.stalled ? waitingNames.stalled : statusNames[set.status]}
@@ -804,8 +838,10 @@ function ChangeSet(props: {
   return (
     <section
       id={anchor}
+      ref={card}
       class="change-set"
       data-status={set.status}
+      data-awaits={awaits || undefined}
       data-opened={model.at?.changeSet === set.id || undefined}
       data-closing={model.landing[set.id] === "closing" || undefined}
       aria-busy={busy}
@@ -816,6 +852,7 @@ function ChangeSet(props: {
         <Diff
           diff={diff}
           busy={busy}
+          members={view.members}
           removable={removable(model, set.id)}
           onRemove={(mutationId) => send({ type: "lineRemoved", changeSetId: set.id, mutationId })}
         />
@@ -866,9 +903,9 @@ function ChangeSet(props: {
         </ul>
       )}
       {!diff && !problem ? null : look ? (
-        <LookActions set={set} look={look} model={model} busy={busy} send={send} />
+        <LookActions set={set} look={look} model={model} busy={busy} bar={bar} send={send} />
       ) : (
-        <footer class="change-set-actions">
+        <footer class="change-set-actions" ref={bar}>
           {steps.slice(0, between).map(stepButton)}
           <SecondLookButton set={set} model={model} send={send} />
           {steps.slice(between).map(stepButton)}
@@ -901,6 +938,11 @@ function ChangeSet(props: {
             ))}
         </footer>
       )}
+      {awaits && approvable && !look && diff && diff.lines.length > 0 && (
+        <p class="change-set-foot">Nothing is written to {sourcesOf(diff)} until you approve.</p>
+      )}
+      {/* Where the actions belong, which tells whether they're stuck. */}
+      <div class="change-set-end" ref={foot} aria-hidden="true" />
       {problem && (
         <p class="change-set-problem" role="alert">
           {problem}
@@ -920,6 +962,48 @@ function ChangeSet(props: {
   );
 }
 
+// The window's own observer, in `root` (null for the window itself).
+const intersecting =
+  (root: Element | null): Observe<Element> =>
+  (target, margin, seen) => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const bottom = entry.rootBounds?.bottom ?? innerHeight;
+          seen(entry.isIntersecting, entry.boundingClientRect.top >= bottom);
+        }
+      },
+      { root, rootMargin: `0px 0px ${-Math.round(margin)}px 0px` },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  };
+
+// A card's actions stick above the composer while it shows (`watchStuck`):
+// in the window chat's list, against the list's foot; on a thread's page,
+// against the composer's top. Measured again as the composer grows.
+function stickTo(card: Element, foot: Element, bar: Element, onChange: (on: boolean) => void) {
+  const list = card.closest(".window-chat-entries");
+  const dock = list ? null : document.querySelector(".chat-dock .chat-input");
+  let stop = () => {};
+  const measure = () => {
+    stop();
+    onChange(false);
+    const hidden = dock ? Math.max(0, innerHeight - dock.getBoundingClientRect().top) : 0;
+    const height = bar.getBoundingClientRect().height;
+    stop = watchStuck({ card, foot, hidden, bar: height, observe: intersecting(list), onChange });
+  };
+  measure();
+  const resized = new ResizeObserver(measure);
+  if (dock) resized.observe(dock);
+  addEventListener("resize", measure);
+  return () => {
+    resized.disconnect();
+    removeEventListener("resize", measure);
+    stop();
+  };
+}
+
 const isForward = (kind: SetStep): boolean =>
   kind === "approve" || kind === "approve-rest" || kind === "retry";
 
@@ -932,6 +1016,7 @@ function LookActions(props: {
   look: SecondLookView;
   model: ThreadModel;
   busy: boolean;
+  bar: { current: HTMLElement | null };
   send: (msg: ThreadMsg) => void;
 }) {
   const { set, look, model, busy, send } = props;
@@ -940,7 +1025,7 @@ function LookActions(props: {
       ? look.companions.filter((change) => !change.added).map((change) => change.place)
       : [];
   return (
-    <footer class="change-set-actions">
+    <footer class="change-set-actions" ref={props.bar}>
       <SecondLookButton set={set} model={model} send={send} />
       {left.length > 0 && (
         <button
@@ -1187,6 +1272,41 @@ function Brought({ brought }: { brought: Line["brought"] }) {
   });
 }
 
+// A line's sentence, naming its item once, by its chip, where the sentence
+// named it; or the chip after the sentence, where it didn't.
+function Sentence({ line, members }: { line: Line; members?: readonly MemberView[] }) {
+  const { target } = line;
+  if (!target?.url) return <span class="sentence">{line.sentence}</span>;
+  const row = members?.find((member) => member.ref.id === target.id)?.row ?? null;
+  const chip = (
+    <Chip
+      id={target.id}
+      view={{
+        kind: "item",
+        source: kindOfItem(target.id) ?? "",
+        key: target.key,
+        name: target.title ?? row?.title ?? target.key,
+        url: target.url,
+        state: row?.status ?? null,
+      }}
+    />
+  );
+  const around = namedOnce(line);
+  if (!around)
+    return (
+      <span class="sentence">
+        {line.sentence} {chip}
+      </span>
+    );
+  return (
+    <span class="sentence">
+      {around[0]}
+      {chip}
+      {around[1]}
+    </span>
+  );
+}
+
 // A change set's lines: a new item as a card, an edit as each field's old
 // and new text with only the changed words marked, and a delete as every
 // field it empties. The lines the change set engine says can be left out
@@ -1195,6 +1315,8 @@ function Brought({ brought }: { brought: Line["brought"] }) {
 export function Diff(props: {
   diff: DiffView;
   busy: boolean;
+  // The thread's items, for where each a line names stands.
+  members?: readonly MemberView[];
   removable?: readonly string[];
   onRemove?: (mutationId: string) => void;
 }) {
@@ -1225,9 +1347,7 @@ export function Diff(props: {
                     Delete
                   </span>
                 )}
-                <span class="sentence">
-                  {line.sentence} {line.target?.url && <ItemKey item={line.target} />}
-                </span>
+                <Sentence line={line} members={props.members} />
               </p>
               {line.fields.length > 0 && (
                 <dl class="fields">
@@ -1293,62 +1413,40 @@ export function Diff(props: {
   );
 }
 
-export function Composer(props: {
-  // What floats over it, such as the pill for a change set to review out
-  // of view.
-  above?: ComponentChildren;
-  draft: string;
-  sending: boolean;
-  running: boolean;
-  notice: string | null;
-  placeholder: string;
-  onDraft(text: string): void;
-  onSend(): void;
-  onStop?(): void;
-}) {
-  const sendKey = useContext(SendKeyContext);
+// The composer's dock at the thread's foot: it fades from the page's colour
+// over what scrolls under it, and says how much of the window's foot it
+// covers (`--dock-cover`), so what sticks above it clears it.
+function Dock({ children }: { children: ComponentChildren }) {
+  const dock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = dock.current;
+    const thread = element?.closest<HTMLElement>(".thread");
+    if (!element || !thread) return;
+    const measure = () => {
+      const input = element.querySelector(".chat-input")?.getBoundingClientRect();
+      const cover = input ? element.getBoundingClientRect().bottom - input.top : 0;
+      thread.style.setProperty("--dock-cover", `${Math.round(cover)}px`);
+    };
+    measure();
+    const resized = new ResizeObserver(measure);
+    resized.observe(element);
+    return () => resized.disconnect();
+  }, []);
   return (
-    <form
-      class="composer"
-      onSubmit={(event) => {
-        event.preventDefault();
-        props.onSend();
-      }}
-    >
-      {props.above}
-      <textarea
-        rows={2}
-        value={props.draft}
-        placeholder={props.placeholder}
-        aria-label="Message"
-        onInput={(event) => props.onDraft(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (sends(event, sendKey)) {
-            event.preventDefault();
-            props.onSend();
-          }
-        }}
-      />
-      {props.running ? (
-        <button type="button" class="button" onClick={props.onStop}>
-          Stop
-        </button>
-      ) : (
-        <button
-          type="submit"
-          class="button primary"
-          disabled={props.sending || props.draft.trim() === ""}
-        >
-          Send
-        </button>
-      )}
-      {props.notice && (
-        <p class="composer-notice" role="alert">
-          {props.notice}
-        </p>
-      )}
-    </form>
+    <div class="chat-dock" ref={dock}>
+      {children}
+    </div>
   );
+}
+
+// What the agent will read, for the composer's foot: the thread's items at
+// the version it works in; behind its workstream, the workstream as it is
+// now, which the next message catches up with.
+export function readsOf(view: ThreadView): string | null {
+  if (view.regionVersion < view.workstream.version)
+    return `Reads its workstream at v${view.workstream.version}`;
+  if (view.members.length === 0) return null;
+  return `Reads ${plural(view.members.length, "item")} · v${view.regionVersion}`;
 }
 
 // The region the thread works in: its workstream at one version. Behind

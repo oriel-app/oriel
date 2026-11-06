@@ -102,6 +102,11 @@ export function sends(
   return key === "enter" ? !event.shiftKey : event.metaKey || event.ctrlKey;
 }
 
+// Whether a box's button can send: there's something written, not only
+// spaces, and nothing is on its way. The keyboard path skips the button, so
+// each reducer keeps its own guard too.
+export const sendable = (draft: string, busy: boolean): boolean => !busy && draft.trim() !== "";
+
 const showLook = (view: SettingsView): Effect => ({
   type: "showLook",
   theme: view.theme,
