@@ -205,6 +205,7 @@ The second line is shown hovered, so its × (**Leave this change out**) shows; t
 - **Status** (`.change-set-status`, `role="status"`): one of "Awaiting review", "Ready to apply", "Applying…", "Applied", "Partly applied", "Stopped", "Rejected"; "Apply stalled" while its source doesn't answer. A decision made on a review link adds " by {name} via review link"; a set whose Undo applied adds ", then undone".
 - **Count** (`.change-set-count`): only on a folded set: "3 changes · 2 h ago", the time of its decision in the time format Settings picks, as a `<time>`.
 - **Show / Hide**: only on a set that can fold (`foldable` in `packages/web/src/thread.ts`), a `.quiet-action` with `aria-expanded`, described by the title, status and count. It covers the whole head (`.change-set-head > .quiet-action::after` in `window.css`), so a click anywhere on the head presses it.
+- **Folding by itself:** a set applied before the page opened is folded already. One whose apply ends on screen, applied in full, shows "Applied" for a beat (`landMs`, 1.2s), closes to its head at move speed (`data-closing`; instant under reduced motion) and folds. If focus was inside it, or dropped as its Approve went, it moves to Show, and the status adds, for screen readers only, ", folded. Show it to see it or revert it." It stays shown if it applied with errors, partly, or stalled; if the person showed or hid it by hand; or if the thread's address names it. An Undo folds the same way once it applies, and so does the set it reverts.
 
 ### A line
 
@@ -613,7 +614,7 @@ Every state the card goes through, in the order a change set lives them. The sta
 </section>
 ```
 
-```html specimen id=state-applied-folded title="Applied before the page opened: folded to its head, then shown" state=done
+```html specimen id=state-applied-folded title="Applied: folded to its head, then shown" state=done
 <ol class="chat">
   <li>
     <section class="change-set" data-status="applied" data-folded tabindex="-1">

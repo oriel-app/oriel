@@ -151,6 +151,9 @@ export type Effect =
   // Puts the cursor in a thread's message box, as after Reject, so what
   // was wrong is the user's next message.
   | { type: "focusComposer" }
+  // Puts focus on a change set's Show once it has folded itself, if focus
+  // was inside it or dropped to the page, as when its Approve went.
+  | { type: "focusFolded"; changeSetId: string }
   // Puts focus on a thread's heading, once the page shows it, as after the
   // page moved on from an approval, so a screen reader starts there.
   | { type: "focusHeading" }

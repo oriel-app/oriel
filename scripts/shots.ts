@@ -1587,6 +1587,13 @@ const stoppingOn = async () => {
   site.refuse("SYN-99");
   return serving;
 };
+// The same, with After you approve left to stay: the page watches the apply.
+const stayingOn = async () => {
+  const { serving } = await writing();
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  approvingIn = await ask("Estimate what's missing", serving, workstreamId);
+  return serving;
+};
 const approveIt = async (page: Page) => {
   await page.goto(new URL(`/threads/${approvingIn}`, page.url()).href);
   await page.getByRole("button", { name: "Approve and apply" }).click();
@@ -1721,6 +1728,19 @@ const scenes: Scene[] = [
     act: async (page) => {
       await approveIt(page);
       await page.locator(beadSays, { hasText: "All caught up." }).waitFor();
+    },
+  },
+  // Applied while the page watched: after a beat it folds itself to one
+  // line, and its Show takes the focus its Approve had.
+  {
+    name: "thread-applied-folds",
+    path: "/",
+    make: stayingOn,
+    act: async (page) => {
+      await approveIt(page);
+      await page
+        .locator(".change-set[data-folded] .change-set-head > .quiet-action:focus")
+        .waitFor();
     },
   },
   // The bead (decision 0056), in each of its states. Once approved and

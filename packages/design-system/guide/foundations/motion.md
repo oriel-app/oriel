@@ -28,6 +28,7 @@ tokens motion
 - **The item panel** (`.item-panel` in `window.css`) slides in from `--slide-panel` (0.375rem) to the right and fades in, at move speed with `--ease-out`. Its contents fade in again for each item it shows (`panel-fade`).
 - **The window chat** (`.window-chat` in `window.css`) arrives the same way. On a narrow screen it's a bottom sheet that rises `--space-6` (`@starting-style` in `window.css`).
 - **The sidebar's fold** (`.shell` in `window.css`): its grid column narrows to icons, at move speed.
+- **A change set folding itself** (`.change-set[data-closing]` in `window.css`): once its apply ends on screen and a 1.2s beat has passed, everything under its head closes to nothing and fades, at move speed with `--ease-out`, then it folds. Under reduced motion it folds at once.
 - **The drawer** on a narrow screen slides in from the left, and its scrim fades. Closing, it stays visible until the move ends, then leaves the tab order (`.sidebar` in `window.css`).
 - **A swipe** (`.swipe-row` in `window.css`) slides a row left to show its actions. While a finger holds it, it follows at once with no transition.
 - **Chevrons** turn 90° when their disclosure opens, at quick speed.
