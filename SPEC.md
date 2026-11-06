@@ -186,4 +186,4 @@ Test mechanics:
 
 ## 14. Explicitly not now
 
-Login and multi-user, billing, hosted sandbox infrastructure (the review relay is the one hosted piece, and waits for its own story, decision 0036), an MCP gateway to sources (Oriel as an MCP server for outside tools is decision 0024, once its threat model is settled), real-time sync, feature flags, caching layers, Rust. Each has a seam already; none has a user yet.
+Login and multi-user, billing, hosted sandbox infrastructure (the review relay is the one hosted piece, and waits for its own story, decision 0036), an MCP gateway to sources (Oriel as an MCP server for outside tools is in scope: decision 0058), real-time sync, feature flags, caching layers, Rust. Each has a seam already; none has a user yet.
