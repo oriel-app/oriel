@@ -2,11 +2,13 @@
 // overview's counts strip, with questions to start from, and the chat beside
 // the overview while it has a conversation, over the page's right side, or
 // as a sheet on a narrow window. The item panel covers it while an item is
-// open. Its entries render as a thread's page renders them, blocks included.
+// open. Its entries render as a thread's page renders them, blocks included;
+// its fields are the one ChatInput.
 import { useEffect, useRef } from "preact/hooks";
+import { ChatInput } from "./chat-input.tsx";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
 import { entriesOf, expected, type ThreadModel, type ThreadMsg } from "./thread.ts";
-import { ChatEntryItem, Composer, itemsOf } from "./thread-page.tsx";
+import { ChatEntryItem, itemsOf } from "./thread-page.tsx";
 import type { OverviewView } from "./view.ts";
 import { questionsFrom, type WindowChatModel, type WindowChatMsg } from "./window-chat.ts";
 
@@ -26,10 +28,10 @@ export function AskBar(props: {
   if (props.noAi)
     return (
       <section class="ask" aria-label="Ask about your window">
-        <div class="ask-bar" data-off>
+        <div class="chat-input" data-lines="one" data-size="lg" data-marked data-off>
           <input
             type="text"
-            class="ask-input"
+            class="chat-input-field ask-input"
             disabled
             placeholder="Set up Claude to ask about your window"
             aria-label="Set up Claude to ask about your window"
@@ -47,54 +49,52 @@ export function AskBar(props: {
   const questions = view ? questionsFrom(view, props.firstRun === true) : [];
   return (
     <section class="ask" aria-label="Ask about your window">
-      <form
-        class="ask-bar"
-        onSubmit={(event) => {
-          event.preventDefault();
-          send({ type: "askClicked" });
-        }}
-      >
-        <input
-          type="text"
-          class="ask-input"
-          value={chat.draft}
-          placeholder="Ask about your window"
-          aria-label="Ask about your window"
-          onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
-        />
-        <button
-          type="submit"
-          class="button primary"
-          disabled={chat.asking || chat.draft.trim() === ""}
-        >
-          Ask
-        </button>
-        {ongoing && !chat.open && (
-          <button type="button" class="quiet-action" onClick={() => send({ type: "openClicked" })}>
-            Back to the chat
-          </button>
-        )}
-      </form>
+      <ChatInput
+        lines="one"
+        size="lg"
+        marked
+        label="Ask about your window"
+        placeholder="Ask about your window"
+        submitLabel="Ask"
+        draft={chat.draft}
+        busy={chat.asking}
+        reads="Reads your whole window"
+        notice={chat.open ? null : chat.problem}
+        extra={
+          ongoing &&
+          !chat.open && (
+            <button
+              type="button"
+              class="quiet-action"
+              onClick={() => send({ type: "openClicked" })}
+            >
+              Back to the chat
+            </button>
+          )
+        }
+        onDraft={(text) => send({ type: "draftChanged", text })}
+        onSubmit={() => send({ type: "askClicked" })}
+      />
       {questions.length > 0 && (
-        <ul class="ask-questions" aria-label="Questions to start from">
-          {questions.map((question) => (
-            <li key={question.kind}>
-              <button
-                type="button"
-                class="ask-question"
-                disabled={chat.asking}
-                onClick={() => send({ type: "questionPicked", question })}
-              >
-                {question.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {chat.problem && !chat.open && (
-        <p class="ask-problem" role="alert">
-          {chat.problem}
-        </p>
+        <>
+          <h2 class="ask-starts-head" id="ask-starts-head">
+            Questions to start from
+          </h2>
+          <ul class="ask-questions" aria-labelledby="ask-starts-head">
+            {questions.map((question) => (
+              <li key={question.kind}>
+                <button
+                  type="button"
+                  class="ask-question"
+                  disabled={chat.asking}
+                  onClick={() => send({ type: "questionPicked", question })}
+                >
+                  {question.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </section>
   );
@@ -167,31 +167,32 @@ export function WindowChat(props: {
           </li>
         )}
       </ol>
-      {chat.problem && (
-        <p class="ask-problem" role="alert">
-          {chat.problem}
-        </p>
-      )}
+      {/* One problem line, the thread's or the chat's own. */}
       {thread && view ? (
-        <Composer
+        <ChatInput
+          class="composer"
+          label="Message"
           draft={thread.draft}
-          sending={thread.sending}
+          busy={thread.sending}
           running={view.running}
-          notice={thread.notice}
+          notice={thread.notice ?? chat.problem}
           placeholder="Ask a follow-up"
+          reads="Reads your whole window"
           onDraft={(text) => sendThread({ type: "draftChanged", text })}
-          onSend={() => sendThread({ type: "sendClicked" })}
+          onSubmit={() => sendThread({ type: "sendClicked" })}
           onStop={() => sendThread({ type: "stopClicked" })}
         />
       ) : (
-        <Composer
+        <ChatInput
+          class="composer"
+          label="Message"
           draft={chat.draft}
-          sending={chat.asking}
-          running={false}
-          notice={null}
+          busy={chat.asking}
+          notice={chat.problem}
           placeholder="Ask about your window"
+          reads="Reads your whole window"
           onDraft={(text) => send({ type: "draftChanged", text })}
-          onSend={() => send({ type: "askClicked" })}
+          onSubmit={() => send({ type: "askClicked" })}
         />
       )}
     </aside>

@@ -166,7 +166,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 
 ## Where the app uses it
 
-- `.button` and `.button.primary` in `window.css`. The change set's steps: `ChangeSet` in `packages/web/src/thread-page.tsx`. The composer's Send and Stop: `Composer` in `packages/web/src/thread-page.tsx`. The ask bar's Ask: `AskBar` in `packages/web/src/window-chat-view.tsx`. Connect steps: `FieldsStep` in `packages/web/src/connect-steps.tsx`.
+- `.button` and `.button.primary` in `window.css`. The change set's steps: `ChangeSet` in `packages/web/src/thread-page.tsx`. The chat input's Send, Ask and Stop, plain until something is written: `ChatInput` in `packages/web/src/chat-input.tsx`. The ask bar's Ask: `AskBar` in `packages/web/src/window-chat-view.tsx`. Connect steps: `FieldsStep` in `packages/web/src/connect-steps.tsx`.
 - `.button.danger` in `window.css`. The confirm: `Confirm` in `packages/web/src/close-thread.tsx`. Disconnect: `Disconnect` in `packages/web/src/connections-page.tsx`.
 - `.quiet-action` in `window.css`. Mark done: `ThreadPage` in `packages/web/src/thread-page.tsx`. Share review link: `ChangeSet` in `packages/web/src/thread-page.tsx`. Open as a thread and New chat: `WindowChat` in `packages/web/src/window-chat-view.tsx`.
 - `.link-action` in `window.css`. The first run's `link()`: `link` in `packages/web/src/setup-page.tsx`; the CLI row's `quiet()`: `ClaudeCodeRow` in `packages/web/src/cli-row.tsx`.

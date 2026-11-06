@@ -340,7 +340,16 @@ At 390 the sidebar becomes the bar with its menu, which counts the 4 threads wai
           >
           <div class="thread-title-row">
             <h1 class="thread-title" tabindex="-1">Which stories here still need estimates?</h1>
-            <span class="state-chip" data-state="working" data-waiting="review">Needs review</span>
+            <button
+              type="button"
+              class="state-chip"
+              data-state="working"
+              data-waiting="review"
+              data-jump=""
+            >
+              Needs review<span aria-hidden="true"> ↓</span
+              ><span class="visually-hidden">, go to it</span>
+            </button>
             <button type="button" class="quiet-action">Mark done</button>
           </div>
         </header>
@@ -351,7 +360,7 @@ At 390 the sidebar becomes the bar with its menu, which counts the 4 threads wai
           </li>
           <li>
             <details class="run" data-outcome="ok">
-              <summary>Ran a script · 1 read · 3 changes · 174 ms</summary>
+              <summary>Ran a script · 1 read · 3 changes</summary>
               <div class="run-body">
                 <pre class="code">
 const stories = await jira.search({ epic: "SYN-1", estimate: null });
@@ -366,23 +375,44 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
             </p>
           </li>
           <li>
-            <section class="change-set" data-status="open" aria-busy="false" tabindex="-1">
+            <section
+              class="change-set"
+              data-status="open"
+              data-awaits=""
+              aria-busy="false"
+              tabindex="-1"
+            >
               <header class="change-set-head">
                 <h2>Proposed change</h2>
+                <span class="change-set-writes">3 edits in Jira</span>
                 <span class="change-set-status" role="status">Awaiting review</span>
               </header>
               <ul class="diff">
                 <li class="diff-line" data-kind="update">
                   <p class="line-head">
                     <span class="sentence"
-                      >Estimate “Pay with a phone wallet on the website” (SYN-23) at 3 points.
-                      <a
-                        class="key source-link"
-                        href="https://synthetic.atlassian.net/browse/SYN-23"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        >SYN-23</a
-                      ></span
+                      >Estimate
+                      <span
+                        class="chip"
+                        data-kind="item"
+                        data-state="in-progress"
+                        title="SYN-23: Pay with a phone wallet on the website, in progress"
+                        ><a
+                          class="chip-link"
+                          href="https://synthetic.atlassian.net/browse/SYN-23"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          ><span class="chip-lead"
+                            ><svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+                              <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                              <path d="M5.5 8l1.8 1.8L10.5 6" /></svg
+                            ><span class="chip-key">SYN-23</span></span
+                          >
+                          <span class="chip-name">Pay with a phone wallet on the website</span
+                          ><span class="chip-state">In Progress</span></a
+                        ></span
+                      >
+                      at 3 points.</span
                     >
                   </p>
                   <dl class="fields">
@@ -402,14 +432,28 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
                 <li class="diff-line" data-kind="update">
                   <p class="line-head">
                     <span class="sentence"
-                      >Estimate “Save a card for next time” (SYN-99) at 3 points.
-                      <a
-                        class="key source-link"
-                        href="https://synthetic.atlassian.net/browse/SYN-99"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        >SYN-99</a
-                      ></span
+                      >Estimate
+                      <span
+                        class="chip"
+                        data-kind="item"
+                        data-state="to-do"
+                        title="SYN-99: Save a card for next time, to do"
+                        ><a
+                          class="chip-link"
+                          href="https://synthetic.atlassian.net/browse/SYN-99"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          ><span class="chip-lead"
+                            ><svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+                              <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                              <path d="M5.5 8l1.8 1.8L10.5 6" /></svg
+                            ><span class="chip-key">SYN-99</span></span
+                          >
+                          <span class="chip-name">Save a card for next time</span
+                          ><span class="chip-state">To Do</span></a
+                        ></span
+                      >
+                      at 3 points.</span
                     >
                   </p>
                   <dl class="fields">
@@ -429,15 +473,29 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
                 <li class="diff-line" data-kind="update">
                   <p class="line-head">
                     <span class="sentence"
-                      >Estimate “Handle 3-D Secure challenges in the native checkout” (SYN-104) at 3
-                      points.
-                      <a
-                        class="key source-link"
-                        href="https://synthetic.atlassian.net/browse/SYN-104"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        >SYN-104</a
-                      ></span
+                      >Estimate
+                      <span
+                        class="chip"
+                        data-kind="item"
+                        data-state="in-progress"
+                        title="SYN-104: Handle 3-D Secure challenges in the native checkout, in progress"
+                        ><a
+                          class="chip-link"
+                          href="https://synthetic.atlassian.net/browse/SYN-104"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          ><span class="chip-lead"
+                            ><svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+                              <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                              <path d="M5.5 8l1.8 1.8L10.5 6" /></svg
+                            ><span class="chip-key">SYN-104</span></span
+                          >
+                          <span class="chip-name"
+                            >Handle 3-D Secure challenges in the native checkout</span
+                          ><span class="chip-state">In Progress</span></a
+                        ></span
+                      >
+                      at 3 points.</span
                     >
                   </p>
                   <dl class="fields">
@@ -460,13 +518,25 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
                 <button type="button" class="button">Reject</button>
                 <button type="button" class="quiet-action">Share review link</button>
               </footer>
+              <p class="change-set-foot">Nothing is written to Jira until you approve.</p>
             </section>
           </li>
         </ol>
-        <form class="composer">
-          <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-          <button type="submit" class="button primary" disabled>Send</button>
-        </form>
+        <div class="chat-dock">
+          <form class="chat-input" data-lines="grow" data-elevation="raised">
+            <textarea
+              class="chat-input-field"
+              rows="2"
+              placeholder="Ask about 17 items…"
+              aria-label="Message"
+            ></textarea>
+            <div class="chat-input-foot">
+              <span class="chat-input-reads">Reads 17 items · v3</span>
+              <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+              <button type="submit" class="button" disabled>Send</button>
+            </div>
+          </form>
+        </div>
       </main>
       <aside class="rail" aria-label="This thread's items">
         <h2 class="rail-title">17 items · v3</h2>
@@ -657,11 +727,11 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
 
 - [Sidebar](/components/sidebar): the shell, the sidebar with this thread under Needs you and marked current under its workstream, and the bar and drawer at 390.
 - [Page head](/components/page-head): the thread head, its crumb, serif title and Mark done.
-- [Badge](/components/badge): the "Needs review" state chip, and the sidebar's state dots and counts.
+- [Badge](/components/badge): the "Needs review ↓" state chip, which goes to the change set, and the sidebar's state dots and counts.
 - [Message](/components/message): the person's message, the agent's replies and the run line.
-- [Change set](/components/change-set): Proposed change, Awaiting review, three estimate lines and their steps.
+- [Change set](/components/change-set): Proposed change, what Approve writes ("3 edits in Jira"), Awaiting review, three estimate lines each naming its story once by its chip, their steps, which stick above the composer while the card shows, and "Nothing is written to Jira until you approve."
 - [Button](/components/button): Approve and apply (the one primary), Reject, and the quiet Mark done and Share review link.
-- [Chat input](/components/chat-input): the composer at the foot, with Send off until something is written.
+- [Chat input](/components/chat-input): the composer in its dock at the foot, saying what the agent reads, with Send plain and off until something is written.
 - [Right rail](/components/right-rail): 17 items · v3, a type mark, key and title for each, and two items no longer in the index.
 - [Tooltip](/components/tooltip): the fold button and New thread.
 
@@ -669,8 +739,9 @@ The moment itself is the [Approval](/patterns/approval) pattern.
 
 ## Notes for review
 
-- The change set has no `.change-set-count` while it's open. The app writes "3 changes" only on a folded one (`ChangeSet` in `packages/web/src/thread-page.tsx`). Here the run's summary carries the count instead: "3 changes".
-- Approve and apply is the only primary button in sight while the composer is empty: Send is the primary too, but stays disabled until something is written. Once the person types, two primaries sit on one screen. Worth deciding whether Send should step down while a change set waits.
+- The change set has no `.change-set-count` while it's open: its head says what Approve writes instead, "3 edits in Jira", counted from the diff (`writes` in `packages/web/src/change-set.ts`).
+- Approve and apply is the only primary button in sight while the composer is empty: Send is a plain button until something is written (`ChatInput` in `packages/web/src/chat-input.tsx`). Once the person types, two primaries sit on one screen, which is right: then both are their move.
+- The screen is drawn at the top of the page, where the steps sit in the card. Scrolled so the card's foot is under the composer, they stick above it.
 - The app wraps the change set and the run in `li.change-set-block` and `li.run-block` (`ChatEntryItem` in `packages/web/src/thread-page.tsx`). Those classes have no rules in window.css, so the screen leaves them off, as the component pages do.
 - The keys in the diff and the rail are links that open Jira in a new tab, and Oriel opens the item panel on a plain click (`ItemKey` in `packages/web/src/parts.tsx`). Nothing in the markup tells a keyboard or screen reader user which one Enter does. The two not in the index are buttons, with no href to fall back on.
 - Each estimate line repeats what its sentence already says ("at 3 points", then "Estimate + 3 points"). That's the diff's shape for every edit, so it stays; a field that had a value would show it on a − line above the + line.

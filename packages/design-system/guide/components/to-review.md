@@ -31,32 +31,54 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 
 ```html specimen id=above title="One above" height=160
 <main class="thread">
-  <form class="composer">
-    <div class="to-review">
-      <button type="button" class="to-review-pill">
-        <span aria-hidden="true">↑</span>1 change set to review above
-      </button>
-    </div>
-    <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-    <button type="submit" class="button primary" disabled>Send</button>
-  </form>
+  <div class="chat-dock">
+    <form class="chat-input" data-lines="grow" data-elevation="raised">
+      <div class="to-review">
+        <button type="button" class="to-review-pill">
+          <span aria-hidden="true">↑</span>1 change set to review above
+        </button>
+      </div>
+      <textarea
+        class="chat-input-field"
+        rows="2"
+        placeholder="Ask about 17 items…"
+        aria-label="Message"
+      ></textarea>
+      <div class="chat-input-foot">
+        <span class="chat-input-reads">Reads 17 items · v3</span>
+        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+        <button type="submit" class="button" disabled>Send</button>
+      </div>
+    </form>
+  </div>
 </main>
 ```
 
 ```html specimen id=both title="Some above and one below, at 390" height=200 width=390
 <main class="thread">
-  <form class="composer">
-    <div class="to-review">
-      <button type="button" class="to-review-pill">
-        <span aria-hidden="true">↑</span>2 change sets to review above
-      </button>
-      <button type="button" class="to-review-pill">
-        <span aria-hidden="true">↓</span>1 change set to review below
-      </button>
-    </div>
-    <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-    <button type="submit" class="button primary" disabled>Send</button>
-  </form>
+  <div class="chat-dock">
+    <form class="chat-input" data-lines="grow" data-elevation="raised">
+      <div class="to-review">
+        <button type="button" class="to-review-pill">
+          <span aria-hidden="true">↑</span>2 change sets to review above
+        </button>
+        <button type="button" class="to-review-pill">
+          <span aria-hidden="true">↓</span>1 change set to review below
+        </button>
+      </div>
+      <textarea
+        class="chat-input-field"
+        rows="2"
+        placeholder="Ask about 17 items…"
+        aria-label="Message"
+      ></textarea>
+      <div class="chat-input-foot">
+        <span class="chat-input-reads">Reads 17 items · v3</span>
+        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+        <button type="submit" class="button" disabled>Send</button>
+      </div>
+    </form>
+  </div>
 </main>
 ```
 
@@ -67,15 +89,26 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 
 ```html specimen id=hover title="Hover" state=hover height=160
 <main class="thread">
-  <form class="composer">
-    <div class="to-review">
-      <button type="button" class="to-review-pill ws-hover">
-        <span aria-hidden="true">↓</span>1 change set to review below
-      </button>
-    </div>
-    <textarea rows="2" placeholder="Ask about 17 items…" aria-label="Message"></textarea>
-    <button type="submit" class="button primary" disabled>Send</button>
-  </form>
+  <div class="chat-dock">
+    <form class="chat-input" data-lines="grow" data-elevation="raised">
+      <div class="to-review">
+        <button type="button" class="to-review-pill ws-hover">
+          <span aria-hidden="true">↓</span>1 change set to review below
+        </button>
+      </div>
+      <textarea
+        class="chat-input-field"
+        rows="2"
+        placeholder="Ask about 17 items…"
+        aria-label="Message"
+      ></textarea>
+      <div class="chat-input-foot">
+        <span class="chat-input-reads">Reads 17 items · v3</span>
+        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+        <button type="submit" class="button" disabled>Send</button>
+      </div>
+    </form>
+  </div>
 </main>
 ```
 

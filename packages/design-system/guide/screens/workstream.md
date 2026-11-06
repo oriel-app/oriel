@@ -416,13 +416,18 @@ A workstream's page, opened from the sidebar, where it is the current row with i
         </div>
         <p class="workstream-origin">Copied from a cluster in the epic grouping · 17 items · v3</p>
       </header>
-      <form class="composer ask">
+      <form class="chat-input workstream-ask" data-lines="grow">
         <textarea
+          class="chat-input-field"
           rows="2"
           placeholder="Ask about these 17 items…"
           aria-label="Ask about this workstream"
         ></textarea>
-        <button type="submit" class="button primary" disabled>Ask</button>
+        <div class="chat-input-foot">
+          <span class="chat-input-reads">Reads 17 items · v3</span>
+          <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
+          <button type="submit" class="button" disabled>Ask</button>
+        </div>
       </form>
       <section class="section">
         <h2 class="section-title">Threads</h2>

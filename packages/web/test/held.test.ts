@@ -132,27 +132,37 @@ test("Send posts the message as it is, and the reply reloads the thread", () => 
   assert.deepEqual(after, [reload]);
 });
 
-test("Edit starts from the message, and Send posts what the user made of it", () => {
-  let [model] = send(onPage(), { type: "heldEditClicked", seq });
-  assert.equal(thread(model).editing[seq], "One story too many.");
-  [model] = send(model, {
-    type: "heldEdited",
-    seq,
-    text: "  Drop the third story. ",
-  });
-  const [sent, effects] = send(model, { type: "heldSendClicked", seq });
-  assert.deepEqual(effects, [posted("send", { text: "Drop the third story." })]);
+test("Edit moves the words into the composer, and Send there posts what the user made of them", () => {
+  let [model] = send(onPage(), { type: "draftChanged", text: "Half a thought" });
+  let effects: Effect[];
+  [model, effects] = send(model, { type: "heldEditClicked", seq });
+  // The composer holds the message's words, and has the focus.
+  assert.equal(thread(model).draft, "One story too many.");
+  assert.deepEqual(effects, [{ type: "focusComposer" }]);
+  [model] = send(model, { type: "draftChanged", text: "  Drop the third story. " });
+  // The composer's Send sends it as the held message, edited, not as a new one.
+  const [sent, posts] = send(model, { type: "sendClicked" });
+  assert.deepEqual(posts, [posted("send", { text: "Drop the third story." })]);
+  // So does the card's own Send to agent.
+  assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], posts);
   const [done] = update(sent, replied(tag, { seq: 4 }));
-  assert.deepEqual(thread(done).editing, {});
+  assert.equal(thread(done).draft, "");
+  assert.equal(thread(done).composing, null);
 });
 
-test("an edit emptied out sends nothing; Cancel goes back to the message as it was", () => {
-  let [model] = send(onPage(), { type: "heldEditClicked", seq });
-  [model] = send(model, { type: "heldEdited", seq, text: "   " });
+test("an edit emptied out sends nothing; Cancel puts back what the composer held", () => {
+  let [model] = send(onPage(), { type: "draftChanged", text: "Half a thought" });
+  [model] = send(model, { type: "heldEditClicked", seq });
+  [model] = send(model, { type: "draftChanged", text: "   " });
+  assert.deepEqual(send(model, { type: "sendClicked" })[1], []);
   assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], []);
   [model] = send(model, { type: "heldEditCancelled", seq });
-  assert.deepEqual(thread(model).editing, {});
+  assert.equal(thread(model).draft, "Half a thought");
+  assert.equal(thread(model).composing, null);
+  // Sent as it is, then, and the composer keeps the user's own words.
   assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], [posted("send", {})]);
+  const [sent] = send(model, { type: "heldSendClicked", seq });
+  assert.equal(thread(update(sent, replied(tag, { seq: 4 }))[0]).draft, "Half a thought");
 });
 
 test("Send waits for the agent to finish; Discard doesn't", () => {
@@ -174,14 +184,18 @@ test("a refusal says why, and a message already settled offers nothing", () => {
     assert.deepEqual(send(settled, { type, seq }), [settled, []]);
 });
 
-test("an edit of a message another page sent is dropped when the thread reloads", () => {
+test("an edit of a message another page sent stays in the composer as the user's own words", () => {
   const [editing] = send(onPage(), { type: "heldEditClicked", seq });
-  assert.ok(seq in thread(editing).editing);
-  const [reloaded] = update(editing, replied({ kind: "thread", id }, viewWith(held("sent"))));
-  assert.deepEqual(thread(reloaded).editing, {});
-  // Still held, the edit stays.
+  assert.equal(thread(editing).composing?.seq, seq);
+  // Still held, the edit stays one of it.
   const [kept] = update(editing, replied({ kind: "thread", id }, viewWith(held(null))));
-  assert.ok(seq in thread(kept).editing);
+  assert.equal(thread(kept).composing?.seq, seq);
+  const [reloaded] = update(editing, replied({ kind: "thread", id }, viewWith(held("sent"))));
+  assert.equal(thread(reloaded).composing, null);
+  assert.equal(thread(reloaded).draft, "One story too many.");
+  // Send now sends a message of the user's own.
+  const [, effects] = send(reloaded, { type: "sendClicked" });
+  assert.equal((effects[0] as { url?: string }).url, `/api/threads/${id}/messages`);
 });
 
 test("a held message settled on another page reloads this one, and only the thread", () => {

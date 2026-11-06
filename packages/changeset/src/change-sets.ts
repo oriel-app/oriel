@@ -661,6 +661,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           target: m.target,
           kind: lineKind,
           makes: spec.makes,
+          source: catalogue.name,
           fields: [],
         });
         continue;
@@ -689,6 +690,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           target: m.target,
           kind: lineKind,
           makes: spec.makes,
+          source: catalogue.name,
           fields: await Promise.all(
             fields.map(async (f) => ({
               name: f,
@@ -716,6 +718,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             target: m.target,
             kind: lineKind,
             makes: spec.makes,
+            source: catalogue.name,
             fields: [],
           });
           continue;
@@ -740,6 +743,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         target: m.target,
         kind: lineKind,
         makes: spec.makes,
+        source: catalogue.name,
         fields: await Promise.all(
           Object.keys(after).map(async (f) => {
             const value = after[f];

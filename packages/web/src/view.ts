@@ -742,6 +742,8 @@ export type DiffView = {
     kind: "create" | "change" | "delete";
     // What a create makes ("story"); null otherwise.
     makes: string | null;
+    // The source it writes to, by the name its connector declares.
+    source: string;
     applied: boolean;
     // Why apply stopped at this change, in plain words; null otherwise.
     error: string | null;

@@ -578,11 +578,33 @@ export const waitingNames: Record<WaitingOn, string> = {
   reply: "Your turn",
 };
 
-export function StateChip(props: { state: ThreadStateId; waitingOn: WaitingOn | null }) {
-  const { state, waitingOn } = props;
+// With `onJump`, it goes to what waits: a thread's head goes to its change
+// set to review.
+export function StateChip(props: {
+  state: ThreadStateId;
+  waitingOn: WaitingOn | null;
+  onJump?: () => void;
+}) {
+  const { state, waitingOn, onJump } = props;
+  const name = waitingOn ? waitingNames[waitingOn] : stateNames[state];
+  if (onJump)
+    return (
+      <button
+        type="button"
+        class="state-chip"
+        data-state={state}
+        data-waiting={waitingOn ?? undefined}
+        data-jump=""
+        onClick={onJump}
+      >
+        {name}
+        <span aria-hidden="true"> ↓</span>
+        <span class="visually-hidden">, go to it</span>
+      </button>
+    );
   return (
     <span class="state-chip" data-state={state} data-waiting={waitingOn ?? undefined}>
-      {waitingOn ? waitingNames[waitingOn] : stateNames[state]}
+      {name}
     </span>
   );
 }

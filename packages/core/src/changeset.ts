@@ -112,6 +112,8 @@ export type Diff = {
     kind: "create" | "change" | "delete";
     // What a create makes, as a person names it ("story"); null otherwise.
     makes: string | null;
+    // The source it writes to, by the name a person knows it by ("Jira").
+    source: string;
     // `createdAbove`: the value names an item an earlier line creates.
     // `titles`: on a field whose values name items (an epic), those items'
     // titles as the change set leaves them.

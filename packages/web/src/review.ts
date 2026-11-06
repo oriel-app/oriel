@@ -8,7 +8,10 @@ export type ReviewModel = {
   stage: "closed" | "opening" | "open" | "deciding" | "decided" | "dead";
   view: ReviewView | null;
   name: string;
-  // What's wrong with it, to go with rejecting it: the thread's next message.
+  // The step the reviewer picked as their answer, before they send it.
+  answer: ReviewStep | null;
+  // What's wrong with it, to go with rejecting it: held in the thread for
+  // whoever shared the link.
   reason: string;
   decided: ChangeSetView | null;
   // What the reviewer did, once decided; and, for a dismissal, what it said
@@ -28,9 +31,38 @@ export type ReviewStep = Extract<
 export type ReviewMsg =
   | { type: "openClicked" }
   | { type: "nameChanged"; name: string }
+  | { type: "answerPicked"; answer: ReviewStep }
   | { type: "reasonChanged"; reason: string }
+  // The one button, which does what the answer says.
+  | { type: "submitClicked" }
   | { type: "decideClicked"; kind: "approved" | "rejected" }
   | { type: "dismissClicked" };
+
+// What the reviewer's form shows, in its order, under the change: their
+// answer, the note only once they pick Reject, their name, and the one
+// button, once there's an answer for it to send. With one step offered,
+// that's the answer, and there's nothing to pick.
+export type ReviewPart = "answer" | "note" | "name" | "submit";
+
+// The reviewer's answer: the one they picked, or the only one offered.
+export function answerOf(model: ReviewModel): ReviewStep | null {
+  const steps = model.view ? reviewSteps(model.view) : [];
+  if (model.answer !== null && steps.includes(model.answer)) return model.answer;
+  return steps.length === 1 ? (steps[0] ?? null) : null;
+}
+
+export function reviewParts(model: ReviewModel): ReviewPart[] {
+  const steps = model.view ? reviewSteps(model.view) : [];
+  if (steps.length === 0) return [];
+  const answer = answerOf(model);
+  const noting = answer === "reject" && model.view?.changeSet.revertOf === null;
+  return [
+    ...(steps.length > 1 ? (["answer"] as const) : []),
+    ...(noting ? (["note"] as const) : []),
+    "name",
+    ...(answer ? (["submit"] as const) : []),
+  ];
+}
 
 // What the change set engine offers that a review link can do, in its order.
 export const reviewSteps = (view: ReviewView): ReviewStep[] =>
@@ -50,6 +82,7 @@ export function initReview(token: string): [ReviewModel, Effect[]] {
       stage: "closed",
       view: null,
       name: "",
+      answer: null,
       reason: "",
       decided: null,
       outcome: null,
@@ -70,8 +103,20 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
       ];
     case "nameChanged":
       return [{ ...model, name: msg.name }, []];
+    case "answerPicked":
+      return [{ ...model, answer: msg.answer, problem: null }, []];
     case "reasonChanged":
       return [{ ...model, reason: msg.reason }, []];
+    case "submitClicked": {
+      const answer = answerOf(model);
+      if (answer === null) return [{ ...model, problem: "Pick your answer first." }, []];
+      return updateReview(
+        model,
+        answer === "dismiss"
+          ? { type: "dismissClicked" }
+          : { type: "decideClicked", kind: answer === "reject" ? "rejected" : "approved" },
+      );
+    }
     case "decideClicked":
     case "dismissClicked": {
       const name = model.name.trim();

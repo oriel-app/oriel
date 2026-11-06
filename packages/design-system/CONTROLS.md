@@ -72,7 +72,7 @@ Migration: `packages/web/src/window-page.tsx:126` (filters), `packages/web/src/w
 - `field-sizing: content` grows a textarea from 2 to 8 lines and then scrolls (measured: 49.7px empty, 162.75px capped). It replaces the JS row count on a held message (`packages/web/src/thread-page.tsx:537`), which today doesn't grow while the person types. Where it's missing (Firefox 142), `rows` and the resize handle hold, so the review page's reason field is safe.
 - `:user-invalid` turns a field's border red only after the person has typed and left it: tested false on arrival, false while typing, true after Tab. It sits beside `[aria-invalid]`, which Oriel already sets when a connector names a field.
 - The proposed `Field` ties its hint and its problem to the input with `aria-describedby`. Nothing in Oriel does today.
-- One focus, the frame's border and a 1px ring in `--focus`, the same as the [ChatInput](/components/chat-input) proposal and today's sidebar search.
+- One focus, the frame's border and a 1px ring in `--focus`, the same as [ChatInput](/components/chat-input) and the sidebar's search.
 
 ## Checkbox and radio
 

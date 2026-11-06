@@ -4,7 +4,15 @@ import { threadCount } from "./ending.ts";
 import { Threads } from "./workstream-page.tsx";
 import { type DoneTab, doneRoute, doneShown } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural, Stamp } from "./parts.tsx";
-import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
+import { writes } from "./change-set.ts";
+import {
+  answerOf,
+  type ReviewModel,
+  type ReviewMsg,
+  reviewParts,
+  type ReviewStep,
+  reviewSteps,
+} from "./review.ts";
 import { stepLabel } from "./thread.ts";
 import { Diff } from "./thread-page.tsx";
 import type { ChangeSetView, DiffView, ThreadSummaryView, WorkstreamSummary } from "./view.ts";
@@ -252,12 +260,10 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
       ) : (
         model.view && (
           <ReviewChange
+            model={model}
             view={model.view}
-            name={model.name}
-            reason={model.reason}
             deciding={model.stage === "deciding"}
             applying={model.stage === "deciding" && model.outcome === "approved"}
-            problem={model.problem}
             send={send}
           />
         )
@@ -266,26 +272,30 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
   );
 }
 
-// The change and what the reviewer can do with it: exactly the steps the
-// change set engine offers that a review link can take, as the thread shows
-// them, with what dismissing says may have landed.
+// The change first, then what the reviewer can do with it: exactly the steps
+// the change set engine offers that a review link can take, as the thread
+// shows them, with what dismissing says may have landed. They pick their
+// answer, and only Reject opens the note, which says where it goes; then
+// their name, and one button that says what it does.
 function ReviewChange(props: {
+  model: ReviewModel;
   view: NonNullable<ReviewModel["view"]>;
-  name: string;
-  reason: string;
   deciding: boolean;
   // Approving here, and being applied: the click landed.
   applying: boolean;
-  problem: string | null;
   send: (msg: ReviewMsg) => void;
 }) {
-  const { view, name, reason, deciding, problem, send } = props;
+  const { model, view, deciding, send } = props;
   const steps = reviewSteps(view);
   const dismissing = view.changeSet.nextSteps.find((step) => step.kind === "dismiss");
-  const approving = steps.find((step) => step === "approve" || step === "approve-rest");
+  const answer = answerOf(model);
+  const parts = reviewParts(model);
+  const counted = writes(view.diff);
+  const label = (step: ReviewStep) => stepLabel(step, view.changeSet);
   return (
     <section class="review-card">
       <h1 class="page-title">Review this change</h1>
+      {counted && <p class="review-writes">{counted}</p>}
       <Diff diff={view.diff} busy={false} />
       {dismissing?.kind === "dismiss" && dismissing.warnings.length > 0 && (
         <ul class="may-have-landed">
@@ -305,68 +315,91 @@ function ReviewChange(props: {
           class="review-decide"
           onSubmit={(event) => {
             event.preventDefault();
-            if (approving) send({ type: "decideClicked", kind: "approved" });
+            send({ type: "submitClicked" });
           }}
         >
-          {steps.includes("reject") && !view.changeSet.revertOf && (
-            <label class="name-field reason">
-              If you reject it, what's wrong? (optional)
-              <textarea
-                value={reason}
-                rows={2}
-                // The server's maxReasonChars.
-                maxLength={2000}
-                onInput={(event) =>
-                  send({ type: "reasonChanged", reason: event.currentTarget.value })
-                }
-              />
-            </label>
-          )}
-          <label class="name-field">
-            Your name
-            <input
-              value={name}
-              maxLength={120}
-              autoComplete="name"
-              onInput={(event) => send({ type: "nameChanged", name: event.currentTarget.value })}
-            />
-          </label>
-          <div class="review-actions">
-            {steps.map((step) => (
-              <button
-                key={step}
-                type={step === approving ? "submit" : "button"}
-                class={
-                  step === approving
-                    ? "button primary"
-                    : step === "dismiss"
-                      ? "quiet-action"
-                      : "button"
-                }
-                disabled={deciding}
-                onClick={
-                  step === approving
-                    ? undefined
-                    : () =>
-                        send(
-                          step === "dismiss"
-                            ? { type: "dismissClicked" }
-                            : { type: "decideClicked", kind: "rejected" },
-                        )
-                }
-              >
-                {step === "approve" ? "Approve" : stepLabel(step, view.changeSet)}
-              </button>
-            ))}
-          </div>
+          {parts.map((part) => {
+            switch (part) {
+              case "answer":
+                return (
+                  <fieldset key={part} class="review-answer">
+                    <legend>Your answer</legend>
+                    <div class="choices">
+                      {steps.map((step) => (
+                        <label key={step} class="choice">
+                          <input
+                            type="radio"
+                            name="review-answer"
+                            value={step}
+                            checked={answer === step}
+                            disabled={deciding}
+                            onChange={() => send({ type: "answerPicked", answer: step })}
+                          />
+                          {label(step)}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                );
+              case "note":
+                return (
+                  <div key={part} class="name-field reason">
+                    <label for="review-note">What's wrong? (optional)</label>
+                    <p class="name-field-help" id="review-note-help">
+                      It goes to whoever sent you this link, and their agent sees it only if they
+                      send it on.
+                    </p>
+                    <textarea
+                      id="review-note"
+                      aria-describedby="review-note-help"
+                      value={model.reason}
+                      rows={2}
+                      // The server's maxReasonChars.
+                      maxLength={2000}
+                      onInput={(event) =>
+                        send({ type: "reasonChanged", reason: event.currentTarget.value })
+                      }
+                    />
+                  </div>
+                );
+              case "name":
+                return (
+                  <label key={part} class="name-field">
+                    Your name
+                    <input
+                      value={model.name}
+                      maxLength={120}
+                      autoComplete="name"
+                      onInput={(event) =>
+                        send({ type: "nameChanged", name: event.currentTarget.value })
+                      }
+                    />
+                  </label>
+                );
+              case "submit":
+                return (
+                  answer && (
+                    <div key={part} class="review-actions">
+                      <button
+                        type="submit"
+                        class={answer === "dismiss" ? "button" : "button primary"}
+                        disabled={deciding}
+                      >
+                        {label(answer)}
+                      </button>
+                    </div>
+                  )
+                );
+            }
+          })}
         </form>
       )}
       <p class="read-only-note" role="status">
         {props.applying && "Approving and applying…"}
       </p>
-      {problem && (
+      {model.problem && (
         <p class="change-set-problem" role="alert">
-          {problem}
+          {model.problem}
         </p>
       )}
     </section>

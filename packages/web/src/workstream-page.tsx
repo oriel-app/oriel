@@ -1,5 +1,6 @@
 // A workstream: ask about it, see its threads, and curate its items.
-import { useContext, useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
+import { ChatInput } from "./chat-input.tsx";
 import { ThreadMenu } from "./close-thread.tsx";
 import { EndButtons, WindowUndos } from "./end-workstream.tsx";
 import { deleted, type EndingModel } from "./ending.ts";
@@ -19,9 +20,7 @@ import {
   plural,
   StateChip,
   Stamp,
-  SendKeyContext,
 } from "./parts.tsx";
-import { sends } from "./settings.ts";
 import type { UndoNote, Undos } from "./undos.ts";
 import type {
   WorkstreamChangeView,
@@ -44,7 +43,6 @@ export function WorkstreamPage(props: {
 }) {
   const { model, threads, ending, dispatch } = props;
   const send = (msg: WorkstreamMsg) => dispatch({ type: "workstream", msg });
-  const sendKey = useContext(SendKeyContext);
   const { view } = model;
   const list = useRef<HTMLUListElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -159,39 +157,18 @@ export function WorkstreamPage(props: {
           )}
         </header>
 
-        <form
-          class="composer ask"
-          onSubmit={(event) => {
-            event.preventDefault();
-            send({ type: "askClicked" });
-          }}
-        >
-          <textarea
-            rows={2}
-            value={model.draft}
-            placeholder={askPrompt(workstream.size)}
-            aria-label="Ask about this workstream"
-            onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
-            onKeyDown={(event) => {
-              if (sends(event, sendKey)) {
-                event.preventDefault();
-                send({ type: "askClicked" });
-              }
-            }}
-          />
-          <button
-            type="submit"
-            class="button primary"
-            disabled={model.pending || model.draft.trim() === ""}
-          >
-            Ask
-          </button>
-        </form>
-        {model.notice && (
-          <p class="notice" data-tone="error" role="alert">
-            {model.notice}
-          </p>
-        )}
+        <ChatInput
+          class="workstream-ask"
+          label="Ask about this workstream"
+          submitLabel="Ask"
+          draft={model.draft}
+          busy={model.pending}
+          notice={model.notice}
+          placeholder={askPrompt(workstream.size)}
+          reads={`Reads ${plural(workstream.size, "item")} · v${workstream.version}`}
+          onDraft={(text) => send({ type: "draftChanged", text })}
+          onSubmit={() => send({ type: "askClicked" })}
+        />
 
         {threads.length > 0 && (
           <section class="section">

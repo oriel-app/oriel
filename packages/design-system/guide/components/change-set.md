@@ -3,7 +3,7 @@ title: Change set
 status: drifting
 group: Thread
 order: 70
-classes: change-set, change-set-head, change-set-status, change-set-count, change-set-actions, change-set-problem, loading, change-set-loading, apply-errors, apply-stuck, may-have-landed, read-only-note, review-link, link-field, diff, diff-line, brought, line-head, line-mark, sentence, key, source-link, new-title, new-description, item-value, new-mark, fields, field, edited, side, side-sign, side-text, fold, arrow, remove-line, tooltip, line-error, visually-hidden, review, review-head, mark, review-card, page-title, review-decide, name-field, reason, review-actions, outcome, outcome-stops, stop-reason
+classes: change-set, change-set-head, change-set-status, change-set-writes, change-set-count, change-set-actions, change-set-foot, change-set-problem, loading, change-set-loading, apply-errors, apply-stuck, may-have-landed, read-only-note, review-link, link-field, diff, diff-line, brought, line-head, line-mark, sentence, key, source-link, new-title, new-description, item-value, new-mark, fields, field, edited, side, side-sign, side-text, fold, arrow, remove-line, tooltip, line-error, visually-hidden, review, review-head, mark, review-card, review-writes, page-title, review-decide, review-answer, choices, choice, name-field, name-field-help, reason, review-actions, outcome, outcome-stops, stop-reason
 summary: A write to a source, waiting on a person: its diff, line by line, and the steps it offers. Approve and apply, Reject, Share review link; then applying, applied, stalled, rejected or reverted. And the review link's page.
 ---
 
@@ -36,26 +36,41 @@ The same diff, without the steps the thread keeps, is the body of the [review li
 
 ## Anatomy and variants
 
-The card is `section.change-set`: `--border-thin` in `--line-strong`, `--radius-lg`, on `--surface`. The head is a row with the title (`--text-md`, strong) left and the status (faint, small) right, over a bottom rule. The footer, `.change-set-actions`, wraps its buttons on `--surface-sunk` over a top rule.
+The card is `section.change-set`: `--border-thin` in `--line-strong`, `--radius-lg`, on `--surface`, clipped with `overflow: clip` so its actions can stick inside it. Awaiting review, it's the person's move, and wears the accent on its start edge (`.change-set[data-awaits]` in `window.css`). The head is a row with the title (`--text-md`, strong), what Approve writes, and the status (faint, small) right, over a bottom rule. The footer, `.change-set-actions`, wraps its buttons on `--surface-sunk` over a top rule, and under it, while it awaits review, one line says nothing is written until the person approves.
 
 ```html specimen id=anatomy title="Awaiting review: edits, a new story, a delete" bg=bg
-<section class="change-set" data-status="open" aria-busy="false" tabindex="-1">
+<section class="change-set" data-status="open" data-awaits aria-busy="false" tabindex="-1">
   <header class="change-set-head">
     <h2>Proposed change</h2>
+    <span class="change-set-writes">4 changes in Jira · 2 edits, 1 new story, 1 deletion</span>
     <span class="change-set-status" role="status">Awaiting review</span>
   </header>
   <ul class="diff">
     <li class="diff-line" data-kind="update">
       <p class="line-head">
         <span class="sentence"
-          >Change the estimate of “Save a card for next time” (SYN-99) from 2 points to 3 points.
-          <a
-            class="key source-link"
-            href="https://synthetic.atlassian.net/browse/SYN-99"
-            target="_blank"
-            rel="noopener noreferrer"
-            >SYN-99</a
-          ></span
+          >Change the estimate of
+          <span
+            class="chip"
+            data-kind="item"
+            data-state="to-do"
+            title="SYN-99: Save a card for next time, to do"
+            ><a
+              class="chip-link"
+              href="https://synthetic.atlassian.net/browse/SYN-99"
+              target="_blank"
+              rel="noopener noreferrer"
+              ><span class="chip-lead"
+                ><svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                  <path d="M5.5 8l1.8 1.8L10.5 6" /></svg
+                ><span class="chip-key">SYN-99</span></span
+              >
+              <span class="chip-name">Save a card for next time</span
+              ><span class="chip-state">To Do</span></a
+            ></span
+          >
+          from 2 points to 3 points.</span
         >
       </p>
       <dl class="fields">
@@ -82,14 +97,27 @@ The card is `section.change-set`: `--border-thin` in `--line-strong`, `--radius-
       <p class="brought">The agent put SYN-23 in this workstream.</p>
       <p class="line-head">
         <span class="sentence"
-          >Rewrite the description of “Pay with a phone wallet on the website” (SYN-23).
-          <a
-            class="key source-link"
-            href="https://synthetic.atlassian.net/browse/SYN-23"
-            target="_blank"
-            rel="noopener noreferrer"
-            >SYN-23</a
-          ></span
+          >Rewrite the description of
+          <span
+            class="chip"
+            data-kind="item"
+            data-state="in-progress"
+            title="SYN-23: Pay with a phone wallet on the website, in progress"
+            ><a
+              class="chip-link"
+              href="https://synthetic.atlassian.net/browse/SYN-23"
+              target="_blank"
+              rel="noopener noreferrer"
+              ><span class="chip-lead"
+                ><svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                  <path d="M5.5 8l1.8 1.8L10.5 6" /></svg
+                ><span class="chip-key">SYN-23</span></span
+              >
+              <span class="chip-name">Pay with a phone wallet on the website</span
+              ><span class="chip-state">In Progress</span></a
+            ></span
+          >.</span
         >
       </p>
       <dl class="fields">
@@ -160,14 +188,28 @@ The card is `section.change-set`: `--border-thin` in `--line-strong`, `--radius-
       <p class="line-head">
         <span class="line-mark" data-kind="delete">Delete</span
         ><span class="sentence"
-          >Delete “Show the gift card balance at checkout” (SYN-901) from Jira.
-          <a
-            class="key source-link"
-            href="https://synthetic.atlassian.net/browse/SYN-901"
-            target="_blank"
-            rel="noopener noreferrer"
-            >SYN-901</a
-          ></span
+          >Delete
+          <span
+            class="chip"
+            data-kind="item"
+            data-state="to-do"
+            title="SYN-901: Show the gift card balance at checkout, to do"
+            ><a
+              class="chip-link"
+              href="https://synthetic.atlassian.net/browse/SYN-901"
+              target="_blank"
+              rel="noopener noreferrer"
+              ><span class="chip-lead"
+                ><svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                  <path d="M5.5 8l1.8 1.8L10.5 6" /></svg
+                ><span class="chip-key">SYN-901</span></span
+              >
+              <span class="chip-name">Show the gift card balance at checkout</span
+              ><span class="chip-state">To Do</span></a
+            ></span
+          >
+          from Jira.</span
         >
       </p>
       <dl class="fields">
@@ -194,6 +236,7 @@ The card is `section.change-set`: `--border-thin` in `--line-strong`, `--radius-
     <button type="button" class="button">Reject</button>
     <button type="button" class="quiet-action">Share review link</button>
   </footer>
+  <p class="change-set-foot">Nothing is written to Jira until you approve.</p>
 </section>
 ```
 
@@ -203,6 +246,7 @@ The second line is shown hovered, so its × (**Leave this change out**) shows; t
 
 - **Title:** "Proposed change"; "Undo" when the set reverts another (`set.revertOf`).
 - **Status** (`.change-set-status`, `role="status"`): one of "Awaiting review", "Ready to apply", "Applying…", "Applied", "Partly applied", "Stopped", "Rejected"; "Apply stalled" while its source doesn't answer. A decision made on a review link adds " by {name} via review link"; a set whose Undo applied adds ", then undone".
+- **What Approve writes** (`.change-set-writes`): only while it awaits review, counted from the diff's own lines, and naming each source the set writes to from its lines, never a fixed name: "5 changes in Jira · 3 edits, 2 new stories"; one kind says it once: "2 new stories in Jira" (`writes` in `packages/web/src/change-set.ts`).
 - **Count** (`.change-set-count`): only on a folded set: "3 changes · 2 h ago", the time of its decision in the time format Settings picks, as a `<time>`.
 - **Show / Hide**: only on a set that can fold (`foldable` in `packages/web/src/thread.ts`), a `.quiet-action` with `aria-expanded`, described by the title, status and count. It covers the whole head (`.change-set-head > .quiet-action::after` in `window.css`), so a click anywhere on the head presses it.
 - **Folding by itself:** a set applied before the page opened is folded already. One whose apply ends on screen, applied in full, shows "Applied" for a beat (`landMs`, 1.2s), closes to its head at move speed (`data-closing`; instant under reduced motion) and folds. If focus was inside it, or dropped as its Approve went, it moves to Show, and the status adds, for screen readers only, ", folded. Show it to see it or revert it." It stays shown if it applied with errors, partly, or stalled; if the person showed or hid it by hand; or if the thread's address names it. An Undo folds the same way once it applies, and so does the set it reverts.
@@ -211,7 +255,7 @@ The second line is shown hovered, so its × (**Leave this change out**) shows; t
 
 Each change is an `li.diff-line`, `data-kind` its kind, padded on the right to leave room for its ×. Lines are split by a 60% `--line` rule.
 
-- **An edit:** `p.line-head` holds the change's sentence, as the source's catalogue words it, then the item's key as a link (`.key.source-link`). Under it, `dl.fields`: each field's name (`dt`, faint, 5.5rem wide) and `dd.edited`, the field's text as rows.
+- **An edit:** `p.line-head` holds the change's sentence, as the source's catalogue words it, naming its item once, by its [chip](/components/chip): where the sentence named the item, by its title and key or its key alone, the chip stands in that place; where it didn't, the chip follows the sentence (`namedOnce` in `packages/web/src/change-set.ts`). The chip says where the item stands when the thread has it. Under it, `dl.fields`: each field's name (`dt`, faint, 5.5rem wide) and `dd.edited`, the field's text as rows.
   - `.side[data-side="before"]` has a "−" sign and a 7% `--danger` tint; `[data-side="after"]` a "+" and a 9% `--ins` tint; `[data-side="same"]` is muted, with no sign.
   - Inside a changed row, only the changed words are marked: `<del>` (a 20% danger fill, struck through) and `<ins>` (a 26% `--ins` fill). When a side shares less than 40% of its words with the other, it reads as a rewrite: plain text, no marks.
   - Unchanged lines keep one line of context on each side of a change; the rest fold into `<details class="fold">`, "4 unchanged lines".
@@ -264,6 +308,9 @@ Then, after the steps:
 
 - **Share review link** (`.quiet-action`), while the set can be approved. Clicked, it becomes the link in a read-only field (`.link-field`, mono, `aria-label="Review link"`) with **Copy**.
 - **The read-only note** (`.read-only-note`), when the set is open but the connection can't write: "Live writes aren't configured here, so this can be reviewed and rejected, not approved."
+- **Nothing is written** (`.change-set-foot`), under the steps while the set awaits review and can be approved: "Nothing is written to Jira until you approve.", naming the set's own sources. Not while a second look shows, when Approve isn't offered.
+
+**The steps stay in reach.** While any of a change set awaiting review is on screen, its footer sticks above the composer (`position: sticky`, `bottom` from the dock's `--dock-cover`), so Approve and apply is never a scroll to the card's foot; in the window chat, it sticks to the foot of the chat's list. It stays in the card in the markup, so the keyboard reaches it in the card's order. While it's stuck it carries `[data-stuck]`, a stronger rule and `--shadow`; IntersectionObservers decide that, never the page's scroll (`watchStuck` in `packages/web/src/change-set.ts`). A thread head's state chip, **Needs review ↓**, goes to the nearest one.
 
 ```html specimen id=link-shared title="The review link, made"
 <section class="change-set" data-status="open" aria-busy="false" tabindex="-1">
@@ -864,7 +911,7 @@ What each state is, and what it offers:
 
 A review link hands one change set to someone outside Oriel, by a URL. Its page has no sidebar, no thread and no window: one card, headed by Oriel's mark (`.review`, at most 40rem, centred). **Nothing opens until the person asks**, with a POST, since chat apps fetch links to preview them (`packages/web/src/review.ts`).
 
-The link can only approve, approve the rest, reject or dismiss; retry, remove and revert stay in the thread. The person must type their name. A reason for rejecting is optional, and it doesn't reach the agent: it's held in the thread for whoever shared the link ([a held message](/components/message#a-held-message)).
+The link can only approve, approve the rest, reject or dismiss; retry, remove and revert stay in the thread. The page asks in this order: **the change first**, and what Approve writes over it; then **Your answer**, the steps the engine offers as radios (`.review-answer`, with `.choices`), nothing picked until the person picks; **the note**, which only Reject opens, and which says where its words go: "It goes to whoever sent you this link, and their agent sees it only if they send it on."; then **Your name**; then **one button that says what it does**, "Approve and apply", "Reject" or "Dismiss", once there's an answer for it to send (`reviewParts` in `packages/web/src/review.ts`). With only one step offered, that's the answer, and there's nothing to pick. The note is optional, and it doesn't reach the agent: it's held in the thread for whoever shared the link ([a held message](/components/message#a-held-message)). Only a rejection sends it.
 
 This page can open in the person's default browser, so it may be Safari or Firefox. Anything in window.css it reaches must degrade there.
 
@@ -887,7 +934,7 @@ This page can open in the person's default browser, so it may be Safari or Firef
 </main>
 ```
 
-```html specimen id=review-open title="Open: the diff, a reason, a name, the steps"
+```html specimen id=review-open title="Open: the change first, then the answer, the note Reject opens, the name and one button"
 <main class="review">
   <header class="review-head">
     <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
@@ -897,6 +944,7 @@ This page can open in the person's default browser, so it may be Safari or Firef
   </header>
   <section class="review-card">
     <h1 class="page-title">Review this change</h1>
+    <p class="review-writes">1 new story in Jira</p>
     <ul class="diff">
       <li class="diff-line" data-kind="create">
         <p class="line-head">
@@ -928,13 +976,32 @@ This page can open in the person's default browser, so it may be Safari or Firef
       </li>
     </ul>
     <form class="review-decide">
-      <label class="name-field reason"
-        >If you reject it, what's wrong? (optional)<textarea rows="2" maxlength="2000"></textarea>
-      </label>
+      <fieldset class="review-answer">
+        <legend>Your answer</legend>
+        <div class="choices">
+          <label class="choice"
+            ><input type="radio" name="review-answer" value="approve" />Approve and apply</label
+          >
+          <label class="choice"
+            ><input type="radio" name="review-answer" value="reject" checked />Reject</label
+          >
+        </div>
+      </fieldset>
+      <div class="name-field reason">
+        <label for="review-note">What's wrong? (optional)</label>
+        <p class="name-field-help" id="review-note-help">
+          It goes to whoever sent you this link, and their agent sees it only if they send it on.
+        </p>
+        <textarea
+          id="review-note"
+          aria-describedby="review-note-help"
+          rows="2"
+          maxlength="2000"
+        ></textarea>
+      </div>
       <label class="name-field">Your name<input maxlength="120" autocomplete="name" /></label>
       <div class="review-actions">
-        <button type="submit" class="button primary">Approve</button>
-        <button type="button" class="button">Reject</button>
+        <button type="submit" class="button primary">Reject</button>
       </div>
     </form>
     <p class="read-only-note" role="status"></p>
@@ -951,8 +1018,7 @@ This page can open in the person's default browser, so it may be Safari or Firef
         >Your name<input maxlength="120" autocomplete="name" value="Priya Shah" disabled
       /></label>
       <div class="review-actions">
-        <button type="submit" class="button primary" disabled>Approve</button>
-        <button type="button" class="button" disabled>Reject</button>
+        <button type="submit" class="button primary" disabled>Approve and apply</button>
       </div>
     </form>
     <p class="read-only-note" role="status">Approving and applying…</p>
@@ -962,8 +1028,7 @@ This page can open in the person's default browser, so it may be Safari or Firef
     <form class="review-decide">
       <label class="name-field">Your name<input maxlength="120" autocomplete="name" /></label>
       <div class="review-actions">
-        <button type="submit" class="button primary">Approve</button>
-        <button type="button" class="button">Reject</button>
+        <button type="submit" class="button primary">Approve and apply</button>
       </div>
     </form>
     <p class="read-only-note" role="status"></p>
@@ -1018,7 +1083,7 @@ The name field isn't disabled while deciding in the app; only the buttons are. T
 - **A missing name:** "Type your name first.", checked on click, in `.change-set-problem` with `role="alert"`. The buttons aren't disabled for an empty name, and the field gets no `aria-invalid` (see [Forms](/patterns/forms)).
 - **Decided:** "You approved this change" / "You rejected this change" / "You dismissed the rest of this change", "Thanks, {name}.", a rejection's "This link has closed, so the rejection can't be undone here. If you didn't mean it, tell whoever shared the link: they can ask for the change again." (OA-258), and exactly what happened (`.outcome`, danger when partial or stopped), with each stop beside the change it stopped at.
 - **Dead:** "This link no longer works", and the server's reason, such as "This review link has expired, was revoked, or was already used." (`api` in `packages/server/src/api.ts`).
-- **Keyboard:** the decision is a `<form>` whose primary is `type="submit"`, so Enter in the name field approves. Reject and Dismiss are `type="button"`.
+- **Keyboard:** the decision is a `<form>` whose one button is `type="submit"`, so Enter in the name field sends the answer picked; with none, "Pick your answer first." The answer is a radio group: arrow keys move between its steps.
 
 ## Where the app uses it
 
@@ -1026,13 +1091,12 @@ The name field isn't disabled while deciding in the app; only the buttons are. T
 - The engine's steps and their order: `changeSetsOver` in `packages/changeset/src/change-sets.ts`. Labels: `stepLabel` in `packages/web/src/thread.ts`. Folding: `folded` in `packages/web/src/thread.ts`. Showing a decision before the server answers: `expected` in `packages/web/src/thread.ts`.
 - `Diff`, `Edited` and `NewItem` in `packages/web/src/thread-page.tsx`; `Diff` draws the ×. Word marks: `packages/web/src/text-diff.ts`.
 - CSS: the card `.change-set`, `.change-set-head`, `.change-set-head h2`, `.change-set-status` and `.change-set-count` in `window.css`, with their state variants; lines `.diff`, `.diff-line`, `.line-error`, `.apply-stuck`, `.may-have-landed`, `.read-only-note`, `.line-head`, `.line-mark`, `.new-title`, `.new-description`, `.item-value`, `.new-mark`, `.sentence .key`, `.fields`, `.field`, `.arrow`, `.side`, `.side-sign`, `.side-text`, `.fold summary` and `.remove-line` in `window.css`; the footer `.change-set-actions` in `window.css`; the link `.review-link` in `window.css`; the problem `.change-set-problem` in `window.css`; the × `.remove-line`, `.diff-line:hover .remove-line` and `.remove-line:hover` in `window.css` (rules shared with `.remove-member`).
-- The review link page: `ReviewPage`, `ReviewChange` and `Outcome` in `packages/web/src/other-pages.tsx`; its stages, `ReviewModel` in `packages/web/src/review.ts`. CSS: `.review`, `.review-head`, `.review-card`, `.review-decide`, `.name-field`, `.review-actions`, `.outcome`, `.outcome-stops` and `.stop-reason` in `window.css`.
+- The review link page: `ReviewPage`, `ReviewChange` and `Outcome` in `packages/web/src/other-pages.tsx`; its stages, `ReviewModel` in `packages/web/src/review.ts`. CSS: `.review`, `.review-head`, `.review-card`, `.review-card .review-writes`, `.review-decide`, `.review-answer`, `.name-field`, `.name-field-help`, `.review-actions`, `.outcome`, `.outcome-stops` and `.stop-reason` in `window.css`.
 
 ## Drift
 
 Status **drifting**. The card is one component; what drifts is around it:
 
-- **Approve's label.** The thread says **Approve and apply** (`stepLabel` in `packages/web/src/thread.ts`). The review link's page says **Approve**: `ReviewChange` in `packages/web/src/other-pages.tsx` hard-codes it, though approving there applies too ("Approving and applying…"). Approve the rest, Reject and Dismiss match. **Copy the thread's label**: Approve and apply, through `stepLabel`, everywhere a person approves.
 - **The ×** is styled in two places (the rules it shares with `.remove-member` in `window.css`, and its position on `.remove-line` in `window.css`), has no disabled look, and its hover isn't guarded, so a busy card's × still turns red.
 - **No Revoke.** Decision 0024 lists revoking review links as a person's action; the web has no control for it. **Copy** gives no confirmation.
 - **The focused card has no ring** (`.change-set:focus` in `window.css`); only `[data-opened]` shows where a link landed.

@@ -138,7 +138,7 @@ Graphite rounds them 4px, 6px and 8px. Broadsheet squares them: 0, 2px and 4px.
 - `--border-thick` (2px): the focus ring, Broadsheet's section rule and ask-bar mark, a quote's bar, and Oriel's own notes.
 - `--section-rule`: the rule above an overview section's head. Graphite: a thin `--line-strong`. Broadsheet: a thick rule in `--text`.
 - `--list-frame`: the border round an overview list. Graphite frames each list in `--line`, on `--list-bg` (its surface). Broadsheet has none, and its lists sit open on the page.
-- `--ask-mark`: the ask bar's start edge. None in Graphite, a thick accent rule in Broadsheet (`.ask-bar` in `window.css`).
+- `--ask-mark`: the ask bar's start edge. None in Graphite, a thick accent rule in Broadsheet (`.chat-input[data-marked]` in `window.css`).
 
 A border's width is always a token. "A ring (a shadow with no blur, in a token's colour) is a border, not elevation" (decision 0034), so a `box-shadow: 0 0 0 var(--border-thin) var(--line)` ring is fine.
 
@@ -151,7 +151,7 @@ tokens shape
 Two shadows and a scrim. Most of Oriel is flat: things sit on the page, divided by hairlines. Elevation is only for what floats over the page.
 
 - `--shadow-sm`: barely lifted. The current page's nav link (`.nav-link[aria-current="page"]` in `window.css`) and the switch's knob (`.switch-knob` in `window.css`).
-- `--shadow`: floats over the page. The item panel over the page (`.item-panel` in `window.css`; it loses it when it sits beside the page at 1100px and up), the window chat (`.window-chat` in `window.css`), the narrow screen's drawer, a context menu (`.context-menu` in `window.css`), a tooltip (`.tooltip` in `window.css`), the delete question (`.confirm` in `window.css`), the bead (`.bead` in `window.css`), the selection bar (`.selection-bar` in `window.css`) and a thread's composer (`.composer` in `window.css`).
+- `--shadow`: floats over the page. The item panel over the page (`.item-panel` in `window.css`; it loses it when it sits beside the page at 1100px and up), the window chat (`.window-chat` in `window.css`), the narrow screen's drawer, a context menu (`.context-menu` in `window.css`), a tooltip (`.tooltip` in `window.css`), the delete question (`.confirm` in `window.css`), the bead (`.bead` in `window.css`), the selection bar (`.selection-bar` in `window.css`) and a thread's composer (`.chat-input[data-elevation="raised"]` in `window.css`).
 - `--scrim`: dims the page under the drawer (`.drawer-backdrop`) and the delete question (`.confirm::backdrop` in `window.css`). The ink at 32% in light, the paper at 40% in dark.
 
 Shadows are shared values today: neither theme sets its own, but each scheme does. Dark shadows are much heavier, since a soft shadow doesn't show on a dark page.

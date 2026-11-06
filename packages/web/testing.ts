@@ -291,6 +291,23 @@ export const diffView = (over: Partial<DiffView> = {}): DiffView => ({
   ...over,
 });
 
+// One line of a diff: an edit in Jira, unless overridden.
+export const diffLine = (
+  over: Partial<DiffView["lines"][number]> = {},
+): DiffView["lines"][number] => ({
+  mutationId: "m1",
+  sentence: "Change it.",
+  target: null,
+  kind: "change",
+  makes: null,
+  source: "Jira",
+  applied: false,
+  error: null,
+  brought: [],
+  fields: [],
+  ...over,
+});
+
 export const settingsView = (over: Partial<SettingsView> = {}): SettingsView => ({
   providers: [],
   models: [],

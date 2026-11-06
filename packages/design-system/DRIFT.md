@@ -16,8 +16,8 @@ Each proposal below is written to be pasted into a story: why, where, what diffe
 | --- | ----------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------------------------------------------- | ------------------------------------- |
 | 1   | [Clear dead and split CSS, and the reduced-motion miss](#d1-clear-dead-and-split-css-and-the-reduced-motion-miss) | High     | S      | 1 file, ~45 CSS lines removed                     | OA-251: done, and one pulse speed     |
 | 2   | [One disabled look, and one button-kind rule](#d2-one-disabled-look-and-one-button-kind-rule)                     | High     | S      | 2 TSX files, ~25 CSS lines removed, 6 added       | OA-252: one label for Approve         |
-| 3   | [One ChatInput for the four places a person asks](#d3-one-chatinput-for-the-four-places-a-person-asks)            | High     | M      | 5 TSX files, ~70 CSS lines removed, ~45 added     |                                       |
-| 4   | [One focus for fields, and a ring for menu items](#d4-one-focus-for-fields-and-a-ring-for-menu-items)             | Med–High | S      | 0–2 TSX files, ~25 CSS lines removed, 8 added     | OA-253: an inset ring on menu items   |
+| 3   | [One ChatInput for the four places a person asks](#d3-one-chatinput-for-the-four-places-a-person-asks)            | High     | M      | 5 TSX files, ~70 CSS lines removed, ~45 added     | Done (chat-today), with a foot        |
+| 4   | [One focus for fields, and a ring for menu items](#d4-one-focus-for-fields-and-a-ring-for-menu-items)             | Med–High | S      | 0–2 TSX files, ~25 CSS lines removed, 8 added     | OA-253; the chat inputs' part done    |
 | 5   | [One SearchField](#d5-one-searchfield)                                                                            | High     | S      | 2–4 TSX files, ~32 CSS lines removed              |                                       |
 | 6   | [ProviderRow everywhere, with one StatusLine](#d6-providerrow-everywhere-with-one-statusline)                     | High     | S      | 5 TSX files, ~25 CSS and ~40 TSX lines removed    |                                       |
 | 7   | [One ListFrame that follows the theme](#d7-one-listframe-that-follows-the-theme)                                  | High     | S      | 6–8 TSX files, ~35 CSS lines removed, 12 added    | Yes, not yet filed                    |
@@ -85,7 +85,7 @@ census
 
 **Why.** Three controls look live while they're disabled. A person clicks and nothing happens.
 
-**Decided 2026-11-05** (OA-252): one label for Approve wherever it does the same thing. The thread says **Approve and apply**, the review link page **Approve** (`packages/web/src/other-pages.tsx:350`); OA-252 makes them one.
+**Decided 2026-11-05** (OA-252): one label for Approve wherever it does the same thing. The thread says **Approve and apply**, the review link page **Approve** (`packages/web/src/other-pages.tsx:350`); OA-252 makes them one. The label is done (chat-today): the review link page says **Approve and apply** too, through `stepLabel`. The disabled look is still open.
 
 The bead (0056) replaced the stack of Undo notes. Its own action, `.bead-action` (`window.css:4560`), has what this asks for: a hover guarded with `:not(:disabled)` (`window.css:4574`) and a disabled look (`window.css:4583`). `.undo-action` still lacks both, and `UndoButton` and a reply's two Undos still draw it beside the change they undo, so D2 stands.
 
@@ -137,6 +137,8 @@ Every hover rule becomes `:hover:not(:disabled, [aria-disabled="true"])`. And on
 
 ## D3. One ChatInput for the four places a person asks
 
+**Done** (chat-today, "Quiet chat, loud decisions"). `ChatInput` in `packages/web/src/chat-input.tsx` draws the ask bar, the window chat's two composers, the thread's composer and the workstream's Ask box: one frame, the frame's focus ring, one problem line inside it, and one foot, which says what the agent will read on the left and the send key from Settings beside the button. The button is plain until something is written. The window chat imports only `ChatInput` for its fields, and shows one problem line. The proposal's CSS moved into `window.css`, so `assets/proposals/chat-input.css` is gone; see [Chat input](/components/chat-input). Step 6, one placeholder rule, wasn't taken: the thread keeps "Ask about 17 items…", the workstream "Ask about these 17 items…". What's below is the survey as it was.
+
 **Why.** The maintainer's lead case. Four versions of the most-used control in Oriel, three looks, and the weakest focus in the app on the field people use most.
 
 **Places.**
@@ -156,7 +158,7 @@ Today, from the app (`pnpm shots`, Graphite light):
 
 ![A workstream's Ask box: Ask about these 17 items…, with Ask inside, flat](/assets/drift/chat-workstream.png)
 
-The same four, with today's markup and Oriel's live CSS beside the proposal, in every state and theme: [Chat input](/components/chat-input#today-side-by-side).
+The same four, with today's markup and Oriel's live CSS beside the proposal, in every state and theme: [Chat input](/components/chat-input) (since D3, the one ChatInput).
 
 **What differs.**
 
@@ -239,6 +241,8 @@ export type ChatInputProps = {
 
 **Decided 2026-11-05** (OA-253): keyboard focus on a menu item is an inset ring, distinct from hover.
 
+**The chat inputs' part is done** with D3: the ask bar's `:focus` ring and the composer's 1px tint are gone, and every chat input shows the frame's border and ring in `--focus`. The searches, the workstream's name, the settings fields and the menu items are still open.
+
 **Why.** Accessibility. A field shows focus five ways, and the composer's is a 1px border tint, barely visible. In the context menu, keyboard focus looks exactly like the pointer's hover, so with the pointer on one item and the arrows on another, two items are lit and nothing says which one Enter picks.
 
 **Places.**
@@ -275,7 +279,7 @@ html {
 }
 ```
 
-The field frame is the sidebar search's look today, the strongest of the five, and the one [ChatInput](/components/chat-input#proposed-focus) and the [text field lab](/lab/text-field) use.
+The field frame is the sidebar search's look today, the strongest of the five, and the one [ChatInput](/components/chat-input#state-focus) and the [text field lab](/lab/text-field) use.
 
 **Migration.** Add the tokens. Replace the five field focus rules with the frame rule as D3, D5 and D11 land; until then, change `.composer:focus-within` to the frame look (two lines). Drop `outline: none` from `.context-menu-item` and give it the inset ring. Leave the programmatic focus targets (`.change-set:focus`, `.panel-title:focus`) ring-less. Move `.bead-action:focus-visible` onto `--focus-inset`, keeping its colour.
 
