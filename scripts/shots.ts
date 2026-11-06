@@ -2206,7 +2206,7 @@ const scenes: Scene[] = [
     name: "thread-comment-applied",
     path: `/threads/${commented.threadId}`,
     on: commented.serving,
-    act: (page) => page.getByRole("button", { name: "Revert" }).waitFor(),
+    act: (page) => page.locator(".change-set[data-folded] .change-set-count").waitFor(),
   },
   {
     name: "thread-handoff",
@@ -2227,7 +2227,17 @@ const scenes: Scene[] = [
     name: "thread-handoff-applied",
     path: `/threads/${handed.threadId}`,
     on: handed.serving,
-    act: (page) => page.getByRole("button", { name: "Revert" }).waitFor(),
+    act: (page) => page.locator(".change-set[data-folded] .change-set-count").waitFor(),
+  },
+  // Applied before the page opened, it folds; Show opens it to its Revert.
+  {
+    name: "thread-handoff-applied-shown",
+    path: `/threads/${handed.threadId}`,
+    on: handed.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await page.getByRole("button", { name: "Revert" }).waitFor();
+    },
   },
   {
     name: "workstream-handoff-applied",
@@ -2283,7 +2293,18 @@ const scenes: Scene[] = [
     name: "thread-handoff-reverted",
     path: `/threads/${handedBack.threadId}`,
     on: handedBack.serving,
-    act: (page) => page.locator(".change-set .change-set .diff").waitFor(),
+    act: (page) => page.locator(".change-set[data-folded] .change-set-count").waitFor(),
+  },
+  // Its Undo applied too: both fold, and open one inside the other.
+  {
+    name: "thread-handoff-reverted-shown",
+    path: `/threads/${handedBack.threadId}`,
+    on: handedBack.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await page.locator(".change-set .change-set .diff").waitFor();
+    },
   },
   // The panel beside the page, one per source's view, and from the window with
   // a cluster open or closed: a plain click opens it, an address can too.

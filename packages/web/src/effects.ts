@@ -92,15 +92,23 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       if (scrollY !== was) shownAt = scrollY;
       return;
     }
-    case "showChangeSet": {
-      const set = document.getElementById(changeSetAnchor(effect.changeSetId));
-      if (!set) return;
-      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-      set.scrollIntoView({ block: "start", behavior: effect.smooth && !still ? "smooth" : "auto" });
-      // Readers start there too, at its heading.
-      (set.querySelector<HTMLElement>(".change-set-head h2") ?? set).focus({ preventScroll: true });
+    case "showChangeSet":
+      // After the page renders, as `focusHeading` waits: a folded change set
+      // the link opened, or one inside it, is only there then.
+      requestAnimationFrame(() => {
+        const set = document.getElementById(changeSetAnchor(effect.changeSetId));
+        if (!set) return;
+        const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        set.scrollIntoView({
+          block: "start",
+          behavior: effect.smooth && !still ? "smooth" : "auto",
+        });
+        // Readers start there too, at its heading.
+        (set.querySelector<HTMLElement>(".change-set-head h2") ?? set).focus({
+          preventScroll: true,
+        });
+      });
       return;
-    }
     case "focusComposer":
       document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
       return;

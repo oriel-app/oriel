@@ -44,9 +44,12 @@ export type ThreadModel = {
   // A decision sent from this page and not yet answered, by change set. The
   // page and the sidebar show what it will make of the thread (`expected`).
   deciding: Readonly<Record<string, Decision>>;
-  // Rejected change sets the user unfolded: the rest are one line each, so a
-  // revised one isn't buried under them.
-  unfolded: readonly string[];
+  // Change sets the user showed (false) or folded (true), against what
+  // `folded` would make of them.
+  folds: Readonly<Record<string, boolean>>;
+  // Change sets this page saw before they were applied: once applied they
+  // stay shown until the page is left, so the person sees what happened.
+  seenUnapplied: readonly string[];
   // A held message being edited before it is sent, by its place in the chat;
   // a draft's options, by its place and each option's name (`optionKey`).
   editing: Readonly<Record<string, string>>;
@@ -92,7 +95,7 @@ export type ThreadMsg =
   // Sync now: the thread catches up with its workstream without a message.
   | { type: "syncClicked" }
   | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
-  // A rejected change set shown in full, or folded again.
+  // A rejected or applied change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
   // The pill for a change set to review out of view, clicked: the page
@@ -146,7 +149,8 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       looking: {},
       dismissed: [],
       deciding: {},
-      unfolded: [],
+      folds: {},
+      seenUnapplied: [],
       editing: {},
       applied: {},
       settling: [],
@@ -357,10 +361,9 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     }
     case "foldToggled": {
       const { changeSetId } = msg;
-      const unfolded = model.unfolded.includes(changeSetId)
-        ? model.unfolded.filter((id) => id !== changeSetId)
-        : [...model.unfolded, changeSetId];
-      return [{ ...model, unfolded }, []];
+      const set = expected(model)?.changeSets.find((each) => each.id === changeSetId);
+      if (!set) return [model, []];
+      return [{ ...model, folds: { ...model.folds, [changeSetId]: !folded(model, set) } }, []];
     }
     case "toReviewClicked":
       return goingTo(model, msg.changeSetId);
@@ -660,6 +663,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         lastSeq: Math.max(view.lastSeq, model.view?.lastSeq ?? 0),
       };
       const unseen = view.changeSets.filter((set) => !(set.id in model.diffs));
+      const seenUnapplied = [
+        ...model.seenUnapplied,
+        ...view.changeSets
+          .filter((set) => set.status !== "applied" && !model.seenUnapplied.includes(set.id))
+          .map((set) => set.id),
+      ];
       // An edit of a message another page sent or discarded is dropped.
       const editing = Object.fromEntries(
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
@@ -671,6 +680,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
           status: "ready",
           editing,
           looking: stillLooking(model.looking, merged),
+          seenUnapplied,
           notice: reached(model.notice),
         },
         [
@@ -1120,11 +1130,40 @@ function stillLooking(looking: ThreadModel["looking"], view: ThreadView): Thread
   );
 }
 
-// Whether a change set shows as one line: a rejected one does until the user
-// shows it, or the thread's address names it, so a revised one below isn't
-// buried (OA-90).
-export const folded = (model: ThreadModel, set: ChangeSetView): boolean =>
-  set.status === "rejected" && !model.unfolded.includes(set.id) && model.at?.changeSet !== set.id;
+// Whether a change set shows as one line, until the user shows it. A rejected
+// one does, so a revised one below isn't buried (OA-90); so does one applied
+// before the page opened, with any Undo of it applied or rejected too, its
+// Revert a click away. Not while the thread's address names it or its Undo.
+export function folded(model: ThreadModel, set: ChangeSetView): boolean {
+  const chosen = model.folds[set.id];
+  if (!foldable(model, set)) return false;
+  if (chosen !== undefined) return chosen;
+  const named = model.at?.changeSet;
+  if (named === set.id || (named !== undefined && set.reverts.includes(named))) return false;
+  return set.status === "rejected" || !model.seenUnapplied.includes(set.id);
+}
+
+// A link to a change set on the page shown opens it, and the one it sits in.
+export function unfolding(model: ThreadModel, changeSetId: string): ThreadModel {
+  const outer = model.view?.changeSets.filter((set) => set.reverts.includes(changeSetId)) ?? [];
+  const folds = { ...model.folds, [changeSetId]: false };
+  for (const set of outer) folds[set.id] = false;
+  return { ...model, folds };
+}
+
+// Whether a change set can fold at all: nothing on it, or on an Undo of it,
+// waits on anyone.
+export function foldable(model: ThreadModel, set: ChangeSetView): boolean {
+  const sets = expected(model)?.changeSets ?? [];
+  const settled = (each: ChangeSetView): boolean =>
+    each.status === "rejected" ||
+    (each.status === "applied" &&
+      each.reverts.every((id) => {
+        const revert = sets.find((one) => one.id === id);
+        return revert === undefined || settled(revert);
+      }));
+  return settled(set);
+}
 
 // What a step is called. The steps themselves come from the change set
 // engine; this only names them.

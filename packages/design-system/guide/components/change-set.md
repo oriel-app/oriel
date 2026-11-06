@@ -202,9 +202,9 @@ The second line is shown hovered, so its × (**Leave this change out**) shows; t
 ### The head
 
 - **Title:** "Proposed change"; "Undo" when the set reverts another (`set.revertOf`).
-- **Status** (`.change-set-status`, `role="status"`): one of "Awaiting review", "Ready to apply", "Applying…", "Applied", "Partly applied", "Stopped", "Rejected"; "Apply stalled" while its source doesn't answer. A decision made on a review link adds " by {name} via review link".
-- **Count** (`.change-set-count`): only on a folded set: "3 changes".
-- **Show / Hide**: only on a rejected set, a `.quiet-action` with `aria-expanded`.
+- **Status** (`.change-set-status`, `role="status"`): one of "Awaiting review", "Ready to apply", "Applying…", "Applied", "Partly applied", "Stopped", "Rejected"; "Apply stalled" while its source doesn't answer. A decision made on a review link adds " by {name} via review link"; a set whose Undo applied adds ", then undone".
+- **Count** (`.change-set-count`): only on a folded set: "3 changes · 2 h ago", the time of its decision in the time format Settings picks, as a `<time>`.
+- **Show / Hide**: only on a set that can fold (`foldable` in `packages/web/src/thread.ts`), a `.quiet-action` with `aria-expanded`, described by the title, status and count. It covers the whole head (`.change-set-head > .quiet-action::after` in `window.css`), so a click anywhere on the head presses it.
 
 ### A line
 
@@ -613,6 +613,51 @@ Every state the card goes through, in the order a change set lives them. The sta
 </section>
 ```
 
+```html specimen id=state-applied-folded title="Applied before the page opened: folded to its head, then shown" state=done
+<ol class="chat">
+  <li>
+    <section class="change-set" data-status="applied" data-folded tabindex="-1">
+      <header class="change-set-head">
+        <h2>Proposed change</h2>
+        <span class="change-set-status" role="status">Applied</span>
+        <span class="change-set-count">3 changes · <time>2 h ago</time></span>
+        <button type="button" class="quiet-action" aria-expanded="false">Show</button>
+      </header>
+    </section>
+  </li>
+  <li>
+    <section class="change-set" data-status="applied" data-folded tabindex="-1">
+      <header class="change-set-head">
+        <h2>Proposed change</h2>
+        <span class="change-set-status" role="status">Applied, then undone</span>
+        <span class="change-set-count">1 change · <time>yesterday</time></span>
+        <button type="button" class="quiet-action" aria-expanded="false">Show</button>
+      </header>
+    </section>
+  </li>
+  <li>
+    <section class="change-set" data-status="applied" aria-busy="false" tabindex="-1">
+      <header class="change-set-head">
+        <h2>Proposed change</h2>
+        <span class="change-set-status" role="status">Applied</span>
+        <button type="button" class="quiet-action" aria-expanded="true">Hide</button>
+      </header>
+      <ul class="diff">
+        <li class="diff-line" data-kind="create" data-applied="">
+          <p class="line-head">
+            <span class="line-mark" data-kind="create">New story</span
+            ><span class="new-title">Pay with a gift card</span>
+          </p>
+        </li>
+      </ul>
+      <footer class="change-set-actions">
+        <button type="button" class="button">Revert</button>
+      </footer>
+    </section>
+  </li>
+</ol>
+```
+
 ```html specimen id=state-rejected title="Rejected: folded to its head, then shown" state=rejected
 <ol class="chat">
   <li>
@@ -781,11 +826,11 @@ What each state is, and what it offers:
 
 - **Awaiting review** (`open`): Approve and apply, Reject, Share review link, and × on each line that can be left out. Approve and Reject stay **disabled until the diff has loaded**, because approving sends the diff's hash: the person approves exactly what they were shown, and the server refuses a stale one (`updateThread` in `packages/web/src/thread.ts`). Until then the card says "Reading what each change would replace in its source…", with a spinner, and offers no steps at all, Second look and Share review link included: the diff reads each changed item's current values from its source, which takes seconds on a large set (OA-257). A diff that fails says why, and the steps come back, Approve and Reject still disabled.
 - **Applying** (`applying`): once Approve is clicked, the card shows it at once, before the server answers (`expected` in `packages/web/src/thread.ts`): status "Applying…", `aria-busy="true"`, which dims the whole card to 0.7 (`.change-set[aria-busy="true"]` in `window.css`), and no steps (an empty footer hides itself, `.change-set-actions:empty` in `window.css`). There's no spinner: the status and the dimming are the whole signal. The [sidebar](/components/sidebar)'s chip for the thread says "Applying…" too.
-- **Applied** (`applied`): the status turns `--done`; every applied line gets " ✓" after its sentence or title. Revert is offered.
+- **Applied** (`applied`): the status turns `--done`; every applied line gets " ✓" after its sentence or title. Revert is offered. A set applied before the page opened **folds to its head**, with its count, when, and **Show**; Show opens it to its diff and Revert. One applied while the page is open stays shown, with **Hide**, until the page is left or reloaded, so the person sees what happened. Folding is the page's own; nothing is stored.
 - **Partly applied** (`partial`) and **Stopped** (`stopped`): the line that failed is tinted `--danger-soft`, says why in `--danger` (`.line-error`, `role="note"`), and offers **Remove this change**. The steps: Try again, Dismiss, Revert what was applied.
 - **Apply stalled**: its source stopped answering mid-apply. Nothing can be done until it answers or Oriel gives up waiting, since a send may yet land (OA-82). `.apply-stuck` (on `--accent-soft`) says so; Dismiss lists what may already be in the source first (`.may-have-landed`, on `--derived-soft`), so the person can check before they let it go.
 - **Rejected** (`rejected`): one click, no confirm. The status is struck through, and the set **folds to its head** with its count and **Show**, so a revised change set below isn't buried (OA-90); a link to it unfolds it. Oriel then adds its own note under it and moves focus to the composer, for what was wrong. The [bead](/components/bead) says "You rejected the change in “…”." with **Undo**, which puts it back to awaiting review as it was, its second look too, and Oriel's line "Rejection undone. The change awaits your review." under the first (OA-258). Once the person has said anything to the agent since, the Undo is refused, and the bead says why until dismissed. A rejection on the review link has no Undo.
-- **Reverted:** Revert proposes a new change set, headed **Undo**, nested inside the one it reverts (dashed, inset, `.change-set .change-set` in `window.css`), and reviewed the same way. A revert is never a one-click Undo.
+- **Reverted:** Revert proposes a new change set, headed **Undo**, nested inside the one it reverts (dashed, inset, `.change-set .change-set` in `window.css`), and reviewed the same way. A revert is never a one-click Undo. While the Undo awaits review, is applying or failed, the set it reverts can't fold; once the Undo is applied or rejected, both fold as an applied set does, and the outer one says "Applied, then undone". A link to the Undo opens the set it sits in.
 - **Opened from a link** (`[data-opened]`): when a link or a search result names the set, the page scrolls it under the head row and focuses it (`perform` in `packages/web/src/effects.ts`). The card shows an accent border and ring instead of the focus ring (`.change-set:focus` in `window.css` has no outline).
 - **Problem:** a refusal of a click shows under the footer, `.change-set-problem`, `role="alert"`, on `--danger-soft`, in the server's words; the page then reads the diff again.
 - **Hover:** each line's × shows on the line's hover; the buttons have their own. **Active** isn't styled.
@@ -800,7 +845,7 @@ What each state is, and what it offers:
 - A delete's arrow is `aria-hidden`.
 - Folded unchanged lines are a native `<details>`: Enter or Space opens them.
 - The × is a `<button>` named **Leave this change out** (`aria-label`), with a tooltip of the same words (so the tooltip is `aria-hidden`, not a description).
-- Show and Hide set `aria-expanded`.
+- Show and Hide set `aria-expanded`, and are described by the head's title, status and count, so a reader hears "Show, collapsed: Proposed change, Applied, 3 changes · 2 h ago". The head is not a second control: its click lands on the button. Folding doesn't animate, so reduced motion has nothing to stop.
 - The review link's field is read-only and named "Review link". **Copy** writes the link to the clipboard and says nothing (`perform` in `packages/web/src/effects.ts`).
 - A line's error is `role="note"`; a click's refusal is `role="alert"`.
 - After Reject, focus moves to the composer (`perform` in `packages/web/src/effects.ts`).

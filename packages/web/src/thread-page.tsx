@@ -19,6 +19,7 @@ import {
   plural,
   points,
   QuotesContext,
+  Stamp,
   StateChip,
   waitingNames,
   SendKeyContext,
@@ -34,6 +35,7 @@ import {
   type Entry,
   entriesOf,
   expected,
+  foldable,
   folded,
   type NewThreadModel,
   optionKey,
@@ -750,62 +752,58 @@ function ChangeSet(props: {
   };
   const firstBack = steps.findIndex((step) => !isForward(step.kind));
   const between = firstBack === -1 ? steps.length : firstBack;
-  if (folded(model, set))
+  // One that can fold says what it did and when as one line, and opens on a
+  // click anywhere on it, to its diff and Revert.
+  const shut = folded(model, set);
+  const anchor = changeSetAnchor(set.id);
+  const head = (
+    <header class="change-set-head">
+      <h2 id={`${anchor}-title`} tabIndex={-1}>
+        {set.revertOf ? "Undo" : "Proposed change"}
+      </h2>
+      {/* Announced as it moves, as when Approve and apply turns it to applying. */}
+      <span id={`${anchor}-status`} class="change-set-status" role="status">
+        {set.stalled ? waitingNames.stalled : statusNames[set.status]}
+        {set.decision &&
+          set.decision.via === "review-link" &&
+          ` by ${set.decision.by} via review link`}
+        {reverts.some((revert) => revert.status === "applied") && ", then undone"}
+      </span>
+      {shut && (
+        <span id={`${anchor}-count`} class="change-set-count">
+          {diff && `${plural(diff.lines.length, "change")} · `}
+          <Stamp at={set.decision?.at ?? set.createdAt} />
+        </span>
+      )}
+      {foldable(model, set) && (
+        <button
+          type="button"
+          class="quiet-action"
+          aria-expanded={!shut}
+          aria-describedby={`${anchor}-title ${anchor}-status ${anchor}-count`}
+          onClick={() => send({ type: "foldToggled", changeSetId: set.id })}
+        >
+          {shut ? "Show" : "Hide"}
+        </button>
+      )}
+    </header>
+  );
+  if (shut)
     return (
-      <section
-        id={changeSetAnchor(set.id)}
-        class="change-set"
-        data-status={set.status}
-        data-folded
-        tabIndex={-1}
-      >
-        <header class="change-set-head">
-          <h2 tabIndex={-1}>{set.revertOf ? "Undo" : "Proposed change"}</h2>
-          <span class="change-set-status" role="status">
-            {statusNames[set.status]}
-            {set.decision?.via === "review-link" && ` by ${set.decision.by} via review link`}
-          </span>
-          {diff && <span class="change-set-count">{plural(diff.lines.length, "change")}</span>}
-          <button
-            type="button"
-            class="quiet-action"
-            aria-expanded={false}
-            onClick={() => send({ type: "foldToggled", changeSetId: set.id })}
-          >
-            Show
-          </button>
-        </header>
+      <section id={anchor} class="change-set" data-status={set.status} data-folded tabIndex={-1}>
+        {head}
       </section>
     );
   return (
     <section
-      id={changeSetAnchor(set.id)}
+      id={anchor}
       class="change-set"
       data-status={set.status}
       data-opened={model.at?.changeSet === set.id || undefined}
       aria-busy={busy}
       tabIndex={-1}
     >
-      <header class="change-set-head">
-        <h2 tabIndex={-1}>{set.revertOf ? "Undo" : "Proposed change"}</h2>
-        {/* Announced as it moves, as when Approve and apply turns it to applying. */}
-        <span class="change-set-status" role="status">
-          {set.stalled ? waitingNames.stalled : statusNames[set.status]}
-          {set.decision &&
-            set.decision.via === "review-link" &&
-            ` by ${set.decision.by} via review link`}
-        </span>
-        {set.status === "rejected" && model.unfolded.includes(set.id) && (
-          <button
-            type="button"
-            class="quiet-action"
-            aria-expanded={true}
-            onClick={() => send({ type: "foldToggled", changeSetId: set.id })}
-          >
-            Hide
-          </button>
-        )}
-      </header>
+      {head}
       {diff ? (
         <Diff
           diff={diff}
