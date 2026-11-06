@@ -1,6 +1,6 @@
 # 0003 Change sets, not writes
 
-Accepted 2026-10-28. Amended 2026-11-05 (OA-258): a rejection the person made in the thread can be undone.
+Accepted 2026-10-28. Amended 2026-11-05 (OA-258): a rejection the person made in the thread can be undone. Amended by 0059: replay sends each captured mutation as its source server's write call, and on Claude Code a replay turn may make exactly those calls.
 
 **Decision.** Agent code never writes to a source. Writes made in the sandbox are captured as mutations in a change set. A person approves it, in the thread or through its review link, and only then is it replayed. Replay sends exactly the captured arguments, never re-derived ones. One exception: an argument naming an item that an earlier mutation in the same change set creates, such as a new story's new epic, is sent as the ID the source returned for it, as a target naming one already is (added 2026-10-31). Applied change sets keep their reverse diff and can be reverted; a revert is itself a change set.
 

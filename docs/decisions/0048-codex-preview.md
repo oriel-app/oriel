@@ -1,6 +1,6 @@
 # 0048 Codex runs Oriel's agent, as a preview
 
-Accepted 2026-11-03. Supersedes 0040. Amends 0036, 0037, 0038, 0041 and 0046. Changes SPEC §7 and the security reviewer's checklist.
+Accepted 2026-11-03. Supersedes 0040. Amends 0036, 0037, 0038, 0041 and 0046. Changes SPEC §7 and the security reviewer's checklist. Amended by 0059: on Codex, sync calls a source server's read tools through the app-server, with only that server enabled.
 
 Adds: none
 

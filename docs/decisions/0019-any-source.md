@@ -1,6 +1,6 @@
 # 0019 Any source: a small item contract, and a local folder source
 
-Accepted 2026-10-29. Amended by 0024: an agent may mark a thread done too. Amended by 0049: the declaration gains a connector's kind, key shape, connect steps, options, secret, fixture and module budget, and core keeps no list of kinds.
+Accepted 2026-10-29. Amended by 0024: an agent may mark a thread done too. Amended by 0049: the declaration gains a connector's kind, key shape, connect steps, options, secret, fixture and module budget, and core keeps no list of kinds. Amended by 0059: a connector names the operations a source server must offer, and parses each server Oriel knows.
 
 Adds: none
 
