@@ -150,6 +150,17 @@ test("Edit moves the words into the composer, and Send there posts what the user
   assert.equal(thread(done).composing, null);
 });
 
+test("sent from the composer, the words leave it even when the thread reloads first", () => {
+  let [model] = send(onPage(), { type: "heldEditClicked", seq });
+  [model] = send(model, { type: "draftChanged", text: "Drop the third story." });
+  [model] = send(model, { type: "sendClicked" });
+  // The thread's stream says it's sent before the send itself answers.
+  [model] = update(model, replied({ kind: "thread", id }, viewWith(held("sent"))));
+  [model] = update(model, replied(tag, { seq: 4 }));
+  assert.equal(thread(model).draft, "");
+  assert.equal(thread(model).composing, null);
+});
+
 test("an edit emptied out sends nothing; Cancel puts back what the composer held", () => {
   let [model] = send(onPage(), { type: "draftChanged", text: "Half a thought" });
   [model] = send(model, { type: "heldEditClicked", seq });

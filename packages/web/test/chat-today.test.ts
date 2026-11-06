@@ -57,6 +57,25 @@ test("a diff line names its item once: its chip stands where the sentence named 
   // A key inside another key isn't it; nor does a sentence without it name it.
   assert.equal(namedOnce(line("Estimate SYN-12 at 3 points.")), null);
   assert.equal(namedOnce({ sentence: "Create a story.", target: null }), null);
+  // A source that names items by title alone: the quoted title, whole or cut.
+  const message = {
+    id: "slack:C1-17",
+    key: "C1-17",
+    title: "Phone wallets are live",
+    url: "https://s/1",
+  };
+  assert.deepEqual(
+    namedOnce({
+      sentence: "Reply in “Phone wallets are live” in #launch as Ana.",
+      target: message,
+    }),
+    ["Reply in ", " in #launch as Ana."],
+  );
+  assert.deepEqual(
+    namedOnce({ sentence: "Delete the message “Phone wallets…” from #launch.", target: message }),
+    ["Delete the message ", " from #launch."],
+  );
+  assert.equal(namedOnce({ sentence: "Post in #launch as Ana.", target: message }), null);
 });
 
 // A stand-in for the window's observers: each target's last callback, to

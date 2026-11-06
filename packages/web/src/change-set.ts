@@ -49,19 +49,24 @@ export const sourcesOf = (diff: DiffView): string =>
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Whether a quoted title in a sentence is the item's, whole or cut short.
+const titled = (quoted: string, title: string | null | undefined): boolean =>
+  !!title && (quoted === title || (quoted.endsWith("…") && title.startsWith(quoted.slice(0, -1))));
+
 // A line's sentence around where it names its item, so the item's chip can
-// stand in that place: by its title and key, “Title” (SYN-1), or its key
-// alone. Null where the sentence doesn't name it, as a new item's doesn't:
-// then the chip follows the sentence.
+// stand in that place: by its title and key, “Title” (SYN-1), its key
+// alone, or, where a source names items by title alone, “Title”. Null where
+// the sentence doesn't name it, as a new item's doesn't: then the chip
+// follows the sentence.
 export function namedOnce(line: Pick<Line, "sentence" | "target">): [string, string] | null {
-  const key = line.target?.key;
-  if (!key) return null;
-  const k = escaped(key);
-  const found = new RegExp(`“[^”]*” \\(${k}\\)|\\(${k}\\)|(?<![\\w-])${k}(?![\\w-])`).exec(
-    line.sentence,
-  );
-  if (!found) return null;
-  return [line.sentence.slice(0, found.index), line.sentence.slice(found.index + found[0].length)];
+  const { target, sentence } = line;
+  if (!target?.key) return null;
+  const k = escaped(target.key);
+  const found =
+    new RegExp(`“[^”]*” \\(${k}\\)|\\(${k}\\)|(?<![\\w-])${k}(?![\\w-])`).exec(sentence) ??
+    [...sentence.matchAll(/“([^”]*)”/g)].find((quote) => titled(quote[1] ?? "", target.title));
+  if (!found || found.index === undefined) return null;
+  return [sentence.slice(0, found.index), sentence.slice(found.index + found[0].length)];
 }
 
 // Watching one line in the window: whether `target` shows above it, and

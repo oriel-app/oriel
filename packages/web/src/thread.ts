@@ -699,9 +699,10 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
       );
       // Settled from another page, the words in the composer stay the
-      // user's own.
+      // user's own; sent from this one, its reply takes them.
+      const { composing: was } = model;
       const composing =
-        model.composing && heldAt(merged.entries, model.composing.seq) ? model.composing : null;
+        was && (heldAt(merged.entries, was.seq) || model.settling.includes(was.seq)) ? was : null;
       const [next, beats] = watched({
         ...model,
         view: merged,
