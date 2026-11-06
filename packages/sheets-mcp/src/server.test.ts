@@ -377,7 +377,7 @@ test("read_range stops at the cell cap, says so, and pages on to the rest", asyn
   assert.match(cut.note as string, /fewer columns, such as up to column GJH/);
 });
 
-test("update_range writes over a range, as entered by default, and keeps nulls' cells", async () => {
+test("update_range writes over a range, as given by default, and keeps nulls' cells", async () => {
   const { server, google } = overStandIn();
   const done = await checked(server, "update_range", {
     spreadsheetId: backlogId,
@@ -393,10 +393,7 @@ test("update_range writes over a range, as entered by default, and keeps nulls' 
     updatedColumns: 2,
     updatedCells: 3,
   });
-  assert.equal(
-    new URL(google.calls.at(-1)?.url ?? "").searchParams.get("valueInputOption"),
-    "USER_ENTERED",
-  );
+  assert.equal(new URL(google.calls.at(-1)?.url ?? "").searchParams.get("valueInputOption"), "RAW");
   const read = await called(server, "read_range", {
     spreadsheetId: backlogId,
     range: "Backlog!A3:D4",
@@ -411,9 +408,12 @@ test("update_range writes over a range, as entered by default, and keeps nulls' 
     spreadsheetId: backlogId,
     range: "Backlog!A2",
     values: [["=1+1"]],
-    valueInputOption: "RAW",
+    valueInputOption: "USER_ENTERED",
   });
-  assert.equal(new URL(google.calls.at(-1)?.url ?? "").searchParams.get("valueInputOption"), "RAW");
+  assert.equal(
+    new URL(google.calls.at(-1)?.url ?? "").searchParams.get("valueInputOption"),
+    "USER_ENTERED",
+  );
   assert.match(
     await refused(server, "update_range", {
       spreadsheetId: backlogId,
@@ -421,7 +421,7 @@ test("update_range writes over a range, as entered by default, and keeps nulls' 
       values: [["a"]],
       valueInputOption: "FORMULA",
     }),
-    /USER_ENTERED or RAW/,
+    /RAW or USER_ENTERED/,
   );
   assert.match(
     await refused(server, "update_range", {
@@ -479,6 +479,7 @@ test("append_rows adds rows after the table, and says where they went", async ()
   const url = new URL(google.calls.at(-1)?.url ?? "");
   assert.equal(url.pathname, `/v4/spreadsheets/${backlogId}/values/Backlog!A%3AC:append`);
   assert.equal(url.searchParams.get("insertDataOption"), "INSERT_ROWS");
+  assert.equal(url.searchParams.get("valueInputOption"), "RAW");
   const read = await called(server, "read_range", { spreadsheetId: backlogId, range: "Backlog" });
   assert.deepEqual((read.values as string[][]).slice(-2), [
     ["T-4", "Fourth", "To do"],

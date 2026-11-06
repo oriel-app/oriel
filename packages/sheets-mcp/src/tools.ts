@@ -44,10 +44,10 @@ const valueRows: Schema = {
 };
 const valueInputOption: Schema = {
   type: "string",
-  enum: ["USER_ENTERED", "RAW"],
-  default: "USER_ENTERED",
+  enum: ["RAW", "USER_ENTERED"],
+  default: "RAW",
   description:
-    "USER_ENTERED reads each value as if typed into the sheet, so `=SUM(A1:A3)` is a formula and `3/4` may become a date; RAW keeps it as given.",
+    "RAW, the default, stores each value as given: `=SUM(A1:A3)` stays text. USER_ENTERED reads each value as if typed into the sheet, so it lets a formula through, and `3/4` may become a date.",
 };
 const updated: Schema = {
   updatedRange: text("The cells written, in A1 notation."),
@@ -113,9 +113,9 @@ function wantRows(args: Record<string, unknown>): (string | number | boolean | n
 }
 
 function wantOption(args: Record<string, unknown>): string {
-  const option = args.valueInputOption ?? "USER_ENTERED";
-  if (option !== "USER_ENTERED" && option !== "RAW")
-    throw new Refusal("`valueInputOption` is USER_ENTERED or RAW.");
+  const option = args.valueInputOption ?? "RAW";
+  if (option !== "RAW" && option !== "USER_ENTERED")
+    throw new Refusal("`valueInputOption` is RAW or USER_ENTERED.");
   return option;
 }
 
@@ -358,7 +358,7 @@ const updateRange: Tool = {
   name: "update_range",
   title: "Update a range",
   description:
-    "Writes rows of values into an A1 range, from its top-left cell, over what was there. The values must fit inside the range.",
+    "Writes rows of values into an A1 range, from its top-left cell, over what was there. The values must fit inside the range. Values are stored as given unless `valueInputOption` is USER_ENTERED, which lets a formula through.",
   inputSchema: object(
     {
       spreadsheetId,
@@ -401,7 +401,7 @@ const appendRows: Tool = {
   name: "append_rows",
   title: "Append rows",
   description:
-    "Adds rows after the last row of the table in an A1 range, such as `Backlog` or `Backlog!A:F`, inserting new rows so nothing below is written over.",
+    "Adds rows after the last row of the table in an A1 range, such as `Backlog` or `Backlog!A:F`, inserting new rows so nothing below is written over. Values are stored as given unless `valueInputOption` is USER_ENTERED, which lets a formula through.",
   inputSchema: object(
     {
       spreadsheetId,
