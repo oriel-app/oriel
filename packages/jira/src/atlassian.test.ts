@@ -233,3 +233,66 @@ test("the read side refuses a write before anything is sent", async () => {
   );
   assert.equal(called, 0);
 });
+
+const [projectPick] = atlassianServer.picks ?? [];
+
+test("the project picker lists the server's projects on its site, with their counts, through read tools", async () => {
+  assert.equal(projectPick?.name, "project");
+  const made: string[] = [];
+  const replay = replayCalls(synced.calls);
+  const read: ToolCaller = (call) => {
+    made.push(call.tool);
+    return replay(call);
+  };
+  const listed = await projectPick?.list(read, "", { identity: "", options: {} });
+  assert.deepEqual(listed, {
+    choices: [
+      { value: "SYN", name: "Ferrowick", count: 120, updatedAt: "2026-10-01T14:00:00.000Z" },
+    ],
+    more: false,
+  });
+  assert.ok(made.every((tool) => atlassianServer.reads.includes(tool)));
+  assert.equal((await projectPick?.list(read, "ferro", connection))?.choices.length, 1);
+  assert.equal((await projectPick?.list(read, "syn", connection))?.choices.length, 1);
+  assert.equal((await projectPick?.list(read, "nothing", connection))?.choices.length, 0);
+});
+
+test("the project picker reads a server's list as text it can show, and no more of it than fits", async () => {
+  const values = [
+    { key: "SYN", name: "x".repeat(5000), insight: { totalIssueCount: "lots" } },
+    { key: "not a key", name: "Dropped" },
+    { name: "No key" },
+    ...Array.from({ length: 250 }, (_, i) => ({ key: `P${i}`, name: `Project ${i}` })),
+  ];
+  const many = altered("listJiraProjects", () => ({
+    content: [{ type: "text", text: JSON.stringify({ values }) }],
+  }));
+  const listed = await projectPick?.list(many, "", connection);
+  assert.equal(listed?.more, true);
+  assert.equal(listed?.choices.length, 200);
+  assert.equal(listed?.choices[0]?.name.length, 200);
+  assert.equal(listed?.choices[0]?.count, null);
+  assert.ok(!listed?.choices.some((each) => each.name === "Dropped" || each.name === "No key"));
+  const broken = altered("listJiraProjects", () => ({ content: [{ type: "text", text: "{}" }] }));
+  await assert.rejects(
+    projectPick?.list(broken, "", connection) ?? Promise.resolve(),
+    ServerUnreadable,
+  );
+});
+
+test("the project picker reads each page the server says remains", async () => {
+  const asked: unknown[] = [];
+  const paged: ToolCaller = async (call) => {
+    if (call.tool !== "listJiraProjects") return replayCalls(synced.calls)(call);
+    asked.push(call.args.startAt);
+    const at = Number(call.args.startAt ?? 0);
+    const values = [{ key: `P${at}`, name: `Project ${at}` }];
+    return { content: [{ type: "text", text: JSON.stringify({ values, isLast: at >= 2 }) }] };
+  };
+  const listed = await projectPick?.list(paged, "", connection);
+  assert.deepEqual(
+    listed?.choices.map((each) => each.value),
+    ["P0", "P1", "P2"],
+  );
+  assert.deepEqual(asked, [undefined, 1, 2]);
+});

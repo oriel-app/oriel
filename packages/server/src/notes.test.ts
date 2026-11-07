@@ -119,6 +119,6 @@ test("in a later turn, a run that captured still says its changes wait on the us
   const [run] = (histories.at(-1) ?? []).flatMap((m) => (m.role === "run" ? [m.summary] : []));
   assert.match(
     run ?? "",
-    /^ok; returned null; captured 1 changes \(Once applied, the user undoes them with Revert in the thread, which proposes the reverse as a new change set\. Nothing is sent until the user approves: say you proposed them, never that they're done\.\); they are change set /,
+    /^ok; returned null; captured 1 changes \(Once applied, the user may undo them with Revert in the thread, where the change set offers it, which proposes the reverse as a new change set\. Nothing is sent until the user approves: say you proposed them, never that they're done\.\); they are change set /,
   );
 });

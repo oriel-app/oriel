@@ -5,12 +5,18 @@
 // mutation, its write call. Nothing here imports the server: it's a program
 // the person's agent runs, and Oriel reads only what its tools answer.
 //
-// What the server's tools don't give, Oriel does without: no comments, no
-// cell notes, no rows or columns hidden by hand, no merges, and no Drive
-// version, so a spreadsheet's last change, from its listing, stands for
-// it. No tool deletes a row, so a row added through it can't be taken back
-// (`unsendable` in writer.ts). An answer it can't read stops the sync,
-// naming the server (`ServerUnreadable`): the index stays as it was.
+// It reads what the direct read does: each cell as it shows, with its
+// note, the rows and columns hidden by hand (`read_range` with
+// `includeGrid`), and the spreadsheet's comments with their replies
+// (`list_comments`), at most as many as google.ts reads. A sign-in that
+// wasn't given Drive's read scope can't list comments: then it has none,
+// as before. What the tools don't give, Oriel does without: no merges, and
+// no Drive version, so a spreadsheet's last change, from its listing,
+// stands for it. No tool deletes a row, so a row added through it can't be
+// taken back (`unsendable` in writer.ts). An answer it can't read stops
+// the sync, naming the server (`ServerUnreadable`): the index stays as it
+// was. Every string it gives is the spreadsheet's content, and goes only
+// into an item's text.
 import { fileURLToPath } from "node:url";
 import {
   answerJson,
@@ -22,8 +28,14 @@ import {
   type ToolCaller,
   WriteStalled,
 } from "@oriel/core";
-import { columnLetters, parseRange, quoteTab } from "./a1.ts";
-import { type DriveFile, type Google, SheetsError, type TabInfo } from "./google.ts";
+import { columnIndex, columnLetters, parseCell, parseRange, quoteTab } from "./a1.ts";
+import {
+  type DriveFile,
+  type Google,
+  type SheetComment,
+  SheetsError,
+  type TabInfo,
+} from "./google.ts";
 import type { CellValue } from "./requests.ts";
 import type { Cell, Entered, Grid } from "./table.ts";
 
@@ -32,6 +44,7 @@ export const sheetsTools = {
   list: "list_spreadsheets",
   get: "get_spreadsheet",
   read: "read_range",
+  comments: "list_comments",
   update: "update_range",
   append: "append_rows",
 } as const;
@@ -52,7 +65,7 @@ export const sheetsServer: SourceServer = {
   name: "sheets-mcp",
   reports: "sheets-mcp",
   at: { command: `node ${sheetsMcpMain}` },
-  reads: [t.list, t.get, t.read],
+  reads: [t.list, t.get, t.read, t.comments],
   writes: [t.update, t.append],
   instructions: "https://github.com/oriel-app/oriel/blob/main/packages/sheets-mcp/README.md",
   keepsOptions: true,
@@ -69,6 +82,9 @@ const count = (value: unknown): number | null =>
 // that, and are never passed on.
 const signedOut = (words: string) =>
   /\b(not signed in|sign-in expired|refused the sign-in|sheets-mcp login)\b/i.test(words);
+// When its sign-in wasn't given the scope a read needs, as Drive's for
+// comments.
+const unscoped = (words: string) => /\bwasn't given the permission\b/i.test(words);
 // When it can't find, or can't open, the spreadsheet.
 const missing = (words: string) => /\bfound no spreadsheet\b|\bnot found\b/i.test(words);
 // Its words for a write it, or Google, turned away unmade: an argument it
@@ -92,14 +108,16 @@ function bodyOf(tool: string, answer: ToolAnswer): { failed: string } | { body: 
 }
 
 // A read's answer, or "gone" when the server says the spreadsheet isn't
-// one it can open. Not signed in is the whole server's, as Google's own
-// 401 is (google.ts).
+// one it can open, or that its sign-in can't read its comments. Not signed
+// in is the whole server's, as Google's own 401 is (google.ts).
 async function readOf(read: ToolCaller, tool: string, args: Json): Promise<Json | "gone"> {
   const answer = bodyOf(tool, await read({ tool, args }));
   if ("failed" in answer) {
     if (signedOut(answer.failed))
       throw new SheetsError(`${sheetsServer.name} isn't signed in to Google`, 401);
     if (missing(answer.failed)) return "gone";
+    // Comments the sign-in can't read are none, as they were before.
+    if (tool === t.comments && unscoped(answer.failed)) return "gone";
     throw new ServerUnreadable(`${tool} answered with an error`);
   }
   if (!isObject(answer.body)) throw new ServerUnreadable(`${tool} answered with no object`);
@@ -132,22 +150,86 @@ const isScalar = (cell: unknown): cell is Scalar =>
   typeof cell === "boolean" ||
   (typeof cell === "number" && Number.isFinite(cell));
 
+// What `includeGrid` adds: rows hidden by hand, 0-based, columns hidden by
+// hand, 0-based, and each note by its 0-based row and column.
+export type ServerGrid = {
+  hiddenRows: number[];
+  hiddenColumns: number[];
+  notes: { row: number; column: number; note: string }[];
+};
+
 // `read_range`'s answer: its rows, of text as shown, or with FORMULA, of
 // text, numbers and true/false as entered, and where to read on when it
-// was cut.
-export function readValues(body: Json): {
+// was cut; with `grid`, what `includeGrid` adds, which must be there.
+export function readValues(
+  body: Json,
+  grid = false,
+): {
   values: Scalar[][];
   next: string | null;
   truncated: boolean;
+  grid: ServerGrid | null;
 } {
+  const unreadable = () => new ServerUnreadable(`${t.read} gave cells Oriel can't read`);
   const values = body.values;
   if (
     !Array.isArray(values) ||
     !values.every((row) => Array.isArray(row) && row.every(isScalar)) ||
     typeof body.truncated !== "boolean"
   )
-    throw new ServerUnreadable(`${t.read} gave cells Oriel can't read`);
-  return { values: values as Scalar[][], next: text(body.nextRange), truncated: body.truncated };
+    throw unreadable();
+  const read = {
+    values: values as Scalar[][],
+    next: text(body.nextRange),
+    truncated: body.truncated,
+  };
+  if (!grid) return { ...read, grid: null };
+  const { hiddenRows, hiddenColumns, notes } = body;
+  if (!Array.isArray(hiddenRows) || !Array.isArray(hiddenColumns) || !Array.isArray(notes))
+    throw unreadable();
+  return {
+    ...read,
+    grid: {
+      hiddenRows: hiddenRows.map((n) => {
+        if (count(n) === null || n < 1) throw unreadable();
+        return n - 1;
+      }),
+      hiddenColumns: hiddenColumns.map((letters) => {
+        const column = typeof letters === "string" ? columnIndex(letters) : null;
+        if (column === null) throw unreadable();
+        return column;
+      }),
+      notes: notes.map((each) => {
+        const cell = isObject(each) && typeof each.cell === "string" ? parseCell(each.cell) : null;
+        const note = isObject(each) ? text(each.note) : null;
+        if (cell === null || note === null) throw unreadable();
+        return { ...cell, note };
+      }),
+    },
+  };
+}
+
+// `list_comments`' answer: its comments, each with its replies, and the
+// page after it.
+export function readComments(body: Json): { comments: SheetComment[]; next: string | null } {
+  const unreadable = () => new ServerUnreadable(`${t.comments} gave comments Oriel can't read`);
+  const said = (each: unknown) => {
+    if (!isObject(each)) throw unreadable();
+    const author = text(each.author);
+    const at = text(each.createdTime);
+    const content = text(each.content);
+    if (author === null || at === null || content === null) throw unreadable();
+    return { author: author || "Someone", at, text: content };
+  };
+  if (!Array.isArray(body.comments)) throw unreadable();
+  const comments = body.comments.map((each): SheetComment => {
+    const comment = said(each);
+    const { resolved, quoted, replies } = each as Json;
+    if (typeof resolved !== "boolean" || !Array.isArray(replies)) throw unreadable();
+    if (quoted !== undefined && typeof quoted !== "string") throw unreadable();
+    return { ...comment, resolved, quoted: quoted ?? null, replies: replies.map(said) };
+  });
+  return { comments, next: text(body.nextPageToken) };
 }
 
 // A cell as entered, from the server's FORMULA rendering: a formula is
@@ -161,7 +243,7 @@ const enteredOf = (held: Scalar | undefined): Entered =>
       : held;
 
 // How many spreadsheets one listing asks for, and the most pages a sync
-// reads to find one spreadsheet's last change.
+// reads to find one spreadsheet's last change, or its comments.
 const listPage = 100;
 const mostPages = 5;
 
@@ -200,27 +282,44 @@ export function serverGoogle(read: ToolCaller): Google {
   };
 
   // Rows `start` to `end` (0-based, end exclusive) of a tab, every column,
-  // rendered one way, read on while the server cuts them.
+  // rendered one way, read on while the server cuts them: as shown, with
+  // the grid, and as entered, without.
   const values = async (
     id: string,
     tab: TabInfo,
     start: number,
     end: number,
     render: "FORMATTED_VALUE" | "FORMULA",
-  ): Promise<Scalar[][]> => {
+  ): Promise<{ rows: Scalar[][]; grid: ServerGrid }> => {
     const last = columnLetters(Math.max(tab.columns, 1) - 1);
     const rows: Scalar[][] = [];
+    const grid: ServerGrid = { hiddenRows: [], hiddenColumns: [], notes: [] };
+    const shown = render === "FORMATTED_VALUE";
     let range = `${quoteTab(tab.title)}!A${start + 1}:${last}${end}`;
     for (;;) {
       const got = await readOf(read, t.read, {
         spreadsheetId: id,
         range,
-        ...(render === "FORMULA" ? { valueRenderOption: render } : {}),
+        ...(shown ? { includeGrid: true } : { valueRenderOption: render }),
       });
       if (got === "gone") throw new SheetsError(`${t.read} lost the spreadsheet`, 404);
-      const answer = readValues(got);
+      const answer = readValues(got, shown);
       rows.push(...answer.values);
-      if (!answer.truncated) return rows;
+      if (answer.grid) {
+        // Only what's inside the rows and columns asked for.
+        const inside = (row: number) => row >= start && row < end;
+        const across = (column: number) => column >= 0 && column < Math.max(tab.columns, 1);
+        if (
+          !answer.grid.hiddenRows.every(inside) ||
+          !answer.grid.hiddenColumns.every(across) ||
+          !answer.grid.notes.every((each) => inside(each.row) && across(each.column))
+        )
+          throw new ServerUnreadable(`${t.read} gave a grid outside the cells it read`);
+        grid.hiddenRows.push(...answer.grid.hiddenRows);
+        grid.hiddenColumns.push(...answer.grid.hiddenColumns);
+        grid.notes.push(...answer.grid.notes);
+      }
+      if (!answer.truncated) return { rows, grid };
       // Read on from the row after the last it gave, and from nowhere else.
       const next = answer.next === null ? null : parseRange(answer.next);
       if (next?.tab !== tab.title || next.bounds?.startRow !== start + rows.length)
@@ -248,34 +347,64 @@ export function serverGoogle(read: ToolCaller): Google {
         trashed: false,
       };
     },
-    // No tool gives a spreadsheet's comments.
-    comments: async () => [],
+    // Its comments with their replies, oldest first, at most `most`, as
+    // google.ts reads them; none when the sign-in can't read them.
+    async comments(id, most = 200): Promise<SheetComment[]> {
+      const found: SheetComment[] = [];
+      let pageToken: string | null = null;
+      for (let page = 0; page < mostPages && found.length < most; page += 1) {
+        const got = await readOf(read, t.comments, {
+          spreadsheetId: id,
+          pageSize: listPage,
+          ...(pageToken ? { pageToken } : {}),
+        });
+        if (got === "gone") return found;
+        const answer = readComments(got);
+        found.push(...answer.comments);
+        pageToken = answer.next;
+        if (!pageToken) break;
+      }
+      return found.slice(0, most);
+    },
     async tabs(id) {
       const held = fresh.get(id);
       fresh.delete(id);
       return held ?? spreadsheet(id);
     },
-    // Cells as shown, and with `entered`, as entered too. No notes, hidden
-    // rows or columns, or merges: the server doesn't give them.
+    // Cells as shown, with their notes and the rows and columns hidden by
+    // hand, and with `entered`, as entered too. No merges: the server
+    // doesn't give them.
     async rows(id, tab, start, end, entered = false): Promise<Grid | "gone"> {
-      const shown = await values(id, tab, start, end, "FORMATTED_VALUE");
-      const formulas = entered ? await values(id, tab, start, end, "FORMULA") : [];
-      const height = Math.max(shown.length, formulas.length);
+      const { rows: shown, grid } = await values(id, tab, start, end, "FORMATTED_VALUE");
+      const formulas = entered ? (await values(id, tab, start, end, "FORMULA")).rows : [];
+      const notes = new Map(grid.notes.map((each) => [`${each.row},${each.column}`, each.note]));
+      // A note on a cell past a row's last value, or in an empty row past
+      // the last, makes that cell one too, as Google's grid has it.
+      const height = Math.max(
+        shown.length,
+        formulas.length,
+        ...grid.notes.map((each) => each.row - start + 1),
+      );
       const rows: (Cell | null)[][] = Array.from({ length: height }, (_, r) => {
-        const width = Math.max(shown[r]?.length ?? 0, formulas[r]?.length ?? 0);
+        const width = Math.max(
+          shown[r]?.length ?? 0,
+          formulas[r]?.length ?? 0,
+          ...grid.notes.filter((each) => each.row - start === r).map((each) => each.column + 1),
+        );
         return Array.from({ length: width }, (_, c) => {
           const value = String(shown[r]?.[c] ?? "");
+          const note = notes.get(`${start + r},${c}`) ?? null;
           const held = entered ? { entered: enteredOf(formulas[r]?.[c]) } : {};
-          return value === "" && !held.entered
+          return value === "" && note === null && !held.entered
             ? null
-            : { shown: value, number: null, note: null, ...held };
+            : { shown: value, number: null, note, ...held };
         });
       });
       return {
         startRow: start,
         rows,
-        hiddenRows: new Set(),
-        hiddenColumns: new Set(),
+        hiddenRows: new Set(grid.hiddenRows),
+        hiddenColumns: new Set(grid.hiddenColumns),
         merges: [],
       };
     },

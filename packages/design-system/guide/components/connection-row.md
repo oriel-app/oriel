@@ -186,6 +186,28 @@ Under a CLI's row in Settings › Providers, **Use a Claude Code at another path
 
 The path and key fields themselves are on [Text field](/components/text-field#settings-path). Removing says "Removing…" while it runs; saving a key says "Checking…" while Anthropic checks it.
 
+### Picked through a source server
+
+A connection through a source server (decision 0059) has no options of its own but what the person picks through the server: Jira's project, Linear's team, Slack's channels. Each is the same picker Settings re-picks a connection's project with (`PickOption` in `packages/web/src/connections-page.tsx`), drawn by `ServerPicks`: what it reads now and **Change**, or, with nothing picked yet, what it reads instead ("Reading your first 20 channels; pick yours.") and **Pick**. Its list comes through the server's read tools. One option is a radio list that applies on a click; several are ticks, up to the most the source reads, applied with **Use these N**. A long list scrolls under Find (`.connection-options .choices` in `window.css`). The first run draws the same under what Oriel found, each named by its source ("Jira project"), in `.found-picks`.
+
+```html specimen id=server-picks title="Slack's channels, picked through its server"
+<div class="connection-options">
+  <fieldset class="settings-field">
+    <legend class="settings-field-name">Channels</legend>
+    <span class="settings-field-about">Reading your first 20 channels; pick yours. </span>
+    <div class="choices">
+      <label class="choice"><input type="checkbox" value="C1" checked />#weather-disruptions</label>
+      <label class="choice"><input type="checkbox" value="C2" />#random</label>
+      <div class="cli-actions">
+        <button type="button" class="button primary">Use these 1</button>
+        <button type="button" class="button">Cancel</button>
+      </div>
+      <span class="settings-field-about">At most 20.</span>
+    </div>
+  </fieldset>
+</div>
+```
+
 ### The status line
 
 `.provider-status` is a dot, a state word and a detail, in `--text-sm`. **Its colour comes from the row, not the line**: the dot and word are `--danger` unless the row says otherwise (`.provider-mark` and `.provider-state` in `window.css`).
@@ -890,7 +912,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 
 - `ProviderRow`, its status line and its switch: `ProviderRow` in `packages/web/src/provider-row.tsx`. Settings › Providers lists them and draws the plain row: `Providers` in `packages/web/src/settings-page.tsx`.
 - Claude Code and Codex: `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`; the waiting line, `Waiting` in `packages/web/src/cli-row.tsx`; the failure box, `Failed` in `packages/web/src/cli-row.tsx`. Placed in Settings by `Providers` in `packages/web/src/settings-page.tsx`, and in the first run by `YourAi` in `packages/web/src/setup-page.tsx`.
-- Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
+- Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; picked through a source server, `ServerPicks` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
 - First run: `SourceRow` and `connected` in `packages/web/src/setup-page.tsx`; Reading's Done line, `Reading` in `packages/web/src/setup-page.tsx`.
 - The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path and key: `CliPath` and `ApiKey` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-key-actions` and `.provider-key-note` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
 - Settings frame, its sections and body: `SettingsPage` in `packages/web/src/settings-page.tsx`; a section head with its action, `Providers` in `packages/web/src/settings-page.tsx`.

@@ -13,6 +13,13 @@ export type FakeServer = {
   rows: string[][];
   // Each cell as entered, where it isn't its text: a formula, or a number.
   formulas: Map<string, string | number | boolean>;
+  // Each cell's note, by `<row>,<column>` 0-based; the rows and columns
+  // hidden by hand, 0-based; and the comments, as `list_comments` gives
+  // them.
+  notes: Map<string, string>;
+  hiddenRows: Set<number>;
+  hiddenColumns: Set<number>;
+  comments: Record<string, unknown>[];
   calls: ToolCall[];
   read: ToolCaller;
   write: ToolCaller;
@@ -28,6 +35,10 @@ export function fakeServer(rows: string[][], title = "Backlog"): FakeServer {
   const server: FakeServer = {
     rows: rows.map((row) => [...row]),
     formulas: new Map(),
+    notes: new Map(),
+    hiddenRows: new Set(),
+    hiddenColumns: new Set(),
+    comments: [],
     calls: [],
     read: async (call) => {
       server.calls.push(call);
@@ -77,8 +88,25 @@ export function fakeServer(rows: string[][], title = "Backlog"): FakeServer {
         // rows at the end.
         for (const row of values) while (row.length && row.at(-1) === "") row.pop();
         while (values.length && values.at(-1)?.length === 0) values.pop();
-        return answer({ range: args.range, values, truncated: false });
+        if (args.includeGrid !== true)
+          return answer({ range: args.range, values, truncated: false });
+        const inside = (row: number) => row >= start && row < start + values.length;
+        return answer({
+          range: args.range,
+          values,
+          truncated: false,
+          hiddenRows: [...server.hiddenRows].filter(inside).map((row) => row + 1),
+          hiddenColumns: [...server.hiddenColumns].map(columnLetters),
+          notes: [...server.notes]
+            .map(([at, note]) => {
+              const [row = 0, column = 0] = at.split(",").map(Number);
+              return { row, column, note };
+            })
+            .filter((each) => inside(each.row))
+            .map(({ row, column, note }) => ({ cell: `${columnLetters(column)}${row + 1}`, note })),
+        });
       }
+      if (tool === "list_comments") return answer({ comments: server.comments });
       throw new Error(`the fake has no read tool ${tool}`);
     },
     write: async (call) => {

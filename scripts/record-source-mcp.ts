@@ -15,7 +15,8 @@
 //   never imports it; the sync reads the Backlog tab, the reads are every
 //   item it listed, and `preview.json` is a preview with nothing picked.
 //   Then, on the evals' Sheets fixture (fixtures/sheets/) as sheets-mcp
-//   serves it, each cell as it shows, `world.json`: a sync of what the
+//   serves it, each cell as it shows with its note, the rows and columns
+//   hidden by hand and the comments, `world.json`: a sync of what the
 //   fixture's connection picks, and the previews of the spreadsheets the
 //   draft cases wait on, which the eval world reads through the server.
 //
@@ -63,6 +64,7 @@ import { stdioCalls } from "./stdio-mcp.ts";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { columnLetters } from "../packages/sheets/src/a1.ts";
 import { fixturePicks } from "../packages/sheets/src/declared-fixture.ts";
 import {
   gridOf,
@@ -383,8 +385,9 @@ export async function recordCalls(
 }
 
 // The evals' Sheets fixture as sheets-mcp's fixture mode reads it: each
-// cell as it shows, with no notes, comments, merges or hidden rows, which
-// its tools don't give.
+// cell as it shows, with its note, the rows and columns hidden by hand, and
+// the comments, each resolved when its last reply's action resolved it. No
+// merges or filters, which its tools don't give.
 export function sheetsMcpFixture(fixture: SheetsFixture) {
   return {
     spreadsheets: fixture.spreadsheets.map((spreadsheet) => ({
@@ -394,6 +397,15 @@ export function sheetsMcpFixture(fixture: SheetsFixture) {
       canEdit: spreadsheet.canEdit,
       tabs: spreadsheet.tabs.map((tab) => {
         const grid = gridOf(tab);
+        const notes = Object.fromEntries(
+          tab.rows.flatMap((row, r) =>
+            row.flatMap((cell, c) =>
+              cell !== null && typeof cell === "object" && cell.note !== undefined
+                ? [[`${columnLetters(c)}${r + 1}`, cell.note]]
+                : [],
+            ),
+          ),
+        );
         return {
           sheetId: tab.sheetId,
           title: tab.title,
@@ -401,6 +413,25 @@ export function sheetsMcpFixture(fixture: SheetsFixture) {
           rowCount: grid.rows,
           columnCount: grid.columns,
           rows: tab.rows.map((row) => row.map((cell) => shown(cell))),
+          ...(Object.keys(notes).length ? { notes } : {}),
+          ...(tab.hiddenRows?.length ? { hiddenRows: tab.hiddenRows } : {}),
+          ...(tab.hiddenColumns?.length ? { hiddenColumns: tab.hiddenColumns } : {}),
+        };
+      }),
+      comments: spreadsheet.comments.map((comment) => {
+        const actions = (comment.replies ?? []).flatMap((r) => (r.action ? [r.action] : []));
+        return {
+          author: comment.author,
+          content: comment.content,
+          createdTime: comment.createdTime,
+          ...(comment.deleted ? { deleted: true } : {}),
+          resolved: actions.at(-1) === "resolve",
+          ...(comment.quoted ? { quoted: comment.quoted } : {}),
+          replies: (comment.replies ?? []).map((reply) => ({
+            author: reply.author,
+            content: reply.content,
+            createdTime: reply.createdTime,
+          })),
         };
       }),
     })),
@@ -461,7 +492,7 @@ async function recordSheetsWorld() {
     `${JSON.stringify(
       {
         recorded:
-          "From packages/sheets-mcp in its fixture mode, on fixtures/sheets/ as it serves it (scripts/record-source-mcp.ts): each cell as it shows, with no notes, comments, merges or hidden rows, and each answer's structured content alone.",
+          "From packages/sheets-mcp in its fixture mode, on fixtures/sheets/ as it serves it (scripts/record-source-mcp.ts): each cell as it shows, with its note, the rows and columns hidden by hand and the comments, no merges, and each answer's structured content alone.",
         // Each answer's structured content alone, which the parser reads
         // first, so the cells aren't kept twice.
         calls: calls.map(({ call, answer }) => {

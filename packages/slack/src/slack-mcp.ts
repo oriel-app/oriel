@@ -14,6 +14,7 @@
 import {
   answerJson,
   answerText,
+  narrowed,
   type SourceServer,
   ServerUnreadable,
   type ToolAnswer,
@@ -21,6 +22,7 @@ import {
   WriteStalled,
 } from "@oriel/core";
 import { type ReadMethod, readMethods, type SlackApi, SlackError } from "./api.ts";
+import { maxChannels } from "./source.ts";
 
 // Its tools Oriel calls, by what each does.
 export const slackTools = {
@@ -43,6 +45,38 @@ export const slackServer: SourceServer = {
   reads: [t.profile, t.channels, t.history, t.thread],
   writes: [t.send],
   instructions: "https://docs.slack.dev/ai/slack-mcp-server/",
+  // The channels a connection reads, from those the person is in, as the
+  // server lists them, by ID, so a renamed one stays picked.
+  picks: [
+    {
+      name: "channels",
+      label: "Channels",
+      many: true,
+      most: maxChannels,
+      unpicked: `your first ${maxChannels} channels`,
+      async list(read, query) {
+        const api = slackServerReads({ read });
+        const listed: { value: string; name: string }[] = [];
+        const cursors = new Set<string>();
+        let cursor = "";
+        // At most 10 pages, of 200 each.
+        for (let page = 0; page < 10; page++) {
+          const reply = (await api("conversations.list", {
+            limit: "200",
+            ...(cursor ? { cursor } : {}),
+          })) as {
+            channels: { id: string; name: string }[];
+            response_metadata: { next_cursor: string };
+          };
+          for (const each of reply.channels) listed.push({ value: each.id, name: `#${each.name}` });
+          cursor = reply.response_metadata.next_cursor;
+          if (!cursor || cursors.has(cursor)) break;
+          cursors.add(cursor);
+        }
+        return narrowed(listed, query);
+      },
+    },
+  ],
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>

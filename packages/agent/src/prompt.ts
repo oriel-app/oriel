@@ -162,7 +162,7 @@ const changes = (count: number) => (count === 1 ? "1 change" : `${count} changes
 // What captured changes are, wherever the agent meets them: in the result of
 // the run that captured them, and in the thread's history in later turns.
 export const capturedRules = [
-  "Once applied, the user undoes them with Revert in the thread, which proposes the reverse as a new change set.",
+  "Once applied, the user may undo them with Revert in the thread, where the change set offers it, which proposes the reverse as a new change set.",
   "Nothing is sent until the user approves: say you proposed them, never that they're done.",
 ];
 

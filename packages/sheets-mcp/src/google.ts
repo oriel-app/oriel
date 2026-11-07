@@ -48,6 +48,13 @@ function refusalOf(status: number, json: unknown): Refusal {
     return new Refusal(
       "The Google Cloud project behind this client hasn't turned on the Sheets API and the Drive API. Turn both on in the Cloud console, then try again.",
     );
+  // A sign-in without the scope the call needs, as one without Drive's
+  // read scope is for a spreadsheet's comments.
+  if (
+    status === 403 &&
+    reasons.some((r) => /insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/.test(r))
+  )
+    return new Refusal("Google refused: this sign-in wasn't given the permission that takes.");
   if (status === 403)
     return new Refusal("Google refused: this account can't open or change that spreadsheet.");
   if (status === 404)

@@ -11,7 +11,7 @@ import { atlassianServer } from "@oriel/jira";
 import { atlassianStandIn, standInCaller, standInSite } from "@oriel/jira/standin";
 import type { DiffView, ThreadView } from "@oriel/web/view";
 import { fakeAgent } from "./servers/testing.ts";
-import { json, type Script, testApp } from "./testing.ts";
+import { account, json, type Script, testApp } from "./testing.ts";
 
 const { reads, writes } = atlassianServer;
 
@@ -288,4 +288,69 @@ test("set to sync every few minutes, each tick syncs Jira through its server", a
   await it.app.settled();
   const after = it.made.filter((each) => each.call.tool === "searchJiraIssuesUsingJql").length;
   assert.ok(after > before, "the tick synced through the server");
+});
+
+// The server's project list with another before SYN, as a site with two
+// has it.
+const twoProjects = (call: ToolCall, answer: unknown) => {
+  if (call.tool !== "listJiraProjects") return answer;
+  const values = [
+    { id: "10001", key: "OPS", name: "Pier operations" },
+    { id: "10000", key: "SYN", name: "Ferrowick" },
+  ];
+  return { content: [{ type: "text", text: JSON.stringify({ isLast: true, values }) }] };
+};
+
+test("Jira's project is picked through its server, and the pick bounds the next sync", async (t) => {
+  const it = await world(t, { answer: twoProjects });
+  await it.turnOn();
+  const before = await it.connection("jira");
+  assert.deepEqual(before?.options, {}, "nothing picked: the server's first");
+  assert.deepEqual(
+    before?.picks.map((pick) => [pick.name, pick.many, pick.unpicked]),
+    [["project", false, "the first project it lists"]],
+  );
+  assert.match(before?.about ?? "", /^OPS on /);
+  const id = before?.id ?? "";
+  const listed = json<{ choices: { value: string; name: string }[] }>(
+    await it.post(`/api/connections/${id}/pick`, { query: "", field: "project" }),
+  );
+  assert.deepEqual(
+    listed.choices.map((each) => each.value),
+    ["OPS", "SYN"],
+  );
+  it.made.length = 0;
+  const set = await it.post(`/api/connections/${id}/options`, { options: { project: "SYN" } });
+  assert.equal(set.status, 200);
+  await it.app.settled();
+  const after = await it.connection("jira");
+  assert.equal(after?.id, id, "the same connection, kept");
+  assert.match(after?.about ?? "", /^SYN on /);
+  const searched = it.made.filter((each) => each.call.tool === "searchJiraIssuesUsingJql");
+  assert.ok(searched.length > 0);
+  assert.ok(searched.every((each) => String(each.call.args.jql).startsWith('project in ("SYN")')));
+  assert.ok(it.jiraRows().length > 20);
+  assert.ok(
+    it.made.every((each) => reads.includes(each.call.tool)),
+    "never a write tool",
+  );
+});
+
+test("a project picked in Jira's own connection carries over when Jira turns on through its server", async (t) => {
+  const it = await world(t, { answer: twoProjects });
+  const made = await it.connect("jira", {
+    site: "oriel.atlassian.net",
+    email: account.email,
+    token: account.token,
+    project: "SYN",
+  });
+  assert.equal(made.status, 200);
+  const own = json<{ connection: { id: string } }>(made).connection;
+  await it.turnOn();
+  const jira = await it.connection("jira");
+  assert.equal(jira?.id, own.id, "the same connection, so its items keep their IDs");
+  assert.equal(jira?.through, "atlassian");
+  assert.deepEqual(jira?.options, { project: "SYN" }, "not the server's first, OPS");
+  assert.match(jira?.about ?? "", /^SYN on oriel\.atlassian\.net, through /);
+  assert.equal(jira?.picks.length, 1, "and it's picked again through the server");
 });

@@ -3,6 +3,7 @@
 // the agent reports the ones the person has; telling which kind a server
 // serves is a lookup between the two, with no model call, so nothing a
 // server says of itself, such as its description, can steer it.
+import type { PickChoice } from "./connect.ts";
 
 // A source server a connector knows, as its declaration gives it: what a
 // person calls it, how it's recognised (the name it reports, its address or
@@ -26,7 +27,64 @@ export type SourceServer = {
   // which tabs it reads: then a connection through it is kept, and waits for
   // its options until they're set, as one made in the window does (OA-279).
   keepsOptions?: true;
+  // What a person picks on a connection through it, such as Jira's project,
+  // in Settings and the first run: a connection through it is kept, so its
+  // picks last, and with nothing picked it reads what `unpicked` says.
+  picks?: readonly ServerPick[];
 };
+
+// One of a connection's options a person picks through its source server:
+// the option, its label, whether several are picked and at most how many,
+// what the connection
+// reads with none, in a phrase such as "your first 20 channels", and its
+// list, `query` narrowing it, read through the server's read tools, never a
+// write tool. `connection` is what the connection identifies and its
+// options, as its kind opens with them.
+export type ServerPick = {
+  name: string;
+  label: string;
+  many?: true;
+  // The most a person may pick of several.
+  most?: number;
+  unpicked: string;
+  list(
+    read: ToolCaller,
+    query: string,
+    connection: { identity: string; options: Readonly<Record<string, unknown>> },
+  ): Promise<{ choices: PickChoice[]; more: boolean }>;
+};
+
+// The most a pick's list shows, and the longest name it shows of one: a
+// server's answer is source content, which a picker draws as text.
+export const mostChoices = 200;
+const longestChoice = 200;
+
+// A list of choices from a server's answer, narrowed by `query` against
+// each one's name and value, in any case, at most `mostChoices` of them; one
+// with no value or no name is left out, and a name is cut to its longest.
+export function narrowed(
+  choices: readonly (Pick<PickChoice, "value" | "name"> & Partial<PickChoice>)[],
+  query: string,
+): { choices: PickChoice[]; more: boolean } {
+  const want = query.trim().toLowerCase();
+  const fit = choices
+    .filter((each) => each.value !== "" && each.name.trim() !== "")
+    .filter(
+      (each) =>
+        want === "" ||
+        each.name.toLowerCase().includes(want) ||
+        each.value.toLowerCase().includes(want),
+    );
+  return {
+    choices: fit.slice(0, mostChoices).map((each) => ({
+      value: each.value,
+      name: each.name.slice(0, longestChoice),
+      count: each.count ?? null,
+      updatedAt: each.updatedAt ?? null,
+    })),
+    more: fit.length > mostChoices,
+  };
+}
 
 // What the person's agent said of one of its MCP servers: its name in the
 // agent's configuration, whether it's connected, the name it reports, its

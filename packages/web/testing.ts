@@ -221,6 +221,7 @@ export const connectionView = (over: Partial<ConnectionView> = {}): ConnectionVi
   flagged: false,
   own: false,
   through: null,
+  picks: [],
   ...over,
 });
 

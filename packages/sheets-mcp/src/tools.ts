@@ -1,7 +1,7 @@
 // The tools, each with what it takes and what it gives back, as JSON Schema,
-// and what it does. Three read and two write, and the annotations say which:
+// and what it does. Four read and two write, and the annotations say which:
 // a client may refuse the writes by those, so they stay apart.
-import { columnLetters, formatRange, parseRange } from "./a1.ts";
+import { type Bounds, columnLetters, formatRange, parseRange } from "./a1.ts";
 import { drive, type Google, Refusal, sheets, spreadsheetType } from "./google.ts";
 
 type Schema = Record<string, unknown>;
@@ -133,6 +133,19 @@ function wantOption(args: Record<string, unknown>): string {
   return option;
 }
 
+function wantFlag(args: Record<string, unknown>, name: string): boolean {
+  const value = args[name] ?? false;
+  if (typeof value !== "boolean") throw new Refusal(`\`${name}\` is true or false.`);
+  return value;
+}
+
+function wantPageSize(args: Record<string, unknown>): number {
+  const size = args.pageSize ?? pageDefault;
+  if (!Number.isInteger(size) || (size as number) < 1 || (size as number) > pageMost)
+    throw new Refusal(`\`pageSize\` is a whole number from 1 to ${pageMost}.`);
+  return size as number;
+}
+
 const count = (value: unknown) => (typeof value === "number" ? value : 0);
 const str = (value: unknown) => (typeof value === "string" ? value : "");
 const strings = (row: unknown) => (Array.isArray(row) ? row.map((v) => String(v ?? "")) : []);
@@ -185,9 +198,7 @@ const listSpreadsheets: Tool = {
   async call(args, google) {
     const query = want(args, "query", "string?");
     const pageToken = want(args, "pageToken", "string?");
-    const size = args.pageSize ?? pageDefault;
-    if (!Number.isInteger(size) || (size as number) < 1 || (size as number) > pageMost)
-      throw new Refusal(`\`pageSize\` is a whole number from 1 to ${pageMost}.`);
+    const size = wantPageSize(args);
     const q = [`mimeType='${spreadsheetType}'`, "trashed=false"];
     if (query !== undefined) q.push(`name contains ${quoted(query)}`);
     const answer = (await drive(google, "/drive/v3/files", {
@@ -317,15 +328,65 @@ function nextRange(returned: string, kept: number): string | null {
   return formatRange(range.tab, { ...b, startRow } as Required<typeof b>);
 }
 
+// A box's notes, and its rows and columns hidden by hand, from the Sheets
+// API's grid data: rows by number and columns by letter, as the sheet shows
+// them, and each note by its cell, at most `cellCap` of them.
+async function gridOf(google: Google, id: string, tab: string, box: Required<Bounds>) {
+  const answer = (await sheets(google, "GET", `/v4/spreadsheets/${encodeURIComponent(id)}`, {
+    ranges: formatRange(tab, box),
+    fields:
+      "sheets(properties(title),data(startRow,startColumn,rowData(values(note)),rowMetadata(hiddenByUser),columnMetadata(hiddenByUser)))",
+  })) as { sheets?: { properties?: { title?: unknown }; data?: GridData[] }[] };
+  const hiddenRows = new Set<number>();
+  const hiddenColumns = new Set<number>();
+  const notes: { cell: string; note: string }[] = [];
+  const sheet = (answer.sheets ?? []).find((each) => each.properties?.title === tab);
+  for (const data of sheet?.data ?? []) {
+    const top = count(data.startRow);
+    const left = count(data.startColumn);
+    (data.rowData ?? []).forEach((row, r) =>
+      (row?.values ?? []).forEach((value, c) => {
+        if (typeof value?.note === "string" && value.note !== "" && notes.length < cellCap)
+          notes.push({ cell: `${columnLetters(left + c)}${top + r + 1}`, note: value.note });
+      }),
+    );
+    (data.rowMetadata ?? []).forEach((m, r) => {
+      if (m?.hiddenByUser === true) hiddenRows.add(top + r + 1);
+    });
+    (data.columnMetadata ?? []).forEach((m, c) => {
+      if (m?.hiddenByUser === true) hiddenColumns.add(left + c);
+    });
+  }
+  return {
+    hiddenRows: [...hiddenRows].toSorted((a, b) => a - b),
+    hiddenColumns: [...hiddenColumns].toSorted((a, b) => a - b).map(columnLetters),
+    notes,
+  };
+}
+
+type GridData = {
+  startRow?: unknown;
+  startColumn?: unknown;
+  rowData?: { values?: { note?: unknown }[] }[];
+  rowMetadata?: { hiddenByUser?: unknown }[];
+  columnMetadata?: { hiddenByUser?: unknown }[];
+};
+
 const readRange: Tool = {
   name: "read_range",
   title: "Read a range",
-  description: `Reads the cells in an A1 range, such as \`Backlog!A1:F50\`, \`'Q3 plan'!A:D\` or a tab's name alone for all of it, as rows of text as the sheet shows them, or, with \`valueRenderOption\` FORMULA, as entered, each formula as its text. Empty cells at a row's end and empty rows at the end are left out. At most ${cellCap.toLocaleString("en")} cells come back; when there are more, \`truncated\` is true and \`nextRange\` is where to read on.`,
+  description: `Reads the cells in an A1 range, such as \`Backlog!A1:F50\`, \`'Q3 plan'!A:D\` or a tab's name alone for all of it, as rows of text as the sheet shows them, or, with \`valueRenderOption\` FORMULA, as entered, each formula as its text. Empty cells at a row's end and empty rows at the end are left out. At most ${cellCap.toLocaleString("en")} cells come back; when there are more, \`truncated\` is true and \`nextRange\` is where to read on. With \`includeGrid\`, it also says which of the rows that came back are hidden by hand, which of the range's columns are, and each of those rows' cell notes.`,
   inputSchema: object(
     {
       spreadsheetId,
       range: text("The cells to read, in A1 notation."),
       valueRenderOption: renderOption,
+      includeGrid: {
+        type: "boolean",
+        default: false,
+        description:
+          "Also give `hiddenRows`, `hiddenColumns` and `notes`, in one more call to Google.",
+      },
     },
     ["spreadsheetId", "range"],
   ),
@@ -343,6 +404,24 @@ const readRange: Tool = {
       },
       nextRange: text("When truncated: the range to read next."),
       note: text("When truncated: what was left out, and how to read on."),
+      hiddenRows: {
+        type: "array",
+        items: { type: "integer" },
+        description: "With includeGrid: the rows hidden by hand, by their number in the sheet.",
+      },
+      hiddenColumns: {
+        type: "array",
+        items: { type: "string" },
+        description: "With includeGrid: the columns hidden by hand, by their letters.",
+      },
+      notes: {
+        type: "array",
+        items: object({
+          cell: text("The cell the note is on, such as `C3`."),
+          note: text("The note's text."),
+        }),
+        description: `With includeGrid: each cell's note, at most ${cellCap.toLocaleString("en")}.`,
+      },
     },
     ["range", "values", "truncated"],
   ),
@@ -351,6 +430,7 @@ const readRange: Tool = {
     const id = wantId(args);
     const range = wantRange(args);
     const render = wantRender(args);
+    const grid = wantFlag(args, "includeGrid");
     const answer = (await sheets(
       google,
       "GET",
@@ -365,7 +445,26 @@ const readRange: Tool = {
     let kept = 0;
     while (kept < rows.length && cells + (rows[kept]?.length ?? 0) <= cellCap)
       cells += rows[kept++]?.length ?? 0;
-    if (kept === rows.length) return { range: returned, values: rows, truncated: false };
+    // The grid of the rows that come back, across the range's columns, or
+    // across the cap's when even the first row is cut.
+    const gridFor = async (height: number, width?: number) => {
+      if (!grid) return {};
+      const range = parseRange(returned);
+      const b = range?.bounds;
+      if (!range?.tab || b?.startRow === undefined || b.startColumn === undefined)
+        throw new Refusal("Google's answer isn't one this server reads.");
+      const endColumn = width === undefined ? b.endColumn : b.startColumn + width;
+      if (height === 0 || endColumn === undefined)
+        return { hiddenRows: [], hiddenColumns: [], notes: [] };
+      return gridOf(google, id, range.tab, {
+        startRow: b.startRow,
+        endRow: b.startRow + height,
+        startColumn: b.startColumn,
+        endColumn,
+      });
+    };
+    if (kept === rows.length)
+      return { range: returned, values: rows, truncated: false, ...(await gridFor(kept)) };
     if (kept === 0) {
       const first = rows[0] ?? [];
       return {
@@ -373,6 +472,7 @@ const readRange: Tool = {
         values: [first.slice(0, cellCap)],
         truncated: true,
         note: `The first row alone has ${first.length.toLocaleString("en")} cells, so only its first ${cellCap.toLocaleString("en")} came back. Ask for fewer columns, such as up to column ${columnLetters(cellCap - 1)}.`,
+        ...(await gridFor(1, Math.min(first.length, cellCap))),
       };
     }
     const next = nextRange(returned, kept);
@@ -382,6 +482,109 @@ const readRange: Tool = {
       truncated: true,
       ...(next ? { nextRange: next } : {}),
       note: `Cut at ${cellCap.toLocaleString("en")} cells: the first ${kept.toLocaleString("en")} rows of ${rows.length.toLocaleString("en")} came back. ${next ? `Read on with range \`${next}\`.` : `Read on from row ${kept + 1} of the range.`}`,
+      ...(await gridFor(kept)),
+    };
+  },
+};
+
+// A comment or a reply as Drive gives it, or null for a deleted one.
+type Said = {
+  author?: { displayName?: unknown };
+  createdTime?: unknown;
+  content?: unknown;
+  deleted?: unknown;
+};
+const saidOf = (each: Said) =>
+  each.deleted === true
+    ? null
+    : {
+        author: str(each.author?.displayName),
+        createdTime: str(each.createdTime),
+        content: str(each.content),
+      };
+
+const listComments: Tool = {
+  name: "list_comments",
+  title: "List comments",
+  description:
+    "Lists a spreadsheet's comments, oldest first, each with its replies, a page at a time. A deleted comment or reply is left out; a resolved one is marked. When `nextPageToken` comes back, pass it as `pageToken` for the next page.",
+  inputSchema: object(
+    {
+      spreadsheetId,
+      pageSize: {
+        type: "integer",
+        minimum: 1,
+        maximum: pageMost,
+        default: pageDefault,
+        description: "How many comments to list in one page.",
+      },
+      pageToken: text("The `nextPageToken` from the page before."),
+    },
+    ["spreadsheetId"],
+  ),
+  outputSchema: object(
+    {
+      comments: {
+        type: "array",
+        items: object(
+          {
+            author: text("Who wrote it, by their name."),
+            createdTime: text("When, in RFC 3339."),
+            content: text("What it says."),
+            resolved: { type: "boolean", description: "Whether it was resolved." },
+            quoted: text("The text it was made on, when it was made on some."),
+            replies: {
+              type: "array",
+              items: object({
+                author: text("Who wrote it, by their name."),
+                createdTime: text("When, in RFC 3339."),
+                content: text("What it says."),
+              }),
+            },
+          },
+          ["author", "createdTime", "content", "resolved", "replies"],
+        ),
+      },
+      nextPageToken: text("Pass as `pageToken` for the next page; absent on the last page."),
+    },
+    ["comments"],
+  ),
+  annotations: { title: "List comments", readOnlyHint: true, openWorldHint: true },
+  async call(args, google) {
+    const id = wantId(args);
+    const pageToken = want(args, "pageToken", "string?");
+    const size = wantPageSize(args);
+    const answer = (await drive(google, `/drive/v3/files/${encodeURIComponent(id)}/comments`, {
+      fields:
+        "nextPageToken,comments(author(displayName),createdTime,content,deleted,resolved,quotedFileContent(value),replies(author(displayName),createdTime,content,deleted))",
+      pageSize: String(size),
+      ...(pageToken === undefined ? {} : { pageToken }),
+    })) as {
+      comments?: (Said & {
+        resolved?: unknown;
+        quotedFileContent?: { value?: unknown };
+        replies?: Said[];
+      })[];
+      nextPageToken?: unknown;
+    };
+    return {
+      comments: (answer.comments ?? []).flatMap((comment) => {
+        const said = comment && saidOf(comment);
+        if (!said) return [];
+        const quoted = comment.quotedFileContent?.value;
+        return [
+          {
+            ...said,
+            resolved: comment.resolved === true,
+            ...(typeof quoted === "string" && quoted !== "" ? { quoted } : {}),
+            replies: (comment.replies ?? []).flatMap((reply) => {
+              const each = reply && saidOf(reply);
+              return each ? [each] : [];
+            }),
+          },
+        ];
+      }),
+      ...(typeof answer.nextPageToken === "string" ? { nextPageToken: answer.nextPageToken } : {}),
     };
   },
 };
@@ -481,6 +684,7 @@ export const tools: readonly Tool[] = [
   listSpreadsheets,
   getSpreadsheet,
   readRange,
+  listComments,
   updateRange,
   appendRows,
 ];

@@ -87,9 +87,13 @@ function ConnectionRow(props: {
   const problem = connections.problems[connection.id] ?? connection.problem;
   const open = connection.state === "open";
   const waiting = connection.state === "waiting";
-  // One waiting for options that fit its source is set as an open one is.
+  // One waiting for options that fit its source is set as an open one is;
+  // one through a source server, by what the person picks through it.
   const settable =
-    (open || waiting) && !connection.flagged && !connection.own && connection.through === null;
+    (open || waiting) &&
+    !connection.flagged &&
+    !connection.own &&
+    (connection.through === null || connection.picks.length > 0);
   // The last change says what it set, and its own problem, beside the
   // option it changed; any other problem says itself here.
   const besideChange = setting.said !== null && settable;
@@ -155,12 +159,15 @@ function ConnectionRow(props: {
             Source servers.
           </p>
         )}
+        {settable && connection.through !== null && (
+          <ServerPicks connection={connection} connections={connections} send={send} />
+        )}
         {connection.flagged && (
           <p class="settings-field-about">
             A flag of pnpm dev makes this connection at every start, so it's set there.
           </p>
         )}
-        {settable && connector && (
+        {settable && connection.through === null && connector && (
           <Options
             connection={connection}
             connector={connector}
@@ -567,36 +574,103 @@ function ReadOnly(props: {
   );
 }
 
-// One of a connector's options picked from the list its source gives, for
-// the connection's own account: what it is now, and Change, which lists.
-function PickOption(props: {
-  field: Extract<OptionField, { kind: "pick" }>;
+// What a person picks on a connection through its source server (decision
+// 0059), such as a project or channels, from the lists the
+// server gives, each with the last change's word beside it. With nothing
+// picked, each says what the connection reads instead. Settings draws it
+// in the connection's row, and the first run under what Oriel found, where
+// each names its source (`of`), as its connector names it, and says itself
+// why a list didn't come, as no row says it there.
+export function ServerPicks(props: {
   connection: ConnectionView;
   connections: ConnectionsModel;
   send(msg: ConnectionsMsg): void;
-  onPick(value: string): void;
+  of?: string;
+}) {
+  const { connection, connections, send } = props;
+  const setting = settingOf(connections, connection.id);
+  return (
+    <div class="connection-options">
+      {props.of && setting.said === null && (setting.problem ?? connection.problem) && (
+        <p class="connection-problem" role="alert">
+          {setting.problem ?? connection.problem}
+        </p>
+      )}
+      {connection.picks.map((pick) => (
+        <Fragment key={pick.name}>
+          <PickOption
+            field={props.of ? { ...pick, label: `${props.of} ${pick.label.toLowerCase()}` } : pick}
+            connection={connection}
+            connections={connections}
+            send={send}
+            onPick={(value) =>
+              send({
+                type: "configured",
+                connection: connection.id,
+                options: { [pick.name]: value },
+                what: `its ${pick.label.toLowerCase()}`,
+                field: pick.name,
+              })
+            }
+          />
+          {setting.said?.field === pick.name && (
+            <Said connection={connection} connections={connections} send={send} />
+          )}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+// One of a connection's options picked from the list its source gives, for
+// its own account, or through its source server: what it is now, and
+// Change, which lists. One of several is ticked, then used together, up to
+// `most`; with none picked, it says what the connection reads instead.
+function PickOption(props: {
+  field: { name: string; label: string; many?: boolean; most?: number | null; unpicked?: string };
+  connection: ConnectionView;
+  connections: ConnectionsModel;
+  send(msg: ConnectionsMsg): void;
+  onPick(value: string | string[]): void;
 }) {
   const { field, connection, connections, send } = props;
   const setting = settingOf(connections, connection.id);
   const [listing, list] = useState(false);
   const now = connection.options[field.name];
   const current = typeof now === "string" ? now : "";
+  const picked = Array.isArray(now) ? now.filter((each) => typeof each === "string") : [];
+  // Those ticked, while listing several.
+  const [ticked, tick] = useState<string[]>(picked);
+  const most = field.most ?? Number.POSITIVE_INFINITY;
+  const many = field.many === true;
+  const none = many ? picked.length === 0 : current === "";
   return (
     <fieldset class="settings-field">
       <legend class="settings-field-name">{field.label}</legend>
       <span class="settings-field-about">
-        {current}{" "}
-        {!listing && (
+        {none && field.unpicked
+          ? `Reading ${field.unpicked}; pick yours.`
+          : many
+            ? `${picked.length} picked.`
+            : current}{" "}
+        {/* Again, while no list came, as when the source didn't give one. */}
+        {(!listing || setting.choices === null) && (
           <button
             type="button"
             class="quiet-action"
             disabled={setting.pending}
             onClick={() => {
               list(true);
-              send({ type: "choicesAsked", connection: connection.id, query: "" });
+              tick(picked);
+              send({
+                type: "choicesAsked",
+                connection: connection.id,
+                query: "",
+                field: field.name,
+              });
             }}
           >
-            Change
+            {none && field.unpicked ? "Pick" : "Change"}
           </button>
         )}
       </span>
@@ -613,26 +687,69 @@ function PickOption(props: {
                   type: "choicesAsked",
                   connection: connection.id,
                   query: event.currentTarget.value,
+                  field: field.name,
                 })
               }
             />
           )}
-          {setting.choices.map((choice) => (
-            <label key={choice.value} class="choice">
-              <input
-                type="radio"
-                name={`connection-${connection.id}-${field.name}`}
-                value={choice.value}
-                checked={choice.value === current}
-                disabled={setting.pending}
-                onChange={() => {
+          {setting.choices.map((choice) =>
+            many ? (
+              <label key={choice.value} class="choice">
+                <input
+                  type="checkbox"
+                  value={choice.value}
+                  checked={ticked.includes(choice.value)}
+                  disabled={
+                    setting.pending || (!ticked.includes(choice.value) && ticked.length >= most)
+                  }
+                  onChange={(event) =>
+                    tick(
+                      event.currentTarget.checked
+                        ? [...ticked, choice.value]
+                        : ticked.filter((each) => each !== choice.value),
+                    )
+                  }
+                />
+                {choice.name}
+              </label>
+            ) : (
+              <label key={choice.value} class="choice">
+                <input
+                  type="radio"
+                  name={`connection-${connection.id}-${field.name}`}
+                  value={choice.value}
+                  checked={choice.value === current}
+                  disabled={setting.pending}
+                  onChange={() => {
+                    list(false);
+                    props.onPick(choice.value);
+                  }}
+                />
+                {choice.name} ({choice.value})
+              </label>
+            ),
+          )}
+          {many && (
+            <div class="cli-actions">
+              <button
+                type="button"
+                class="button primary"
+                disabled={setting.pending || ticked.length === 0}
+                onClick={() => {
                   list(false);
-                  props.onPick(choice.value);
+                  props.onPick(ticked);
                 }}
-              />
-              {choice.name} ({choice.value})
-            </label>
-          ))}
+              >
+                {ticked.length === 0 ? "Use these" : `Use these ${ticked.length}`}
+              </button>
+              <button type="button" class="button" onClick={() => list(false)}>
+                Cancel
+              </button>
+            </div>
+          )}
+          {many && Number.isFinite(most) && (
+            <span class="settings-field-about">At most {most}.</span>
+          )}
         </div>
       )}
     </fieldset>

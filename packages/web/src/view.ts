@@ -185,6 +185,18 @@ export type ConnectionView = {
   // The source server it reads through, by its name in the person's agent
   // (decision 0059): turned off in Source servers, never disconnected.
   through: string | null;
+  // What the person picks on it through that server, as its options keep
+  // them: the option, its label, whether several are picked and at most how
+  // many, and what it reads with none, in a phrase.
+  picks: ConnectionPick[];
+};
+
+export type ConnectionPick = {
+  name: string;
+  label: string;
+  many: boolean;
+  most: number | null;
+  unpicked: string;
 };
 
 // Every connection, which kinds the window may connect now and why not the

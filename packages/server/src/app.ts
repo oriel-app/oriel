@@ -51,6 +51,8 @@ import {
   type SourceKind,
   type FoundServer,
   type Recognized,
+  type ConnectRefusal,
+  type PickChoice,
   type SourceServer,
   type ThroughServer,
   type ToolCaller,
@@ -452,6 +454,14 @@ export async function createApp(options: AppOptions): Promise<App> {
   // options a source server reads with (`keptFor`), which reaches nothing
   // without its server.
   const keptFor = (reports: string) => `through:${reports}`;
+  // Such a connection as its kind opens it: it identifies nothing in its
+  // source, so its server reads the first it reaches, as one never kept does.
+  const asThrough = <T extends Connection>(connection: T): T =>
+    connection.identity.startsWith(keptFor("")) ? { ...connection, identity: "" } : connection;
+  // Whether a connection through a server is kept, for options that are the
+  // person's to set through it: a mapping (`keepsOptions`), or picks.
+  const keeps = (known: SourceServer) =>
+    known.keepsOptions === true || (known.picks?.length ?? 0) > 0;
   const ownFirst = (kind: string): Connection | null =>
     connections
       .list()
@@ -619,16 +629,17 @@ export async function createApp(options: AppOptions): Promise<App> {
     return { call, close, agent: () => agent };
   };
   // Opens a kind through its source server: its first connection if it has
-  // one, so its items keep their IDs, else one of the server's own, which
-  // nothing keeps, as what's on is the kind's switch, unless what the server
-  // reads is the person's to set, as Sheets' mapping (`keepsOptions`): that
-  // one is kept, with no secret, so they last (OA-279). One that can't open
-  // is left shut, with why, naming the server.
+  // one, so its items keep their IDs and its options carry over, as a Jira
+  // connection's project does, else one of the server's own, which nothing
+  // keeps, as what's on is the kind's switch, unless what the server reads
+  // is the person's to set, as Sheets' mapping (`keepsOptions`, OA-279) or
+  // Slack's channels (`picks`): that one is kept, with no secret, so they
+  // last. One that can't open is left shut, with why, naming the server.
   const openThrough = async (kind: SourceKind, server: Recognized) => {
     const reads = lazyCalls(server, server.known.reads);
     const writes = lazyCalls(server, server.known.writes);
     let own = connections.first(kind);
-    if (!own && server.known.keepsOptions) {
+    if (!own && keeps(server.known)) {
       const made = await connections.connect({
         kind,
         identity: keptFor(server.known.reports),
@@ -657,7 +668,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     try {
       const opened = await openOne(
         kind,
-        { ...connection, secret: null },
+        { ...asThrough(connection), secret: null },
         { fixture: false, kept: false, server: via },
       );
       const close = opened.close;
@@ -685,6 +696,19 @@ export async function createApp(options: AppOptions): Promise<App> {
         error: error instanceof Error ? error.message : String(error),
       });
       if (own) shut.set(own.prefix, own);
+      // What the person picked through it no longer fits, as a channel
+      // archived since: it waits, still through the server, for a pick
+      // that does (decision 0051).
+      if (own && keeps(server.known) && error instanceof OptionsUnfit) {
+        unfit.set(own.prefix, error.message);
+        throughOpen.set(kind, {
+          key: serverKey(server) ?? "",
+          server: server.found.name,
+          agent: reads.agent,
+          via,
+        });
+        return;
+      }
       // The agent's own words for why its process failed, such as its
       // plan's limit; never what the server answered.
       const why =
@@ -698,17 +722,41 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Why a kind on through its server couldn't open, until it does.
   const throughProblems = new Map<SourceKind, string>();
   // What a connection open through its kind's source server reads through,
-  // or null when it isn't.
+  // or waiting there for options that fit; null when it isn't.
   const throughFor = (connection: Connection): ThroughServer | null =>
-    byPrefix.get(connection.prefix)?.connection.id === connection.id
+    (
+      byPrefix.get(connection.prefix)?.connection ??
+      (unfit.has(connection.prefix) ? shut.get(connection.prefix) : undefined)
+    )?.id === connection.id
       ? (throughOpen.get(connection.kind)?.via ?? null)
       : null;
   // The same, where what it reads through it is the person's to set
-  // (`keepsOptions`): its options are set, and its source previewed for
-  // them, through the server.
+  // (`keeps`): its options are set, and its source previewed for them,
+  // through the server.
   const setThrough = (connection: Connection): ThroughServer | null => {
     const through = throughFor(connection);
-    return through?.known.keepsOptions ? through : null;
+    return through && keeps(through.known) ? through : null;
+  };
+  // A pick's list for a connection through its source server, by the
+  // option it sets, its first when none is named; null when its server
+  // has none. Only the server's read tools list it.
+  const listThrough = async (
+    connection: Connection,
+    query: string,
+    field: string | null,
+  ): Promise<{ choices: PickChoice[]; more: boolean } | ConnectRefusal | null> => {
+    const through = throughFor(connection);
+    const pick = through?.known.picks?.find((each) => field === null || each.name === field);
+    if (!through || !pick) return null;
+    try {
+      return await pick.list(through.read, query, asThrough(connection));
+    } catch (error) {
+      log("source servers: a pick's list failed", {
+        kind: connection.kind,
+        error: error instanceof Error ? error.name : "",
+      });
+      return { problem: `${through.known.name} didn't list them just now. Try again.`, fields: [] };
+    }
   };
   // A stand-in opens below, while what it stands in for isn't on.
   for (const kind of sourceKinds)
@@ -1282,7 +1330,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         try {
           opened = await openOne(
             connection.kind,
-            { ...before, options: next, secret },
+            { ...(through ? asThrough(before) : before), options: next, secret },
             through
               ? { fixture: false, kept: false, server: through }
               : { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
@@ -1507,7 +1555,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         : { kept: true, fetch: windows.viaFor(connection.kind).fetch },
     );
     const ask = names ? { names: true as const } : { first };
-    const tables = (await declaration.preview?.({ ...connection, secret }, via, ask)) ?? [];
+    const tables =
+      (await declaration.preview?.(
+        { ...(through ? asThrough(connection) : connection), secret },
+        via,
+        ask,
+      )) ?? [];
     kept.set(connection.id, { options: key, at, tables });
     return tables;
   };
@@ -2582,8 +2635,15 @@ export async function createApp(options: AppOptions): Promise<App> {
               : "signed-out",
       flagged: byFlag.has(kept.id),
       own: ownConnections.has(kept.id),
-      through:
-        open?.connection.id === connection.id ? (throughOpen.get(kept.kind)?.server ?? null) : null,
+      through: throughFor(kept) ? (throughOpen.get(kept.kind)?.server ?? null) : null,
+      // What the person picks on it through its server, kept in its options.
+      picks: (throughFor(kept)?.known.picks ?? []).map((pick) => ({
+        name: pick.name,
+        label: pick.label,
+        many: pick.many === true,
+        most: pick.most ?? null,
+        unpicked: pick.unpicked,
+      })),
     };
   };
   // Every connection open or shut, in declared order, then by number.
@@ -2816,7 +2876,13 @@ export async function createApp(options: AppOptions): Promise<App> {
         servers: serversView(),
       }),
       pick: (kind, given, query) => windows.pick(kind, given, query),
-      choices: (id, query) => windows.choices(live(id as Ulid), query),
+      choices: async (id, query, field) => {
+        const connection = live(id as Ulid);
+        return (
+          (await listThrough(connection, query, field ?? null)) ??
+          windows.choices(connection, query)
+        );
+      },
       folderStep: (kind) => windows.folderStep(kind),
       begin: (kind) => windows.begin(kind),
       review: (id, fresh, tab) => review(id as Ulid, fresh, tab),

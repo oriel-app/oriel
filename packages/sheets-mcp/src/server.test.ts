@@ -55,7 +55,14 @@ test("a 2025-06-18 client, as Codex opens: initialize, then the tools, with no r
   assert.equal("resultType" in listed.result, false);
   assert.deepEqual(
     (listed.result.tools as { name: string }[]).map((t) => t.name),
-    ["list_spreadsheets", "get_spreadsheet", "read_range", "update_range", "append_rows"],
+    [
+      "list_spreadsheets",
+      "get_spreadsheet",
+      "read_range",
+      "list_comments",
+      "update_range",
+      "append_rows",
+    ],
   );
   assert.deepEqual(await answerOf(server, { jsonrpc: "2.0", id: "p", method: "ping" }), {
     jsonrpc: "2.0",
@@ -116,7 +123,7 @@ test("every tool has a title, both schemas, and says whether it only reads", asy
   const hints = Object.fromEntries(
     [...byName].map(([name, t]) => [name, t.annotations as Record<string, unknown>]),
   );
-  for (const name of ["list_spreadsheets", "get_spreadsheet", "read_range"]) {
+  for (const name of ["list_spreadsheets", "get_spreadsheet", "read_range", "list_comments"]) {
     assert.equal(hints[name]?.readOnlyHint, true, name);
     assert.equal(hints[name]?.destructiveHint, undefined, name);
   }
@@ -412,6 +419,204 @@ test("read_range stops at the cell cap, says so, and pages on to the rest", asyn
   assert.match(cut.note as string, /fewer columns, such as up to column GJH/);
 });
 
+// The small fixture's backlog with a note, an empty cell's note, a row and a
+// column hidden by hand, and comments: one resolved with a reply, one
+// deleted, and one with a deleted reply.
+function annotated(): Fixture {
+  const fixture = smallFixture();
+  const [backlog] = fixture.spreadsheets;
+  assert.ok(backlog?.tabs[0]);
+  backlog.tabs[0].notes = { B2: "Agreed on Monday.", D3: "Only a note here." };
+  backlog.tabs[0].hiddenRows = [3];
+  backlog.tabs[0].hiddenColumns = ["C"];
+  backlog.comments = [
+    {
+      author: "Ana",
+      content: "Is T-2 still wanted?",
+      createdTime: "2026-11-02T09:00:00.000Z",
+      resolved: true,
+      quoted: "Second",
+      replies: [
+        { author: "Ben", content: "Yes, next sprint.", createdTime: "2026-11-02T10:00:00.000Z" },
+      ],
+    },
+    { author: "Cy", content: "", createdTime: "2026-11-01T09:00:00.000Z", deleted: true },
+    {
+      author: "Dee",
+      content: "Who owns T-3?",
+      createdTime: "2026-11-01T08:00:00.000Z",
+      replies: [
+        { author: "Ana", content: "", createdTime: "2026-11-01T08:30:00.000Z", deleted: true },
+      ],
+    },
+  ];
+  return fixture;
+}
+
+test("read_range with includeGrid gives the rows and columns hidden by hand and each cell's note", async () => {
+  const { server, google } = overStandIn(annotated());
+  const args = { spreadsheetId: backlogId, range: "Backlog!A1:D" };
+  assert.deepEqual(await checked(server, "read_range", { ...args, includeGrid: true }), {
+    range: "Backlog!A1:D1000",
+    values: [
+      ["Key", "Title", "Status"],
+      ["T-1", "First", "Done"],
+      ["T-2", "Second", "To do"],
+      ["T-3", "Third"],
+    ],
+    truncated: false,
+    hiddenRows: [3],
+    hiddenColumns: ["C"],
+    notes: [
+      { cell: "B2", note: "Agreed on Monday." },
+      { cell: "D3", note: "Only a note here." },
+    ],
+  });
+  // The grid of the rows that came back, and only with includeGrid.
+  const asked = google.calls.map((each) => new URL(each.url));
+  assert.equal(asked[1]?.pathname, `/v4/spreadsheets/${backlogId}`);
+  assert.equal(asked[1]?.searchParams.get("ranges"), "Backlog!A1:D4");
+  assert.match(asked[1]?.searchParams.get("fields") ?? "", /values\(note\)/);
+  google.calls.length = 0;
+  assert.equal("notes" in (await checked(server, "read_range", args)), false);
+  assert.equal(google.calls.length, 1);
+  assert.match(
+    await refused(server, "read_range", { ...args, includeGrid: "yes" }),
+    /`includeGrid` is true or false/,
+  );
+});
+
+test("read_range with includeGrid keeps to the rows the cell cap let through", async () => {
+  const rows = Array.from({ length: 200 }, (_, r) =>
+    Array.from({ length: 60 }, (_, c) => `${r}:${c}`),
+  );
+  const fixture: Fixture = {
+    spreadsheets: [
+      {
+        id: "big",
+        name: "Big",
+        modifiedTime: "2026-11-01T00:00:00.000Z",
+        tabs: [
+          {
+            sheetId: 0,
+            title: "Data",
+            rowCount: 200,
+            columnCount: 60,
+            rows,
+            notes: { A2: "kept", A90: "on the next page" },
+            hiddenRows: [5, 100],
+          },
+        ],
+      },
+    ],
+  };
+  const { server } = overStandIn(fixture);
+  const first = await checked(server, "read_range", {
+    spreadsheetId: "big",
+    range: "Data",
+    includeGrid: true,
+  });
+  assert.equal(first.truncated, true);
+  assert.deepEqual(first.hiddenRows, [5]);
+  assert.deepEqual(first.notes, [{ cell: "A2", note: "kept" }]);
+  const second = await checked(server, "read_range", {
+    spreadsheetId: "big",
+    range: first.nextRange,
+    includeGrid: true,
+  });
+  assert.deepEqual(second.hiddenRows, [100]);
+  assert.deepEqual(second.notes, [{ cell: "A90", note: "on the next page" }]);
+});
+
+test("list_comments gives each comment with its replies, oldest first, resolved marked, nothing deleted", async () => {
+  const { server, google } = overStandIn(annotated());
+  assert.deepEqual(await checked(server, "list_comments", { spreadsheetId: backlogId }), {
+    comments: [
+      {
+        author: "Dee",
+        createdTime: "2026-11-01T08:00:00.000Z",
+        content: "Who owns T-3?",
+        resolved: false,
+        replies: [],
+      },
+      {
+        author: "Ana",
+        createdTime: "2026-11-02T09:00:00.000Z",
+        content: "Is T-2 still wanted?",
+        resolved: true,
+        quoted: "Second",
+        replies: [
+          { author: "Ben", createdTime: "2026-11-02T10:00:00.000Z", content: "Yes, next sprint." },
+        ],
+      },
+    ],
+  });
+  const asked = new URL(google.calls[0]?.url ?? "");
+  assert.equal(asked.pathname, `/drive/v3/files/${backlogId}/comments`);
+  assert.match(asked.searchParams.get("fields") ?? "", /^nextPageToken,comments\(/);
+  // A page at a time.
+  const page = await checked(server, "list_comments", { spreadsheetId: backlogId, pageSize: 1 });
+  assert.equal((page.comments as unknown[]).length, 1);
+  const rest = await checked(server, "list_comments", {
+    spreadsheetId: backlogId,
+    pageToken: page.nextPageToken,
+  });
+  assert.equal((rest.comments as { author: string }[])[0]?.author, "Ana");
+  assert.equal(rest.nextPageToken, undefined);
+  assert.match(
+    await refused(server, "list_comments", { spreadsheetId: "nothere" }),
+    /no spreadsheet with that ID/,
+  );
+  assert.match(
+    await refused(server, "list_comments", { spreadsheetId: backlogId, pageSize: 0 }),
+    /`pageSize` is a whole number/,
+  );
+});
+
+test("a sign-in without the scope a call needs says so, and doesn't say to sign in", async () => {
+  const server = mcpServer({
+    fetch: async () =>
+      Response.json(
+        {
+          error: {
+            code: 403,
+            message: "Request had insufficient authentication scopes.",
+            errors: [{ reason: "insufficientPermissions" }],
+          },
+        },
+        { status: 403 },
+      ),
+    source: fixedAccess(standInToken),
+  });
+  assert.equal(
+    await refused(server, "list_comments", { spreadsheetId: backlogId }),
+    "Google refused: this sign-in wasn't given the permission that takes.",
+  );
+});
+
+test("a row inserted above them moves the notes and hidden rows below it down", async () => {
+  const fixture = annotated();
+  const tab = fixture.spreadsheets[0]?.tabs[0];
+  assert.ok(tab);
+  tab.rows.push([], ["Notes"]);
+  tab.notes = { ...tab.notes, A6: "Below the table." };
+  tab.hiddenRows = [3, 6];
+  const { server, google } = overStandIn(fixture);
+  await checked(server, "append_rows", {
+    spreadsheetId: backlogId,
+    range: "Backlog!A1:C4",
+    values: [["T-9", "Ninth"]],
+  });
+  const moved = google.spreadsheets[0]?.tabs[0];
+  assert.deepEqual(moved?.rows[4], ["T-9", "Ninth"]);
+  assert.deepEqual(moved?.hiddenRows, [3, 7]);
+  assert.deepEqual(moved?.notes, {
+    B2: "Agreed on Monday.",
+    D3: "Only a note here.",
+    A7: "Below the table.",
+  });
+});
+
 test("update_range writes over a range, as given by default, and keeps nulls' cells", async () => {
   const { server, google } = overStandIn();
   const done = await checked(server, "update_range", {
@@ -535,6 +740,7 @@ test("with no sign-in, every tool answers that it's not signed in, and calls not
     list_spreadsheets: {},
     get_spreadsheet: { spreadsheetId: backlogId },
     read_range: { spreadsheetId: backlogId, range: "Backlog" },
+    list_comments: { spreadsheetId: backlogId },
     update_range: { spreadsheetId: backlogId, range: "Backlog!A1", values: [["x"]] },
     append_rows: { spreadsheetId: backlogId, range: "Backlog", values: [["x"]] },
   };

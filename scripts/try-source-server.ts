@@ -27,7 +27,8 @@ const bl108 = `sheets:${rowKey("1q2w3e4r5t6y7u8i9o0pBacklogFixture", 0, "BL-108"
 
 // What each kind tries: its stand-in, the one write it approves, the items
 // the workstream that asks for it holds, and the options it's set to first,
-// where they're the person's to set through the server.
+// where they're the person's to set through the server, or the pick it
+// lists through the server and sets, as Settings does.
 const kinds: Record<
   string,
   {
@@ -36,6 +37,7 @@ const kinds: Record<
     items: readonly string[];
     write: readonly [string, readonly unknown[]];
     options?: Record<string, unknown>;
+    pick?: readonly [string, string | string[]];
   }
 > = {
   jira: {
@@ -43,18 +45,21 @@ const kinds: Record<
     name: "Jira",
     items: ["jira:SYN-10"],
     write: ["jira.setSummary", ["jira:SYN-10", "Renamed through the stand-in"]],
+    pick: ["project", "SYN"],
   },
   slack: {
     standIn: "slack",
     name: "Slack",
     items: ["slack:C0FW1WEATHR-1790071200.000100"],
     write: ["slack.reply", ["slack:C0FW1WEATHR-1790071200.000100", "Replied through the stand-in"]],
+    pick: ["channels", ["C0FW1WEATHR"]],
   },
   linear: {
     standIn: "linear",
     name: "Linear",
     items: ["linear:ENG-4"],
     write: ["linear.setCycle", ["linear:ENG-4", 14]],
+    pick: ["team", "ENG"],
   },
   sheets: {
     standIn: "sheets",
@@ -128,6 +133,21 @@ try {
     });
     if (set.status !== 200) throw new Error(`${trying.name}'s options didn't set: ${set.status}`);
     await it.app.settled();
+  }
+  if (trying.pick) {
+    const [field, value] = trying.pick;
+    const id = (await it.connection(kind))?.id ?? "";
+    const listed = await it.post(`/api/connections/${id}/pick`, { query: "", field });
+    const { choices = [] } = json<{ choices?: { value: string }[] }>(listed);
+    if (listed.status !== 200 || !choices.some((each) => [value].flat().includes(each.value)))
+      throw new Error(`${trying.name}'s ${field} wasn't listed: ${listed.status}`);
+    const set = await it.post(`/api/connections/${id}/options`, { options: { [field]: value } });
+    if (set.status !== 200) throw new Error(`${trying.name}'s ${field} didn't set: ${set.status}`);
+    await it.app.settled();
+    step(
+      `${trying.name} listed ${choices.length} for its ${field}, and read ${JSON.stringify(value)}`,
+      at,
+    );
   }
   const opened = await it.connection(kind);
   if (!opened) {

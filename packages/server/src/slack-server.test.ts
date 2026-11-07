@@ -39,10 +39,14 @@ async function world(
     script?: Script;
     // Changes an answer on its way back, as a server that changed might.
     answer?: (call: ToolCall, answer: unknown) => unknown;
+    // The channels the person is in, the fixture's picked unless given.
+    yours?: string[];
   } = {},
 ) {
   const workspace = standInWorkspace(fixture);
-  const tools = standInCaller(slackStandIn(fixture, workspace));
+  const tools = standInCaller(
+    slackStandIn(options.yours ? { ...fixture, picked: options.yours } : fixture, workspace),
+  );
   const made: Made[] = [];
   let processes = 0;
   const agent = fakeAgent(() => [slack()]);
@@ -270,4 +274,103 @@ test("a reply through Slack's server offers no Revert, and says why; through its
     ["revert"],
   );
   assert.equal(restSet?.cannotUndo, undefined);
+});
+
+const random = "C0FW2RANDOM";
+
+test("Slack's channels are picked through its server, and the pick bounds the next sync", async (t) => {
+  const it = await world(t, { yours: [weather, random] });
+  await it.turnOn();
+  const before = await it.connection("slack");
+  assert.deepEqual(before?.picks, [
+    {
+      name: "channels",
+      label: "Channels",
+      many: true,
+      most: 20,
+      unpicked: "your first 20 channels",
+    },
+  ]);
+  assert.deepEqual(before?.options, {}, "nothing picked yet");
+  const read = (made: Made[]) =>
+    new Set(
+      made
+        .filter((each) => each.call.tool === "slack_read_channel")
+        .map((each) => each.call.args.channel_id),
+    );
+  assert.deepEqual(read(it.made), new Set([weather, random]), "the first 20 channels, both");
+  const id = before?.id ?? "";
+  const listed = json<{ choices: { value: string; name: string }[] }>(
+    await it.post(`/api/connections/${id}/pick`, { query: "", field: "channels" }),
+  );
+  assert.deepEqual(
+    listed.choices.map((each) => [each.value, each.name]),
+    [
+      [weather, "#weather-disruptions"],
+      [random, "#random"],
+    ],
+  );
+  const last = it.made.at(-1);
+  assert.equal(last?.call.tool, "slack_list_user_channels");
+  assert.deepEqual(last?.tools, reads, "listed from the process with only the read tools");
+  it.made.length = 0;
+  const set = await it.post(`/api/connections/${id}/options`, { options: { channels: [weather] } });
+  assert.equal(set.status, 200);
+  await it.app.settled();
+  assert.deepEqual(read(it.made), new Set([weather]), "the pick alone");
+  const after = await it.connection("slack");
+  assert.deepEqual(after?.options, { channels: [weather] });
+  assert.equal(after?.id, id, "the same connection, kept");
+  assert.ok(it.slackRows().length > 0);
+  assert.ok(it.slackRows().every((row) => row.id.startsWith(`slack:${weather}`)));
+  assert.ok(
+    it.made.every((each) => reads.includes(each.call.tool)),
+    "never a write tool",
+  );
+  // Its Undo puts it back to none picked: the first 20 again.
+  const { undo } = json<{ undo: { input: unknown } }>(set);
+  assert.equal((await it.post("/api/actions/source.configure", undo.input)).status, 200);
+  await it.app.settled();
+  assert.deepEqual((await it.connection("slack"))?.options, {});
+  assert.ok(it.slackRows().some((row) => row.id.startsWith(`slack:${random}`)));
+});
+
+test("the channels Slack's own connection read carry over when Slack turns on through its server", async (t) => {
+  const it = await world(t, { token: true, yours: [weather, random] });
+  const own = await it.connection("slack");
+  await it.turnOn();
+  const slack = await it.connection("slack");
+  assert.equal(slack?.id, own?.id, "the same connection, so its items keep their IDs");
+  assert.equal(slack?.through, "slack");
+  assert.deepEqual(slack?.options, { channels: fixture.picked });
+  const read = it.made.filter((each) => each.call.tool === "slack_read_channel");
+  assert.ok(read.length > 0);
+  assert.ok(
+    read.every((each) => each.call.args.channel_id === weather),
+    "not the first 20 the server lists",
+  );
+});
+
+test("a pick the server no longer lists waits through it, picked again or undone there", async (t) => {
+  const it = await world(t);
+  await it.turnOn();
+  const id = (await it.connection("slack"))?.id ?? "";
+  const set = await it.post(`/api/connections/${id}/options`, { options: { channels: [random] } });
+  assert.equal(set.status, 200);
+  await it.app.settled();
+  const waiting = await it.connection("slack");
+  assert.equal(waiting?.state, "waiting");
+  assert.equal(waiting?.through, "slack", "still through the server");
+  assert.equal(waiting?.picks.length, 1, "so it's picked there again");
+  assert.match(waiting?.problem ?? "", /lists no channel of yours named #C0FW2RANDOM/);
+  const listed = await it.post(`/api/connections/${id}/pick`, { query: "", field: "channels" });
+  assert.equal(listed.status, 200);
+  const { undo } = json<{ undo: { input: unknown } }>(set);
+  const undone = await it.post("/api/actions/source.configure", undo.input);
+  assert.equal(undone.status, 200);
+  await it.app.settled();
+  const back = await it.connection("slack");
+  assert.equal(back?.state, "open");
+  assert.deepEqual(back?.options, {});
+  assert.ok(it.slackRows().length > 0);
 });

@@ -275,3 +275,42 @@ test("Linear off: nothing of it shows, and its server calls stop", async (t) => 
   await it.app.settled();
   assert.equal(it.made.length, calls);
 });
+
+test("Linear's team is picked through its server, and the pick bounds the next sync", async (t) => {
+  const it = await world(t);
+  await it.turnOn();
+  const before = await it.connection("linear");
+  assert.deepEqual(before?.options, {}, "nothing picked: the server's first team");
+  assert.deepEqual(
+    before?.picks.map((pick) => [pick.name, pick.unpicked]),
+    [["team", "the first team it lists"]],
+  );
+  assert.ok(it.rows().some((row) => row.id.startsWith("linear:ENG-")));
+  const id = before?.id ?? "";
+  const listed = json<{ choices: { value: string; name: string }[] }>(
+    await it.post(`/api/connections/${id}/pick`, { query: "", field: "team" }),
+  );
+  assert.deepEqual(
+    listed.choices.map((each) => [each.value, each.name]),
+    [
+      ["ENG", "Ferrowick"],
+      ["OPS", "Pier operations"],
+    ],
+  );
+  it.made.length = 0;
+  const set = await it.post(`/api/connections/${id}/options`, { options: { team: "OPS" } });
+  assert.equal(set.status, 200);
+  await it.app.settled();
+  const after = await it.connection("linear");
+  assert.equal(after?.id, id, "the same connection, kept");
+  assert.match(after?.about ?? "", /^OPS \(Pier operations\)/);
+  assert.ok(it.rows().length > 0);
+  assert.ok(
+    it.rows().every((row) => !row.id.startsWith("linear:ENG-")),
+    "nothing of ENG",
+  );
+  assert.ok(
+    it.made.every((each) => reads.includes(each.call.tool)),
+    "never a write tool",
+  );
+});
