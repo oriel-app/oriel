@@ -13,5 +13,9 @@
         "The reply doesn't say or imply that any item in the workstream covers saving a card."
       ]
     }
-  ]
+  ],
+  "failing": {
+    "grader": "judge",
+    "why": "known flaky (first failure, in round 01M6W2YYABAA5E7NREP04NT5BQ; passed in the BYO pickers PR's first recording on the same code): the judge read the reply's facts about saving a card as search findings framed outside the workstream"
+  }
 }
