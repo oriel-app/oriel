@@ -1,0 +1,342 @@
+// Google Sheets through packages/sheets-mcp (decision 0059, OA-279): the
+// entry Oriel knows the server by, and the parser, both ways. From its tool
+// results, the reads a sync, a preview and the writer make (`Google`, as
+// google.ts gives them over Google's own APIs); from each captured
+// mutation, its write call. Nothing here imports the server: it's a program
+// the person's agent runs, and Oriel reads only what its tools answer.
+//
+// What the server's tools don't give, Oriel does without: no comments, no
+// cell notes, no rows or columns hidden by hand, no merges, and no Drive
+// version, so a spreadsheet's last change, from its listing, stands for
+// it. No tool deletes a row, so a row added through it can't be taken back
+// (`unsendable` in writer.ts). An answer it can't read stops the sync,
+// naming the server (`ServerUnreadable`): the index stays as it was.
+import { fileURLToPath } from "node:url";
+import {
+  answerJson,
+  answerText,
+  ServerUnreadable,
+  SourceRefused,
+  type SourceServer,
+  type ToolAnswer,
+  type ToolCaller,
+  WriteStalled,
+} from "@oriel/core";
+import { columnLetters, parseRange, quoteTab } from "./a1.ts";
+import { type DriveFile, type Google, SheetsError, type TabInfo } from "./google.ts";
+import type { CellValue } from "./requests.ts";
+import type { Cell, Entered, Grid } from "./table.ts";
+
+// Its tools Oriel calls, by what each does.
+export const sheetsTools = {
+  list: "list_spreadsheets",
+  get: "get_spreadsheet",
+  read: "read_range",
+  update: "update_range",
+  append: "append_rows",
+} as const;
+
+const t = sheetsTools;
+
+// Where this checkout's server is: the command its README adds it to an
+// agent with, which is how Oriel knows it, and the only command Claude
+// Code may start it by. A person's agent that runs it from anywhere else,
+// or with other arguments, isn't running this one.
+export const sheetsMcpMain = fileURLToPath(
+  new URL("../../sheets-mcp/src/main.ts", import.meta.url),
+);
+
+// Oriel's own Sheets server, as Oriel knows it: by its command, since a
+// local server can report any name.
+export const sheetsServer: SourceServer = {
+  name: "sheets-mcp",
+  reports: "sheets-mcp",
+  at: { command: `node ${sheetsMcpMain}` },
+  reads: [t.list, t.get, t.read],
+  writes: [t.update, t.append],
+  instructions: "https://github.com/oriel-app/oriel/blob/main/packages/sheets-mcp/README.md",
+};
+
+type Json = Record<string, unknown>;
+const isObject = (value: unknown): value is Json =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
+const count = (value: unknown): number | null =>
+  Number.isInteger(value) && (value as number) >= 0 ? (value as number) : null;
+
+// The server's words when it isn't signed in to Google, which only say
+// that, and are never passed on.
+const signedOut = (words: string) =>
+  /\b(not signed in|sign-in expired|refused the sign-in|sheets-mcp login)\b/i.test(words);
+// When it can't find, or can't open, the spreadsheet.
+const missing = (words: string) => /\bfound no spreadsheet\b|\bnot found\b/i.test(words);
+// Its words for a write it, or Google, turned away unmade: an argument it
+// checked, a sign-in, a permission, or a request to slow down. Its others,
+// such as Google not answering, may come after the write landed.
+const turnedAway = (words: string) =>
+  !/\b(couldn't reach|didn't answer|isn't one this server reads)\b/i.test(words) &&
+  (signedOut(words) ||
+    missing(words) ||
+    /\b(refused|can't open or change|must be|isn't A1|too many requests|hasn't turned on|write at most)\b/i.test(
+      words,
+    ));
+
+// A tool's answer as JSON, or its words when it failed. Its words only
+// tell what kind of failure it was.
+function bodyOf(tool: string, answer: ToolAnswer): { failed: string } | { body: unknown } {
+  if (!isObject(answer) || !Array.isArray(answer.content))
+    throw new ServerUnreadable(`${tool} answered with no content`);
+  if (answer.isError === true) return { failed: answerText(answer) };
+  return { body: answerJson(tool, answer) };
+}
+
+// A read's answer, or "gone" when the server says the spreadsheet isn't
+// one it can open. Not signed in is the whole server's, as Google's own
+// 401 is (google.ts).
+async function readOf(read: ToolCaller, tool: string, args: Json): Promise<Json | "gone"> {
+  const answer = bodyOf(tool, await read({ tool, args }));
+  if ("failed" in answer) {
+    if (signedOut(answer.failed))
+      throw new SheetsError(`${sheetsServer.name} isn't signed in to Google`, 401);
+    if (missing(answer.failed)) return "gone";
+    throw new ServerUnreadable(`${tool} answered with an error`);
+  }
+  if (!isObject(answer.body)) throw new ServerUnreadable(`${tool} answered with no object`);
+  return answer.body;
+}
+
+export type ServerSpreadsheet = { title: string; tabs: TabInfo[] };
+
+// `get_spreadsheet`'s answer: its title and its tabs.
+export function readSpreadsheet(body: Json): ServerSpreadsheet {
+  const unreadable = () => new ServerUnreadable(`${t.get} gave a spreadsheet Oriel can't read`);
+  const title = text(body.title);
+  if (title === null || !Array.isArray(body.tabs)) throw unreadable();
+  const tabs = body.tabs.map((tab): TabInfo => {
+    if (!isObject(tab)) throw unreadable();
+    const sheetId = count(tab.sheetId);
+    const name = text(tab.title);
+    const rows = count(tab.rowCount);
+    const columns = count(tab.columnCount);
+    if (sheetId === null || name === null || name === "" || rows === null || columns === null)
+      throw unreadable();
+    return { sheetId, title: name, rows, columns };
+  });
+  return { title, tabs };
+}
+
+// `read_range`'s answer: its rows of text, and where to read on when it
+// was cut.
+export function readValues(body: Json): {
+  values: string[][];
+  next: string | null;
+  truncated: boolean;
+} {
+  const values = body.values;
+  if (
+    !Array.isArray(values) ||
+    !values.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string")) ||
+    typeof body.truncated !== "boolean"
+  )
+    throw new ServerUnreadable(`${t.read} gave cells Oriel can't read`);
+  return { values: values as string[][], next: text(body.nextRange), truncated: body.truncated };
+}
+
+// A cell as entered, from the server's FORMULA rendering: a formula is
+// text that starts with `=`; a cell a formula elsewhere fills is empty.
+const enteredOf = (formula: string | undefined): Entered =>
+  formula === undefined || formula === "" ? null : formula.startsWith("=") ? { formula } : formula;
+
+// How many spreadsheets one listing asks for, and the most pages a sync
+// reads to find one spreadsheet's last change.
+const listPage = 100;
+const mostPages = 5;
+
+// The reads a Sheets connection makes, through the server's read tools,
+// as google.ts makes them of Google.
+export function serverGoogle(read: ToolCaller): Google {
+  // A spreadsheet `file` just read, which the `tabs` after it uses once.
+  const fresh = new Map<string, ServerSpreadsheet>();
+
+  const spreadsheet = async (id: string): Promise<ServerSpreadsheet | "gone"> => {
+    const got = await readOf(read, t.get, { spreadsheetId: id });
+    return got === "gone" ? got : readSpreadsheet(got);
+  };
+
+  // Its last change, from the listing of spreadsheets named like it, or
+  // null when the listing doesn't hold it.
+  const modified = async (id: string, title: string): Promise<string | null> => {
+    let pageToken: string | null = null;
+    for (let page = 0; page < mostPages; page += 1) {
+      const got = await readOf(read, t.list, {
+        query: title,
+        pageSize: listPage,
+        ...(pageToken ? { pageToken } : {}),
+      });
+      if (got === "gone" || !Array.isArray(got.spreadsheets))
+        throw new ServerUnreadable(`${t.list} gave no spreadsheets`);
+      for (const each of got.spreadsheets) {
+        if (!isObject(each)) throw new ServerUnreadable(`${t.list} gave a spreadsheet it can't`);
+        const at = text(each.modifiedTime);
+        if (each.id === id && at !== null && Number.isFinite(Date.parse(at))) return at;
+      }
+      pageToken = text(got.nextPageToken);
+      if (!pageToken) return null;
+    }
+    return null;
+  };
+
+  // Rows `start` to `end` (0-based, end exclusive) of a tab, every column,
+  // rendered one way, read on while the server cuts them.
+  const values = async (
+    id: string,
+    tab: TabInfo,
+    start: number,
+    end: number,
+    render: "FORMATTED_VALUE" | "FORMULA",
+  ): Promise<string[][]> => {
+    const last = columnLetters(Math.max(tab.columns, 1) - 1);
+    const rows: string[][] = [];
+    let range = `${quoteTab(tab.title)}!A${start + 1}:${last}${end}`;
+    for (;;) {
+      const got = await readOf(read, t.read, {
+        spreadsheetId: id,
+        range,
+        ...(render === "FORMULA" ? { valueRenderOption: render } : {}),
+      });
+      if (got === "gone") throw new SheetsError(`${t.read} lost the spreadsheet`, 404);
+      const answer = readValues(got);
+      rows.push(...answer.values);
+      if (!answer.truncated) return rows;
+      // Read on from the row after the last it gave, and from nowhere else.
+      const next = answer.next === null ? null : parseRange(answer.next);
+      if (next?.tab !== tab.title || next.bounds?.startRow !== start + rows.length)
+        throw new ServerUnreadable(`${t.read} cut a tab's rows with no way on to the rest`);
+      range = answer.next as string;
+    }
+  };
+
+  return {
+    // Its name and last change, which stands for its version. Whether the
+    // person may edit it, the server doesn't say: a write it can't make
+    // comes back refused.
+    async file(id): Promise<DriveFile | "gone"> {
+      const got = await spreadsheet(id);
+      if (got === "gone") return got;
+      fresh.set(id, got);
+      const at = await modified(id, got.title);
+      return {
+        name: got.title,
+        // No version the listing gives is one it can't tell from the next,
+        // so it's read in full every time.
+        version: at ?? "",
+        modifiedTime: at ?? "",
+        canEdit: true,
+        trashed: false,
+      };
+    },
+    // No tool gives a spreadsheet's comments.
+    comments: async () => [],
+    async tabs(id) {
+      const held = fresh.get(id);
+      fresh.delete(id);
+      return held ?? spreadsheet(id);
+    },
+    // Cells as shown, and with `entered`, as entered too. No notes, hidden
+    // rows or columns, or merges: the server doesn't give them.
+    async rows(id, tab, start, end, entered = false): Promise<Grid | "gone"> {
+      const shown = await values(id, tab, start, end, "FORMATTED_VALUE");
+      const formulas = entered ? await values(id, tab, start, end, "FORMULA") : [];
+      const height = Math.max(shown.length, formulas.length);
+      const rows: (Cell | null)[][] = Array.from({ length: height }, (_, r) => {
+        const width = Math.max(shown[r]?.length ?? 0, formulas[r]?.length ?? 0);
+        return Array.from({ length: width }, (_, c) => {
+          const value = shown[r]?.[c] ?? "";
+          const held = entered ? { entered: enteredOf(formulas[r]?.[c]) } : {};
+          return value === "" && !held.entered
+            ? null
+            : { shown: value, number: null, note: null, ...held };
+        });
+      });
+      return {
+        startRow: start,
+        rows,
+        hiddenRows: new Set(),
+        hiddenColumns: new Set(),
+        merges: [],
+      };
+    },
+  };
+}
+
+// The person's most recently changed spreadsheets, by ID, at most `most`.
+export async function recentSpreadsheets(read: ToolCaller, most: number): Promise<string[]> {
+  const got = await readOf(read, t.list, { pageSize: most });
+  if (got === "gone" || !Array.isArray(got.spreadsheets))
+    throw new ServerUnreadable(`${t.list} gave no spreadsheets`);
+  return got.spreadsheets.slice(0, most).map((each) => {
+    const id = isObject(each) ? text(each.id) : null;
+    if (id === null || !/^[A-Za-z0-9_-]{10,100}$/.test(id))
+      throw new ServerUnreadable(`${t.list} gave a spreadsheet Oriel can't read`);
+    return id;
+  });
+}
+
+// What a write's answer says it wrote: the range, whose first row is where
+// the values went.
+function writtenRow(tool: string, body: unknown): number {
+  const range = isObject(body) ? text(body.updatedRange) : null;
+  const row = range === null ? undefined : parseRange(range)?.bounds?.startRow;
+  if (row === undefined) throw new Error(`${tool} didn't say where it wrote, and may have`);
+  return row;
+}
+
+// The server's writes, from the process with only its write tools, values
+// only: `RAW`, so text that looks like a formula stays text. An answer that
+// says it turned the write away is a refusal, with nothing written; any
+// other failure may have landed.
+export function serverWrites(write: ToolCaller) {
+  const send = async (tool: string, args: Json): Promise<unknown> => {
+    let answer: ToolAnswer;
+    try {
+      answer = await write({ tool, args: { ...args, valueInputOption: "RAW" } });
+    } catch (error) {
+      // Never sent, or turned away unprocessed: none of it landed.
+      if (error instanceof WriteStalled)
+        throw new SourceRefused(error.message, { sent: false, cause: error });
+      throw error;
+    }
+    if (!isObject(answer) || !Array.isArray(answer.content))
+      throw new Error(`${tool} answered with no content, and may have written`);
+    if (answer.isError === true) {
+      const words = answerText(answer);
+      if (turnedAway(words))
+        throw new SourceRefused(`${sheetsServer.name} refused the write`, { sent: true });
+      throw new Error(`${tool} failed, and may have written`);
+    }
+    return answerJson(tool, answer);
+  };
+  return {
+    // One cell, by its tab's name and its 0-based row and column.
+    async edit(id: string, tab: string, row: number, column: number, value: CellValue) {
+      await send(t.update, {
+        spreadsheetId: id,
+        range: `${quoteTab(tab)}!${columnLetters(column)}${row + 1}`,
+        values: [[value ?? ""]],
+      });
+    },
+    // A row after the table whose header row is `header` (1 for the
+    // first), holding `cells` from column A: the 0-based row it went in.
+    async append(id: string, tab: string, header: number, cells: readonly CellValue[]) {
+      const width = columnLetters(Math.max(cells.length, 1) - 1);
+      const body = await send(t.append, {
+        spreadsheetId: id,
+        range: `${quoteTab(tab)}!A${header}:${width}`,
+        values: [cells.map((value) => value ?? "")],
+      });
+      return writtenRow(t.append, body);
+    },
+  };
+}
+
+export type ServerWrites = ReturnType<typeof serverWrites>;

@@ -204,7 +204,11 @@ export type AppOptions = {
   // Starts a process of the person's agent that calls one of their servers
   // with only `tools` (decision 0059), for tests and screenshots: Settings'
   // models when absent.
-  callServer?: (server: FoundServer, tools: readonly string[]) => Promise<Calling | null>;
+  callServer?: (
+    server: FoundServer,
+    tools: readonly string[],
+    known: SourceServer,
+  ) => Promise<Calling | null>;
   // The themes window.css has, the default first.
   themes?: readonly string[];
   // Whether the page may set where a CLI is: only behind the desktop app's
@@ -559,8 +563,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       : null;
   const callServer =
     options.callServer ??
-    ((server: FoundServer, tools: readonly string[]) =>
-      options.models?.serverCalls(store.get(), server, tools, log) ?? Promise.resolve(null));
+    ((server: FoundServer, tools: readonly string[], known: SourceServer) =>
+      options.models?.serverCalls(store.get(), server, tools, log, known) ?? Promise.resolve(null));
   // Calls the server from a process of the person's agent that starts on
   // the first call and stops once it's been quiet a while, with only
   // `tools`: one for reads, another for a change set's writes.
@@ -581,7 +585,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (quiet) clearTimeout(quiet);
       quiet = null;
       active += 1;
-      const at = (current ??= callServer(server.found, tools));
+      const at = (current ??= callServer(server.found, tools, server.known));
       try {
         const calling = await at;
         if (!calling) throw new Error(`No agent runs ${server.known.name} now.`);

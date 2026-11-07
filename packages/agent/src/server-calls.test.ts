@@ -164,6 +164,40 @@ test("a Claude Code process loads the one server alone, with its other tools lef
   assert.ok(!args.includes("--allowed-tools"), "no call is allowed ahead of Oriel's answer");
 });
 
+test("a local server loads by its command and arguments, with no environment", () => {
+  const local: ServerCallsOptions = {
+    server: {
+      name: "sheets",
+      local: { command: "node", args: ["/checkout/packages/sheets-mcp/src/main.ts"] },
+    },
+    tools: ["list_spreadsheets", "get_spreadsheet", "read_range"],
+    others: ["update_range", "append_rows"],
+    log: () => {},
+  };
+  const args = serverCallArgs(local);
+  const config = JSON.parse(args[args.indexOf("--mcp-config") + 1] ?? "") as {
+    mcpServers: Record<string, Record<string, unknown>>;
+  };
+  assert.deepEqual(config, {
+    mcpServers: {
+      sheets: {
+        type: "stdio",
+        command: "node",
+        args: ["/checkout/packages/sheets-mcp/src/main.ts"],
+      },
+    },
+  });
+  assert.ok(!("env" in (config.mcpServers.sheets ?? {})));
+  // One that didn't start says so, naming it, and where else to start it.
+  assert.equal(
+    checkCallerInit(
+      init({ tools: [], mcp_servers: [{ name: "sheets", status: "failed" }] }),
+      local,
+    ),
+    "sheets didn't start without the environment its entry gives it, which Oriel never passes: start it from Codex, or use a remote server",
+  );
+});
+
 test("system/init must report exactly the server and the tools Oriel named", () => {
   assert.equal(checkCallerInit(init(), options), null);
   assert.match(

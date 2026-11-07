@@ -17,6 +17,11 @@
 //
 // Values are keyed by Oriel's field names, as specs.ts lists them, and
 // `cells`, the row's digest.
+//
+// Through sheets-mcp (decision 0059), the same checks read through its read
+// tools and the write is its `update_range` or `append_rows`, values `RAW`
+// (sheets-mcp.ts). Its tools can't delete a row, so a row added through it
+// can't be taken back, which the writer says up front (`unsendable`).
 import {
   type FieldValues,
   type ItemId,
@@ -33,6 +38,7 @@ import {
 } from "@oriel/core";
 import { rowKey } from "./attrs.ts";
 import { type Google, googleReads, maxBackoffMs, maxRetries } from "./google.ts";
+import { serverGoogle, serverWrites } from "./sheets-mcp.ts";
 import { maxRows } from "./grid.ts";
 import type { FieldName } from "./mapping.ts";
 import type { Cell } from "./table.ts";
@@ -51,6 +57,8 @@ import type { SheetsWrites } from "./open-connection.ts";
 import { sheetsOrigin } from "./stand-in.ts";
 
 const requestTimeoutMs = 60_000;
+const unsendable =
+  "A row added through sheets-mcp can't be taken back: it has no tool to delete one";
 const source = "Google Sheets";
 
 // A cell showing a value nobody entered there: an array formula elsewhere
@@ -72,34 +80,45 @@ export function sheetsWriter(
   },
   log: Log,
 ): SourceWriter<"sheets"> {
-  const { picks, prefix, credential } = writes;
-  const send = writes.fetch ?? fetch;
+  const { picks, prefix } = writes;
+  const server = "server" in writes ? writes.server : null;
+  const toServer = server && serverWrites(server.write);
+  const send = ("fetch" in writes ? writes.fetch : undefined) ?? fetch;
   const wait = writes.wait ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
   // Which tab each row was last found in, across writes.
   const where = new Map<string, { spreadsheet: string; sheetId: number }>();
 
   // Google's reads, each request within what is left of the write, if any.
   const reads = (limit?: WriteLimit): Google =>
-    googleReads({
-      fetch: (input, init) =>
-        send(input, {
-          ...init,
-          signal: AbortSignal.timeout(requestMs(requestTimeoutMs, limit, source)),
-        }),
-      credential,
-      wait: async (ms) => {
-        if (limit && ms > limit.left())
-          throw new WriteStalled(`${source} asked Oriel to wait longer than it waits on a write`);
-        await wait(ms);
-      },
-      random: Math.random,
-    });
+    server
+      ? serverGoogle(server.read)
+      : googleReads({
+          fetch: (input, init) =>
+            send(input, {
+              ...init,
+              signal: AbortSignal.timeout(requestMs(requestTimeoutMs, limit, source)),
+            }),
+          credential: credentialOf(),
+          wait: async (ms) => {
+            if (limit && ms > limit.left())
+              throw new WriteStalled(
+                `${source} asked Oriel to wait longer than it waits on a write`,
+              );
+            await wait(ms);
+          },
+          random: Math.random,
+        });
 
   // The one request that writes, as JSON. It is sent once its time and its
   // sign-in are in hand: a failure before then sent nothing this time, and
   // any time before was a `429`, turned away unprocessed, which goes again
   // while the write has time. Any other refusal changed nothing, since
   // Google applies a batch whole or not at all.
+  function credentialOf() {
+    if (!("credential" in writes)) throw new Error("Sheets through its server has no sign-in");
+    return writes.credential;
+  }
+
   const post = async (
     path: string,
     body: unknown,
@@ -110,7 +129,7 @@ export function sheetsWriter(
       let ms: number;
       let headers: Record<string, string>;
       try {
-        headers = await credential.headers();
+        headers = await credentialOf().headers();
         // Only now: the sign-in may have taken some of the write's time.
         ms = requestMs(requestTimeoutMs, limit, source);
       } catch (error) {
@@ -242,12 +261,16 @@ export function sheetsWriter(
       );
     const fields = [field, "cells"];
     const before = rowValues(at.columns, cells, fields);
-    await post(
-      spreadsheetPath(at.spreadsheet, "/values:batchUpdate"),
-      editBody(at.tab.title, at.index, column, value),
-      limit,
-      sent,
-    );
+    if (toServer) {
+      sent();
+      await toServer.edit(at.spreadsheet, at.tab.title, at.index, column, value);
+    } else
+      await post(
+        spreadsheetPath(at.spreadsheet, "/values:batchUpdate"),
+        editBody(at.tab.title, at.index, column, value),
+        limit,
+        sent,
+      );
     const after = await rowAt(google, at, at.index);
     if (!holds(at, after, at.key))
       throw new Error(
@@ -304,13 +327,19 @@ export function sheetsWriter(
     const width = Math.max(...given.map(([field]) => read.columns[field] ?? 0)) + 1;
     const cells: CellValue[] = Array.from({ length: width }, () => null);
     for (const [field, value] of given) cells[read.columns[field] ?? 0] = value;
-    const index = read.last + 1;
-    await post(
-      spreadsheetPath(spreadsheet, ":batchUpdate"),
-      addRowBody(sheetId, index, cells, read.last === read.mapping.header - 1),
-      limit,
-      sent,
-    );
+    let index = read.last + 1;
+    if (toServer) {
+      sent();
+      // After the table, where its server's append puts it, which may be
+      // past rows a sync skips as blank.
+      index = await toServer.append(spreadsheet, read.tab.title, read.mapping.header, cells);
+    } else
+      await post(
+        spreadsheetPath(spreadsheet, ":batchUpdate"),
+        addRowBody(sheetId, index, cells, read.last === read.mapping.header - 1),
+        limit,
+        sent,
+      );
     const hash = rowKey(spreadsheet, sheetId, key);
     const id = itemId(prefix, hash) as ItemId<"sheets">;
     const after = await rowAt(google, read, index);
@@ -332,6 +361,7 @@ export function sheetsWriter(
     sent: () => void,
     request: { target: ItemId<"sheets"> | null; expectedStableId: string | null },
   ): Promise<WriteResult<"sheets">> => {
+    if (toServer) throw new SourceRefused(unsendable, { sent: false });
     const at = await target(google, request.target, request.expectedStableId);
     const fields = [...Object.keys(at.columns), "cells"];
     const before = rowValues(at.columns, cellsAt(at.grid, at.index), fields);
@@ -366,6 +396,7 @@ export function sheetsWriter(
 
   return {
     kind: "sheets",
+    ...(toServer ? { unsendable: { deleteRow: unsendable } } : {}),
     // A target must come with the stable ID it is expected to have, and an
     // added row with none. A failure before the write went out sent nothing.
     apply: async ({ op, target: id, expectedStableId, args, seen }, limit) => {

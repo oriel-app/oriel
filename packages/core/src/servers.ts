@@ -38,6 +38,9 @@ export type FoundServer = {
   // How a remote one is reached, where the agent says: what a process that
   // loads it alone names it with, with its URL.
   transport?: "http" | "sse";
+  // A local one's command and its arguments, apart, as the agent runs it:
+  // never its environment, which may hold a secret.
+  local?: { command: string; args: readonly string[] };
 };
 
 // A found server Oriel knows, with the kind it serves and the entry it

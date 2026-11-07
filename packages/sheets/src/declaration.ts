@@ -16,6 +16,7 @@ import { type SheetsContext, sheetsNamespace } from "./namespace.ts";
 import { openSheets, type SheetsWrites } from "./open-connection.ts";
 import { sheetsOverview } from "./overview.ts";
 import { sheetsPreview, sheetsReview } from "./preview.ts";
+import { sheetsServer } from "./sheets-mcp.ts";
 import { sheetsSpecs } from "./specs.ts";
 
 export const sheetsDeclaration = {
@@ -65,5 +66,8 @@ export const sheetsDeclaration = {
   // Signing in on Google's page, picking spreadsheets there, then the
   // mapping's review (decisions 0050 and 0051).
   connect: sheetsConnect,
+  // Or through Oriel's own Sheets server, in the person's agent (decision
+  // 0059), which wins while both are on.
+  servers: [sheetsServer],
   fixture: sheetsDeclaredFixture,
 } satisfies SourceDeclaration<SheetsContext, never, SheetsWrites>;

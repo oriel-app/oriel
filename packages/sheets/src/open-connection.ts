@@ -24,6 +24,9 @@ import {
   optional,
   refine,
   string,
+  readWhole,
+  ServerUnreadable,
+  type ToolCaller,
   type ToOpen,
 } from "@oriel/core";
 import { sheetsAttrs, sheetsAttrsOf } from "./attrs.ts";
@@ -33,21 +36,28 @@ import { type SheetsPicks, sheetsPicks } from "./mapping.ts";
 import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
 import { reportLines } from "./report.ts";
 import { rowReader } from "./rows.ts";
+import { serverGoogle } from "./sheets-mcp.ts";
 import { type SheetsReport, type SheetsSource, sheetsSource } from "./source.ts";
 
 // What a Sheets connection's writer is built from, by its line in
 // packages/changeset/src/writers.ts.
 export type SheetsWrites = {
-  credential: Credential;
   // The spreadsheets and mapped tabs the connection reads: the only ones
   // written to.
   picks: SheetsPicks;
   // Its connection's prefix, which its items' IDs carry.
   prefix: string;
-  // How requests reach Google: the global fetch unless given, as the
-  // fixture's stand-in gives one.
-  fetch?: typeof fetch;
-};
+} & (
+  | {
+      credential: Credential;
+      // How requests reach Google: the global fetch unless given, as the
+      // fixture's stand-in gives one.
+      fetch?: typeof fetch;
+    }
+  // Through sheets-mcp (decision 0059): its reads and its writes, each from
+  // its own process.
+  | { server: { read: ToolCaller; write: ToolCaller } }
+);
 
 export type OpenedSheets = Opened<SheetsContext, unknown, SheetsWrites> & { source: SheetsSource };
 
@@ -157,42 +167,76 @@ export function googleOf(connection: ToOpen, via: OpenVia) {
   return { credential, google, refused };
 }
 
+// What reads a connection's spreadsheets, and what its writer writes with:
+// Google, with its sign-in, or, while Sheets is on through sheets-mcp
+// (decision 0059), the server, which has no sign-in of Oriel's.
+function readerOf(connection: ToOpen, via: OpenVia) {
+  const server = via.server;
+  if (server)
+    return {
+      google: serverGoogle(server.read),
+      with: { server: { read: server.read, write: server.write } },
+      refused: () => false,
+      problem: (error: unknown) => sheetsServerProblem(error, server.known.name),
+      through: `, through ${server.known.name}`,
+    };
+  const { credential, google, refused } = googleOf(connection, via);
+  return {
+    google,
+    with: { credential, ...(via.fetch ? { fetch: via.fetch } : {}) },
+    refused,
+    problem: sheetsProblem,
+    through: "",
+  };
+}
+
+// What the person sees when Sheets can't be read through its server, naming
+// it. A sync that fails this way keeps the index as it was.
+export function sheetsServerProblem(error: unknown, server: string): string {
+  if (error instanceof ServerUnreadable)
+    return `${server} answered in a way Oriel didn't expect, so Oriel kept the window as it was.`;
+  if (error instanceof SheetsError && error.status === 401)
+    return `${server} isn't signed in to Google. Run \`sheets-mcp login\`, then sync again.`;
+  return `Oriel couldn't read the spreadsheets through ${server}, so the window may be behind them. Try again in a moment.`;
+}
+
 export async function openSheets(connection: ToOpen, via: OpenVia): Promise<OpenedSheets> {
   const picks = picksOf(connection.options);
-  const { credential, google, refused } = googleOf(connection, via);
+  const reader = readerOf(connection, via);
+  const { google, refused } = reader;
   const count = picks.spreadsheets.length;
   const readOnly = readOnlyOf(connection.options);
   const context = sheetsContextOf(picks);
 
-  const source = sheetsSource({
+  const read = sheetsSource({
     google,
     picks,
     ...(connection.prefix === "sheets" ? {} : { prefix: connection.prefix }),
     log: via.log,
   });
+  // Through a server, a sync reads every spreadsheet before it gives one,
+  // so an answer it can't read lands nothing.
+  const source: SheetsSource = via.server
+    ? { ...read, sync: (cursor) => readWhole(read.sync(cursor)) }
+    : read;
 
   return {
     source,
     report: () => reportLines(source.report()),
     attrs: sheetsAttrs,
-    about: `${count} ${count === 1 ? "spreadsheet" : "spreadsheets"}`,
+    about: `${count} ${count === 1 ? "spreadsheet" : "spreadsheets"}${reader.through}`,
     scope: undefined,
     // Each mapped tab's fields, which its namespace offers to write.
     context: () => (readOnly ? undefined : context),
     ...(readOnly
       ? { fields: rowReader(google, picks, connection.prefix) }
       : {
-          writes: {
-            credential,
-            picks,
-            prefix: connection.prefix,
-            ...(via.fetch ? { fetch: via.fetch } : {}),
-          },
+          writes: { ...reader.with, picks, prefix: connection.prefix },
         }),
     // Its cursor holds each spreadsheet's version: one that hasn't moved
     // costs one request and isn't read again.
     incremental: true,
-    problem: sheetsProblem,
+    problem: reader.problem,
     signedOut: refused,
     unfit: () => unfitOf(source.report()),
     names: sheetsNames,

@@ -49,7 +49,7 @@ import type {
   ProviderView,
   UsageView,
 } from "@oriel/web/view";
-import type { FoundServer, Log } from "@oriel/core";
+import type { FoundServer, Log, SourceServer } from "@oriel/core";
 import type { Agent, ServerAgentDeps } from "./agent.ts";
 import type { Discovery } from "./source-servers.ts";
 import type { ProviderSetting, Settings } from "./settings.ts";
@@ -158,11 +158,14 @@ export type Models = {
   // A process of the CLI that runs threads that calls `server`, one of the
   // person's own, with only `tools` (decision 0059): null when none runs
   // them, or the CLI doesn't pass its trust check now.
+  // `known`: the entry Oriel recognised it by, whose command, where it gives
+  // one, is the only one a local server is started by.
   serverCalls(
     settings: Settings,
     server: FoundServer,
     tools: readonly string[],
     log: Log,
+    known?: SourceServer,
   ): Promise<Calling | null>;
 };
 
@@ -247,12 +250,18 @@ export function models(options: ModelsOptions): Models {
         ? codexServerCalls(cli, { ...called, env })
         : claudeCodeServerCalls(cli, { ...called, env }));
   // A found server as a process loads it alone: a dev stand-in by its
-  // command, a remote one by its URL, else by its name, as Codex can.
-  const calledOf = (server: FoundServer): CalledServer => {
+  // command, a remote one by its URL, a local one by its command and
+  // arguments, only where they're the command the entry Oriel knows it by
+  // gives (OA-279), else by its name, as Codex can.
+  const calledOf = (server: FoundServer, known?: SourceServer): CalledServer => {
     const stand = dev.find((each) => each.name === server.name);
     if (stand) return { name: server.name, dev: stand };
     if (server.url && server.transport)
       return { name: server.name, url: server.url, transport: server.transport };
+    const at = known?.at;
+    const local = server.local;
+    if (local && at && "command" in at && [local.command, ...local.args].join(" ") === at.command)
+      return { name: server.name, local };
     return { name: server.name };
   };
 
@@ -394,13 +403,13 @@ export function models(options: ModelsOptions): Models {
         };
       }
     },
-    async serverCalls(settings, server, tools, log) {
+    async serverCalls(settings, server, tools, log, known) {
       await latest;
       const { model: chosen } = choose(settings);
       if (!chosen?.cli || chosen.provider.kind === "api") return null;
       if (await options.trust?.(chosen.cli.path)) return null;
       const calls = callsOf(chosen.cli, chosen.provider.kind, {
-        server: calledOf(server),
+        server: calledOf(server, known),
         tools,
         others: server.tools.filter((tool) => !tools.includes(tool)),
         log,

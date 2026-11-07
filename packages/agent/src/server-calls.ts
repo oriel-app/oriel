@@ -69,11 +69,13 @@ const nothingSpent = (): Spent => ({
 // The server a process loads, alone: its name in the person's agent, and how
 // it's reached, as the agent's own listing gave it. A remote one by its
 // transport and URL, which the agent finds its sign-in for by name; a dev
-// stand-in by its command. No header, environment or secret of its
-// configuration is ever read.
+// stand-in by its command; a local one Oriel knows by the command its entry
+// gives (OA-279), by that command and its arguments. No header, environment
+// or secret of its configuration is ever read, or passed.
 export type CalledServer =
   | { name: string; url: string; transport: "http" | "sse" }
   | { name: string; dev: DevServer }
+  | { name: string; local: { command: string; args: readonly string[] } }
   // By name alone, as Codex loads it from the person's own configuration;
   // Claude Code can't load such a one alone.
   | { name: string };
@@ -140,9 +142,13 @@ export function shapeOf(value: unknown): unknown {
 // The server as the process's `--mcp-config` names it, alone.
 function configOf(server: CalledServer): Record<string, unknown> {
   if ("dev" in server) return { type: "stdio", command: server.dev.command, args: server.dev.args };
+  // Its command and arguments alone: no `env`, so it starts with Claude
+  // Code's own environment, and none of what the person's entry sets.
+  if ("local" in server)
+    return { type: "stdio", command: server.local.command, args: [...server.local.args] };
   if ("url" in server) return { type: server.transport, url: server.url };
   throw new ProviderError(
-    `Claude Code can't load ${server.name} on its own: Oriel reads a source through Claude Code only from a remote server.`,
+    `Claude Code can't load ${server.name} on its own: Oriel reads a source through Claude Code only from a remote server, or a local one it knows.`,
   );
 }
 
@@ -189,15 +195,20 @@ export function serverCallArgs(options: ServerCallsOptions): string[] {
 // What `system/init` must report: the one server, connected, with exactly
 // the tools Oriel named, and every call asked of Oriel. Null when it does.
 export function checkCallerInit(init: Message, options: ServerCallsOptions): string | null {
+  const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.filter(isObject) : null;
+  if (!servers || servers.length !== 1 || text(servers[0]?.name) !== options.server.name)
+    return "it loaded MCP servers other than the one Oriel named";
+  const status = text(servers[0]?.status);
+  // A local server started with none of its entry's environment, which
+  // some need: Oriel never passes it, and never tries again with it.
+  if (status !== "connected" && "local" in options.server)
+    return `${options.server.name} didn't start without the environment its entry gives it, which Oriel never passes: start it from Codex, or use a remote server`;
+  if (status !== "connected")
+    return `${options.server.name} isn't connected (${status || "no status"})`;
   const tools = Array.isArray(init.tools) ? init.tools.map(text) : null;
   const want = options.tools.map((tool) => claudeCodeTool(options.server.name, tool));
   if (!tools || tools.length !== want.length || want.some((tool) => !tools.includes(tool)))
     return "it loaded tools other than the server's that Oriel named";
-  const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.filter(isObject) : null;
-  if (!servers || servers.length !== 1 || text(servers[0]?.name) !== options.server.name)
-    return "it loaded MCP servers other than the one Oriel named";
-  if (text(servers[0]?.status) !== "connected")
-    return `${options.server.name} isn't connected (${text(servers[0]?.status) || "no status"})`;
   if (init.permissionMode !== "default") return "its permission mode isn't default";
   const plugins = Array.isArray(init.plugins) ? init.plugins.filter(isObject) : [];
   if (plugins.some((p) => p.path !== "builtin")) return "it loaded the person's plugins";
