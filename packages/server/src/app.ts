@@ -2199,14 +2199,26 @@ export async function createApp(options: AppOptions): Promise<App> {
     });
     return true;
   };
-  // A move reverted: its workstreams hold the stand-in's items again, and
-  // the stand-in is on again beside the kind, as when the move was offered.
-  const unmoved = async (set: ChangeSet) => {
+  // A move reverted, in full or part: for each item the revert deleted,
+  // workstreams hold the stand-in's again, and the stand-in is on again
+  // beside the kind, as when the move was offered. A revert that deleted
+  // nothing changes nothing.
+  const unmoved = async (set: ChangeSet, revert: ChangeSet) => {
     const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
     if (!move?.movedAt) return;
-    const back = new Map(
-      [...pairsOf(set, move)].map(([from, to]) => [to as string, from as ItemId] as const),
+    const deleted = new Set<string>(
+      revert.mutations.flatMap((m) =>
+        m.op === "deleteItem" && m.status === "applied" && typeof m.target === "string"
+          ? [m.target]
+          : [],
+      ),
     );
+    const back = new Map(
+      [...pairsOf(set, move)]
+        .filter(([, to]) => deleted.has(to))
+        .map(([from, to]) => [to as string, from as ItemId] as const),
+    );
+    if (!back.size) return;
     kindStore.moved(workspaceId, set.id, null);
     await betweenSyncs(async () => {
       await standIns();
@@ -2441,7 +2453,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // a revert of one gives them back the stand-in's.
     if (moving) await moved(set);
     const original = set.revertOf ? await sets.get(set.revertOf) : null;
-    if (original) await unmoved(original);
+    if (original) await unmoved(original, set);
   };
 
   // A live connection as the window shows it: open, or shut since its

@@ -340,6 +340,34 @@ test("a move reverted puts the stand-in back on, with its workstream holding its
   );
 });
 
+test("a move's revert that deleted nothing in Jira leaves the move as it was", async (t) => {
+  const it = await fresh(t);
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
+  const entry = view.entries.find((each) => each.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  await it.approve(entry.changeSetId);
+  assert.equal((await it.connect("jira", details)).status, 200);
+  const offer = await moving(it);
+  assert.equal((await it.approve(offer.changeSetId)).status, 200);
+  it.advance(1000);
+  const { revert } = json<{ revert: string }>(
+    await it.post(`/api/change-sets/${offer.changeSetId}/revert`),
+  );
+  // Jira refuses every delete: nothing of the move is undone.
+  for (const key of ["SYN-900", "SYN-901", "SYN-902"]) it.site?.refuse(key);
+  await it.approve(revert);
+  assert.deepEqual(
+    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
+      (each) => each.kind,
+    ),
+    ["jira"],
+  );
+  const overview = json<OverviewView>(await it.get("/api/overview"));
+  assert.ok(
+    !overview.workstreams.some((row) => row.bySource.some((by) => by.source === "Tracker")),
+  );
+});
+
 test("the stand-in shows as a writable connector with no connect steps", async (t) => {
   const it = await fresh(t);
   const { connectors } = json<{ connectors: ConnectorView[] }>(await it.get("/api/connectors"));
