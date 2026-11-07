@@ -153,6 +153,12 @@ importers:
         specifier: workspace:*
         version: link:../db
 
+  packages/linear:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/sandbox:
     dependencies:
       '@oriel/bindings':

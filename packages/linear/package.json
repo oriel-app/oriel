@@ -1,0 +1,16 @@
+{
+  "name": "@oriel/linear",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./standin": "./src/linear-standin.ts",
+    "./writer": "./src/writer.ts"
+  },
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*"
+  }
+}
