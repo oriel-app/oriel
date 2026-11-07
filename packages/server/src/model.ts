@@ -12,26 +12,32 @@ import {
   anthropicProvider,
   anthropicTitler,
   checkClaudeCode,
+  type CalledServer,
   checkCodex,
   type CheckOptions,
   type ClaudeCode,
   claudeCodePlan,
   claudeCodeProvider,
+  claudeCodeServerCalls,
   claudeCodeServers,
   claudeCodeTitler,
   type CodexAccount,
   type CodexModel,
   codexPlan,
   codexProvider,
+  codexServerCalls,
   codexServers,
   codexTitler,
   defaultModel,
+  type DevServer,
   type Effort,
   type HarnessProblem,
   locateClaudeCode,
   locateCodex,
   type PlanUsage,
   type Provider,
+  type ServerCalls,
+  type ServerCallsOptions,
   type Titler,
   titleModel,
   type Usage,
@@ -43,7 +49,7 @@ import type {
   ProviderView,
   UsageView,
 } from "@oriel/web/view";
-import type { FoundServer } from "@oriel/core";
+import type { FoundServer, Log } from "@oriel/core";
 import type { Agent, ServerAgentDeps } from "./agent.ts";
 import type { Discovery } from "./source-servers.ts";
 import type { ProviderSetting, Settings } from "./settings.ts";
@@ -106,7 +112,20 @@ export type ModelsOptions = {
   plan?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<PlanUsage>;
   // Asks a CLI for the person's MCP servers; tests stand in for it.
   servers?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<FoundServer[]>;
+  // Starts a process that calls one of them; tests stand in for it.
+  serverCalls?: (
+    cli: ClaudeCode,
+    kind: "claude-code" | "codex",
+    options: ServerCallsOptions,
+  ) => ServerCalls;
+  // Stand-in source servers each CLI gets beside the person's own, in dev
+  // only (`ORIEL_DEV_STANDINS`, OA-276): never on the desktop app.
+  dev?: readonly DevServer[];
 };
+
+// What a sync or a replay calls one source server with: the CLI that runs
+// threads, the process, and the agent by its Settings ID and name.
+export type Calling = { calls: ServerCalls; agent: { id: string; name: string; kind: string } };
 
 export type Models = {
   // Looks for every instance again, the CLIs' checks included. Ends once
@@ -136,6 +155,15 @@ export type Models = {
   // latest look ends (decision 0059): null when none runs them, or an API
   // key does, which has no servers to bring.
   servers(settings: Settings): Promise<Discovery>;
+  // A process of the CLI that runs threads that calls `server`, one of the
+  // person's own, with only `tools` (decision 0059): null when none runs
+  // them, or the CLI doesn't pass its trust check now.
+  serverCalls(
+    settings: Settings,
+    server: FoundServer,
+    tools: readonly string[],
+    log: Log,
+  ): Promise<Calling | null>;
 };
 
 const checking: Found = { status: "checking" };
@@ -207,10 +235,26 @@ export function models(options: ModelsOptions): Models {
     ((cli: ClaudeCode, kind: "claude-code" | "codex") =>
       kind === "codex" ? codexPlan(cli, { env }) : claudeCodePlan(cli, { env }));
 
+  const dev = options.dev ?? [];
   const serversOf =
     options.servers ??
     ((cli: ClaudeCode, kind: "claude-code" | "codex") =>
-      kind === "codex" ? codexServers(cli, { env }) : claudeCodeServers(cli, { env }));
+      kind === "codex" ? codexServers(cli, { env, dev }) : claudeCodeServers(cli, { env, dev }));
+  const callsOf =
+    options.serverCalls ??
+    ((cli: ClaudeCode, kind: "claude-code" | "codex", called: ServerCallsOptions) =>
+      kind === "codex"
+        ? codexServerCalls(cli, { ...called, env })
+        : claudeCodeServerCalls(cli, { ...called, env }));
+  // A found server as a process loads it alone: a dev stand-in by its
+  // command, a remote one by its URL, else by its name, as Codex can.
+  const calledOf = (server: FoundServer): CalledServer => {
+    const stand = dev.find((each) => each.name === server.name);
+    if (stand) return { name: server.name, dev: stand };
+    if (server.url && server.transport)
+      return { name: server.name, url: server.url, transport: server.transport };
+    return { name: server.name };
+  };
 
   async function lookFor(provider: ProviderSetting, key: string | null): Promise<Found> {
     if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
@@ -349,6 +393,22 @@ export function models(options: ModelsOptions): Models {
           problem: error instanceof Error ? error.message : "it didn't answer",
         };
       }
+    },
+    async serverCalls(settings, server, tools, log) {
+      await latest;
+      const { model: chosen } = choose(settings);
+      if (!chosen?.cli || chosen.provider.kind === "api") return null;
+      if (await options.trust?.(chosen.cli.path)) return null;
+      const calls = callsOf(chosen.cli, chosen.provider.kind, {
+        server: calledOf(server),
+        tools,
+        others: server.tools.filter((tool) => !tools.includes(tool)),
+        log,
+      });
+      return {
+        calls,
+        agent: { id: chosen.provider.id, name: chosen.provider.name, kind: chosen.provider.kind },
+      };
     },
     async noticer(settings) {
       const { model: chosen } = choose(settings);

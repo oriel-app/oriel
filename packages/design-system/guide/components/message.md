@@ -334,7 +334,7 @@ return all.map((item) => `${item.id}: ${item.text.length} characters`);</pre>
 ### Oriel's own lines
 
 - **A marker** (`.marker`, `role="note"`): the thread's region moved to a new version of its workstream, and this is what moved: "Added SYN-900, SYN-901", "Removed SYN-12", or both joined by " · ". It's a centred faint line between two rules (the rules drop in a narrow page). The rail's title says the version it moved to: "17 items · v3". Markers the agent's own actions left just before are folded into the "What the agent did" list instead (`entriesOf` in `packages/web/src/thread.ts`).
-- **A note** (`.oriel-note`, `role="note"`): after a rejection, what the person can do next (OA-91). A thick left rule, muted, small.
+- **A note** (`.oriel-note`, `role="note"`): after a rejection, what the person can do next (OA-91). A thick left rule, muted, small. Or Oriel's offer, when a tracker turns on, to make its own tracker's issues again there (decision 0059): "Jira is on. This change makes the 3 issues in Oriel's tracker again in Jira, and your workstreams follow them there. Approve it, and Oriel's tracker steps aside; reject it, and both stay." Its thread, "Into Jira", is Oriel's: no run of the agent's made the change set under it.
 - **A notice** (`.notice`): a limit that ended the turn, on `--derived-soft` with its first sentence strong; or an error, in `--danger`.
 - **What the agent did in Oriel** (`.actions-block`, decision 0024): each action the agent took on Oriel's own data, as Oriel says it, each with its Undo, or Redo once undone. A refused one is `--danger`. It's on `--surface-sunk`, boxed like a block, never in the reply's words.
 

@@ -49,7 +49,11 @@ import {
   type Sketch,
   type Sandbox,
   type SourceKind,
+  type FoundServer,
+  type Recognized,
   type SourceServer,
+  type ThroughServer,
+  type ToolCaller,
   syncSource,
   type ToOpen,
   type Ulid,
@@ -70,6 +74,7 @@ import {
   runStore,
   challengeStore,
   sourceKindStore,
+  type StandInMove,
   outsideToolStore,
   type StoredEvent,
   telemetryStore,
@@ -119,7 +124,7 @@ import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
 import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
-import type { Models } from "./model.ts";
+import type { Calling, Models } from "./model.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import { type Challenger, challenger } from "./challenger.ts";
 import {
@@ -196,6 +201,10 @@ export type AppOptions = {
   // The source servers Oriel knows, by kind: the connectors' when absent,
   // and a test's own entry in tests and screenshots.
   knownServers?: readonly { kind: string; server: SourceServer }[];
+  // Starts a process of the person's agent that calls one of their servers
+  // with only `tools` (decision 0059), for tests and screenshots: Settings'
+  // models when absent.
+  callServer?: (server: FoundServer, tools: readonly string[]) => Promise<Calling | null>;
   // The themes window.css has, the default first.
   themes?: readonly string[];
   // Whether the page may set where a CLI is: only behind the desktop app's
@@ -353,7 +362,12 @@ export async function createApp(options: AppOptions): Promise<App> {
   const openVia = (
     kind: SourceKind,
     id: Ulid,
-    how: { kept: boolean; fetch?: typeof fetch | undefined; own?: OwnItems },
+    how: {
+      kept: boolean;
+      fetch?: typeof fetch | undefined;
+      own?: OwnItems;
+      server?: ThroughServer;
+    },
   ): OpenVia => {
     const client = options.clients?.[kind];
     return {
@@ -364,6 +378,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(client ? { client } : {}),
       ...(how.kept ? { keep: (secret: string) => connections.rekey(id, secret) } : {}),
       ...(how.own ? { own: how.own } : {}),
+      ...(how.server ? { server: how.server } : {}),
     };
   };
   // Opens a connection through its connector's declaration, or its
@@ -377,6 +392,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       kept: boolean;
       fetch?: typeof fetch | undefined;
       own?: OwnItems;
+      server?: ThroughServer;
     },
   ): Promise<Opened> => {
     const declaration = declared(kind);
@@ -430,10 +446,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // one, or the window made one, open or shut.
   const connectedKind = (kind: string) =>
     flags.some((flag) => flag.kind === kind) || connections.first(kind) !== null;
+  const kindStore = sourceKindStore(db);
   // What's on changed, once the start has opened what it does: made below.
   let turned = async (): Promise<void> => {};
   const switches = sourceServers({
-    store: sourceKindStore(db),
+    store: kindStore,
     workspaceId,
     known: options.knownServers ?? knownServers,
     kinds: sourceKinds
@@ -458,6 +475,10 @@ export async function createApp(options: AppOptions): Promise<App> {
   // can't open stops the start; one the window made is left shut, so the
   // window asks for it again.
   const openKind = async (kind: SourceKind) => {
+    // Through the source server the person turned it on through, while the
+    // agent lists it, in place of any connection of its own (decision 0059).
+    const server = switches.serverFor(kind);
+    if (server) return openThrough(kind, server);
     // A flag's connection is its kind's first, made at every start, and
     // follows what the flag names. One that can't open stops the start.
     const flag = flags.find((each) => each.kind === kind);
@@ -509,6 +530,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // A kind turned off: its connections close, and nothing of them shows,
   // though they and their items stay, for when it's on again.
   const closeKind = (kind: SourceKind) => {
+    throughOpen.delete(kind);
+    throughProblems.delete(kind);
     for (const each of [...byPrefix.values()].filter((one) => one.connection.kind === kind)) {
       byPrefix.delete(each.connection.prefix);
       each.opened.close?.();
@@ -518,6 +541,137 @@ export async function createApp(options: AppOptions): Promise<App> {
       unfit.delete(connection.prefix);
     }
   };
+  // What each kind open through a source server was opened through, and
+  // the agent its processes run on, for telemetry. A kind on through
+  // another server now, or through none, opens again.
+  const throughOpen = new Map<
+    SourceKind,
+    { key: string; server: string; agent: () => string | null }
+  >();
+  const serverKey = (server: Recognized | null) =>
+    server
+      ? JSON.stringify([
+          server.found.name,
+          server.found.url,
+          server.found.command,
+          [...server.found.tools],
+        ])
+      : null;
+  const callServer =
+    options.callServer ??
+    ((server: FoundServer, tools: readonly string[]) =>
+      options.models?.serverCalls(store.get(), server, tools, log) ?? Promise.resolve(null));
+  // Calls the server from a process of the person's agent that starts on
+  // the first call and stops once it's been quiet a while, with only
+  // `tools`: one for reads, another for a change set's writes.
+  const lazyCalls = (server: Recognized, tools: readonly string[]) => {
+    let current: Promise<Calling | null> | null = null;
+    let quiet: ReturnType<typeof setTimeout> | null = null;
+    let agent: string | null = null;
+    // Calls in flight: it stops only once none is.
+    let active = 0;
+    const close = () => {
+      if (quiet) clearTimeout(quiet);
+      quiet = null;
+      const was = current;
+      current = null;
+      void was?.then((calling) => calling?.calls.close()).catch(() => {});
+    };
+    const call: ToolCaller = async (each) => {
+      if (quiet) clearTimeout(quiet);
+      quiet = null;
+      active += 1;
+      const at = (current ??= callServer(server.found, tools));
+      try {
+        const calling = await at;
+        if (!calling) throw new Error(`No agent runs ${server.known.name} now.`);
+        agent = calling.agent.kind;
+        return await calling.calls.call(each);
+      } catch (error) {
+        // A process that failed a call starts afresh for the next.
+        if ((current as Promise<Calling | null> | null) === at && active === 1) close();
+        throw error;
+      } finally {
+        active -= 1;
+        if (active === 0 && (current as Promise<Calling | null> | null) !== null) {
+          quiet = setTimeout(close, 20_000);
+          quiet.unref();
+        }
+      }
+    };
+    return { call, close, agent: () => agent };
+  };
+  // Opens a kind through its source server: its first connection if it has
+  // one, so its items keep their IDs, else one of the server's own, which
+  // nothing keeps, as what's on is the kind's switch. One that can't open is
+  // left shut, with why, naming the server.
+  const openThrough = async (kind: SourceKind, server: Recognized) => {
+    const reads = lazyCalls(server, server.known.reads);
+    const writes = lazyCalls(server, server.known.writes);
+    const own = connections.first(kind);
+    const connection: Connection = own ?? {
+      id: newId(),
+      kind,
+      number: 1,
+      prefix: kind,
+      identity: "",
+      name: null,
+      options: {},
+      every: null,
+      connectedAt: now(),
+      disconnectedAt: null,
+    };
+    try {
+      const opened = await openOne(
+        kind,
+        { ...connection, secret: null },
+        {
+          fixture: false,
+          kept: false,
+          server: {
+            known: server.known,
+            found: server.found,
+            read: reads.call,
+            write: writes.call,
+          },
+        },
+      );
+      const close = opened.close;
+      opened.close = () => {
+        close?.();
+        reads.close();
+        writes.close();
+      };
+      byPrefix.set(connection.prefix, {
+        connection: own ? connection : { ...connection, identity: opened.identity ?? "" },
+        opened,
+      });
+      throughOpen.set(kind, {
+        key: serverKey(server) ?? "",
+        server: server.found.name,
+        agent: reads.agent,
+      });
+      problems.delete(connection.id);
+    } catch (error) {
+      reads.close();
+      writes.close();
+      log("source servers: a kind couldn't open through its server", {
+        kind,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (own) shut.set(own.prefix, own);
+      // The agent's own words for why its process failed, such as its
+      // plan's limit; never what the server answered.
+      const why =
+        error instanceof Error && error.name === "ProviderError" ? ` ${error.message}` : "";
+      throughProblems.set(
+        kind,
+        `${declared(kind).name} couldn't open through ${server.known.name}.${why}`,
+      );
+    }
+  };
+  // Why a kind on through its server couldn't open, until it does.
+  const throughProblems = new Map<SourceKind, string>();
   // A stand-in opens below, while what it stands in for isn't on.
   for (const kind of sourceKinds)
     if (!declared(kind).standIn && switches.on(kind)) await openKind(kind);
@@ -533,8 +687,15 @@ export async function createApp(options: AppOptions): Promise<App> {
   // stands in for is on, and closed while one is. Closed, nothing of it shows, and its
   // items stay in the index, for when it's on again. Its one connection is
   // Oriel's, which the window neither configures nor disconnects.
+  // While Oriel's offer to move its issues into one that turned on hasn't
+  // applied, rejected or not, both stay.
   const standingIn = (kind: SourceKind) =>
-    !(declared(kind).standIn?.for ?? []).some((other) => switches.on(other));
+    !(declared(kind).standIn?.for ?? []).some(
+      (other) => switches.on(other) && !(moveOf(kind, other) && !moveOf(kind, other)?.movedAt),
+    );
+  const moveOf = (standIn: string, into: string) =>
+    kindStore.moves(workspaceId).find((each) => each.standIn === standIn && each.into === into) ??
+    null;
   const standIns = async () => {
     for (const kind of sourceKinds) {
       if (!declared(kind).standIn) continue;
@@ -741,11 +902,30 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Why each connection's last sync didn't work, by its ID, until one does.
   const problems = new Map<Ulid, string>();
   const syncOpen = async (each: Open, full: boolean): Promise<string | null> => {
+    const through = throughOpen.get(each.connection.kind);
+    const started = Date.now();
+    // A sync through a source server, counted: never what it read.
+    const counted = (ok: boolean) => {
+      const agent = through?.agent();
+      if (agent === "claude-code" || agent === "codex")
+        emit({
+          name: "source.server-synced",
+          at: now(),
+          workspaceId,
+          source: each.connection.kind,
+          agent,
+          items: recordsOf(each).length,
+          ms: Date.now() - started,
+          ok,
+        });
+    };
     try {
       await syncInto(each.connection, each.opened, full, { items: lagging(each) });
       problems.delete(each.connection.id);
+      counted(true);
       return null;
     } catch (error) {
+      counted(false);
       log("connections: a sync failed", {
         source: each.connection.prefix,
         error: error instanceof Error ? error.message : String(error),
@@ -945,6 +1125,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         shut.delete(connection.prefix);
         // Its first sync just worked: what the last one said is past.
         problems.delete(connection.id);
+        await offerMoves();
         await standIns();
         sets.rewire(wiring());
         arm(connection);
@@ -1658,24 +1839,57 @@ export async function createApp(options: AppOptions): Promise<App> {
           for (const each of opens().filter((one) => one.connection.kind === kind))
             unarm(each.connection.id);
           closeKind(kind);
-        } else if (!held) {
+        } else if (
+          !held ||
+          serverKey(switches.serverFor(kind)) !== (throughOpen.get(kind)?.key ?? null)
+        ) {
+          // Not open, or open through something else than the server it's on
+          // through now, as a connection of its own once its server is on.
+          if (held) {
+            for (const each of opens().filter((one) => one.connection.kind === kind))
+              unarm(each.connection.id);
+            closeKind(kind);
+          }
           await openKind(kind);
           for (const each of opens().filter((one) => one.connection.kind === kind))
             arm(each.connection);
           reopened.push(kind);
         }
       }
+      await offerMoves();
       await standIns();
       sets.rewire(wiring());
-      for (const kind of reopened) void syncKind(kind);
+      for (const kind of reopened) {
+        const run = syncKind(kind).finally(() => kindSyncs.delete(run));
+        kindSyncs.add(run);
+      }
     });
+  // What Settings shows of source servers, with why a kind on through one
+  // couldn't open.
+  const serversView = () => {
+    const view = switches.view();
+    return {
+      ...view,
+      kinds: view.kinds.map((each) => {
+        const problem = throughProblems.get(each.kind as SourceKind);
+        return problem ? { ...each, problem } : each;
+      }),
+    };
+  };
+  // The syncs of kinds that just turned on, which `settled` waits for.
+  const kindSyncs = new Set<Promise<unknown>>();
   // Oriel looks for the person's servers when it opens, when they press
   // sync, and every so many minutes if they set that.
   let stopLooking = (): void => {};
   const lookEvery = () => {
     stopLooking();
     const minutes = store.get().sourceSync;
-    stopLooking = minutes === null ? () => {} : every(minutes * 60_000, () => void switches.look());
+    // Each tick looks, then syncs every kind on through its server.
+    const tick = async () => {
+      await switches.look();
+      for (const kind of throughOpen.keys()) await syncKind(kind);
+    };
+    stopLooking = minutes === null ? () => {} : every(minutes * 60_000, () => void tick());
   };
   lookEvery();
   void switches.look();
@@ -1820,6 +2034,201 @@ export async function createApp(options: AppOptions): Promise<App> {
   // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
+  // When a kind a stand-in stands in for turns on, writable, and the
+  // stand-in has issues, Oriel offers one change set that makes each again
+  // there (decision 0059), in a thread of its own, from a run of Oriel's
+  // own, not the agent's. Each is offered once.
+  const offerMoves = async () => {
+    for (const kind of sourceKinds) {
+      const standIn = declared(kind).standIn;
+      const open = openedOf(kind);
+      if (!standIn || !open) continue;
+      for (const into of standIn.for) {
+        const take = declared(into).takeIssues;
+        if (!take || !switches.on(into) || !openedOf(into)?.opened.writes || moveOf(kind, into))
+          continue;
+        const issues = recordsOf(open).filter(
+          (record) => record.facets.kind === "epic" || record.facets.kind === "story",
+        );
+        if (!issues.length) continue;
+        const read = await open.opened.source.read(issues.map((record) => record.id));
+        const description = (id: ItemId) => {
+          const one = read.find((each) => each.id === id);
+          const text =
+            one?.status === "ok" ? (one.content as { description?: unknown }).description : "";
+          return typeof text === "string" ? text : "";
+        };
+        const { mutations, items } = take(
+          issues.map((record) => ({
+            id: record.id,
+            kind: record.facets.kind === "epic" ? "epic" : "story",
+            summary: record.title,
+            description: description(record.id),
+            points: record.facets.estimate ?? null,
+            epic: record.facets.container?.id ?? null,
+          })),
+        );
+        if (!mutations.length) continue;
+        const name = `Into ${declared(into).name}`;
+        const workstreamId = newId();
+        const threadId = newId();
+        const runId = newId();
+        const by = { kind: "sync", source: into } as const;
+        workstreams.create(
+          { id: workstreamId, workspaceId, name, origin: { kind: "thread" } },
+          [],
+          now(),
+          by,
+        );
+        threads.open({ id: threadId, workspaceId, workstreamId }, now());
+        threads.setTitle(threadId, name, now());
+        runs.record(
+          {
+            id: runId,
+            workspaceId,
+            threadId,
+            snapshot: index.snapshot(workspaceId),
+            regionVersion: 1,
+            systemPromptHash: "oriel",
+            dtsHash: "oriel",
+            model: "oriel",
+            inputTokens: 0,
+            outputTokens: 0,
+            wallMs: 0,
+            coldStartMs: null,
+            outcome: "ok",
+            startedAt: now(),
+          },
+          [],
+        );
+        const set = await sets.capture({ id: runId, threadId, workspaceId }, mutations);
+        threads.append(
+          threadId,
+          {
+            role: "note",
+            note: {
+              kind: "moving",
+              changeSet: set.id,
+              from: declared(kind).inSentence,
+              into: declared(into).name,
+              items: mutations.length,
+            },
+          },
+          newId(),
+          now(),
+        );
+        // Where a change set shows in its thread, as a run's does.
+        threads.append(
+          threadId,
+          { role: "agent", event: { kind: "change-set", changeSetId: set.id } },
+          newId(),
+          now(),
+        );
+        kindStore.offerMove(
+          workspaceId,
+          { standIn: kind, into, threadId, changeSetId: set.id, items },
+          now(),
+        );
+        emit({
+          name: "standin.moving",
+          at: now(),
+          workspaceId,
+          source: into,
+          step: "offered",
+          items: mutations.length,
+        });
+      }
+    }
+  };
+  // The stand-in's item each create of a move made again, by its ID, to the
+  // item it made.
+  const pairsOf = (set: ChangeSet, move: StandInMove) =>
+    new Map(
+      set.mutations.flatMap((m) => {
+        const from = m.ref ? move.items[m.ref] : undefined;
+        return from && m.applied ? [[from as string, m.applied.item.id] as const] : [];
+      }),
+    );
+  // Every workstream holding one of `pairs`' items holds its pair in its
+  // place.
+  const swapMembers = async (set: ChangeSet, pairs: ReadonlyMap<string, ItemId>) => {
+    const by = { kind: "change-set", changeSetId: set.id } as const;
+    for (const workstream of workstreams.list(workspaceId)) {
+      const region = workstreams.region(workstream.id, workstream.version);
+      const held = (region?.items ?? []).filter((member) => pairs.has(member.id));
+      if (!held.length) continue;
+      const items = held.flatMap((member) => {
+        const pair = pairs.get(member.id);
+        return pair ? [pair] : [];
+      });
+      await dispatch("workstream.add", { workstream: workstream.id, items }, by);
+      await dispatch(
+        "workstream.remove",
+        { workstream: workstream.id, items: held.map((member) => member.id) },
+        by,
+      );
+    }
+  };
+  // Once Oriel's offer applied in full, and every issue of the stand-in has
+  // its new item, every workstream holds the new items in place of the
+  // stand-in's, and the stand-in steps aside. One the person left out of
+  // it, or one made since, stays only in the stand-in, which stays on.
+  const moved = async (set: ChangeSet) => {
+    const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
+    if (!move || move.movedAt || set.mutations.some((m) => m.status !== "applied")) return false;
+    const pairs = pairsOf(set, move);
+    const open = openedOf(move.standIn as SourceKind);
+    const left = (open ? recordsOf(open) : []).filter(
+      (record) =>
+        (record.facets.kind === "epic" || record.facets.kind === "story") && !pairs.has(record.id),
+    );
+    if (left.length) return false;
+    await swapMembers(set, pairs);
+    kindStore.moved(workspaceId, set.id, now());
+    emit({
+      name: "standin.moving",
+      at: now(),
+      workspaceId,
+      source: move.into as SourceKind,
+      step: "moved",
+      items: pairs.size,
+    });
+    await betweenSyncs(async () => {
+      await standIns();
+      sets.rewire(wiring());
+    });
+    return true;
+  };
+  // A move reverted, in full or part: for each item the revert deleted,
+  // workstreams hold the stand-in's again, and the stand-in is on again
+  // beside the kind, as when the move was offered. A revert that deleted
+  // nothing changes nothing. Each apply of the revert, a Retry too, swaps
+  // what it deleted: one already swapped back is held no more.
+  const unmoved = async (set: ChangeSet, revert: ChangeSet) => {
+    const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
+    if (!move) return;
+    const deleted = new Set<string>(
+      revert.mutations.flatMap((m) =>
+        m.op === "deleteItem" && m.status === "applied" && typeof m.target === "string"
+          ? [m.target]
+          : [],
+      ),
+    );
+    const back = new Map(
+      [...pairsOf(set, move)]
+        .filter(([, to]) => deleted.has(to))
+        .map(([from, to]) => [to as string, from as ItemId] as const),
+    );
+    if (!back.size) return;
+    if (move.movedAt) {
+      kindStore.moved(workspaceId, set.id, null);
+      await betweenSyncs(async () => {
+        await standIns();
+        sets.rewire(wiring());
+      });
+    }
+    await swapMembers(set, back);
+  };
   // Who hears each change a call publishes, besides the window: the MCP
   // door's subscriptions.
   const watchers = new Set<(changed: Changed) => void>();
@@ -1901,7 +2310,11 @@ export async function createApp(options: AppOptions): Promise<App> {
           : { outcome: done, changed: [], replaced: {} };
       },
       sync: async ({ connection: id }) => {
-        const connection = live(id as Ulid);
+        // One open through a source server isn't kept: it's the kind's.
+        const connection =
+          [...byPrefix.values()].find(
+            (each) => each.connection.id === id && throughOpen.has(each.connection.kind),
+          )?.connection ?? live(id as Ulid);
         if (byPrefix.get(connection.prefix)?.connection.id !== id)
           throw new ActionError(
             "conflict",
@@ -1996,7 +2409,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // takes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
-    if (thread) {
+    // A move's items go to the workstreams that held the stand-in's.
+    const moving = kindStore.moves(workspaceId).some((each) => each.changeSetId === set.id);
+    if (thread && !moving) {
       const by = { kind: "change-set", changeSetId: set.id } as const;
       const workstream = workstreams.get(thread.workstreamId);
       const epic = set.mutations.find((m) => m.op === "createEpic" && m.applied);
@@ -2037,6 +2452,11 @@ export async function createApp(options: AppOptions): Promise<App> {
         const each = byPrefix.get(prefix);
         if (each) await syncOpen(each, !each.opened.incremental);
       });
+    // A move's new items are in the index now, for its workstreams to hold;
+    // a revert of one gives them back the stand-in's.
+    if (moving) await moved(set);
+    const original = set.revertOf ? await sets.get(set.revertOf) : null;
+    if (original) await unmoved(original, set);
   };
 
   // A live connection as the window shows it: open, or shut since its
@@ -2084,6 +2504,8 @@ export async function createApp(options: AppOptions): Promise<App> {
               : "signed-out",
       flagged: byFlag.has(kept.id),
       own: ownConnections.has(kept.id),
+      through:
+        open?.connection.id === connection.id ? (throughOpen.get(kept.kind)?.server ?? null) : null,
     };
   };
   // Every connection open or shut, in declared order, then by number.
@@ -2313,7 +2735,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         standingIn: opens()
           .filter((each) => declared(each.connection.kind).standIn)
           .map((each) => each.connection.kind),
-        servers: switches.view(),
+        servers: serversView(),
       }),
       pick: (kind, given, query) => windows.pick(kind, given, query),
       choices: (id, query) => windows.choices(live(id as Ulid), query),
@@ -2364,6 +2786,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     settled: async () => {
       await conversation.settled();
+      await Promise.allSettled(kindSyncs);
       await secondLooks?.settled();
       await notifying?.idle();
       await guarding?.idle();

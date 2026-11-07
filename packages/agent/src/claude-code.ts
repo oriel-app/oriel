@@ -21,6 +21,7 @@ import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import type { FoundServer, Log } from "@oriel/core";
 import { defaultModel, type Effort, readResponse, type Reply } from "./anthropic.ts";
+import type { DevServer } from "./codex.ts";
 import { runToolName } from "./prompt.ts";
 import {
   type Conversation,
@@ -58,7 +59,7 @@ export type Spawn = (
   options: { cwd: string; env: Record<string, string> },
 ) => ChildProcessWithoutNullStreams;
 
-const spawnCli: Spawn = (command, args, options) =>
+export const spawnCli: Spawn = (command, args, options) =>
   spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
 // The person's environment, passed through: where they signed in (home and
@@ -327,7 +328,7 @@ export async function checkClaudeCode(
   return { ok: true, cli };
 }
 
-type Message = Record<string, unknown>;
+export type Message = Record<string, unknown>;
 
 const isObject = (value: unknown): value is Message =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -435,8 +436,9 @@ export async function claudeCodePlan(
 // so the model never runs and no tool is ever called: the CLI only starts
 // each server and lists its tools. Not `--safe-mode`, which loads no server,
 // nor the project's or local settings: its folder is an empty one.
-export function discoveryArgs(): string[] {
+export function discoveryArgs(dev: readonly DevServer[] = []): string[] {
   return [
+    ...(dev.length ? ["--mcp-config", JSON.stringify(devConfig(dev))] : []),
     "-p",
     "--verbose",
     "--input-format",
@@ -492,10 +494,21 @@ export function claudeCodeServersOf(answer: unknown): FoundServer[] {
         url: text(config.url) || null,
         command: text(config.command) ? [text(config.command), ...args].join(" ") : null,
         tools,
+        ...(remote.includes(text(config.type)) ? { transport: text(config.type) as "http" } : {}),
       },
     ];
   });
 }
+
+// Dev servers as Claude Code's `--mcp-config` names them.
+export const devConfig = (dev: readonly DevServer[]) => ({
+  mcpServers: Object.fromEntries(
+    dev.map(({ name, command, args }) => [name, { type: "stdio", command, args }]),
+  ),
+});
+
+// A remote server's transports, as Claude Code's configuration names them.
+const remote = ["http", "sse"];
 
 // The person's own MCP servers, as their Claude Code lists them, from
 // `mcp_status` on its control channel, which, like `get_usage`, makes no
@@ -508,6 +521,7 @@ export async function claudeCodeServers(
     spawn?: Spawn;
     waitMs?: number;
     pollMs?: number;
+    dev?: readonly DevServer[];
   } = {},
 ): Promise<FoundServer[]> {
   const waitMs = options.waitMs ?? 15_000;
@@ -515,7 +529,7 @@ export async function claudeCodeServers(
     cli,
     spawn: options.spawn ?? spawnCli,
     parent: options.env ?? process.env,
-    args: discoveryArgs(),
+    args: discoveryArgs(options.dev),
     maxOutputTokens: 1,
     tool: null,
     signal: AbortSignal.timeout(waitMs + 25_000),
@@ -537,7 +551,7 @@ export async function claudeCodeServers(
 // One running CLI: its stdout read line by line, the control requests it sends
 // answered at once, and everything else queued for whoever reads the
 // conversation. Closing it kills the process and removes its directory.
-type Session = {
+export type Session = {
   send(message: Message): void;
   // The CLI's answer to `initialize`.
   initialized: Promise<unknown>;
@@ -554,7 +568,7 @@ type Session = {
   close(): void;
 };
 
-type SessionOptions = {
+export type SessionOptions = {
   cli: ClaudeCode;
   spawn: Spawn;
   parent: Readonly<Record<string, string | undefined>>;
@@ -566,6 +580,17 @@ type SessionOptions = {
   log: Log;
   // With no output from the CLI for this long, it's stopped. Default 5 min.
   idleMs?: number;
+  // In place of `run`'s checks, for a process that calls one of the
+  // person's own MCP servers (decision 0059): why what `system/init`
+  // reports isn't what Oriel started, or null, and Oriel's answer to each
+  // call the CLI asks to make: allowed with exactly Oriel's input, or
+  // denied.
+  // More of the CLI's own settings for the process, beside the turns'.
+  moreEnv?: Readonly<Record<string, string>>;
+  guard?: {
+    init(init: Message): string | null;
+    canUse(tool: string, input: unknown): { allow: unknown } | { deny: string };
+  };
 };
 
 const mcpResult = (content: string, isError: boolean) => ({
@@ -575,12 +600,12 @@ const mcpResult = (content: string, isError: boolean) => ({
 
 const sameInput = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-function startSession(options: SessionOptions): Session {
+export function startSession(options: SessionOptions): Session {
   const { cli, tool, signal, log } = options;
   const cwd = mkdtempSync(join(tmpdir(), "oriel-claude-"));
   const child = options.spawn(cli.path, options.args, {
     cwd,
-    env: harnessEnv(options.parent, options.maxOutputTokens),
+    env: { ...harnessEnv(options.parent, options.maxOutputTokens), ...options.moreEnv },
   });
   const queue: Message[] = [];
   let wake: (() => void) | null = null;
@@ -649,6 +674,13 @@ function startSession(options: SessionOptions): Session {
 
   // The CLI's report of what it loaded, checked before the model can act.
   const checkInit = (init: Message) => {
+    if (options.guard) {
+      const why = options.guard.init(init);
+      if (why) return stop(why);
+      ready = true;
+      log("harness.ready", { version: text(init.claude_code_version), model: text(init.model) });
+      return;
+    }
     const tools = Array.isArray(init.tools) ? init.tools : null;
     const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.filter(isObject) : null;
     const plugins = Array.isArray(init.plugins) ? init.plugins.filter(isObject) : [];
@@ -716,6 +748,16 @@ function startSession(options: SessionOptions): Session {
       if (request.server_name !== harnessServer || !isObject(request.message))
         return refuse(id, "Unknown server.");
       return mcp(id, request.message);
+    }
+    if (request.subtype === "can_use_tool" && options.guard) {
+      if (!ready) return stop("it asked to call a tool before reporting what it loaded");
+      const said = options.guard.canUse(text(request.tool_name), request.input);
+      return respond(
+        id,
+        "allow" in said
+          ? { behavior: "allow", updatedInput: said.allow }
+          : { behavior: "deny", message: said.deny },
+      );
     }
     if (request.subtype === "can_use_tool")
       return respond(

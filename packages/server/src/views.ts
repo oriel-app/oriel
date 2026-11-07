@@ -527,7 +527,15 @@ export function views(deps: ViewDeps) {
         note:
           note.kind === "rejected"
             ? { kind: note.kind, changeSetId: note.changeSet, via: note.via }
-            : { kind: note.kind, changeSetId: note.changeSet },
+            : note.kind === "moving"
+              ? {
+                  kind: note.kind,
+                  changeSetId: note.changeSet,
+                  from: note.from,
+                  into: note.into,
+                  items: note.items,
+                }
+              : { kind: note.kind, changeSetId: note.changeSet },
       };
     }
     if (message.role === "marker") {

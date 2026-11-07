@@ -151,6 +151,7 @@ export function SourceServers(props: {
       kind: each.kind,
       on: each.on,
       server: each.server,
+      problem: each.problem ?? null,
       about:
         each.offBy !== null
           ? `Off${each.offBy === "agent" ? ", as you asked Oriel" : ""}. Its items stay in Oriel for when it's on again.`
@@ -164,6 +165,7 @@ export function SourceServers(props: {
         kind: each.kind,
         on: false,
         server: each.server,
+        problem: null,
         about: `${each.known}, found in ${agent} as ${each.server}`,
       })),
   ];
@@ -205,6 +207,11 @@ export function SourceServers(props: {
                 <div class="provider-main">
                   <span class="provider-name">{name}</span>
                   <span class="provider-about">{row.about}</span>
+                  {row.problem && (
+                    <p class="connection-problem" role="alert">
+                      {row.problem}
+                    </p>
+                  )}
                 </div>
                 <div class="provider-side">
                   <Switch

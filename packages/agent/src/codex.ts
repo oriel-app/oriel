@@ -68,7 +68,7 @@ export type CodexAccount = { plan: string | null; email: string | null; personal
 // name.
 const commercialPlans = ["team", "business", "enterprise", "edu"];
 
-const spawnCli: Spawn = (command, args, options) =>
+export const spawnCodex: Spawn = (command, args, options) =>
   spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
 // Every feature switch Codex 0.166.0 has that gives the model a tool, loads
@@ -235,7 +235,7 @@ const number = (value: unknown) => (typeof value === "number" ? value : 0);
 // One running app server: requests to it, answered by ID; its notifications
 // and its requests of Oriel, queued in order for whoever reads the turn.
 // Closing it kills the process and removes its directory.
-type Server = {
+export type Server = {
   cwd: string;
   request(method: string, params: unknown): Promise<unknown>;
   notify(method: string, params?: unknown): void;
@@ -248,7 +248,7 @@ type Server = {
   close(): void;
 };
 
-type ServerOptions = {
+export type ServerOptions = {
   cli: Codex;
   spawn: Spawn;
   parent: Readonly<Record<string, string | undefined>>;
@@ -259,7 +259,7 @@ type ServerOptions = {
   idleMs?: number;
 };
 
-function startServer(options: ServerOptions): Server {
+export function startServer(options: ServerOptions): Server {
   const { signal, log } = options;
   const cwd = mkdtempSync(join(tmpdir(), "oriel-codex-"));
   const child: ChildProcessWithoutNullStreams = options.spawn(
@@ -393,7 +393,7 @@ function startServer(options: ServerOptions): Server {
 
 // Opens the app server's session, as a client that takes experimental
 // fields: `run` as a client tool is one. Returns where Codex keeps its home.
-async function initialize(server: Server): Promise<string> {
+export async function initialize(server: Server): Promise<string> {
   const answer = await server.request("initialize", {
     clientInfo: { name: "oriel", title: "Oriel", version: "1" },
     capabilities: { experimentalApi: true },
@@ -662,7 +662,7 @@ export function codexProvider(options: CodexOptions): Provider {
           if (!server) {
             server = startServer({
               cli: options.cli,
-              spawn: options.spawn ?? spawnCli,
+              spawn: options.spawn ?? spawnCodex,
               parent: options.env ?? process.env,
               signal,
               log,
@@ -822,7 +822,7 @@ export function codexTitler(options: CodexTitlerOptions): Titler {
   return async (input, { signal, log }) => {
     const server = startServer({
       cli: options.cli,
-      spawn: options.spawn ?? spawnCli,
+      spawn: options.spawn ?? spawnCodex,
       parent: options.env ?? process.env,
       signal,
       log,
@@ -951,15 +951,20 @@ const runVersion = (cli: string, env: Record<string, string>) =>
 // A short session with the app server, with no thread and no model request.
 async function ask<T>(
   cli: Codex,
-  options: { env?: Readonly<Record<string, string | undefined>>; spawn?: Spawn },
+  options: {
+    env?: Readonly<Record<string, string | undefined>>;
+    spawn?: Spawn;
+    dev?: readonly DevServer[];
+  },
   asking: (server: Server) => Promise<T>,
 ): Promise<T> {
   const server = startServer({
     cli,
-    spawn: options.spawn ?? spawnCli,
+    spawn: options.spawn ?? spawnCodex,
     parent: options.env ?? process.env,
     signal: AbortSignal.timeout(25_000),
     log: () => {},
+    overrides: devOverrides(options.dev ?? []),
   });
   try {
     await initialize(server);
@@ -1112,7 +1117,11 @@ export function codexServersOf(pages: readonly unknown[], effective: unknown): F
 // thread and no model request.
 export async function codexServers(
   cli: Codex,
-  options: { env?: Readonly<Record<string, string | undefined>>; spawn?: Spawn } = {},
+  options: {
+    env?: Readonly<Record<string, string | undefined>>;
+    spawn?: Spawn;
+    dev?: readonly DevServer[];
+  } = {},
 ): Promise<FoundServer[]> {
   return ask(cli, options, async (server) => {
     const pages: unknown[] = [];
@@ -1128,3 +1137,15 @@ export async function codexServers(
     return codexServersOf(pages, await server.request("config/read", { cwd: server.cwd }));
   });
 }
+
+// A stdio MCP server Oriel adds to the agent's own for one process, in dev
+// only (OA-276): a stand-in for a source server, on the command line, never
+// in the person's configuration. The desktop app never names one.
+export type DevServer = { name: string; command: string; args: readonly string[] };
+
+// Dev servers as Codex's `-c` settings, in TOML.
+export const devOverrides = (dev: readonly DevServer[]): string[] =>
+  dev.flatMap(({ name, command, args }) => [
+    `mcp_servers.${name}.command=${JSON.stringify(command)}`,
+    `mcp_servers.${name}.args=${JSON.stringify(args)}`,
+  ]);

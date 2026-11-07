@@ -1,0 +1,12 @@
+{
+  "name": "@oriel/standin-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*",
+    "@oriel/jira": "workspace:*"
+  }
+}

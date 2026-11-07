@@ -88,7 +88,8 @@ function ConnectionRow(props: {
   const open = connection.state === "open";
   const waiting = connection.state === "waiting";
   // One waiting for options that fit its source is set as an open one is.
-  const settable = (open || waiting) && !connection.flagged && !connection.own;
+  const settable =
+    (open || waiting) && !connection.flagged && !connection.own && connection.through === null;
   // The last change says what it set, and its own problem, beside the
   // option it changed; any other problem says itself here.
   const besideChange = setting.said !== null && settable;
@@ -146,6 +147,12 @@ function ConnectionRow(props: {
         {connection.own && (
           <p class="settings-field-about">
             Oriel keeps these itself, on this Mac, until you turn on another.
+          </p>
+        )}
+        {connection.through !== null && (
+          <p class="settings-field-about">
+            Oriel reads it through {connection.through}, a server in your agent. Turn it off under
+            Source servers.
           </p>
         )}
         {connection.flagged && (
@@ -232,7 +239,7 @@ export function Disconnect(props: {
   const { connection, connector, connections, dispatch } = props;
   const send = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
   const { disconnect } = settingOf(connections, connection.id);
-  if (connection.flagged || connection.own) return null;
+  if (connection.flagged || connection.own || connection.through !== null) return null;
   if (disconnect === null)
     return (
       <span class="cli-actions">

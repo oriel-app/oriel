@@ -220,6 +220,7 @@ export const connectionView = (over: Partial<ConnectionView> = {}): ConnectionVi
   state: "open",
   flagged: false,
   own: false,
+  through: null,
   ...over,
 });
 

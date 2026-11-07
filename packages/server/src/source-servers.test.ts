@@ -115,7 +115,14 @@ test("turning a tracker kind on through its server steps the stand-in aside, and
   assert.deepEqual(json(on), { undo: { action: "source.off", input: { kind: "jira" } } });
   let servers = await it.servers();
   assert.deepEqual(servers.kinds, [
-    { kind: "jira", on: true, server: "work-tracker", offBy: null },
+    {
+      kind: "jira",
+      on: true,
+      server: "work-tracker",
+      offBy: null,
+      // The test-only server isn't Atlassian's, which Jira opens through.
+      problem: "Jira couldn't open through Oriel's test tracker server.",
+    },
   ]);
   // The stand-in tracker is on only while no tracker kind is.
   assert.deepEqual((await it.connections()).standingIn, []);
@@ -126,6 +133,34 @@ test("turning a tracker kind on through its server steps the stand-in aside, and
   assert.deepEqual(servers.kinds, []);
   assert.deepEqual((await it.connections()).standingIn, ["tracker"]);
   assert.deepEqual(it.events("source.turned"), [{ source: "jira", on: true, by: "person" }]);
+});
+
+test("a kind stays on only through the server the person picked, not another reporting its name", async (t) => {
+  const picked = foundTiny();
+  const other = foundTiny({ name: "lookalike", command: "node elsewhere.ts" });
+  let found: FoundServer[] = [picked, other];
+  const it = await world(t, { found: () => found, connect: true });
+  await it.look();
+  const on = await it.post("/api/actions/source.on", { kind: "jira", server: "work-tracker" });
+  assert.equal(on.status, 200);
+  // The picked one goes; the lookalike, reporting the same name, stays.
+  found = [other];
+  let servers = await it.look();
+  assert.deepEqual(servers.kinds, []);
+  assert.deepEqual((await it.connections()).standingIn, ["tracker"]);
+  // The picked one is back: on again, through it.
+  found = [other, picked];
+  servers = await it.look();
+  assert.deepEqual(servers.kinds, [
+    {
+      kind: "jira",
+      on: true,
+      server: "work-tracker",
+      offBy: null,
+      // The test-only server isn't Atlassian's, which Jira opens through.
+      problem: "Jira couldn't open through Oriel's test tracker server.",
+    },
+  ]);
 });
 
 test("a server Oriel didn't find can't be turned on, and a look that fails names the agent and keeps what's on", async (t) => {

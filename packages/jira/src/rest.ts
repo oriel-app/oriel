@@ -191,6 +191,11 @@ export function movesOf(
   return [...moves].map(([name, category]) => ({ name, category }));
 }
 
+// An answer in a shape Oriel doesn't read.
+export class UnexpectedAnswer extends Error {
+  override name = "UnexpectedAnswer";
+}
+
 // Sends a request, refuses anything but a 2xx, and validates the body.
 export async function call<T, R extends JiraRequest>(
   transport: (request: R) => Promise<JiraResponse>,
@@ -205,7 +210,7 @@ export async function call<T, R extends JiraRequest>(
       .slice(0, 3)
       .map((issue) => `${issue.path}: ${issue.message}`)
       .join("; ");
-    throw new Error(
+    throw new UnexpectedAnswer(
       `${request.method} ${request.path.split("?")[0]}: unexpected response (${where})`,
     );
   }

@@ -35,6 +35,7 @@ import {
   type Validator,
 } from "@oriel/core";
 import { type Fixtures, itemNamed, regionNamed } from "./fixtures.ts";
+import { throughServers } from "./through.ts";
 
 // The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader
@@ -296,6 +297,10 @@ const evalCaseShape = object({
   // none: their fixtures don't connect, even ones every case connects, and a
   // stand-in for them is on (decision 0059). Absent: none.
   off: optional(atLeastOne(text)),
+  // The kinds the case's window has on through their source server, which a
+  // stand-in of it answers in memory: their sync and reads go through the
+  // connector's parser (decision 0059). Absent: none.
+  servers: optional(atLeastOne(text)),
   // Eight weeks of past in the change log (past-weeks.ts), for history().
   past: optional(literal(true)),
   // Why the case can't run yet, such as a golden diff the maintainer hasn't
@@ -501,6 +506,10 @@ export function holding(
   evalCase.window?.workstreams.forEach((workstream, i) => {
     if (!regionNamed(fixtures, workstream.region))
       problems.push(`$.window.workstreams[${i}].region: no fixture region by that name`);
+  });
+  (evalCase.servers ?? []).forEach((kind, i) => {
+    if (!Object.hasOwn(throughServers, kind))
+      problems.push(`$.servers[${i}]: ${kind} has no source server a case can reach`);
   });
   (evalCase.off ?? []).forEach((kind, i) => {
     if (!fixtures.has(kind)) problems.push(`$.off[${i}]: no ${kind} fixture is loaded`);

@@ -3992,7 +3992,8 @@ scenes.push(
   },
   // What Oriel found in the person's agent (decision 0059): the overview's
   // card when it changes, and Settings' Source servers, with Jira on through
-  // the tiny test tracker server and the folder through its connection.
+  // Atlassian's server, a stand-in of it answering SYN (OA-276), and the
+  // folder through its connection.
   {
     name: "found-card",
     path: "/",
@@ -4005,7 +4006,7 @@ scenes.push(
     path: "/settings/connections",
     make: firstRun({
       cli: { signedIn: true },
-      trackerOn: true,
+      atlassian: "on",
       folder: notes,
       state: setupFinished,
     }),
@@ -4013,6 +4014,34 @@ scenes.push(
       const section = page.locator("section", { has: page.locator("#settings-source-servers") });
       await section.getByRole("switch", { name: "Jira on" }).waitFor();
       await section.scrollIntoViewIfNeeded();
+    },
+  },
+  // A person who started on Oriel's own tracker turns Jira on through
+  // Atlassian's server: Oriel offers one change set that makes the
+  // tracker's issues again in Jira, in a thread of its own.
+  {
+    name: "move-into-jira",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "found", state: setupFinished }),
+    window: true,
+    act: async (page) => {
+      await approvedPlan(page);
+      const thread = await page.evaluate(async () => {
+        const on = await fetch("/api/actions/source.on", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "jira", server: "atlassian" }),
+        });
+        if (!on.ok) throw new Error(`source.on: ${on.status}`);
+        const listed = (await (await fetch("/api/threads")).json()) as {
+          threads: { id: string; title: string }[];
+        };
+        return listed.threads.find((each) => each.title === "Into Jira")?.id ?? "";
+      });
+      if (!thread) throw new Error("no thread offers the move");
+      await page.goto(new URL(`/threads/${thread}`, page.url()).href);
+      await page.locator(".oriel-note", { hasText: "Jira is on" }).waitFor();
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
     },
   },
   {

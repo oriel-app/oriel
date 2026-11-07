@@ -103,8 +103,8 @@ const importsSourceList = (text: string) =>
   [...text.matchAll(packageSpecifier)].some(([, name]) => name === "sources");
 
 // Where a source adapter may be imported from: its own package, the list of
-// sources, the composition root, the eval harness, and tests and their
-// support files. Its
+// sources, the composition root, the eval harness, the stand-in MCP servers,
+// and tests and their support files. Its
 // writer, only where decision 0003 allows: the file that builds writers, and
 // the adapter's own writer and its test.
 function mayImportAdapter(path: string, kind: string, writer: boolean): boolean {
@@ -114,6 +114,9 @@ function mayImportAdapter(path: string, kind: string, writer: boolean): boolean 
     );
   if (path.startsWith(`packages/${kind}/`)) return true;
   if (/^packages\/(?:sources|server|evals)\//.test(path)) return true;
+  // The stand-in MCP servers answer from each source's own fixture world, in
+  // dev and tests only, never bundled (OA-276).
+  if (path.startsWith("packages/standin-mcp/")) return true;
   return testFile.test(path);
 }
 

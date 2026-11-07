@@ -108,6 +108,9 @@ importers:
       '@oriel/db':
         specifier: workspace:*
         version: link:../db
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox
@@ -236,6 +239,15 @@ importers:
       '@oriel/tracker':
         specifier: workspace:*
         version: link:../tracker
+
+  packages/standin-mcp:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/tracker:
     dependencies:

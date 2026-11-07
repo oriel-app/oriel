@@ -3,7 +3,17 @@
 // from what happened in it, never stored (packages/db derives it).
 import { holderName, maxReasonChars } from "./actions.ts";
 import { type Instant, isUlid, type Ulid } from "./ids.ts";
-import { array, boolean, type Infer, literal, object, refine, string, union } from "./validate.ts";
+import {
+  array,
+  boolean,
+  type Infer,
+  literal,
+  number,
+  object,
+  refine,
+  string,
+  union,
+} from "./validate.ts";
 
 // Working until a change set applies or the user marks it done; handed off
 // when the assignee changes or an external link is attached; dropped after 7
@@ -98,10 +108,20 @@ const quoteCheck = object({
 export type QuoteCheck = Infer<typeof quoteCheck>;
 export const agentNote = union(rejectedNote, unrejectedNote, unknownChipsNote);
 export type AgentNote = Infer<typeof agentNote>;
+// Oriel offers a change set that moves its stand-in's issues into a kind
+// that turned on (decision 0059): their count, and the two by name.
+const movingNote = object({
+  kind: literal("moving"),
+  changeSet: refine(string, isUlid, "expected a change set ID"),
+  from: string,
+  into: string,
+  items: number,
+});
 export const orielNote = union(
   rejectedNote,
   unrejectedNote,
   unknownChipsNote,
+  movingNote,
   object({
     kind: literal("quotes"),
     checked: refine(

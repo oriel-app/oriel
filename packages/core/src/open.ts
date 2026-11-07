@@ -5,6 +5,7 @@
 // source.
 import type { Instant, ItemId, SourceKind, Ulid } from "./ids.ts";
 import type { Log } from "./run.ts";
+import type { ThroughServer } from "./servers.ts";
 import type { FieldValues, IndexRecord, Source } from "./source.ts";
 import type { Validator } from "./validate.ts";
 
@@ -74,6 +75,10 @@ export type OpenVia = {
   // Oriel's own store of its items, for a stand-in's connection; absent
   // for any other.
   own?: OwnItems;
+  // The source server its kind is on through (decision 0059), which it
+  // reads and writes through in place of its own connection's: absent
+  // while it's on through a connection.
+  server?: ThroughServer;
 };
 
 // Why a new connection waits, as one of a connector with a preview does

@@ -34,7 +34,7 @@ There's no button that adds, removes, signs in or signs out of a server. Oriel n
       <span class="provider-icon" aria-hidden="true">J</span>
       <div class="provider-main">
         <span class="provider-name">Jira</span>
-        <span class="provider-about">Through work-tracker in Claude Code</span>
+        <span class="provider-about">Through atlassian in Claude Code</span>
       </div>
       <div class="provider-side">
         <button type="button" role="switch" class="switch" aria-checked="true" aria-label="Jira on">
@@ -92,6 +92,8 @@ There's no button that adds, removes, signs in or signs out of a server. Oriel n
 - **Looking**: "Looking in Claude Code…" while nothing is listed yet, and Look again reads "Looking…".
 - **A look that failed**: why, naming the agent, in a `.connection-problem` line. What's on stays as it was.
 - **Nothing found**: "Oriel hasn't found a source server it knows in Claude Code."
+- **On, but it couldn't open through its server** (OA-276): the kind's row keeps its switch on and says why under its line, in a `.connection-problem`, naming the server and, where the agent said why, the agent's own words, such as its plan's limit: "Jira couldn't open through Atlassian's Rovo MCP server. Claude Code couldn't run the call: You've hit your weekly limit." A sync that fails later says so on its connection row instead.
+- **On through the one the person picked**: a kind stays on only through the server the person turned it on through. Another server that reports the same name, or sits at the same address under another name, doesn't keep it on or feed it.
 
 ## Keyboard and ARIA
 

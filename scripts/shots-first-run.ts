@@ -24,6 +24,8 @@ import { legacySecret, memorySecrets } from "../packages/server/src/connection.t
 import { models } from "../packages/server/src/model.ts";
 import type { Serving } from "../packages/server/src/serve.ts";
 import { askTiny, testKnown } from "../packages/server/src/servers/testing.ts";
+import { atlassianServer } from "../packages/jira/src/atlassian.ts";
+import { atlassianStandIn, standInCaller } from "../packages/jira/src/atlassian-standin.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
 import { type SetupState, memorySetup, setupFile } from "../packages/server/src/setup/state.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
@@ -120,6 +122,21 @@ export type FirstRunOptions = {
   // And the person turned Jira on through it, so the stand-in steps aside
   // and the first run offers Jira's connect step too, until OA-280.
   trackerOn?: true;
+  // The person's Claude Code lists Atlassian's MCP server (OA-276), as the
+  // stand-in of it answers SYN in memory: found, or Jira on through it.
+  atlassian?: "found" | "on";
+};
+
+// Atlassian's server as the person's agent lists it, under the name they
+// gave it there.
+const atlassianFound = {
+  name: "atlassian",
+  status: "connected" as const,
+  reports: atlassianServer.reports,
+  url: "https://mcp.atlassian.com/v2/mcp?tools=all",
+  command: null,
+  tools: [...atlassianServer.reads, ...atlassianServer.writes],
+  transport: "http" as const,
 };
 
 type Start = (
@@ -316,6 +333,9 @@ export async function firstRunServer(
         : [],
     ),
   );
+  // SYN in memory, as one stand-in of Atlassian's server answers every
+  // process: sync's and replay's.
+  const atlassianTools = standInCaller(atlassianStandIn());
   const state = options.data ? setupFile(join(options.data, "setup.json")) : memorySetup();
   if (options.state) state.set({ ...state.get(), ...options.state });
 
@@ -329,9 +349,32 @@ export async function firstRunServer(
     // The person's agent, as a fake that asks the tiny server itself.
     discover: async () => ({
       agent: { id: "claude-code", name: "Claude Code" },
-      found: options.found || options.trackerOn ? [await askTiny()] : [],
+      found: options.atlassian
+        ? [atlassianFound]
+        : options.found || options.trackerOn
+          ? [await askTiny()]
+          : [],
     }),
-    knownServers: testKnown,
+    ...(options.atlassian
+      ? {
+          // Each process of the person's agent, as the stand-in answers it.
+          callServer: async () => ({
+            agent: { id: "claude-code", name: "Claude Code", kind: "claude-code" },
+            calls: {
+              call: atlassianTools,
+              spent: () => ({
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+                costUsd: 0,
+                turns: 0,
+              }),
+              close: () => {},
+            },
+          }),
+        }
+      : { knownServers: testKnown }),
     ...(options.sheets ? { clients: { sheets: sheetsClient } } : {}),
     anywhere: true,
     legacyJira: legacySecret(secrets),
@@ -360,6 +403,12 @@ export async function firstRunServer(
       front: async () => {},
     },
   });
+  if (options.atlassian) await postTo(serving, "/api/servers/look", {});
+  if (options.atlassian === "on") {
+    await postTo(serving, "/api/actions/source.on", { kind: "jira", server: "atlassian" });
+    await postTo(serving, "/api/servers/dismiss", {});
+    await serving.app.settled();
+  }
   if (options.trackerOn) {
     await postTo(serving, "/api/servers/look", {});
     await postTo(serving, "/api/actions/source.on", { kind: "jira", server: "work-tracker" });

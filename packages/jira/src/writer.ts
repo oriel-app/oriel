@@ -57,6 +57,7 @@ import {
   withinLimit,
 } from "./transport.ts";
 import type { JiraWrites } from "./open-connection.ts";
+import { atlassianTransport } from "./atlassian.ts";
 
 // Only this entry hands out a transport that can write.
 export { restTransport, type Transport } from "./transport.ts";
@@ -528,14 +529,23 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 }
 
 // A Jira connection's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for Jira (decision 0049).
+// packages/changeset/src/writers.ts has for Jira (decision 0049). Through a
+// source server, its writes are the server's write tools, its reads its
+// read tools (decision 0059).
 export function jiraWriterOf(writes: JiraWrites, log: Log): SourceWriter<"jira"> {
+  const { through, credential } = writes;
+  const transport = through
+    ? atlassianTransport(through)
+    : credential
+      ? restTransport({
+          site: writes.site,
+          credential,
+          ...(writes.fetch ? { fetch: writes.fetch } : {}),
+        })
+      : null;
+  if (!transport) throw new Error("a Jira connection writes with an account or a server");
   return jiraWriter({
-    transport: restTransport({
-      site: writes.site,
-      credential: writes.credential,
-      ...(writes.fetch ? { fetch: writes.fetch } : {}),
-    }),
+    transport,
     project: writes.project,
     ...(writes.boards ? { boards: writes.boards } : {}),
     log,

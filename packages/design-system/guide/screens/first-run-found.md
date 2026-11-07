@@ -39,8 +39,8 @@ With none found, the step says so and names, for each kind, the server that woul
       <li class="found-row">
         <span class="provider-icon" aria-hidden="true">J</span>
         <span class="found-what">
-          <span class="found-server">work-tracker</span>
-          <span class="found-turns">Atlassian's Jira server · turns on Jira</span>
+          <span class="found-server">atlassian</span>
+          <span class="found-turns">Atlassian's Rovo MCP server · turns on Jira</span>
         </span>
         <button type="button" class="button">Turn on Jira</button>
       </li>
@@ -62,3 +62,5 @@ With none found, the step says so and names, for each kind, the server that woul
 
 - **One step, two screens.** It counts as part of Your work in the steps, so the first run still reads as two steps; the onboarding budget's clock now spends one more click here.
 - **Continue whatever was picked.** Continue never waits on a server: a person who turns nothing on starts on Oriel's own tracker.
+- **Atlassian's server, known by its address** (OA-276). Jira's one known server is Atlassian's Rovo MCP server at `https://mcp.atlassian.com/v2/mcp`, which lists every tool Oriel reads only at `?tools=all`. A server elsewhere that reports Atlassian's name isn't offered. Turned on, Jira syncs through it; until then the Not found line names it, with Atlassian's own page for adding it.
+- **A tracker turning on later.** A person who started on Oriel's own tracker and turns Jira on is offered one change set that makes those issues again in Jira, in a thread named "Into Jira" ([message](/components/message), its note). Approved, Oriel's tracker steps aside; rejected, both stay.

@@ -43,6 +43,17 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.disconnected"; source: SourceKind; later: boolean }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
+  // A sync through a kind's source server (decision 0059), whoever asked:
+  // how many items it listed, how long it took, and which agent ran it,
+  // whether it worked. Never a title, the server's name or its address.
+  | {
+      name: "source.server-synced";
+      source: SourceKind;
+      agent: "claude-code" | "codex";
+      items: number;
+      ms: number;
+      ok: boolean;
+    }
   // A kind turned on or off (decision 0059), by the person or the agent,
   // and, on an Undo, whose turning it undid: the kind only, never the
   // source server's name or address.
@@ -175,6 +186,15 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // A stand-in's item (decision 0059) created, edited or deleted, with the
   // fields set, by name, and by whom: the person in its panel, or a change
   // set's apply or revert. Never its words.
+  | {
+      name: "standin.moving";
+      // The kind it moves into.
+      source: SourceKind;
+      step: "offered" | "moved";
+      items: number;
+    }
+  // Oriel offered one change set to move its stand-in's issues into a kind
+  // that turned on, or it applied, and how many (decision 0059).
   | {
       name: "standin.written";
       source: SourceKind;

@@ -372,6 +372,15 @@ export function ChatEntryItem(props: {
 // what the user can do next; once they undid it, that it awaits them again.
 function OrielNote({ note }: { note: NoteView }) {
   if (note.kind === "unrejected") return <p>Rejection undone. The change awaits your review.</p>;
+  if (note.kind === "moving")
+    return (
+      <p>
+        {note.into} is on. This change makes{" "}
+        {note.items === 1 ? "the issue" : `the ${note.items} issues`} in {note.from} again in{" "}
+        {note.into}, and your workstreams follow them there. Approve it, and {note.from} steps
+        aside; reject it, and both stay.
+      </p>
+    );
   return (
     <p>
       {note.via === "thread" ? "Change rejected." : "Change rejected on its review link."} You can
