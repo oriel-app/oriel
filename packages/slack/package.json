@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./standin": "./src/slack-standin.ts",
     "./writer": "./src/writer.ts"
   },
   "scripts": {

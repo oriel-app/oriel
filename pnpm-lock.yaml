@@ -117,6 +117,9 @@ importers:
       '@oriel/server':
         specifier: workspace:*
         version: link:../server
+      '@oriel/slack':
+        specifier: workspace:*
+        version: link:../slack
       '@oriel/sources':
         specifier: workspace:*
         version: link:../sources
@@ -248,6 +251,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/slack':
+        specifier: workspace:*
+        version: link:../slack
 
   packages/tracker:
     dependencies:

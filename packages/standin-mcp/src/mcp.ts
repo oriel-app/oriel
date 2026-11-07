@@ -5,7 +5,7 @@
 // instead and each request may carry its revision in `_meta`.
 // https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
 import { createInterface } from "node:readline";
-import type { StandInTool } from "@oriel/jira/standin";
+import type { StandInTool } from "@oriel/core";
 
 export const modern = "2026-07-28";
 export const handshake = "2025-06-18";

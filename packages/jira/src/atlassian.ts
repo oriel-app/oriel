@@ -12,7 +12,14 @@
 // it can't read stops the sync, naming the server (`ServerUnreadable`): the
 // index stays as it was.
 // https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/
-import type { SourceServer, ToolAnswer, ToolCall, ToolCaller } from "@oriel/core";
+import {
+  answerText,
+  type SourceServer,
+  ServerUnreadable,
+  type ToolAnswer,
+  type ToolCall,
+  type ToolCaller,
+} from "@oriel/core";
 import {
   type JiraRequest,
   type JiraResponse,
@@ -72,20 +79,14 @@ export const atlassianServer: SourceServer = {
     "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
 };
 
-// A tool's answer Oriel can't read: the sync stops, and the index stays as
-// it was. Its message names the tool and what was wrong, never the answer.
-export class ServerUnreadable extends Error {
-  override name = "ServerUnreadable";
-}
+// A tool's answer Oriel can't read: core's, so every connector's sync
+// stops the same way.
+export { ServerUnreadable };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// The words of a tool's text blocks, as one.
-const textOf = (answer: ToolAnswer): string =>
-  answer.content
-    .flatMap((block) => (isObject(block) && block.type === "text" ? [String(block.text)] : []))
-    .join("");
+const textOf = answerText;
 
 // A failed tool's words as the status REST would have answered, so the
 // source reads a missing issue as gone and the writer a refusal as nothing

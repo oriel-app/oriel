@@ -27,7 +27,9 @@ export {
 export { connectSlack, slackPerson, type SlackWorkspace } from "./connect.ts";
 export { slackDeclaration } from "./declaration.ts";
 export { slackDeclaredFixture } from "./declared-fixture.ts";
-export { type OpenedSlack, openSlack, type SlackWrites } from "./open-connection.ts";
+export { type OpenedSlack, openSlack, serverProblem, type SlackWrites } from "./open-connection.ts";
+export { slackServer, type SlackServerOptions, slackServerReads, slackTools } from "./slack-mcp.ts";
+export { callsDir, loadCalls } from "./calls-cassette.ts";
 export { type SlackScope, slackRecognizer } from "./references.ts";
 export { escapeText, isSlackOp, type SlackArgs, type SlackOp, slackOps } from "./ops.ts";
 export { type SlackContext, slackNamespace } from "./namespace.ts";
