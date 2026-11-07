@@ -22,8 +22,8 @@ const found = (over: Partial<FoundServer> = {}): FoundServer => ({
   ...over,
 });
 
-test("a server that reports a known name and offers every read tool serves its kind", () => {
-  const [match, ...rest] = recognize([found()], known);
+test("a server at the known address that offers every read tool serves its kind", () => {
+  const [match, ...rest] = recognize([found({ url: "https://mcp.example.invalid/v1" })], known);
   assert.equal(rest.length, 0);
   assert.equal(match?.kind, "jira");
   assert.equal(match?.known, tracker);
@@ -35,11 +35,27 @@ test("a server at the known address counts whatever it reports, and one elsewher
   assert.equal(recognize([at], known).length, 1);
   const elsewhere = found({ url: "https://other.example.invalid/v1" });
   assert.equal(recognize([elsewhere], known).length, 0, "the name alone doesn't vouch for it");
+  const local = found({ command: "node fake-tracker.js" });
+  assert.equal(recognize([local], known).length, 0, "nor does it for a local server");
+});
+
+test("an entry with no address knows a server by the name it reports", () => {
+  const { at: _, ...nowhere } = tracker;
+  const named = [{ kind: "jira", server: nowhere }];
+  assert.equal(recognize([found()], named).length, 1);
+  assert.equal(recognize([found({ reports: "another" })], named).length, 0);
 });
 
 test("a server missing a read tool isn't recognised, though it misses no write", () => {
-  assert.equal(recognize([found({ tools: ["search_issues", "create_issue"] })], known).length, 0);
-  assert.equal(recognize([found({ tools: ["search_issues", "get_issue"] })], known).length, 1);
+  const at = { url: "https://mcp.example.invalid/v1" };
+  assert.equal(
+    recognize([found({ ...at, tools: ["search_issues", "create_issue"] })], known).length,
+    0,
+  );
+  assert.equal(
+    recognize([found({ ...at, tools: ["search_issues", "get_issue"] })], known).length,
+    1,
+  );
 });
 
 test("a server that needs signing in lists no tools, so it isn't recognised yet", () => {

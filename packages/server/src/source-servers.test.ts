@@ -128,6 +128,27 @@ test("turning a tracker kind on through its server steps the stand-in aside, and
   assert.deepEqual(it.events("source.turned"), [{ source: "jira", on: true, by: "person" }]);
 });
 
+test("a kind stays on only through the server the person picked, not another reporting its name", async (t) => {
+  const picked = foundTiny();
+  const other = foundTiny({ name: "lookalike", command: "node elsewhere.ts" });
+  let found: FoundServer[] = [picked, other];
+  const it = await world(t, { found: () => found, connect: true });
+  await it.look();
+  const on = await it.post("/api/actions/source.on", { kind: "jira", server: "work-tracker" });
+  assert.equal(on.status, 200);
+  assert.equal(it.app.sourceServer("jira")?.found.name, "work-tracker");
+  // The picked one goes; the lookalike, reporting the same name, stays.
+  found = [other];
+  const servers = await it.look();
+  assert.deepEqual(servers.kinds, []);
+  assert.equal(it.app.sourceServer("jira"), null, "nothing syncs through the lookalike");
+  assert.deepEqual((await it.connections()).standingIn, ["tracker"]);
+  // The picked one is back: on again, through it.
+  found = [other, picked];
+  await it.look();
+  assert.equal(it.app.sourceServer("jira")?.found.name, "work-tracker");
+});
+
 test("a server Oriel didn't find can't be turned on, and a look that fails names the agent and keeps what's on", async (t) => {
   let found: Listed = [foundTiny()];
   const it = await world(t, { found: () => found });

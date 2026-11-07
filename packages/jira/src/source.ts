@@ -25,6 +25,7 @@ import {
   string,
   unknown,
 } from "@oriel/core";
+import { ServerUnreadable } from "./atlassian.ts";
 import { type JiraAttrs, type JiraContent, jiraText } from "./attrs.ts";
 import { jiraOps } from "./ops.ts";
 import { adfToText, plainDocument } from "./adf.ts";
@@ -60,6 +61,10 @@ export type JiraSourceOptions = {
   // What each project's board estimates in, shared with the writer and the
   // agent's module; the source's own over `transport` when not given.
   boards?: JiraBoards;
+  // Through a source server (decision 0059): a sync reads every page before
+  // it gives one, and a listed issue it can't read stops it, so one that
+  // fails leaves the index as it was.
+  whole?: true;
 };
 
 // Jira's search caps a page that returns fields at 100 issues.
@@ -258,53 +263,13 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     kind: "jira",
     ops: jiraOps,
 
-    // A null cursor lists everything. Otherwise the cursor is the latest
-    // `updated` seen so far, and only issues updated since (less the overlap)
-    // are listed. Jira's search can't list deleted issues, so pages report no
-    // gone IDs: the sync worker's full sweep finds those.
-    async *sync(cursor) {
-      const since = cursor !== null && isInstant(cursor) ? cursor : null;
-      const points = await boards.refresh();
-      const scope = `project in (${projects.map((key) => `"${key}"`).join(", ")})`;
-      const window = since ? await windowFrom(since) : "";
-      const jql = `${scope}${window} ORDER BY updated ASC, key ASC`;
-      const fields = fieldList(points);
-      let latest: Instant | null = since;
-      let token: string | null = null;
-      const tokens = new Set<string>();
-      for (;;) {
-        const page: Infer<typeof searchPage> = await call(
-          transport,
-          {
-            method: "POST",
-            path: searchPath,
-            body: { jql, fields, maxResults: pageSize, ...(token ? { nextPageToken: token } : {}) },
-          },
-          searchPage,
-        );
-        const records: IndexRecord<"jira", JiraAttrs>[] = [];
-        const texts: Record<string, string> = {};
-        for (const raw of page.issues) {
-          const listed = toRecord(raw, points);
-          if (!listed.ok) {
-            log("jira: skipped an issue in a shape Oriel can't read", {
-              issues: listed.issues.slice(0, 5),
-            });
-            continue;
-          }
-          const { record, text } = listed.value;
-          records.push(record);
-          texts[record.stableId] = text;
-          if (latest === null || record.updatedAt > latest) latest = record.updatedAt;
-        }
-        // With nothing seen yet there is no cursor to report.
-        if (latest !== null)
-          yield { records, gone: [], cursor: latest, texts } satisfies SyncPage<"jira", JiraAttrs>;
-        token = page.nextPageToken ?? null;
-        if (!token || page.isLast === true) return;
-        if (tokens.has(token)) throw new Error("jira: the search repeated a page token");
-        tokens.add(token);
-      }
+    sync(cursor) {
+      if (!options.whole) return pages(cursor);
+      return (async function* () {
+        const read: SyncPage<"jira", JiraAttrs>[] = [];
+        for await (const page of pages(cursor)) read.push(page);
+        yield* read;
+      })();
     },
 
     async read(ids) {
@@ -325,6 +290,62 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
       };
     },
   };
+
+  // A null cursor lists everything. Otherwise the cursor is the latest
+  // `updated` seen so far, and only issues updated since (less the overlap)
+  // are listed. Jira's search can't list deleted issues, so pages report no
+  // gone IDs: the sync worker's full sweep finds those.
+  async function* pages(cursor: string | null): AsyncGenerator<SyncPage<"jira", JiraAttrs>> {
+    const since = cursor !== null && isInstant(cursor) ? cursor : null;
+    const points = await boards.refresh();
+    const scope = `project in (${projects.map((key) => `"${key}"`).join(", ")})`;
+    const window = since ? await windowFrom(since) : "";
+    const jql = `${scope}${window} ORDER BY updated ASC, key ASC`;
+    const fields = fieldList(points);
+    let latest: Instant | null = since;
+    let token: string | null = null;
+    const tokens = new Set<string>();
+    for (;;) {
+      const page: Infer<typeof searchPage> = await call(
+        transport,
+        {
+          method: "POST",
+          path: searchPath,
+          body: { jql, fields, maxResults: pageSize, ...(token ? { nextPageToken: token } : {}) },
+        },
+        searchPage,
+      );
+      const records: IndexRecord<"jira", JiraAttrs>[] = [];
+      const texts: Record<string, string> = {};
+      for (const raw of page.issues) {
+        const listed = toRecord(raw, points);
+        if (!listed.ok && options.whole)
+          throw new ServerUnreadable(
+            `a listed issue isn't in a shape Oriel can read (${listed.issues
+              .slice(0, 3)
+              .map((issue) => `${issue.path}: ${issue.message}`)
+              .join("; ")})`,
+          );
+        if (!listed.ok) {
+          log("jira: skipped an issue in a shape Oriel can't read", {
+            issues: listed.issues.slice(0, 5),
+          });
+          continue;
+        }
+        const { record, text } = listed.value;
+        records.push(record);
+        texts[record.stableId] = text;
+        if (latest === null || record.updatedAt > latest) latest = record.updatedAt;
+      }
+      // With nothing seen yet there is no cursor to report.
+      if (latest !== null)
+        yield { records, gone: [], cursor: latest, texts } satisfies SyncPage<"jira", JiraAttrs>;
+      token = page.nextPageToken ?? null;
+      if (!token || page.isLast === true) return;
+      if (tokens.has(token)) throw new Error("jira: the search repeated a page token");
+      tokens.add(token);
+    }
+  }
 }
 
 function validZone(timeZone: string): boolean {

@@ -91,12 +91,22 @@ export function sourceServers(deps: SourceServersDeps) {
       : (store.finds(workspaceId)?.found ?? []);
   const choice = (kind: string): KindChoice | undefined => store.choices(workspaceId).get(kind);
 
+  // The server a kind is on through: the one the person picked, while the
+  // agent still lists it for that kind. Never another found for the kind,
+  // though it report the same name: it would feed the kind unasked.
+  const through = (kind: string): string | null => {
+    const chosen = choice(kind);
+    if (chosen?.state !== "on" || chosen.server === null) return null;
+    return found().some((each) => each.kind === kind && each.server === chosen.server)
+      ? chosen.server
+      : null;
+  };
   // Whether a kind is on now.
   const on = (kind: string): boolean => {
     const chosen = choice(kind);
     if (chosen?.state === "off") return false;
     if (deps.connected(kind)) return true;
-    return chosen?.state === "on" && found().some((each) => each.kind === kind);
+    return through(kind) !== null;
   };
   // The kinds on now, in declared order.
   const onKinds = () => deps.kinds.filter(({ kind }) => on(kind)).map(({ kind }) => kind);
@@ -161,6 +171,13 @@ export function sourceServers(deps: SourceServersDeps) {
   return {
     on,
     onKinds,
+    // The server a kind is on through, as the last look found it, with the
+    // entry it matched: what its sync and replay start, and nothing else.
+    // Null while it's on through a connection, or before a look ends.
+    serverFor(kind: string): Recognized | null {
+      const name = through(kind);
+      return recognized?.find((each) => each.kind === kind && each.found.name === name) ?? null;
+    },
     turnedOff,
     // A kind a person turned on whose source server went: off until it's
     // back.

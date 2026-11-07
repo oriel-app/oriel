@@ -1,5 +1,6 @@
 // Jira as it declares itself to the composition root.
 import { issueDeclaredFacets, issueOverview, type SourceDeclaration } from "@oriel/core";
+import { atlassianServer } from "./atlassian.ts";
 import { jiraKeyShape, jiraPresentation } from "./attrs.ts";
 import { jiraConnect, jiraLive, jiraOptionFields, jiraOptions } from "./connecting.ts";
 import { jiraDeclaredFixture } from "./declared-fixture.ts";
@@ -38,5 +39,7 @@ export const jiraDeclaration = {
   optionFields: jiraOptionFields,
   connect: jiraConnect,
   live: jiraLive,
+  // Atlassian's own MCP server, which Jira turns on through (decision 0059).
+  servers: [atlassianServer],
   fixture: jiraDeclaredFixture,
 } satisfies SourceDeclaration<Estimates | undefined, JiraScope, JiraWrites>;

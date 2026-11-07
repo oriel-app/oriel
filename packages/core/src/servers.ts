@@ -52,21 +52,21 @@ const urlKey = (url: string): string | null => {
   }
 };
 
-// Whether a found server is the known one: it reports the known name, or it
-// is at the known address or command, and it offers every read tool. One
-// whose tools the agent couldn't list, as one that needs signing in, isn't.
+// Whether a found server is the known one, and offers every read tool. One
+// whose entry gives its address is it only at that address, whatever it
+// reports: a server anywhere else could report the same name, and would
+// then feed the kind. One whose entry gives no address is known by the name
+// it reports. One whose tools the agent couldn't list, as one that needs
+// signing in, isn't.
 export function serves(known: SourceServer, found: FoundServer): boolean {
-  const named = found.reports !== null && found.reports === known.reports;
   const at = known.at;
   const placed =
-    at !== undefined &&
-    ("url" in at
-      ? found.url !== null && urlKey(found.url) !== null && urlKey(found.url) === urlKey(at.url)
-      : found.command !== null && found.command === at.command);
-  if (!named && !placed) return false;
-  // Where both say where it is, they agree.
-  if (at && "url" in at && found.url !== null && urlKey(found.url) !== urlKey(at.url)) return false;
-  return known.reads.every((tool) => found.tools.includes(tool));
+    at === undefined
+      ? found.reports !== null && found.reports === known.reports
+      : "url" in at
+        ? found.url !== null && urlKey(found.url) !== null && urlKey(found.url) === urlKey(at.url)
+        : found.command !== null && found.command === at.command;
+  return placed && known.reads.every((tool) => found.tools.includes(tool));
 }
 
 // Each found server Oriel knows, with its kind, in the order the agent
@@ -81,3 +81,31 @@ export function recognize(
     return match ? [{ kind: match.kind, known: match.server, found: each }] : [];
   });
 }
+
+// One call of a source server's tool, by its name on the server, and its
+// arguments.
+export type ToolCall = { tool: string; args: Readonly<Record<string, unknown>> };
+
+// A tool's answer, as MCP gives it: its content blocks, its structured
+// content where it has some, and whether the tool failed. Source content,
+// which only its connector's parser reads.
+export type ToolAnswer = {
+  content: readonly unknown[];
+  structuredContent?: unknown;
+  isError?: boolean;
+};
+
+// Calls a source server's tools from one process the person's agent runs.
+export type ToolCaller = (call: ToolCall) => Promise<ToolAnswer>;
+
+// How a connection reaches the source server its kind is on through
+// (decision 0059): the server, as the person's agent lists it and as the
+// entry it matched names it; its reads, from a process with only its read
+// tools; and its writes, a change set's replay, from another with only its
+// write tools. Sync and replay never share a process.
+export type ThroughServer = {
+  known: SourceServer;
+  found: FoundServer;
+  read: ToolCaller;
+  write: ToolCaller;
+};

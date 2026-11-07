@@ -237,6 +237,15 @@ importers:
         specifier: workspace:*
         version: link:../tracker
 
+  packages/standin-mcp:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
+
   packages/tracker:
     dependencies:
       '@oriel/core':

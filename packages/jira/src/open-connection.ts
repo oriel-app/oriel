@@ -9,21 +9,35 @@ import {
   type OpenVia,
   SourceRefused,
   string,
+  type ThroughServer,
+  type ToolCaller,
   type ToOpen,
 } from "@oriel/core";
+import {
+  atlassianTools,
+  atlassianTransport,
+  projectsOf,
+  ServerUnreadable,
+  siteOf,
+} from "./atlassian.ts";
 import { jiraAttrs } from "./attrs.ts";
 import { type JiraBoards, jiraBoards } from "./boards.ts";
 import type { Estimates } from "./namespace.ts";
 import type { JiraScope } from "./references.ts";
+import { UnexpectedAnswer } from "./rest.ts";
 import { jiraSource } from "./source.ts";
-import { basicAuth, JiraFailed, readTransport } from "./transport.ts";
+import { basicAuth, JiraFailed, readOnly, readTransport } from "./transport.ts";
 
 // What a Jira connection's writer is built from, by its line in
 // packages/changeset/src/writers.ts.
 export type JiraWrites = {
   // An https origin, such as "https://oriel.atlassian.net".
   site: string;
-  credential: Credential;
+  // Its account's, or, through a source server, the server's tools: the
+  // site's cloud ID, which every call names, its reads and its writes
+  // (decision 0059).
+  credential?: Credential;
+  through?: { cloudId: string; read: ToolCaller; write: ToolCaller };
   // Where a story with no epic is created.
   project: string;
   // How requests reach the site: the global fetch unless given, as tests
@@ -59,6 +73,7 @@ export const jiraProject = (options: Readonly<Record<string, unknown>>): string 
   typeof options.project === "string" ? options.project : "";
 
 export async function openJira(connection: ToOpen, via: OpenVia): Promise<OpenedJira> {
+  if (via.server) return openThrough(connection, via, via.server);
   const account = connection.secret === null ? null : jiraAccount(connection.secret);
   if (!account) throw new Error("the connection has no account Oriel can read");
   const site = connection.identity;
@@ -105,4 +120,66 @@ export function jiraProblem(error: unknown, kept: boolean): string {
   return error instanceof JiraFailed
     ? "Jira answered in a way Oriel didn't expect, so the window may be behind it."
     : "Oriel couldn't finish syncing Jira, so the window may be behind it.";
+}
+
+// A Jira connection through the source server Jira is on through (decision
+// 0059): the site the server reaches, the one the connection names if it
+// names one, else its first with Jira, and the project in its options, else
+// the first the server lists. Every read goes through the server's read
+// tools, and the writer, built only in packages/changeset, through its
+// write tools, in another process.
+async function openThrough(
+  connection: ToOpen,
+  via: OpenVia,
+  server: ThroughServer,
+): Promise<OpenedJira> {
+  const named = URL.canParse(connection.identity) ? new URL(connection.identity).origin : null;
+  const site = siteOf(await server.read({ tool: atlassianTools.resources, args: {} }), named);
+  if (!site) throw new Error(`${server.known.name} reaches no Jira site Oriel can read`);
+  const project =
+    jiraProject(connection.options) ||
+    projectsOf(
+      await server.read({ tool: atlassianTools.projects, args: { cloudId: site.cloudId } }),
+    )[0];
+  if (!project) throw new Error(`${server.known.name} lists no Jira project`);
+  const transport = readOnly(atlassianTransport({ cloudId: site.cloudId, read: server.read }));
+  const boards = jiraBoards({ transport, projects: [project], log: via.log });
+  const source = jiraSource({
+    transport,
+    site: site.url,
+    projects: [project],
+    log: via.log,
+    boards,
+    whole: true,
+  });
+  return {
+    source,
+    attrs: jiraAttrs,
+    identity: site.url,
+    about: `${project} on ${URL.parse(site.url)?.host ?? site.url}, through ${server.known.name}`,
+    scope: { projects: [project] },
+    context: () => ({ none: boards.unestimating() ?? new Set(), home: project }),
+    writes: {
+      site: site.url,
+      project,
+      boards,
+      through: { cloudId: site.cloudId, read: server.read, write: server.write },
+    },
+    incremental: true,
+    lagMs: searchLagMs,
+    problem: (error) => serverProblem(error, server.known.name),
+  };
+}
+
+// What the person sees when Jira can't be synced through its server, naming
+// it. A sync that fails this way keeps the index as it was.
+export function serverProblem(error: unknown, server: string): string {
+  if (error instanceof ServerUnreadable || error instanceof UnexpectedAnswer)
+    return `${server} answered in a way Oriel didn't expect, so Oriel kept the window as it was.`;
+  if (
+    error instanceof SourceRefused ||
+    (error instanceof JiraFailed && [401, 403].includes(error.status))
+  )
+    return `${server} turned Oriel away, so the window may be behind Jira. Sign in to it again in your agent.`;
+  return `Oriel couldn't sync Jira through ${server}, so the window may be behind it. Try again in a moment.`;
 }
