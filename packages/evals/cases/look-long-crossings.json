@@ -18,10 +18,6 @@
       }
     ]
   },
-  "failing": {
-    "grader": "findings",
-    "why": "search() reaches item text since OA-242, and the look reached the open question in 2 of 3 trials (round 01M6N5GAJKPYNRVWSKRMZMAACD, before 0 of 3); the recorded trial searched only phrases the file doesn't hold whole, such as 'fare difference waived' and 'short crossings', where every word must match (round 01M6N630QF0TT9ZCFFXCVC655C)"
-  },
   "expect": [
     {
       "grader": "findings",
