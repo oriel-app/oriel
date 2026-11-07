@@ -58,6 +58,7 @@ import type { SourceMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
+import { tinyAgent } from "../packages/server/src/servers/testing.ts";
 import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
@@ -77,6 +78,7 @@ import {
   timedSheets,
   jiraAccount,
   keepUntilDone,
+  postTo,
   releaseAll,
   removeHomes,
   timedPath,
@@ -563,16 +565,23 @@ const unpointed = await start(0, {
 // Jira not connected yet; the window connects it to SYN in memory, which
 // takes only this account.
 const account = { email: "pm@example.com", token: "shots-only-value" };
-const unconnected = (syn = loadJiraFixture()) =>
-  start(0, {
+// Jira is on through the test tracker server the person's agent lists
+// (decision 0059), so the stand-in steps aside and the overview offers
+// Jira's card, until OA-280.
+const unconnected = async (syn = loadJiraFixture()) => {
+  const on = await start(0, {
     db: ":memory:",
     sources: {
       jira: { mode: "window", fetch: memorySite(syn, instant(new Date()), { account }).fetch },
-      // Its overview offers Jira's card, as before decision 0059.
-      tracker: { mode: "off" },
     },
     agent: (deps) => scripted(deps, planning),
+    ...tinyAgent,
   });
+  await postTo(on, "/api/servers/look", {});
+  await postTo(on, "/api/actions/source.on", { kind: "jira", server: "work-tracker" });
+  await postTo(on, "/api/servers/dismiss", {});
+  return on;
+};
 const connecting = await unconnected();
 // Jira connected to a project with no issues yet.
 const empty = await unconnected({ ...loadJiraFixture(), issues: [], edits: [] });
@@ -3563,8 +3572,12 @@ const useProject = async (page: Page) => {
   await toProjects(page);
   await page.getByRole("button", { name: /^Use / }).click();
 };
-const continueWithClaude = (page: Page) =>
-  page.getByRole("button", { name: "Continue with Claude Code" }).click();
+// Past Your AI, and what Oriel found in it (decision 0059), to Your work.
+const continueWithClaude = async (page: Page) => {
+  await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+  await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+};
 // Google Sheets connected from Settings, past Google's page, and the agent's
 // draft of its mapping applied there: the connection's row shows its mapping.
 const sheetsMapped = async (page: Page) => {
@@ -3760,6 +3773,27 @@ scenes.push(
       await page.getByRole("button", { name: "Continue anyway" }).waitFor();
     },
   },
+  // What Oriel found in the person's Claude Code (decision 0059): the tiny
+  // test tracker server, which would turn Jira on; and nothing it knows,
+  // with the server that would.
+  {
+    name: "setup-found",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, found: true }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+      await page.getByRole("button", { name: "Turn on Jira" }).waitFor();
+    },
+  },
+  {
+    name: "setup-found-none",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true } }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+      await page.getByText("didn't find a server it knows").waitFor();
+    },
+  },
   {
     name: "setup-work",
     path: "/setup",
@@ -3772,13 +3806,13 @@ scenes.push(
   {
     name: "setup-jira",
     path: "/setup",
-    make: firstRun({ state: aiDone, standInOff: true }),
+    make: firstRun({ state: aiDone, trackerOn: true }),
     act: (page) => toJira(page),
   },
   {
     name: "setup-jira-refused",
     path: "/setup",
-    make: firstRun({ state: aiDone, standInOff: true }),
+    make: firstRun({ state: aiDone, trackerOn: true }),
     refused: 400,
     act: async (page) => {
       await toJira(page, "not-the-one");
@@ -3789,13 +3823,13 @@ scenes.push(
   {
     name: "setup-jira-project",
     path: "/setup",
-    make: firstRun({ state: aiDone, standInOff: true }),
+    make: firstRun({ state: aiDone, trackerOn: true }),
     act: (page) => toProjects(page),
   },
   {
     name: "setup-work-connected",
     path: "/setup",
-    make: firstRun({ state: aiDone, standInOff: true }),
+    make: firstRun({ state: aiDone, trackerOn: true }),
     act: async (page) => {
       await useProject(page);
       await page.getByRole("button", { name: "Choose a folder" }).click();
@@ -3805,7 +3839,7 @@ scenes.push(
   {
     name: "setup-reading",
     path: "/setup",
-    make: firstRun({ state: aiDone, search: "held", standInOff: true }),
+    make: firstRun({ state: aiDone, search: "held", trackerOn: true }),
     act: async (page) => {
       await useProject(page);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -3816,7 +3850,7 @@ scenes.push(
   {
     name: "setup-sync-failed",
     path: "/setup",
-    make: firstRun({ state: aiDone, search: "fails", standInOff: true }),
+    make: firstRun({ state: aiDone, search: "fails", trackerOn: true }),
     // Jira's connect answers why it stopped.
     refused: 400,
     act: async (page) => {
@@ -3953,6 +3987,37 @@ scenes.push(
     }),
     act: (page) =>
       page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
+  },
+  // What Oriel found in the person's agent (decision 0059): the overview's
+  // card when it changes, and Settings' Source servers, with Jira on through
+  // the tiny test tracker server and the folder through its connection.
+  {
+    name: "found-card",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, found: true, folder: notes, state: setupFinished }),
+    act: (page) =>
+      page.locator(".found-card").getByRole("button", { name: "Turn on Jira" }).waitFor(),
+  },
+  {
+    name: "settings-source-servers",
+    path: "/settings/connections",
+    make: firstRun({
+      cli: { signedIn: true },
+      trackerOn: true,
+      folder: notes,
+      state: setupFinished,
+    }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Jira on" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "settings-source-servers-none",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, folder: notes, state: setupFinished }),
+    act: (page) => page.getByRole("link", { name: "How to add it" }).waitFor(),
   },
   // Settings' Connections (decision 0049): each connection with what a
   // person sets on it; Jira's project picked again; Disconnect, which asks

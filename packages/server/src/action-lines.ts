@@ -10,6 +10,7 @@ import { declarationOf } from "@oriel/sources";
 import type { ActionLineView } from "@oriel/web/view";
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
+const kindName = (kind: unknown) => declarationOf(String(kind))?.name ?? String(kind);
 const shown = 6;
 
 // "SYN-3", "SYN-3 and SYN-7", "SYN-1, SYN-2 and SYN-3", or, for what wasn't
@@ -113,6 +114,19 @@ const words: { [N in ActionName]: Words } = {
     "set how a connection reads its source",
   ],
   "source.sync": () => ["Synced a connection", "sync a connection"],
+  // A kind by its name as a person knows it, such as Slack.
+  "source.off": (input) => [
+    `Turned ${kindName(input["kind"])} off: its items don't show until you turn it on in Settings`,
+    `turn ${kindName(input["kind"])} off`,
+  ],
+  "source.on": (input) => [
+    `Turned ${kindName(input["kind"])} on`,
+    `turn ${kindName(input["kind"])} on`,
+  ],
+  "source.dismiss-found": () => [
+    "Dismissed what Oriel found in your agent",
+    "dismiss what Oriel found in your agent",
+  ],
   "source.disconnect": () => ["Disconnected a connection", "disconnect a connection"],
   "overview.leave": () => ["Left the overview", "leave the overview"],
   "noticed.dismiss": () => ["Dismissed a Noticed card", "dismiss a Noticed card"],

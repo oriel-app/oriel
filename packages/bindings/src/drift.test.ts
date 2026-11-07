@@ -108,6 +108,7 @@ test("a window chat's module while a connection waits: preview() and the drafts 
   assert.deepEqual(
     fns.filter((fn) => fn.space === "source").map((fn) => [fn.kind, fn.name]),
     [
+      ["intent", "off"],
       ["read", "preview"],
       ["draft", "configure"],
     ],

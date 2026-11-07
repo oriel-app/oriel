@@ -18,7 +18,7 @@ import {
   type Region,
   type SourceKind,
 } from "@oriel/core";
-import { intentFns } from "./actions.ts";
+import { intentFns, windowIntentFns } from "./actions.ts";
 import { checkedId, type Fn, orielSpaces } from "./fn.ts";
 import { challengeItemFns, itemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
@@ -137,9 +137,9 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
 }
 
 // `items`, then each namespace in source order, then Oriel's own (its reads,
-// then its actions, in registry order), the window chat's `window` if the
-// thread is one, and `source` while a connection waits for its options
-// (decision 0051), then the escape hatch, blocks and sketches. The order is
+// then its actions, in registry order), the window chat's `window` and
+// `source.off` if the thread is one, and the rest of `source` while a
+// connection waits for its options (decision 0051), then the escape hatch, blocks and sketches. The order is
 // the order of the declarations, so it is part of the byte-stable output. A
 // namespace's write must name an op in its catalogue that a run may capture;
 // revert-only ops are never offered.
@@ -161,7 +161,7 @@ export function describe(
     }),
   );
   if (options.challenge) return [...challengeItemFns, ...namespaced, ...challengeFns, searchFn];
-  const window = options.window ? windowFns : [];
+  const window = options.window ? [...windowFns, ...windowIntentFns] : [];
   const waiting = options.waiting ? [previewFn, ...draftFns(options.waiting)] : [];
   return [
     ...itemFns,

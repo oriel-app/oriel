@@ -133,6 +133,12 @@ const sourceKind = refine(
   (kind) => isPrefix(kind) && !kind.includes("."),
   "expected a kind",
 );
+// A source server, by its name in the person's agent.
+const serverName = refine(
+  string,
+  (name) => name.trim() !== "" && name.length <= 200,
+  "expected a source server's name",
+);
 // What configuring a connection is to the agent and outside tools: they may
 // draft it, but only the user applies it (decisions 0049, 0051).
 const configures =
@@ -522,6 +528,38 @@ export const actions = {
     class: { kind: "direct", inverse: "source.configure" },
     closed: { agent: configures, tool: configures },
     draftable: true,
+  },
+  // A kind turned off or on (decision 0059). Off, its items and every
+  // surface of it stop showing, and its items stay in the index for when
+  // it's on again. On, through a source server Oriel found for it, Oriel's
+  // sync gets that server's read tools, so only a person turns one on; the
+  // agent may turn one off, with Undo, as when the user asks to stop seeing
+  // a source. Turning one on with no server names none: it was off by
+  // choice, and its connection reads it again.
+  "source.off": {
+    doc: 'Turns a source kind, such as "slack", off until the user turns it on in Settings.',
+    input: object({ kind: sourceKind }),
+    class: { kind: "direct", inverse: "source.on" },
+    closed: { tool: undoless },
+  },
+  "source.on": {
+    doc: "Turns a source kind on, through a source server Oriel found for it in the user's agent.",
+    input: object({ kind: sourceKind, server: optional(serverName) }),
+    class: {
+      kind: "person-only",
+      why: "Turning a kind on gives Oriel's sync that source server's tools, so only the user turns one on (decision 0059).",
+      inverse: "source.off",
+    },
+  },
+  // The overview's card of source servers found or gone, dismissed: it
+  // shows again only for another change.
+  "source.dismiss-found": {
+    doc: "Dismisses the overview's card of what Oriel found in the user's agent.",
+    input: object({}),
+    class: {
+      kind: "person-only",
+      why: "What the user wants to see on the overview is theirs to say.",
+    },
   },
   // What the user asks for: a full sweep, as only one finds what was
   // deleted in the source.

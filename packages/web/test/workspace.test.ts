@@ -21,6 +21,7 @@ test("a workstream's page loads its workstream again when the workspace changes"
   assert.deepEqual(requests(effects), [
     "GET /api/threads threads",
     "GET /api/workstreams workstreams",
+    "GET /api/connections connections",
     `GET /api/workstreams/${workstreamId} workstreamSynced`,
   ]);
 });
@@ -39,11 +40,12 @@ test("a thread's page loads its thread again when its workstream changed, moved 
   );
 });
 
-test("the window loads only its lists", () => {
+test("the window loads only its lists, with what Oriel found in the agent", () => {
   const [window] = init({ page: "window", grouping: "epic", addTo: null });
   assert.deepEqual(requests(update(window, { type: "threadsMoved" })[1]), [
     "GET /api/threads threads",
     "GET /api/workstreams workstreams",
+    "GET /api/connections connections",
   ]);
 });
 

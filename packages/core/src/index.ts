@@ -30,6 +30,7 @@ export * from "./shape.ts";
 export * from "./sketch.ts";
 export * from "./sandbox.ts";
 export * from "./search.ts";
+export * from "./servers.ts";
 export * from "./source.ts";
 export * from "./sync.ts";
 export * from "./telemetry.ts";

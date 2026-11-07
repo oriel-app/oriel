@@ -12,6 +12,7 @@ import type { OverviewOf } from "./overview.ts";
 import type { PanelOf } from "./panel.ts";
 import type { Recognizer } from "./references.ts";
 import type { IndexRecord } from "./source.ts";
+import type { SourceServer } from "./servers.ts";
 import type { Described } from "./validate.ts";
 
 // Everything a source declares about itself, in one place (decision 0019):
@@ -87,6 +88,12 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // whose index rows are their source of truth, so nothing syncs it; while
   // one is, nothing of it shows, and its items stay, for when it's on again.
   standIn?: StandIn;
+  // The source servers it reads its kind through (decision 0059): how each
+  // is recognised among the person's agent's MCP servers, and the tools it
+  // must offer. A person turns its kind on through one Oriel finds. None:
+  // its kind turns on only through its connections, until its source
+  // server's story.
+  servers?: readonly SourceServer[];
   // Its synthetic data, which tests, evals and the server's fixture mode
   // connect to. Its connection gives the context its namespace takes; one
   // with no namespace, anything.

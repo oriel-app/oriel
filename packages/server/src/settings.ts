@@ -13,6 +13,7 @@ import {
   type Log,
   literal,
   nullable,
+  number,
   object,
   refine,
   string,
@@ -68,6 +69,9 @@ export type Settings = {
   // Whether a thread's page stays after an approval there, or goes on to
   // the next thread that needs the person.
   afterApprove: AfterApprove;
+  // How often Oriel reads the person's source servers, in minutes, or null
+  // for when it opens and when they press sync (decision 0059).
+  sourceSync: number | null;
 };
 
 // One instance of each kind, on, in the order Settings lists them.
@@ -88,6 +92,7 @@ export const defaultSettings: Settings = {
   askBeforeQuitting: true,
   timeFormat: "relative",
   afterApprove: "stay",
+  sourceSync: null,
 };
 
 export type SettingsStore = { get(): Settings; set(next: Settings): void };
@@ -96,6 +101,12 @@ const idValue = refine(string, (id) => /^[a-z0-9-]{1,40}$/.test(id), "expected a
 const oneOf = <const T extends readonly string[]>(values: T) =>
   union(...values.map((value) => literal(value))) as Validator<T[number]>;
 const pickValue = object({ provider: idValue, model: string });
+// Every so many minutes, from 5 to a day.
+const syncMinutes = refine(
+  number,
+  (minutes) => Number.isInteger(minutes) && minutes >= 5 && minutes <= 1440,
+  "a whole number of minutes from 5 to 1440",
+);
 const nameValue = refine(string, (name) => name.trim() !== "" && name.length <= 60, "a name");
 
 // A CLI's path as Settings takes it: absolute, and to a program named for
@@ -152,6 +163,7 @@ function read(parsed: unknown): Settings {
     askBeforeQuitting: field("askBeforeQuitting", boolean, true),
     timeFormat: field("timeFormat", oneOf(timeFormats), "relative"),
     afterApprove: field("afterApprove", oneOf(afterApproves), "stay"),
+    sourceSync: field("sourceSync", nullable(syncMinutes), null),
   };
 }
 
@@ -206,6 +218,7 @@ export const settingsChange: Validator<SettingsChange> = union(
   object({ askBeforeQuitting: boolean }),
   object({ timeFormat: oneOf(timeFormats) }),
   object({ afterApprove: oneOf(afterApproves) }),
+  object({ sourceSync: nullable(syncMinutes) }),
   object({ model: pickValue }),
   object({ titleModel: pickValue }),
   object({ provider: idValue, on: boolean }),
@@ -233,6 +246,7 @@ export function changed(
     return { ...settings, askBeforeQuitting: change.askBeforeQuitting };
   if ("timeFormat" in change) return { ...settings, timeFormat: change.timeFormat };
   if ("afterApprove" in change) return { ...settings, afterApprove: change.afterApprove };
+  if ("sourceSync" in change) return { ...settings, sourceSync: change.sourceSync };
   if ("model" in change) return { ...settings, model: change.model };
   if ("titleModel" in change) return { ...settings, titleModel: change.titleModel };
   const provider = settings.providers.find((p) => p.id === change.provider);
@@ -288,6 +302,10 @@ export function settingsService(deps: {
   picked(theme: string): void;
   // A change was kept.
   saved?(): void;
+  // Threads run on another agent now, which may have other source servers
+  // (decision 0059); and how often sync runs changed.
+  agentChanged?(): void;
+  synced?(): void;
 }): SettingsService {
   const { store, models, themes } = deps;
   const view = (): SettingsView => {
@@ -313,6 +331,7 @@ export function settingsService(deps: {
       asksBeforeQuitting: deps.asksBeforeQuitting ?? false,
       timeFormat: settings.timeFormat,
       afterApprove: settings.afterApprove,
+      sourceSync: settings.sourceSync,
     };
   };
   return {
@@ -331,8 +350,11 @@ export function settingsService(deps: {
         !models?.options(before).some((o) => o.provider === pick.provider && o.model === pick.model)
       )
         throw new SettingsRefused("That model's provider isn't connected and on.");
+      const runs = (settings: Settings) => models?.choose(settings).model?.provider.id ?? null;
       store.set(next);
       deps.saved?.();
+      if (runs(before) !== runs(next)) deps.agentChanged?.();
+      if ("sourceSync" in change) deps.synced?.();
       if ("theme" in change && change.theme !== before.theme) deps.picked(change.theme);
       // A new path is a new CLI to check.
       if ("path" in change && models) await models.look(next);

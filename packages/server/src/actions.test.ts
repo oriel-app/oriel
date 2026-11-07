@@ -74,6 +74,7 @@ function world() {
     applied: () => assert.fail("nothing applies here"),
     edit: () => assert.fail("nothing is edited here"),
     sources: unreached("sources"),
+    kinds: unreached("kinds"),
     markSeen: () => assert.fail("the overview isn't left here"),
     // No turn runs and no change set waits here; agent-actions.test.ts
     // holds the agent to both.

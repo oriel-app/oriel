@@ -51,8 +51,9 @@ export type OrielSpace = (typeof orielSpaces)[number];
 
 // The namespace a function lives in: `items` for any item, one per source
 // that declares one, one of Oriel's own, or null for a global.
-// `window`: the window chat's own (decision 0027). `source`: a waiting
-// connection's preview and drafts, in the window chat only (decision 0051).
+// `window`: the window chat's own (decision 0027). `source`: turning a kind
+// off (decision 0059), and a waiting connection's preview and drafts
+// (decision 0051), in the window chat only.
 // `challenge`: a second look's, in a run Oriel starts for one only.
 export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | "challenge" | null;
 
@@ -70,10 +71,11 @@ export type WriteFn = NamespaceWrite & {
 
 // One of Oriel's own actions, generated from the registry (decision 0024).
 // It takes one `input` object, typed as the agent's door has it, and a run
-// only records it, as an intent that applies when the turn ends.
+// only records it, as an intent that applies when the turn ends. `source`:
+// turning a kind off, in the window chat only (decision 0059).
 export type IntentFn = {
   kind: "intent";
-  space: OrielSpace;
+  space: OrielSpace | "source";
   name: string;
   doc: string;
   action: ActionName;

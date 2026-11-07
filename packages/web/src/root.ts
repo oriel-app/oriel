@@ -322,6 +322,9 @@ function sourceSynced(model: Model, reload: Effect[]): [Model, Effect[]] {
 const workspaceChanged = (model: Model): Effect[] => [
   loadThreads,
   loadWorkstreams,
+  // What Oriel found in the person's agent, and what's on (decision 0059),
+  // which a look of its own changes.
+  loadConnections,
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
   ...(model.route.page === "overview" ? [loadOverview, loadNoticed] : []),
   // The first run's overview ends with the first workstream made.
@@ -953,6 +956,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "configureUndone":
     case "connectionChoices":
     case "disconnected":
+    case "kindSwitched":
+    case "serversSync":
     case "sourceSynced": {
       const {
         model: connections,

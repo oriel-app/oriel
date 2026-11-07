@@ -17,6 +17,7 @@ import {
   type Recognizer,
   recognizeAll,
   type SourceDeclaration,
+  type SourceServer,
 } from "@oriel/core";
 import { folderDeclaration } from "@oriel/folder";
 import { jiraDeclaration } from "@oriel/jira";
@@ -93,6 +94,11 @@ export const connectorViews: readonly ConnectorView[] = sourceKinds.map((kind) =
     standIn: standIn ?? null,
   };
 });
+
+// Every source server a connector knows, with its kind, in declared order:
+// what recognising the person's servers looks them up in (decision 0059).
+export const knownServers: readonly { kind: DeclaredKind; server: SourceServer }[] =
+  sourceKinds.flatMap((kind) => (sources[kind].servers ?? []).map((server) => ({ kind, server })));
 
 // What each source's items are, as bindings' `items` takes them.
 export const itemDocs = each((declaration) => declaration.itemDoc);

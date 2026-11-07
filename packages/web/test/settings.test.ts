@@ -50,6 +50,7 @@ const view: SettingsView = {
   asksBeforeQuitting: false,
   timeFormat: "relative",
   afterApprove: "stay",
+  sourceSync: null,
 };
 const loaded: SettingsModel = { ...initSettings(), view };
 const replied = (tag: Replied["tag"], ok: boolean, body: unknown): Replied => ({

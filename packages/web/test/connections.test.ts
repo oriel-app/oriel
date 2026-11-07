@@ -63,16 +63,16 @@ const sync = (id: string) => ({
 
 test("a source syncs on demand, once at a time, and says why when it can't", () => {
   // Nothing to sync before the list loads, or for a source not in it.
-  assert.deepEqual(
-    updateSources(initSources(), { type: "syncClicked", connection: "jira" })[1],
-    [],
-  );
+  assert.deepEqual(updateSources(initSources(), { type: "syncClicked", connection: "jira" })[1], [
+    look,
+  ]);
   const shown = listed([jira, folder]);
-  assert.deepEqual(updateSources(shown, { type: "syncClicked", connection: "slack" })[1], []);
+  assert.deepEqual(updateSources(shown, { type: "syncClicked", connection: "slack" })[1], [look]);
+  // A Sync looks for the person's source servers again too (decision 0059).
   const [syncing, effects] = updateSources(shown, { type: "syncClicked", connection: "jira" });
-  assert.deepEqual(effects, [sync("jira")]);
+  assert.deepEqual(effects, [sync("jira"), look]);
   assert.deepEqual(syncing.syncing, ["jira"]);
-  assert.deepEqual(updateSources(syncing, { type: "syncClicked", connection: "jira" })[1], []);
+  assert.deepEqual(updateSources(syncing, { type: "syncClicked", connection: "jira" })[1], [look]);
 
   const problem = "Oriel couldn't reach Jira just now, so the window may be behind it.";
   const failed = sourcesReplied(
@@ -85,7 +85,7 @@ test("a source syncs on demand, once at a time, and says why when it can't", () 
   );
   // Syncing it again clears the problem until it answers.
   const again = updateSources(failed.model, { type: "syncClicked", connection: "jira" });
-  assert.deepEqual([again[0].problems, again[1]], [{}, [sync("jira")]]);
+  assert.deepEqual([again[0].problems, again[1]], [{}, [sync("jira"), look]]);
   const done = sourcesReplied(
     again[0],
     replied({ kind: "sourceSynced", connection: "jira" }, true, {}),
@@ -93,10 +93,18 @@ test("a source syncs on demand, once at a time, and says why when it can't", () 
   assert.deepEqual([done.model, done.synced], [shown, true]);
 });
 
+const look = {
+  type: "http",
+  method: "POST",
+  url: "/api/servers/look",
+  body: {},
+  tag: { kind: "connections" },
+};
+
 test("a connection signed out isn't listed, so it isn't synced", () => {
   const shown = listed([jira, { ...folder, state: "signed-out" }]);
   assert.deepEqual(openConnections(shown), [jira]);
-  assert.deepEqual(updateSources(shown, { type: "syncAllClicked" })[1], [sync("jira")]);
+  assert.deepEqual(updateSources(shown, { type: "syncAllClicked" })[1], [sync("jira"), look]);
 });
 
 test("Sync all syncs every source not syncing already, and keeps others' problems", () => {
@@ -104,15 +112,17 @@ test("Sync all syncs every source not syncing already, and keeps others' problem
   const [one] = updateSources(shown, { type: "syncClicked", connection: "folder" });
   const withProblem = { ...one, problems: { slack: "Slack didn't answer." } };
   const [all, effects] = updateSources(withProblem, { type: "syncAllClicked" });
-  assert.deepEqual(effects, [sync("jira"), sync("slack")]);
+  // Sync all looks for the person's source servers again too (decision 0059).
+  assert.deepEqual(effects, [sync("jira"), sync("slack"), look]);
   assert.deepEqual(all.syncing, ["folder", "jira", "slack"]);
   assert.deepEqual(all.problems, {});
-  assert.deepEqual(updateSources(all, { type: "syncAllClicked" })[1], []);
+  assert.deepEqual(updateSources(all, { type: "syncAllClicked" })[1], [look]);
 });
 
 test("folded, the sources are one line: how many, the oldest sync, and any problem", () => {
   assert.deepEqual(sourcesLine(initSources()), {
     count: 0,
+    syncable: 0,
     syncedAt: null,
     syncing: false,
     problem: false,
@@ -120,6 +130,7 @@ test("folded, the sources are one line: how many, the oldest sync, and any probl
   const shown = listed([jira, folder, slack]);
   assert.deepEqual(sourcesLine(shown), {
     count: 3,
+    syncable: 3,
     syncedAt: folder.syncedAt,
     syncing: false,
     problem: false,

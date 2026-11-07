@@ -108,6 +108,10 @@ export type Tag =
   | { kind: "connectors" }
   // A connection synced on demand, by its ID.
   | { kind: "sourceSynced"; connection: string }
+  // A kind turned on or off from Settings, the overview's card or the first
+  // run (decision 0059), and how often sync runs set.
+  | { kind: "kindSwitched"; of: string }
+  | { kind: "serversSync" }
   // Settings, loaded, changed, or looked for again (OA-181).
   | { kind: "settings" }
   | { kind: "settingsChanged" }

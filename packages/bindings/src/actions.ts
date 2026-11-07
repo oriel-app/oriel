@@ -18,12 +18,12 @@ import {
   type Ulid,
   unknown,
 } from "@oriel/core";
-import { type IntentFn, orielSpaces, type OrielSpace } from "./fn.ts";
+import { type IntentFn, orielSpaces } from "./fn.ts";
 
 type ObjectShape = Extract<Shape, { kind: "object" }>;
 
-const isOrielSpace = (space: string): space is OrielSpace =>
-  (orielSpaces as readonly string[]).includes(space);
+const isIntentSpace = (space: string): space is IntentFn["space"] =>
+  (orielSpaces as readonly string[]).includes(space) || space === "source";
 
 // An alternative's `kind`, when the union tells its alternatives apart by one.
 const kindOf = (shape: ObjectShape): string | null => {
@@ -72,14 +72,16 @@ export function agentType(
   };
 }
 
-// Each direct action not closed to the agent, in registry order.
-export const intentFns: readonly IntentFn[] = (Object.keys(actions) as ActionName[]).flatMap(
-  (action) => {
+// Each direct action not closed to the agent, in registry order, whose
+// namespace is one of `spaces`.
+const intentsIn = (spaces: readonly IntentFn["space"][]): IntentFn[] =>
+  (Object.keys(actions) as ActionName[]).flatMap((action) => {
     const declared: ActionDeclaration = actions[action];
     if (declared.class.kind !== "direct" || declared.closed?.agent !== undefined) return [];
     const [space, name] = action.split(".");
-    if (space === undefined || name === undefined || !isOrielSpace(space))
+    if (space === undefined || name === undefined || !isIntentSpace(space))
       throw new Error(`${action}: an action open to the agent is named for an Oriel namespace`);
+    if (!spaces.includes(space)) return [];
     const { type, optional } = agentType(action);
     return [
       {
@@ -91,8 +93,14 @@ export const intentFns: readonly IntentFn[] = (Object.keys(actions) as ActionNam
         params: [{ name: "input", type, check: unknown, optional }],
       },
     ];
-  },
-);
+  });
+
+// Those of Oriel's own namespaces, in every module.
+export const intentFns: readonly IntentFn[] = intentsIn(orielSpaces);
+
+// A source's, `source.off`, in the window chat's module only, where the
+// agent answers about the window (decision 0059).
+export const windowIntentFns: readonly IntentFn[] = intentsIn(["source"]);
 
 // What the actions are, and the types their inputs name.
 export const actionTypes = [

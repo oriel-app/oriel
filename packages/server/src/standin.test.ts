@@ -162,12 +162,24 @@ test("the stand-in is on only while no tracker is connected, and keeps its issue
   const held = (view: OverviewView) =>
     view.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Tracker");
   assert.ok(held(await overview()));
-  // It isn't among the connections a person connected.
-  const listed = json<{ connections: { kind: string }[] }>(await it.get("/api/connections"));
-  assert.ok(!listed.connections.some((each) => each.kind === "tracker"));
+  // It's among the connections, as the tracker that's on, which Oriel
+  // keeps itself, so the sidebar's Sources and Settings show it.
+  const listed = json<{ connections: { kind: string; own: boolean; items: number }[] }>(
+    await it.get("/api/connections"),
+  );
+  assert.deepEqual(
+    listed.connections.map((each) => [each.kind, each.own, each.items]),
+    [["tracker", true, 3]],
+  );
 
   // Jira connected: nothing of the stand-in shows.
   assert.equal((await it.connect("jira", details)).status, 200);
+  assert.deepEqual(
+    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
+      (each) => each.kind,
+    ),
+    ["jira"],
+  );
   assert.ok(!(await it.browse()).some(([label]) => label === "Spring launch"));
   const read = json<{ read: { status: string } }>(await it.get("/api/items/tracker%3AT-2"));
   assert.notEqual(read.read.status, "ok");

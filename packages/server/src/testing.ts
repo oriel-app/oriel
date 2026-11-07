@@ -162,6 +162,10 @@ export type TestOptions = {
   clients?: AppOptions["clients"];
   // What Noticed's pass runs on (decision 0052); nothing, when absent.
   noticer?: AppOptions["noticer"];
+  // The person's agent's MCP servers, and the ones Oriel knows (decision
+  // 0059); none, when absent.
+  discover?: AppOptions["discover"];
+  knownServers?: AppOptions["knownServers"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -224,6 +228,8 @@ export async function testApp(
     ...(options.titler ? { titler: options.titler } : {}),
     // No pass runs unless a test gives what it runs on.
     noticer: options.noticer ?? (async () => null),
+    ...(options.discover ? { discover: options.discover } : {}),
+    ...(options.knownServers ? { knownServers: options.knownServers } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),
   });
   t.after(() => app.close());

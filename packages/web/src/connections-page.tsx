@@ -11,7 +11,14 @@
 import { Fragment } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { ConnectSteps, ReviewStep } from "./connect-steps.tsx";
-import { type ConnectionsModel, type ConnectionsMsg, formOf, settingOf } from "./connections.ts";
+import { SourceServers } from "./found.tsx";
+import {
+  type ConnectionsModel,
+  type ConnectionsMsg,
+  formOf,
+  settingOf,
+  turnedOff,
+} from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
 import { type Dispatch, Folded, plural, useStamp } from "./parts.tsx";
 import { Switch } from "./provider-row.tsx";
@@ -60,6 +67,7 @@ export function Connections(props: {
           </ul>
         )}
       </section>
+      <SourceServers connections={connections} connectors={connectors} dispatch={dispatch} />
       <AddConnection connections={connections} connectors={connectors} dispatch={dispatch} />
     </>
   );
@@ -80,7 +88,7 @@ function ConnectionRow(props: {
   const open = connection.state === "open";
   const waiting = connection.state === "waiting";
   // One waiting for options that fit its source is set as an open one is.
-  const settable = (open || waiting) && !connection.flagged;
+  const settable = (open || waiting) && !connection.flagged && !connection.own;
   // The last change says what it set, and its own problem, beside the
   // option it changed; any other problem says itself here.
   const besideChange = setting.said !== null && settable;
@@ -135,6 +143,11 @@ function ConnectionRow(props: {
             ))}
           </ul>
         )}
+        {connection.own && (
+          <p class="settings-field-about">
+            Oriel keeps these itself, on this Mac, until you turn on another.
+          </p>
+        )}
         {connection.flagged && (
           <p class="settings-field-about">
             A flag of pnpm dev makes this connection at every start, so it's set there.
@@ -157,7 +170,7 @@ function ConnectionRow(props: {
         />
       </div>
       <div class="provider-side">
-        {open && (
+        {open && !connection.own && (
           <button
             type="button"
             class="button"
@@ -219,7 +232,7 @@ export function Disconnect(props: {
   const { connection, connector, connections, dispatch } = props;
   const send = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
   const { disconnect } = settingOf(connections, connection.id);
-  if (connection.flagged) return null;
+  if (connection.flagged || connection.own) return null;
   if (disconnect === null)
     return (
       <span class="cli-actions">
@@ -636,45 +649,48 @@ function AddConnection(props: {
         Add a connection
       </h2>
       <ul class="provider-rows">
-        {Object.values(connectors).map((connector) => {
-          const offer = connector.connect?.offer;
-          const connectable = view.connectable.includes(connector.kind);
-          const why = view.refused[connector.kind];
-          // One just made stays open on its review step, until it applies.
-          const form = formOf(connections, connector.kind);
-          const open = (connectable || form.made !== null) && form.open;
-          return (
-            <li key={connector.kind} class="provider-row">
-              <span class="provider-icon" aria-hidden="true">
-                {offer?.mark ?? connector.name.charAt(0)}
-              </span>
-              <div class="provider-main">
-                <span class="provider-name">{connector.name}</span>
-                {offer && <span class="provider-about">{offer.about}</span>}
-                {!connectable && !open && why && <span class="settings-field-about">{why}</span>}
-                {open && (
-                  <ConnectSteps
-                    connector={connector}
-                    connections={connections}
-                    dispatch={dispatch}
-                    onCancel={() => send({ type: "closed", kind: connector.kind })}
-                  />
-                )}
-              </div>
-              {connectable && !open && (
-                <div class="provider-side">
-                  <button
-                    type="button"
-                    class="button"
-                    onClick={() => send({ type: "opened", kind: connector.kind })}
-                  >
-                    Connect
-                  </button>
+        {Object.values(connectors)
+          // A kind turned off doesn't show at all (decision 0059).
+          .filter((connector) => !turnedOff(connections).includes(connector.kind))
+          .map((connector) => {
+            const offer = connector.connect?.offer;
+            const connectable = view.connectable.includes(connector.kind);
+            const why = view.refused[connector.kind];
+            // One just made stays open on its review step, until it applies.
+            const form = formOf(connections, connector.kind);
+            const open = (connectable || form.made !== null) && form.open;
+            return (
+              <li key={connector.kind} class="provider-row">
+                <span class="provider-icon" aria-hidden="true">
+                  {offer?.mark ?? connector.name.charAt(0)}
+                </span>
+                <div class="provider-main">
+                  <span class="provider-name">{connector.name}</span>
+                  {offer && <span class="provider-about">{offer.about}</span>}
+                  {!connectable && !open && why && <span class="settings-field-about">{why}</span>}
+                  {open && (
+                    <ConnectSteps
+                      connector={connector}
+                      connections={connections}
+                      dispatch={dispatch}
+                      onCancel={() => send({ type: "closed", kind: connector.kind })}
+                    />
+                  )}
                 </div>
-              )}
-            </li>
-          );
-        })}
+                {connectable && !open && (
+                  <div class="provider-side">
+                    <button
+                      type="button"
+                      class="button"
+                      onClick={() => send({ type: "opened", kind: connector.kind })}
+                    >
+                      Connect
+                    </button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
       </ul>
     </section>
   );

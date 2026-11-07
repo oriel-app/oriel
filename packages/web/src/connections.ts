@@ -92,6 +92,10 @@ export type ConnectionsModel = {
   reviews: Readonly<Record<string, OptionsReviewView>>;
   // Each review step the person is editing, by its connection's ID.
   edits: Readonly<Record<string, ReviewEditing>>;
+  // A kind being turned on or off now, and why the last turning didn't
+  // work (decision 0059).
+  switching: string | null;
+  switchProblem: string | null;
 };
 
 export type ConnectionsMsg =
@@ -143,7 +147,14 @@ export type ConnectionsMsg =
   | { type: "choicesAsked"; connection: string; query: string }
   | { type: "undoClicked"; connection: string }
   | { type: "disconnectClicked"; connection: string }
-  | { type: "disconnectAnswered"; connection: string; yes: boolean };
+  | { type: "disconnectAnswered"; connection: string; yes: boolean }
+  // Source servers (decision 0059): a kind turned on, through the server
+  // Oriel found for it, or off; the overview's card dismissed; Oriel's look
+  // at the agent's servers asked for again; and how often sync runs.
+  | { type: "kindSwitched"; kind: string; on: boolean; server?: string }
+  | { type: "foundDismissed" }
+  | { type: "serversLookAsked" }
+  | { type: "serversSyncPicked"; every: number | null };
 
 // The folder step's kind (decision 0049), which names the step, not a
 // source.
@@ -151,6 +162,9 @@ export const folderStep = "folder" as const;
 export type FolderKind = typeof folderStep;
 
 export const loadConnections: Effect = get("/api/connections", { kind: "connections" });
+
+// Oriel's look at the person's servers, again, as Sync asks (decision 0059).
+export const lookForServers: Effect = post("/api/servers/look", {}, { kind: "connections" });
 
 export function initConnections(): ConnectionsModel {
   return {
@@ -161,6 +175,8 @@ export function initConnections(): ConnectionsModel {
     settings: {},
     reviews: {},
     edits: {},
+    switching: null,
+    switchProblem: null,
   };
 }
 
@@ -252,11 +268,17 @@ export const pickedChoice = (form: ConnectForm): PickChoiceView | null =>
 // stand-in on now stands in for (decision 0059).
 export const offered = (connectors: Connectors, model: ConnectionsModel): ConnectorView[] => {
   const replaced = new Set(standingIn(connectors, model).flatMap(({ standIn }) => standIn.for));
+  const off = turnedOff(model);
   return Object.values(connectors)
     .filter((connector) => connector.connect?.offer.firstRun !== undefined)
-    .filter((connector) => !replaced.has(connector.kind))
+    .filter((connector) => !replaced.has(connector.kind) && !off.includes(connector.kind))
     .toSorted((a, b) => (a.connect?.offer.firstRun ?? 0) - (b.connect?.offer.firstRun ?? 0));
 };
+
+// The kinds a person or the agent turned off (decision 0059): nothing of
+// them shows, not even greyed out.
+export const turnedOff = (model: ConnectionsModel): string[] =>
+  (model.view?.servers.kinds ?? []).flatMap((each) => (each.offBy === null ? [] : [each.kind]));
 
 // The stand-ins on now, each with what it stands in for and its offer.
 export const standingIn = (
@@ -345,9 +367,36 @@ export function updateConnections(
   msg: ConnectionsMsg,
 ): [ConnectionsModel, Effect[]] {
   switch (msg.type) {
+    // A Sync looks for the person's servers again too (decision 0059).
     case "syncClicked":
-    case "syncAllClicked":
-      return syncing(model, msg);
+    case "syncAllClicked": {
+      const [next, effects] = syncing(model, msg);
+      return [next, [...effects, lookForServers]];
+    }
+    case "serversLookAsked":
+      return [model, [lookForServers]];
+    case "foundDismissed":
+      return [
+        model.view
+          ? { ...model, view: { ...model.view, servers: { ...model.view.servers, card: null } } }
+          : model,
+        [post("/api/servers/dismiss", {}, { kind: "connections" })],
+      ];
+    case "kindSwitched": {
+      if (model.switching !== null) return [model, []];
+      const input = { kind: msg.kind, ...(msg.server ? { server: msg.server } : {}) };
+      return [
+        { ...model, switching: msg.kind, switchProblem: null },
+        [
+          post(`/api/actions/source.${msg.on ? "on" : "off"}`, input, {
+            kind: "kindSwitched",
+            of: msg.kind,
+          }),
+        ],
+      ];
+    }
+    case "serversSyncPicked":
+      return [model, [post("/api/settings", { sourceSync: msg.every }, { kind: "serversSync" })]];
     case "fieldChanged": {
       const form = formOf(model, msg.kind);
       return withForm(model, msg.kind, {
@@ -622,7 +671,8 @@ function syncing(
   model: ConnectionsModel,
   msg: Extract<ConnectionsMsg, { type: "syncClicked" | "syncAllClicked" }>,
 ): [ConnectionsModel, Effect[]] {
-  const open = openConnections(model);
+  // A stand-in's items are Oriel's own: nothing syncs them.
+  const open = openConnections(model).filter((connection) => !connection.own);
   const ids =
     msg.type === "syncAllClicked"
       ? open.map((connection) => connection.id)
@@ -805,6 +855,18 @@ export function connectionsReplied(
         model: msg.ok ? { ...model, view: msg.body as ConnectionsView } : model,
         synced: false,
       };
+    // What's on changed, so what the window shows did, and the list.
+    case "kindSwitched":
+      return {
+        model: {
+          ...model,
+          switching: null,
+          switchProblem: msg.ok ? null : errorOf(msg.body),
+        },
+        synced: msg.ok,
+      };
+    case "serversSync":
+      return { model, synced: false, effects: [loadConnections] };
     case "sourceSynced": {
       const syncing = model.syncing.filter((id) => id !== tag.connection);
       if (!msg.ok)
@@ -975,14 +1037,18 @@ export function syncChanges(counts: ConnectionView["lastSync"]): string | null {
 // last synced, and whether any is syncing or has a problem.
 export function sourcesLine(model: ConnectionsModel): {
   count: number;
+  syncable: number;
   syncedAt: string | null;
   syncing: boolean;
   problem: boolean;
 } {
   const view = openConnections(model);
-  const times = view.map((connection) => connection.syncedAt);
+  // A stand-in's items are Oriel's own, so it never syncs (decision 0059).
+  const syncable = view.filter((connection) => !connection.own);
+  const times = syncable.map((connection) => connection.syncedAt);
   return {
     count: view.length,
+    syncable: syncable.length,
     // A source never synced makes the whole line "not synced yet".
     syncedAt: times.some((at) => at === null) ? null : (times.toSorted()[0] ?? null),
     syncing: model.syncing.length > 0,

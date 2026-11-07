@@ -186,6 +186,9 @@ export const exemptRoutes: Record<string, string> = {
   "/setup/cli": "the person's own CLI, which no agent may install or sign in",
   "/setup/ai": "the person's own choice of AI, which no agent may make",
   "/setup/progress": "the person's own first run, which no agent may move",
+  // Decision 0059: what the person's agent lists, which turns nothing on.
+  "/servers/look":
+    "a look at the person's agent's own servers, which starts them and turns nothing on",
   // Decision 0049: a connector's pick step, such as Jira's projects.
   "/connections/pick": "a read of a list to pick from, for the details typed, which keeps nothing",
   "/connections/:id/pick":

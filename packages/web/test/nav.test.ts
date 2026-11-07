@@ -187,10 +187,10 @@ test("one stream per page says when any thread moves, and a move reloads both li
   const urls = (effects: ReturnType<typeof update>[1]) =>
     effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
   const [, moved] = update(init({ page: "done" })[0], { type: "threadsMoved" });
-  assert.deepEqual(urls(moved), ["/api/threads", "/api/workstreams"]);
+  assert.deepEqual(urls(moved), ["/api/threads", "/api/workstreams", "/api/connections"]);
   const onThread = init({ page: "thread", id: "01JBZ0000000000000000000T1" })[0];
   const [, told] = update(onThread, { type: "streamed", event: { type: "threads" } });
-  assert.deepEqual(urls(told), ["/api/threads", "/api/workstreams"]);
+  assert.deepEqual(urls(told), ["/api/threads", "/api/workstreams", "/api/connections"]);
   // The thread's own moves come as its own events, which reload them too.
   const loaded = {
     ...onThread,

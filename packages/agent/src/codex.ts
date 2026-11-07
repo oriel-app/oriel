@@ -21,7 +21,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { createInterface } from "node:readline";
-import type { Log } from "@oriel/core";
+import type { FoundServer, Log } from "@oriel/core";
 import type { Effort } from "./anthropic.ts";
 import {
   type HarnessProblem,
@@ -1066,4 +1066,65 @@ export async function codexPlan(
   } catch {
     return { none: "no-answer" };
   }
+}
+
+// Codex's answers to `mcpServerStatus/list`, page by page, and `config/read`,
+// as Oriel looks servers up by: each one's name, whether it's usable, the
+// name it reports, its URL or command line from the person's configuration,
+// and its tools' names. Never its configuration's other fields, such as its
+// headers or environment, which may hold a secret.
+export function codexServersOf(pages: readonly unknown[], effective: unknown): FoundServer[] {
+  const config = isObject(effective) && isObject(effective.config) ? effective.config : {};
+  const configured = isObject(config.mcp_servers) ? config.mcp_servers : {};
+  return pages
+    .flatMap((page) => (isObject(page) && Array.isArray(page.data) ? page.data : []))
+    .filter(isObject)
+    .flatMap((server): FoundServer[] => {
+      const name = text(server.name);
+      if (!name) return [];
+      const own = isObject(configured[name]) ? configured[name] : {};
+      const info = isObject(server.serverInfo) ? server.serverInfo : {};
+      const args = Array.isArray(own.args) ? own.args.map(text) : [];
+      const tools = isObject(server.tools) ? Object.keys(server.tools) : [];
+      const status: FoundServer["status"] =
+        server.runtimeStatus === "disabled"
+          ? "disabled"
+          : server.authStatus === "notLoggedIn"
+            ? "needs-auth"
+            : server.toolsError != null
+              ? "failed"
+              : "connected";
+      return [
+        {
+          name,
+          status,
+          reports: text(info.name) || null,
+          url: text(own.url) || null,
+          command: text(own.command) ? [text(own.command), ...args].join(" ") : null,
+          tools: status === "connected" ? tools : [],
+        },
+      ];
+    });
+}
+
+// The person's own MCP servers, as their Codex lists them: its app server's
+// `mcpServerStatus/list`, which starts each and lists its tools, with no
+// thread and no model request.
+export async function codexServers(
+  cli: Codex,
+  options: { env?: Readonly<Record<string, string | undefined>>; spawn?: Spawn } = {},
+): Promise<FoundServer[]> {
+  return ask(cli, options, async (server) => {
+    const pages: unknown[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await server.request("mcpServerStatus/list", {
+        detail: "toolsAndAuthOnly",
+        ...(cursor ? { cursor } : {}),
+      });
+      pages.push(page);
+      cursor = isObject(page) ? text(page.nextCursor) || null : null;
+    } while (cursor && pages.length < 20);
+    return codexServersOf(pages, await server.request("config/read", { cwd: server.cwd }));
+  });
 }

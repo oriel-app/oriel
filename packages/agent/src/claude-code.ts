@@ -19,7 +19,7 @@ import { accessSync, constants, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
-import type { Log } from "@oriel/core";
+import type { FoundServer, Log } from "@oriel/core";
 import { defaultModel, type Effort, readResponse, type Reply } from "./anthropic.ts";
 import { runToolName } from "./prompt.ts";
 import {
@@ -424,6 +424,111 @@ export async function claudeCodePlan(
     return parsePlan(await session.request({ subtype: "get_usage", skip_behaviors: true }));
   } catch {
     return { none: "no-answer" };
+  } finally {
+    session.close();
+  }
+}
+
+// The command line that lists the person's own MCP servers (decision 0059):
+// the turns' lock-down but for the servers, which come from their own
+// user-level configuration, with every hook off. No message is ever sent,
+// so the model never runs and no tool is ever called: the CLI only starts
+// each server and lists its tools. Not `--safe-mode`, which loads no server,
+// nor the project's or local settings: its folder is an empty one.
+export function discoveryArgs(): string[] {
+  return [
+    "-p",
+    "--verbose",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--system-prompt",
+    "Oriel lists the person's MCP servers.",
+    "--model",
+    titleModel,
+    "--effort",
+    "low",
+    "--tools",
+    "",
+    "--setting-sources",
+    "user",
+    "--settings",
+    JSON.stringify({ disableAllHooks: true }),
+    "--disable-slash-commands",
+    "--no-session-persistence",
+    "--permission-mode",
+    "dontAsk",
+    "--permission-prompt-tool",
+    "stdio",
+  ];
+}
+
+const serverStatuses = ["connected", "needs-auth", "failed", "pending", "disabled"] as const;
+
+// The CLI's answer to `mcp_status`, as Oriel looks servers up by: each one's
+// name, status, the name it reports, its URL or command line, and its tools'
+// names. Never its configuration's other fields, such as its headers or
+// environment, which may hold a secret.
+export function claudeCodeServersOf(answer: unknown): FoundServer[] {
+  const listed = isObject(answer) && Array.isArray(answer.mcpServers) ? answer.mcpServers : [];
+  return listed.filter(isObject).flatMap((server): FoundServer[] => {
+    const name = text(server.name);
+    if (!name || server.source === "sdk") return [];
+    const status = serverStatuses.find((each) => each === server.status) ?? "failed";
+    const info = isObject(server.serverInfo) ? server.serverInfo : {};
+    const config = isObject(server.config) ? server.config : {};
+    const args = Array.isArray(config.args) ? config.args.map(text) : [];
+    const prefix = `mcp__${name}__`;
+    const tools = (Array.isArray(server.tools) ? server.tools : [])
+      .map((tool) => (isObject(tool) ? text(tool.name) : ""))
+      .filter(Boolean)
+      .map((tool) => (tool.startsWith(prefix) ? tool.slice(prefix.length) : tool));
+    return [
+      {
+        name,
+        status,
+        reports: text(info.name) || null,
+        url: text(config.url) || null,
+        command: text(config.command) ? [text(config.command), ...args].join(" ") : null,
+        tools,
+      },
+    ];
+  });
+}
+
+// The person's own MCP servers, as their Claude Code lists them, from
+// `mcp_status` on its control channel, which, like `get_usage`, makes no
+// model request, so it spends none of their plan. A server still connecting
+// is asked about again, every `pollMs`, until `waitMs` has passed.
+export async function claudeCodeServers(
+  cli: ClaudeCode,
+  options: {
+    env?: Readonly<Record<string, string | undefined>>;
+    spawn?: Spawn;
+    waitMs?: number;
+    pollMs?: number;
+  } = {},
+): Promise<FoundServer[]> {
+  const waitMs = options.waitMs ?? 15_000;
+  const session = startSession({
+    cli,
+    spawn: options.spawn ?? spawnCli,
+    parent: options.env ?? process.env,
+    args: discoveryArgs(),
+    maxOutputTokens: 1,
+    tool: null,
+    signal: AbortSignal.timeout(waitMs + 25_000),
+    log: () => {},
+  });
+  try {
+    await session.initialized;
+    const until = Date.now() + waitMs;
+    for (;;) {
+      const found = claudeCodeServersOf(await session.request({ subtype: "mcp_status" }));
+      if (!found.some((each) => each.status === "pending") || Date.now() >= until) return found;
+      await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? 500));
+    }
   } finally {
     session.close();
   }

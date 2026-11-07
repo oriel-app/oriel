@@ -17,11 +17,13 @@ import {
   type ClaudeCode,
   claudeCodePlan,
   claudeCodeProvider,
+  claudeCodeServers,
   claudeCodeTitler,
   type CodexAccount,
   type CodexModel,
   codexPlan,
   codexProvider,
+  codexServers,
   codexTitler,
   defaultModel,
   type Effort,
@@ -41,7 +43,9 @@ import type {
   ProviderView,
   UsageView,
 } from "@oriel/web/view";
+import type { FoundServer } from "@oriel/core";
 import type { Agent, ServerAgentDeps } from "./agent.ts";
+import type { Discovery } from "./source-servers.ts";
 import type { ProviderSetting, Settings } from "./settings.ts";
 import { memoryUsage, type UsageCounts } from "./usage.ts";
 
@@ -100,6 +104,8 @@ export type ModelsOptions = {
   counts?: UsageCounts;
   // Asks a CLI how much of the plan is used; tests stand in for it.
   plan?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<PlanUsage>;
+  // Asks a CLI for the person's MCP servers; tests stand in for it.
+  servers?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<FoundServer[]>;
 };
 
 export type Models = {
@@ -126,6 +132,10 @@ export type Models = {
   // Each CLI instance's usage: today's counts, and the plan's windows from
   // its CLI, asked now.
   usage(settings: Settings): Promise<UsageView[]>;
+  // The person's MCP servers, from the CLI that runs threads, once the
+  // latest look ends (decision 0059): null when none runs them, or an API
+  // key does, which has no servers to bring.
+  servers(settings: Settings): Promise<Discovery>;
 };
 
 const checking: Found = { status: "checking" };
@@ -196,6 +206,11 @@ export function models(options: ModelsOptions): Models {
     options.plan ??
     ((cli: ClaudeCode, kind: "claude-code" | "codex") =>
       kind === "codex" ? codexPlan(cli, { env }) : claudeCodePlan(cli, { env }));
+
+  const serversOf =
+    options.servers ??
+    ((cli: ClaudeCode, kind: "claude-code" | "codex") =>
+      kind === "codex" ? codexServers(cli, { env }) : claudeCodeServers(cli, { env }));
 
   async function lookFor(provider: ProviderSetting, key: string | null): Promise<Found> {
     if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
@@ -320,6 +335,21 @@ export function models(options: ModelsOptions): Models {
     },
     found: foundOf,
     choose,
+    async servers(settings) {
+      await latest;
+      const { model: chosen } = choose(settings);
+      if (!chosen?.cli || chosen.provider.kind === "api") return null;
+      const agent = { id: chosen.provider.id, name: chosen.provider.name };
+      if (await options.trust?.(chosen.cli.path)) return null;
+      try {
+        return { agent, found: await serversOf(chosen.cli, chosen.provider.kind) };
+      } catch (error) {
+        return {
+          agent,
+          problem: error instanceof Error ? error.message : "it didn't answer",
+        };
+      }
+    },
     async noticer(settings) {
       const { model: chosen } = choose(settings);
       if (!chosen) return null;

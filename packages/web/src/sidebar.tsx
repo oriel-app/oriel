@@ -614,11 +614,11 @@ function Sources(props: {
         controls="nav-sources"
         after={
           open ? (
-            line.count > 1 && (
+            line.syncable > 1 && (
               <button
                 type="button"
                 class="quiet-action"
-                disabled={sources.syncing.length === line.count}
+                disabled={sources.syncing.length === line.syncable}
                 onClick={() => send({ type: "syncAllClicked" })}
               >
                 Sync all
@@ -631,7 +631,9 @@ function Sources(props: {
                 ? "Syncing…"
                 : line.count === 0
                   ? "None yet"
-                  : `${plural(line.count, "source")} · ${line.syncedAt === null ? "not synced" : synced(line.syncedAt)}`}
+                  : line.syncable === 0
+                    ? `${plural(line.count, "source")} · kept in Oriel`
+                    : `${plural(line.count, "source")} · ${line.syncedAt === null ? "not synced" : synced(line.syncedAt)}`}
             </span>
           )
         }
@@ -665,23 +667,27 @@ function Sources(props: {
                     {source.items}
                   </span>
                   <span class="source-synced">
-                    {syncing
-                      ? "Syncing…"
-                      : source.syncedAt === null
-                        ? "not synced"
-                        : synced(source.syncedAt)}
+                    {source.own
+                      ? "kept in Oriel"
+                      : syncing
+                        ? "Syncing…"
+                        : source.syncedAt === null
+                          ? "not synced"
+                          : synced(source.syncedAt)}
                   </span>
                 </Link>
-                <button
-                  type="button"
-                  class="quiet-action source-sync"
-                  disabled={syncing}
-                  aria-label={`Sync ${source.name}`}
-                  onClick={() => send({ type: "syncClicked", connection: source.id })}
-                >
-                  Sync
-                </button>
-                {changes && <p class="source-changes">{changes}</p>}
+                {!source.own && (
+                  <button
+                    type="button"
+                    class="quiet-action source-sync"
+                    disabled={syncing}
+                    aria-label={`Sync ${source.name}`}
+                    onClick={() => send({ type: "syncClicked", connection: source.id })}
+                  >
+                    Sync
+                  </button>
+                )}
+                {changes && !source.own && <p class="source-changes">{changes}</p>}
                 {problem && (
                   <p class="source-problem" role="alert">
                     {problem}

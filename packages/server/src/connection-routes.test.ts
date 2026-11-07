@@ -192,7 +192,11 @@ test("a change set applied while its connection disconnects doesn't read it back
   assert.equal((await gone).status, 200);
   await approved;
   await app.app.settled();
-  assert.deepEqual((await app.connections()).connections, []);
+  // Only the stand-in tracker, on in Jira's place (decision 0059).
+  assert.deepEqual(
+    (await app.connections()).connections.map((each) => [each.kind, each.own]),
+    [["tracker", true]],
+  );
   // The index holds none of its items.
   const store = open(db);
   try {
@@ -264,7 +268,11 @@ test("disconnecting forgets the connection's secret, options and items, and conn
   assert.equal(gone.status, 200);
   assert.deepEqual(json(gone), { disconnected: app.jira.id, undo: null });
   assert.deepEqual([...app.secrets.kept.keys()], []);
-  assert.deepEqual((await app.connections()).connections, []);
+  // Only the stand-in tracker, on in Jira's place (decision 0059).
+  assert.deepEqual(
+    (await app.connections()).connections.map((each) => [each.kind, each.own]),
+    [["tracker", true]],
+  );
   assert.deepEqual(await jiraOf(app), { connected: null, connectable: true });
   // The workstream keeps its item, as one the index no longer has.
   assert.deepEqual(await members(), [["jira:SYN-1", false]]);
@@ -313,7 +321,11 @@ test("a signed-out connection is listed as one, can be disconnected, and signing
   const again = await testApp(t, { db, connect: { secrets: first.secrets } });
   assert.equal((await again.connection("jira"))?.state, "signed-out");
   assert.equal((await again.post(`/api/connections/${first.jira.id}/disconnect`)).status, 200);
-  assert.deepEqual((await again.connections()).connections, []);
+  // Only the stand-in tracker, on in Jira's place (decision 0059).
+  assert.deepEqual(
+    (await again.connections()).connections.map((each) => [each.kind, each.own]),
+    [["tracker", true]],
+  );
   assert.deepEqual([...first.secrets.kept.keys()], []);
 });
 

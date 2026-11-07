@@ -76,3 +76,15 @@ test("a case expects calls by action and items, and never both them and zero mut
   };
   assert.equal(parseEvalCase(bad).ok, false);
 });
+
+test("a call matches only with the fields the case names, such as the kind it turns off", () => {
+  const off = [{ action: "source.off", with: { kind: "slack" } }];
+  assert.equal(
+    gradeIntents(off, [{ action: "source.off", input: { kind: "slack" } }], [], own).pass,
+    true,
+  );
+  assert.equal(
+    gradeIntents(off, [{ action: "source.off", input: { kind: "jira" } }], [], own).pass,
+    false,
+  );
+});
