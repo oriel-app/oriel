@@ -20,7 +20,7 @@ import {
 } from "@oriel/core";
 import { isProjectKey, projectId } from "./items.ts";
 import { type LinearIssue, type LinearProject, linearReads, linearWrites } from "./linear-mcp.ts";
-import { isLinearOp, type LinearArgs, type LinearOp, linearFields, linearOps } from "./ops.ts";
+import { isLinearOp, type LinearArgs, type LinearOp, linearOps } from "./ops.ts";
 import type { LinearWrites } from "./open-connection.ts";
 
 const refused = (message: string) => new SourceRefused(message, { sent: false });
@@ -163,13 +163,15 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
         ...(project ? { project: project.id } : {}),
       });
     });
-    // What a create sets, and no assignee: one would read as handing the
-    // work off.
-    return result(
-      null,
-      { kind: "issue", issue },
-      linearFields.filter((field) => field !== "assignee"),
-    );
+    // What a create sets, and nothing it didn't: no assignee, which would
+    // read as handing the work off, nor a status or labels it never chose.
+    return result(null, { kind: "issue", issue }, [
+      "summary",
+      "description",
+      "points",
+      "cycle",
+      "epic",
+    ]);
   };
 
   // A set op on one issue or project: one save of the field it sets.

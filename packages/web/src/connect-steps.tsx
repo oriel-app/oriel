@@ -23,7 +23,7 @@ import {
   openConnections,
   pickedChoice,
   type ReviewEditing,
-  standingIn,
+  replacedKinds,
   stepOf,
   typedAll,
 } from "./connections.ts";
@@ -789,14 +789,14 @@ export function ConnectCards(props: {
   const { connections, connectors, dispatch } = props;
   const connectable = connections.view?.connectable ?? [];
   const only = readOnlyOnly(connections, connectors);
-  // Nothing a stand-in on stands in for is offered here (decision 0059):
-  // its stand-in is the person's already.
-  const replaced = standingIn(connectors, connections).flatMap(({ standIn }) => standIn.for);
+  // Nothing another does the work of is offered here (decision 0059), as
+  // Jira while the stand-in tracker or Linear is the person's.
+  const replaced = replacedKinds(connectors, connections);
   return (
     <>
       {Object.values(connectors)
         .filter((connector) => connectable.includes(connector.kind))
-        .filter((connector) => !replaced.includes(connector.kind))
+        .filter((connector) => !replaced.has(connector.kind))
         .map((connector) => (
           <ConnectCard
             key={connector.kind}
