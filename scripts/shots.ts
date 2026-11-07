@@ -3769,8 +3769,9 @@ scenes.push(
       cli: { signedIn: true },
       refuses: "Claude Code stopped: Claude AI usage limit reached|1762189200",
     }),
+    // Refused on Your AI, so the first run stays there.
     act: async (page) => {
-      await continueWithClaude(page);
+      await page.getByRole("button", { name: "Continue with Claude Code" }).click();
       await page.getByRole("button", { name: "Continue anyway" }).waitFor();
     },
   },
