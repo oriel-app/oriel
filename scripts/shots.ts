@@ -3992,7 +3992,8 @@ scenes.push(
   },
   // What Oriel found in the person's agent (decision 0059): the overview's
   // card when it changes, and Settings' Source servers, with Jira on through
-  // the tiny test tracker server and the folder through its connection.
+  // Atlassian's server, a stand-in of it answering SYN (OA-276), and the
+  // folder through its connection.
   {
     name: "found-card",
     path: "/",
@@ -4005,7 +4006,7 @@ scenes.push(
     path: "/settings/connections",
     make: firstRun({
       cli: { signedIn: true },
-      trackerOn: true,
+      atlassian: "on",
       folder: notes,
       state: setupFinished,
     }),
@@ -4013,20 +4014,6 @@ scenes.push(
       const section = page.locator("section", { has: page.locator("#settings-source-servers") });
       await section.getByRole("switch", { name: "Jira on" }).waitFor();
       await section.scrollIntoViewIfNeeded();
-    },
-  },
-  // Jira on through Atlassian's MCP server in the person's Claude Code
-  // (OA-276), a stand-in of it answering SYN: Source servers, and Jira's
-  // connection through it, with Sync and no Disconnect.
-  {
-    name: "settings-source-servers-atlassian",
-    path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, atlassian: "on", state: setupFinished }),
-    act: async (page) => {
-      await page
-        .locator(".connection-row", { hasText: "through Atlassian's Rovo MCP server" })
-        .waitFor();
-      await page.getByRole("switch", { name: "Jira on" }).waitFor();
     },
   },
   // A person who started on Oriel's own tracker turns Jira on through
