@@ -36,7 +36,7 @@ export type Prose =
 const blank = (line: string) => line.trim() === "";
 const indent = (line: string) => line.length - line.trimStart().length;
 
-// Each pattern runs in steps linear in the line: a line is source content
+// Each pattern runs in steps that grow with the line, never faster: a line is source content
 // the agent may quote, and is read again with every streamed chunk. `s` lets
 // `.` take any character, so `$` can't fail after a long backtrack.
 const fence = /^ {0,3}(`{3,}|~{3,})/;

@@ -43,7 +43,9 @@ test("it has the mess a real team has", () => {
   );
   assert.ok(world.issues.some((each) => each.parent !== null));
   assert.ok(world.issues.some((each) => each.description.length > 10_000));
-  assert.ok(world.issues.some((each) => /[^\u0000-\u007f]/.test(each.title)));
+  assert.ok(
+    world.issues.some((each) => [...each.title].some((char) => (char.codePointAt(0) ?? 0) > 127)),
+  );
   assert.ok(world.issues.some((each) => identifierOf(world, each).startsWith("OPS-")));
 });
 

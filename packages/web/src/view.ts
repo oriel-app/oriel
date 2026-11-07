@@ -740,8 +740,9 @@ export type ChangeSetView = {
   revertOf: string | null;
   reverts: string[];
   // Why it offers no Revert though it applied: a source it wrote to can't
-  // take back one of its changes, in one line, such as "A Slack post can't
-  // be taken back". Absent when nothing stops a revert that way.
+  // take back one of its changes, in one line, as its writer says it, such
+  // as a post its source server has no tool to delete. Absent when nothing
+  // stops a revert that way.
   cannotUndo?: string;
   createdAt: string;
   // Oriel's latest second look at it, in the thread only, never on a review
