@@ -14,6 +14,10 @@
 //   shipped `fixture/backlog.json`, as a process of its own, since Oriel
 //   never imports it; the sync reads the Backlog tab, the reads are every
 //   item it listed, and `preview.json` is a preview with nothing picked.
+//   Then, on the evals' Sheets fixture (fixtures/sheets/) as sheets-mcp
+//   serves it, each cell as it shows, `world.json`: a sync of what the
+//   fixture's connection picks, and the previews of the spreadsheets the
+//   draft cases wait on, which the eval world reads through the server.
 //
 // By default it records the kind's stand-in (`@oriel/<kind>/standin`, its
 // fixture world in memory), in this process. With `--through codex --server
@@ -56,6 +60,16 @@ import { sheetsPreview } from "../packages/sheets/src/preview.ts";
 import { sheetsMcpMain, sheetsServer } from "../packages/sheets/src/sheets-mcp.ts";
 import { recordedReads, scrub as scrubJira } from "./record-jira.ts";
 import { stdioCalls } from "./stdio-mcp.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fixturePicks } from "../packages/sheets/src/declared-fixture.ts";
+import {
+  gridOf,
+  loadSheetsFixture,
+  type SheetsFixture,
+  shown,
+} from "../packages/sheets/src/fixture.ts";
 
 // A Slack answer with its people as numbered placeholders, their IDs and
 // the names and contact details of their profiles, and the workspace's
@@ -368,6 +382,95 @@ export async function recordCalls(
   save("preview.json", previewed);
 }
 
+// The evals' Sheets fixture as sheets-mcp's fixture mode reads it: each
+// cell as it shows, with no notes, comments, merges or hidden rows, which
+// its tools don't give.
+export function sheetsMcpFixture(fixture: SheetsFixture) {
+  return {
+    spreadsheets: fixture.spreadsheets.map((spreadsheet) => ({
+      id: spreadsheet.id,
+      name: spreadsheet.title,
+      modifiedTime: spreadsheet.modifiedTime,
+      canEdit: spreadsheet.canEdit,
+      tabs: spreadsheet.tabs.map((tab) => {
+        const grid = gridOf(tab);
+        return {
+          sheetId: tab.sheetId,
+          title: tab.title,
+          ...(tab.frozenRows ? { frozenRows: tab.frozenRows } : {}),
+          rowCount: grid.rows,
+          columnCount: grid.columns,
+          rows: tab.rows.map((row) => row.map((cell) => shown(cell))),
+        };
+      }),
+    })),
+  };
+}
+
+// The draft cases' spreadsheets, each waiting with nothing mapped.
+export const draftWaits = [
+  "1FwTrackerFixture000000000000000000000000000",
+  "1FwRaidFixture000000000000000000000000000000",
+];
+
+async function recordSheetsWorld() {
+  const fixture = loadSheetsFixture();
+  const file = join(mkdtempSync(join(tmpdir(), "oriel-sheets-world-")), "world.json");
+  writeFileSync(file, JSON.stringify(sheetsMcpFixture(fixture)));
+  const server = await stdioCalls("node", [sheetsMcpMain, "--fixture", file]);
+  const calls: RecordedCall[] = [];
+  const via = (read: ToolCaller): OpenVia => ({
+    kept: false,
+    log: () => {},
+    now: () => "2026-11-07T00:00:00.000Z" as never,
+    server: {
+      known: sheetsServer,
+      found: {
+        name: "sheets-mcp",
+        status: "connected",
+        reports: "sheets-mcp",
+        url: null,
+        command: null,
+        tools: [...sheetsServer.reads, ...sheetsServer.writes],
+      },
+      read,
+      write: async () => {
+        throw new Error("the recording writes nothing");
+      },
+    },
+  });
+  const connection = (options: Record<string, unknown>): ToOpen => ({
+    id: "01JRECORDING00000000000000" as never,
+    number: 1,
+    prefix: "sheets",
+    identity: "",
+    options,
+    secret: null,
+  });
+  try {
+    const read = recordingCalls(server.call, calls);
+    const opened = await openSheets(connection(fixturePicks(fixture)), via(read));
+    for await (const _ of opened.source.sync(null));
+    for (const id of draftWaits)
+      await sheetsPreview(connection({ spreadsheets: [{ id, tabs: [] }] }), via(read));
+  } finally {
+    server.close();
+  }
+  writeFileSync(
+    new URL("world.json", sheetsCalls),
+    `${JSON.stringify(
+      {
+        recorded:
+          "From packages/sheets-mcp in its fixture mode, on fixtures/sheets/ as it serves it (scripts/record-source-mcp.ts): each cell as it shows, with no notes, comments, merges or hidden rows.",
+        calls,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(`world.json: ${calls.length} calls`);
+}
+
 if (import.meta.main) {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
@@ -397,6 +500,7 @@ if (import.meta.main) {
     } finally {
       if (typeof standIn !== "function") standIn.close();
     }
+    if (kind === kinds.sheets) await recordSheetsWorld();
   } else if (values.through === "codex" && values.server) {
     mkdirSync(kind.dir, { recursive: true });
     const codex = await checkCodex();

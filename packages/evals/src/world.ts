@@ -52,7 +52,7 @@ import { groupings } from "@oriel/server/window";
 import { byItemId } from "@oriel/sources";
 import type { EvalCase, OrielWorkspace } from "./case.ts";
 import { fixtureOf, type Fixtures, regionNamed } from "./fixtures.ts";
-import { throughServers } from "./through.ts";
+import { throughPreviews, throughServers } from "./through.ts";
 
 // Every case's workspace and workstream.
 export const fixedId: Ulid = ulid(0, new Uint8Array(10));
@@ -233,7 +233,13 @@ export async function buildWorld(input: WorldInput): Promise<World> {
 
   const window = input.window;
   const waiting = window
-    ? await waitingIn(fixtures, input.unfit ?? {}, window.now, [...connections.keys()])
+    ? await waitingIn(
+        fixtures,
+        input.unfit ?? {},
+        window.now,
+        [...connections.keys()],
+        input.servers ?? [],
+      )
     : null;
   return {
     region,
@@ -311,14 +317,20 @@ export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
 // the fixture's stand-in. Then, as the server has them too, each other
 // connected kind whose connector drafts in its own form, which reads with
 // its fixture's options, and whose options the person may ask to change
-// (OA-232).
+// (OA-232). A kind the case has on through its server (`servers`) is
+// previewed through it, where the server previews it (OA-279).
 async function waitingIn(
   fixtures: Fixtures,
   unfit: Readonly<Record<string, Record<string, unknown>>>,
   now: Instant,
   connected: readonly string[],
+  servers: readonly string[],
 ): Promise<Waiting | null> {
-  const via = { kept: true, log: () => {}, now: () => now };
+  const plainVia = { kept: true, log: () => {}, now: () => now };
+  const viaOf = (kind: string): OpenVia => {
+    const through = servers.includes(kind) ? throughPreviews[kind] : undefined;
+    return through ? { ...plainVia, kept: false, server: through() } : plainVia;
+  };
   const waiting = await Promise.all(
     Object.entries(unfit).map(async ([kind, options]) => {
       const declaration = fixtures.get(kind)?.declaration;
@@ -337,7 +349,7 @@ async function waitingIn(
       const why =
         !declaration.options(options).ok || declaration.review?.waits(options)
           ? noOptionsYet
-          : await declaration.fixture.open(connection, via).then(
+          : await declaration.fixture.open(connection, plainVia).then(
               (opened) => {
                 opened.close?.();
                 throw new Error(`the ${kind} fixture opens with the case's options: they fit it`);
@@ -345,7 +357,7 @@ async function waitingIn(
               (error: unknown) =>
                 error instanceof OptionsUnfit ? error.message : Promise.reject(error),
             );
-      return waitingOne(declaration, connection, why, via);
+      return waitingOne(declaration, connection, why, viaOf(kind));
     }),
   );
   const reading = connected.flatMap((kind) => {
@@ -358,7 +370,7 @@ async function waitingIn(
       prefix: kind,
       secret: null,
     };
-    return [waitingOne(declaration, connection, readsNow, via)];
+    return [waitingOne(declaration, connection, readsNow, viaOf(kind))];
   });
   return waitingOf([...waiting, ...reading]);
 }
@@ -381,7 +393,10 @@ function waitingOne(
     ...(review
       ? { draft: { validator: review.draft, doc: review.doc, current: review.current } }
       : {}),
-    preview: async () => (await declaration.fixture.preview?.(connection, via)) ?? [],
+    preview: async () =>
+      (await (via.server
+        ? declaration.preview?.(connection, via)
+        : declaration.fixture.preview?.(connection, via))) ?? [],
   };
 }
 
