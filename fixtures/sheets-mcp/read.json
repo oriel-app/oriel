@@ -1,0 +1,314 @@
+{
+  "recorded": "From packages/sheets-mcp in its fixture mode, on its shipped fixture/backlog.json: no Google account. Re-record with --through codex.",
+  "calls": [
+    {
+      "call": {
+        "tool": "get_spreadsheet",
+        "args": {
+          "spreadsheetId": "1q2w3e4r5t6y7u8i9o0pBacklogFixture"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"id\":\"1q2w3e4r5t6y7u8i9o0pBacklogFixture\",\"title\":\"Product backlog\",\"url\":\"https://docs.google.com/spreadsheets/d/1q2w3e4r5t6y7u8i9o0pBacklogFixture/edit\",\"tabs\":[{\"sheetId\":0,\"title\":\"Backlog\",\"index\":0,\"rowCount\":1000,\"columnCount\":26,\"frozenRowCount\":1,\"header\":[\"Key\",\"Title\",\"Status\",\"Owner\",\"Priority\",\"Estimate\",\"Sprint\",\"Updated\"]},{\"sheetId\":1849302211,\"title\":\"Sprint 42 notes\",\"index\":1,\"rowCount\":1000,\"columnCount\":26,\"frozenRowCount\":0}]}"
+          }
+        ],
+        "structuredContent": {
+          "id": "1q2w3e4r5t6y7u8i9o0pBacklogFixture",
+          "title": "Product backlog",
+          "url": "https://docs.google.com/spreadsheets/d/1q2w3e4r5t6y7u8i9o0pBacklogFixture/edit",
+          "tabs": [
+            {
+              "sheetId": 0,
+              "title": "Backlog",
+              "index": 0,
+              "rowCount": 1000,
+              "columnCount": 26,
+              "frozenRowCount": 1,
+              "header": [
+                "Key",
+                "Title",
+                "Status",
+                "Owner",
+                "Priority",
+                "Estimate",
+                "Sprint",
+                "Updated"
+              ]
+            },
+            {
+              "sheetId": 1849302211,
+              "title": "Sprint 42 notes",
+              "index": 1,
+              "rowCount": 1000,
+              "columnCount": 26,
+              "frozenRowCount": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "list_spreadsheets",
+        "args": {
+          "query": "Product backlog",
+          "pageSize": 100
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"spreadsheets\":[{\"id\":\"1q2w3e4r5t6y7u8i9o0pBacklogFixture\",\"name\":\"Product backlog\",\"modifiedTime\":\"2026-11-03T16:42:10.512Z\",\"url\":\"https://docs.google.com/spreadsheets/d/1q2w3e4r5t6y7u8i9o0pBacklogFixture/edit\"}]}"
+          }
+        ],
+        "structuredContent": {
+          "spreadsheets": [
+            {
+              "id": "1q2w3e4r5t6y7u8i9o0pBacklogFixture",
+              "name": "Product backlog",
+              "modifiedTime": "2026-11-03T16:42:10.512Z",
+              "url": "https://docs.google.com/spreadsheets/d/1q2w3e4r5t6y7u8i9o0pBacklogFixture/edit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "read_range",
+        "args": {
+          "spreadsheetId": "1q2w3e4r5t6y7u8i9o0pBacklogFixture",
+          "range": "'Backlog'!A1:Z769"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"range\":\"Backlog!A1:Z769\",\"values\":[[\"Key\",\"Title\",\"Status\",\"Owner\",\"Priority\",\"Estimate\",\"Sprint\",\"Updated\"],[\"BL-101\",\"Sign-in page remembers the last email\",\"Done\",\"Priya\",\"P2\",\"2\",\"Sprint 41\",\"2026-10-14\"],[\"BL-102\",\"Export a report as CSV\",\"Done\",\"Tomás\",\"P1\",\"3\",\"Sprint 41\",\"2026-10-16\"],[\"BL-103\",\"Search finds archived projects\",\"In progress\",\"Ama\",\"P1\",\"5\",\"Sprint 42\",\"2026-10-28\"],[\"BL-104\",\"Billing page shows the next invoice date\",\"In progress\",\"Priya\",\"P2\",\"2\",\"Sprint 42\",\"2026-10-29\"],[\"BL-105\",\"Mobile menu closes after a tap\",\"In review\",\"Jonas\",\"P3\",\"1\",\"Sprint 42\",\"2026-10-30\"],[\"BL-106\",\"Bulk-assign tasks to a teammate\",\"To do\",\"Tomás\",\"P1\",\"8\",\"Sprint 42\",\"2026-10-21\"],[\"BL-107\",\"Dark mode for the settings pages\",\"To do\",\"Ama\",\"P3\",\"3\",\"Sprint 43\",\"2026-10-20\"],[\"BL-108\",\"Rate-limit the public API by key\",\"Blocked\",\"Jonas\",\"P1\",\"5\",\"Sprint 42\",\"2026-10-27\"],[\"BL-109\",\"Weekly digest email\",\"To do\",\"\",\"P2\",\"5\",\"Sprint 43\",\"2026-10-19\"],[\"BL-110\",\"Onboarding checklist for new workspaces\",\"In progress\",\"Priya\",\"P1\",\"8\",\"Sprint 42\",\"2026-10-31\"],[\"BL-111\",\"Audit log keeps 400 days\",\"To do\",\"Jonas\",\"P2\",\"3\",\"\",\"2026-10-12\"],[\"BL-112\",\"Invite links expire after 7 days\",\"Done\",\"Ama\",\"P2\",\"2\",\"Sprint 41\",\"2026-10-11\"],[\"BL-113\",\"Keyboard shortcut to jump between projects\",\"To do\",\"\",\"P3\",\"2\",\"\",\"2026-10-09\"],[\"BL-114\",\"Fix: due dates shift by a day in UTC−8\",\"In review\",\"Tomás\",\"P1\",\"1\",\"Sprint 42\",\"2026-11-02\"],[\"BL-115\",\"Comments support @mentions\",\"To do\",\"Ama\",\"P2\",\"5\",\"Sprint 43\",\"2026-10-22\"],[\"BL-116\",\"Two-factor sign-in with an authenticator app\",\"Blocked\",\"Priya\",\"P1\",\"8\",\"Sprint 42\",\"2026-10-26\"],[\"BL-117\",\"Archive a project from its menu\",\"Done\",\"Jonas\",\"P3\",\"1\",\"Sprint 41\",\"2026-10-10\"],[\"BL-118\",\"Usage chart on the admin page\",\"To do\",\"Tomás\",\"P2\",\"5\",\"Sprint 43\",\"2026-10-23\"],[\"BL-119\",\"Import tasks from a spreadsheet\",\"To do\",\"\",\"P2\",\"8\",\"\",\"2026-10-18\"],[\"BL-120\",\"Slow load on projects with 5,000 tasks\",\"In progress\",\"Jonas\",\"P1\",\"5\",\"Sprint 42\",\"2026-11-03\"]],\"truncated\":false}"
+          }
+        ],
+        "structuredContent": {
+          "range": "Backlog!A1:Z769",
+          "values": [
+            [
+              "Key",
+              "Title",
+              "Status",
+              "Owner",
+              "Priority",
+              "Estimate",
+              "Sprint",
+              "Updated"
+            ],
+            [
+              "BL-101",
+              "Sign-in page remembers the last email",
+              "Done",
+              "Priya",
+              "P2",
+              "2",
+              "Sprint 41",
+              "2026-10-14"
+            ],
+            [
+              "BL-102",
+              "Export a report as CSV",
+              "Done",
+              "Tomás",
+              "P1",
+              "3",
+              "Sprint 41",
+              "2026-10-16"
+            ],
+            [
+              "BL-103",
+              "Search finds archived projects",
+              "In progress",
+              "Ama",
+              "P1",
+              "5",
+              "Sprint 42",
+              "2026-10-28"
+            ],
+            [
+              "BL-104",
+              "Billing page shows the next invoice date",
+              "In progress",
+              "Priya",
+              "P2",
+              "2",
+              "Sprint 42",
+              "2026-10-29"
+            ],
+            [
+              "BL-105",
+              "Mobile menu closes after a tap",
+              "In review",
+              "Jonas",
+              "P3",
+              "1",
+              "Sprint 42",
+              "2026-10-30"
+            ],
+            [
+              "BL-106",
+              "Bulk-assign tasks to a teammate",
+              "To do",
+              "Tomás",
+              "P1",
+              "8",
+              "Sprint 42",
+              "2026-10-21"
+            ],
+            [
+              "BL-107",
+              "Dark mode for the settings pages",
+              "To do",
+              "Ama",
+              "P3",
+              "3",
+              "Sprint 43",
+              "2026-10-20"
+            ],
+            [
+              "BL-108",
+              "Rate-limit the public API by key",
+              "Blocked",
+              "Jonas",
+              "P1",
+              "5",
+              "Sprint 42",
+              "2026-10-27"
+            ],
+            [
+              "BL-109",
+              "Weekly digest email",
+              "To do",
+              "",
+              "P2",
+              "5",
+              "Sprint 43",
+              "2026-10-19"
+            ],
+            [
+              "BL-110",
+              "Onboarding checklist for new workspaces",
+              "In progress",
+              "Priya",
+              "P1",
+              "8",
+              "Sprint 42",
+              "2026-10-31"
+            ],
+            [
+              "BL-111",
+              "Audit log keeps 400 days",
+              "To do",
+              "Jonas",
+              "P2",
+              "3",
+              "",
+              "2026-10-12"
+            ],
+            [
+              "BL-112",
+              "Invite links expire after 7 days",
+              "Done",
+              "Ama",
+              "P2",
+              "2",
+              "Sprint 41",
+              "2026-10-11"
+            ],
+            [
+              "BL-113",
+              "Keyboard shortcut to jump between projects",
+              "To do",
+              "",
+              "P3",
+              "2",
+              "",
+              "2026-10-09"
+            ],
+            [
+              "BL-114",
+              "Fix: due dates shift by a day in UTC−8",
+              "In review",
+              "Tomás",
+              "P1",
+              "1",
+              "Sprint 42",
+              "2026-11-02"
+            ],
+            [
+              "BL-115",
+              "Comments support @mentions",
+              "To do",
+              "Ama",
+              "P2",
+              "5",
+              "Sprint 43",
+              "2026-10-22"
+            ],
+            [
+              "BL-116",
+              "Two-factor sign-in with an authenticator app",
+              "Blocked",
+              "Priya",
+              "P1",
+              "8",
+              "Sprint 42",
+              "2026-10-26"
+            ],
+            [
+              "BL-117",
+              "Archive a project from its menu",
+              "Done",
+              "Jonas",
+              "P3",
+              "1",
+              "Sprint 41",
+              "2026-10-10"
+            ],
+            [
+              "BL-118",
+              "Usage chart on the admin page",
+              "To do",
+              "Tomás",
+              "P2",
+              "5",
+              "Sprint 43",
+              "2026-10-23"
+            ],
+            [
+              "BL-119",
+              "Import tasks from a spreadsheet",
+              "To do",
+              "",
+              "P2",
+              "8",
+              "",
+              "2026-10-18"
+            ],
+            [
+              "BL-120",
+              "Slow load on projects with 5,000 tasks",
+              "In progress",
+              "Jonas",
+              "P1",
+              "5",
+              "Sprint 42",
+              "2026-11-03"
+            ]
+          ],
+          "truncated": false
+        }
+      }
+    }
+  ]
+}

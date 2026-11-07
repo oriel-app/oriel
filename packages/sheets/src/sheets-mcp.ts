@@ -55,6 +55,7 @@ export const sheetsServer: SourceServer = {
   reads: [t.list, t.get, t.read],
   writes: [t.update, t.append],
   instructions: "https://github.com/oriel-app/oriel/blob/main/packages/sheets-mcp/README.md",
+  keepsOptions: true,
 };
 
 type Json = Record<string, unknown>;

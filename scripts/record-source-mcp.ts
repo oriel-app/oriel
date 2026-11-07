@@ -10,6 +10,10 @@
 //   the sync listed.
 // - linear: Linear's server, on the first team it lists, ENG in the
 //   fixture; the reads are every item the sync listed.
+// - sheets: packages/sheets-mcp, our own server, in its fixture mode on its
+//   shipped `fixture/backlog.json`, as a process of its own, since Oriel
+//   never imports it; the sync reads the Backlog tab, the reads are every
+//   item it listed, and `preview.json` is a preview with nothing picked.
 //
 // By default it records the kind's stand-in (`@oriel/<kind>/standin`, its
 // fixture world in memory), in this process. With `--through codex --server
@@ -18,7 +22,7 @@
 // model and only that server's read tools: point it at our test site or
 // workspace, never a person's data. People are replaced with numbered
 // placeholders, as `pnpm record:jira` does. Nothing is written.
-// Usage: node scripts/record-source-mcp.ts <jira|slack|linear> [--through codex --server <name>] [--channels <a,b>]
+// Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through codex --server <name>] [--channels <a,b>]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { checkCodex, codexServerCalls } from "../packages/agent/src/index.ts";
@@ -46,7 +50,12 @@ import { loadSlackFixture } from "../packages/slack/src/fixture.ts";
 import { openSlack } from "../packages/slack/src/open-connection.ts";
 import { slackServer } from "../packages/slack/src/slack-mcp.ts";
 import { standInCaller as slackCaller } from "../packages/slack/src/slack-standin.ts";
+import { callsDir as sheetsCalls } from "../packages/sheets/src/calls.ts";
+import { openSheets } from "../packages/sheets/src/open-connection.ts";
+import { sheetsPreview } from "../packages/sheets/src/preview.ts";
+import { sheetsMcpMain, sheetsServer } from "../packages/sheets/src/sheets-mcp.ts";
 import { recordedReads, scrub as scrubJira } from "./record-jira.ts";
+import { stdioCalls } from "./stdio-mcp.ts";
 
 // A Slack answer with its people as numbered placeholders, their IDs and
 // the names and contact details of their profiles, and the workspace's
@@ -125,7 +134,8 @@ export function scrubLinear(value: unknown, people = new Map<string, string>()):
 type Kind = {
   server: SourceServer;
   dir: URL;
-  standIn: () => ToolCaller;
+  // In this process, or a process of its own, which is stopped once done.
+  standIn: () => ToolCaller | Promise<{ call: ToolCaller; close(): void }>;
   standInLine: string;
   realLine: (version: string) => string;
   scrub: (value: unknown, people: Map<string, string>) => unknown;
@@ -141,6 +151,32 @@ type Kind = {
   }>;
   // What `read.json` reads, given what the sync listed.
   reads: (listed: readonly IndexRecord[]) => readonly string[];
+  // What `preview.json` previews, where the kind previews its source for
+  // the options the person sets through it.
+  preview?: (connection: ToOpen, via: OpenVia) => Promise<unknown>;
+};
+
+// The Backlog tab of sheets-mcp's shipped fixture, as a person maps it.
+export const backlogPicks = {
+  spreadsheets: [
+    {
+      id: "1q2w3e4r5t6y7u8i9o0pBacklogFixture",
+      tabs: [
+        {
+          sheetId: 0,
+          header: 1,
+          end: "blank",
+          hidden: false,
+          key: "Key",
+          title: "Title",
+          status: "Status",
+          states: { todo: ["To do"], "in-progress": ["In progress"], done: ["Done"] },
+          assignee: "Owner",
+          estimate: "Estimate",
+        },
+      ],
+    },
+  ],
 };
 
 const kinds: Record<string, Kind> = {
@@ -189,6 +225,27 @@ const kinds: Record<string, Kind> = {
     connection: () => ({ prefix: "linear", identity: "", options: {} }),
     open: openLinear as Kind["open"],
     reads: (listed) => listed.map((record) => record.id),
+  },
+  sheets: {
+    server: sheetsServer,
+    dir: sheetsCalls,
+    standIn: () =>
+      stdioCalls("node", [
+        sheetsMcpMain,
+        "--fixture",
+        new URL("../packages/sheets-mcp/fixture/backlog.json", import.meta.url).pathname,
+      ]),
+    standInLine:
+      "From packages/sheets-mcp in its fixture mode, on its shipped fixture/backlog.json: no Google account. Re-record with --through codex.",
+    realLine: (version) =>
+      `From packages/sheets-mcp signed in to Google, through Codex ${version}, on our test account's spreadsheets.`,
+    // Our own server's answers hold nothing of a person but cell text,
+    // which the test account's spreadsheets make up.
+    scrub: (value) => value,
+    connection: () => ({ prefix: "sheets", identity: "", options: backlogPicks }),
+    open: openSheets as Kind["open"],
+    reads: (listed) => listed.map((record) => record.id),
+    preview: (connection, via) => sheetsPreview({ ...connection, options: {} }, via),
   },
 };
 
@@ -279,6 +336,36 @@ export async function recordCalls(
   const reads: RecordedCall[] = [];
   await (await open(reads)).source.read(kind.reads(records) as never[]);
   save("read.json", reads);
+
+  if (!kind.preview) return;
+  const previewed: RecordedCall[] = [];
+  await kind.preview(
+    {
+      id: "01JRECORDING00000000000000" as never,
+      number: 1,
+      secret: null,
+      ...kind.connection(channels),
+    },
+    {
+      kept: false,
+      log: () => {},
+      now: () => "2026-11-07T00:00:00.000Z" as never,
+      server: {
+        known: server,
+        found: {
+          name: server.reports,
+          status: "connected",
+          reports: server.reports,
+          url: null,
+          command: null,
+          tools: [...server.reads, ...server.writes],
+        },
+        read: recordingCalls(read, previewed),
+        write: refuse,
+      },
+    },
+  );
+  save("preview.json", previewed);
 }
 
 if (import.meta.main) {
@@ -294,22 +381,34 @@ if (import.meta.main) {
   const channels = values.channels ? values.channels.split(",").map((name) => name.trim()) : null;
   if (!kind) {
     console.error(
-      "Usage: node scripts/record-source-mcp.ts <jira|slack|linear> [--through codex --server <name>] [--channels <a,b>]",
+      "Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through codex --server <name>] [--channels <a,b>]",
     );
     process.exitCode = 2;
   } else if (values.through === undefined) {
     mkdirSync(kind.dir, { recursive: true });
-    await recordCalls(kind, kind.standIn(), kind.standInLine, false);
+    const standIn = await kind.standIn();
+    try {
+      await recordCalls(
+        kind,
+        typeof standIn === "function" ? standIn : standIn.call,
+        kind.standInLine,
+        false,
+      );
+    } finally {
+      if (typeof standIn !== "function") standIn.close();
+    }
   } else if (values.through === "codex" && values.server) {
     mkdirSync(kind.dir, { recursive: true });
     const codex = await checkCodex();
     if (!codex.ok) throw new Error(codex.problem.message);
+    const at = kind.server.at;
     const calls = codexServerCalls(codex.cli, {
-      server: {
-        name: values.server,
-        url: kind.server.at && "url" in kind.server.at ? kind.server.at.url : "",
-        transport: "http",
-      },
+      // A remote one by its URL; a local one by its name in the person's
+      // Codex, which starts it as they configured it.
+      server:
+        at && "url" in at
+          ? { name: values.server, url: at.url, transport: "http" }
+          : { name: values.server },
       tools: kind.server.reads,
       others: [],
       log: () => {},
