@@ -209,6 +209,18 @@ const numberOf = (value: unknown): number | null =>
       ? value.value
       : null;
 
+// An item's link, only where it's Linear's own page of the item: on
+// linear.app, its path naming the item's key. Anything else is no link.
+const pageOf = (url: string | null, names: string): string => {
+  const parsed = url && URL.canParse(url) ? new URL(url) : null;
+  return parsed &&
+    parsed.protocol === "https:" &&
+    parsed.host === "linear.app" &&
+    parsed.pathname.split("/").some((part) => part === names || part.endsWith(`-${names}`))
+    ? parsed.href
+    : "";
+};
+
 // A slug ID: the answer's own, or the 12 hex digits its URL ends in.
 function slugOf(project: Json): string | null {
   const own = text(project.slugId);
@@ -221,6 +233,7 @@ export function readTeam(value: unknown): LinearTeam {
     !isObject(value) ||
     typeof value.id !== "string" ||
     typeof value.key !== "string" ||
+    !/^[A-Z][A-Z0-9]{0,9}$/.test(value.key) ||
     typeof value.name !== "string"
   )
     throw new ServerUnreadable(`${t.teams} gave a team Oriel can't read`);
@@ -240,8 +253,12 @@ export function readCycle(value: unknown): LinearCycle {
     !isObject(value) ||
     typeof value.id !== "string" ||
     typeof value.number !== "number" ||
+    !Number.isInteger(value.number) ||
+    value.number < 1 ||
     typeof value.startsAt !== "string" ||
-    typeof value.endsAt !== "string"
+    !/^\d{4}-\d{2}-\d{2}/.test(value.startsAt) ||
+    typeof value.endsAt !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}/.test(value.endsAt)
   )
     throw new ServerUnreadable(`${t.cycles} gave a cycle Oriel can't read`);
   return {
@@ -281,7 +298,7 @@ export function readProject(value: unknown, tool: string = t.projects): LinearPr
     status,
     lead,
     targetDate: text(value.targetDate),
-    url: text(value.url) ?? "",
+    url: pageOf(text(value.url), slugId),
     updatedAt: new Date(updatedAt).toISOString(),
   };
 }
@@ -331,7 +348,7 @@ export function readIssue(value: unknown, tool: string = t.issues): LinearIssue 
     parent: idOf(value, "parent"),
     estimate: numberOf(value.estimate),
     labels,
-    url: text(value.url) ?? "",
+    url: pageOf(text(value.url), identifier),
     updatedAt: new Date(updatedAt).toISOString(),
   };
 }

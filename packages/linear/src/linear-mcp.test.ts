@@ -197,6 +197,25 @@ test("an answer Oriel can't read stops the sync, naming the server, never quotin
         }),
     ],
     [t.teams, () => ({ content: [{ type: "text", text: "Unauthorized" }], isError: true })],
+    // What reaches the declarations or a pattern is checked: a team's key,
+    // and a cycle's number and dates.
+    [t.teams, () => text({ teams: [{ id: "x", key: "ENG */ declare", name: "Odd" }] })],
+    [
+      t.cycles,
+      () =>
+        text({
+          cycles: [
+            { id: "c", number: 1.5, name: null, startsAt: "2026-11-02", endsAt: "2026-11-16" },
+          ],
+        }),
+    ],
+    [
+      t.cycles,
+      () =>
+        text({
+          cycles: [{ id: "c", number: 2, name: null, startsAt: "*/ soon", endsAt: "2026-11-16" }],
+        }),
+    ],
   ];
   for (const [tool, change] of garbled) {
     const sync = listAll(altered(tool, change));
@@ -249,6 +268,25 @@ test("an issue's and a project's other likely shapes read the same", () => {
     state: "started",
   });
   assert.equal(project.slugId, "5e2a9c41b7d0");
+});
+
+test("an item's link is Linear's own page of it, or none", () => {
+  const issue = (url: string) =>
+    readIssue({
+      id: "u",
+      identifier: "ENG-1",
+      title: "A",
+      updatedAt: "2026-11-01T00:00:00Z",
+      status: "Todo",
+      url,
+    }).url;
+  assert.equal(
+    issue("https://linear.app/ferrowick/issue/ENG-1/a"),
+    "https://linear.app/ferrowick/issue/ENG-1/a",
+  );
+  assert.equal(issue("https://evil.example/ferrowick/issue/ENG-1/a"), "");
+  assert.equal(issue("https://linear.app/ferrowick/issue/ENG-2/a"), "");
+  assert.equal(issue("javascript:alert(1)"), "");
 });
 
 test("Linear's server is known by its address, with its read and write tools named apart", () => {

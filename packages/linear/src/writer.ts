@@ -99,7 +99,10 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
   // has it now, or a refusal naming what it has.
   const statusNamed = async (name: string) => {
     const statuses = await reads.statuses(team.id);
-    const found = statuses.find((each) => each.name.toLowerCase() === name.toLowerCase());
+    // Its exact name, else the one it is but for case; two such is none.
+    const alike = statuses.filter((each) => each.name.toLowerCase() === name.toLowerCase());
+    const found =
+      statuses.find((each) => each.name === name) ?? (alike.length === 1 ? alike[0] : undefined);
     if (!found)
       throw refused(
         `${team.key} has no status ${JSON.stringify(name)}; it has ${statuses.map((each) => each.name).join(", ")}`,

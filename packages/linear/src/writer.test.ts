@@ -268,3 +268,32 @@ test("a write the replay turned away unsent is refused as unsent, so it can be s
     (error: unknown) => error instanceof SourceRefused && !error.sent,
   );
 });
+
+test("a status is matched by its exact name first, so one that differs only in case can't take its place", async () => {
+  const world = standInWorld(loadLinearWorld());
+  const eng = team.id;
+  world.statuses.unshift({
+    id: "00000003-0000-4000-8000-0000000000ff",
+    team: eng,
+    name: "done",
+    type: "canceled",
+  });
+  const tools = standInCaller(linearStandIn(world));
+  const writes: ToolCall[] = [];
+  const writer = linearWriter({
+    team,
+    read: tools,
+    write: async (call) => (writes.push(call), tools(call)),
+  });
+  await writer.apply({
+    mutationId: "01JMUTATION000000000000002" as Ulid,
+    op: "setStatus",
+    target: "linear:ENG-2" as ItemId<"linear">,
+    expectedStableId: stable(2),
+    args: { status: "Done" },
+  } as WriteRequest<"linear"> as Parameters<SourceWriter<"linear">["apply"]>[0]);
+  assert.deepEqual(writes[0]?.args, {
+    id: stable(2),
+    state: "00000003-0000-4000-8000-000000000006",
+  });
+});

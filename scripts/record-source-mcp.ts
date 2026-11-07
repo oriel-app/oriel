@@ -90,6 +90,25 @@ export function scrubLinear(value: unknown, people = new Map<string, string>()):
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, each]) => {
+      // A person as an object: its name and contact, whatever beside them.
+      if (
+        ["assignee", "lead", "creator", "createdBy"].includes(key) &&
+        typeof each === "object" &&
+        each !== null &&
+        !Array.isArray(each)
+      )
+        return [
+          key,
+          Object.fromEntries(
+            Object.entries(each).map(([field, value]) =>
+              ["name", "displayName"].includes(field) && typeof value === "string"
+                ? [field, placeholder(`name:${value}`)]
+                : field === "email"
+                  ? [field, ""]
+                  : [field, scrubLinear(value, people)],
+            ),
+          ),
+        ];
       if (["assignee", "lead", "creator", "createdBy", "name", "displayName"].includes(key)) {
         // A person's name, where the object or the field is a person's.
         const person =
