@@ -4015,6 +4015,48 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
+  // Jira on through Atlassian's MCP server in the person's Claude Code
+  // (OA-276), a stand-in of it answering SYN: Source servers, and Jira's
+  // connection through it, with Sync and no Disconnect.
+  {
+    name: "settings-source-servers-atlassian",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "on", state: setupFinished }),
+    act: async (page) => {
+      await page
+        .locator(".connection-row", { hasText: "through Atlassian's Rovo MCP server" })
+        .waitFor();
+      await page.getByRole("switch", { name: "Jira on" }).waitFor();
+    },
+  },
+  // A person who started on Oriel's own tracker turns Jira on through
+  // Atlassian's server: Oriel offers one change set that makes the
+  // tracker's issues again in Jira, in a thread of its own.
+  {
+    name: "move-into-jira",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "found", state: setupFinished }),
+    window: true,
+    act: async (page) => {
+      await approvedPlan(page);
+      const thread = await page.evaluate(async () => {
+        const on = await fetch("/api/actions/source.on", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "jira", server: "atlassian" }),
+        });
+        if (!on.ok) throw new Error(`source.on: ${on.status}`);
+        const listed = (await (await fetch("/api/threads")).json()) as {
+          threads: { id: string; title: string }[];
+        };
+        return listed.threads.find((each) => each.title === "Into Jira")?.id ?? "";
+      });
+      if (!thread) throw new Error("no thread offers the move");
+      await page.goto(new URL(`/threads/${thread}`, page.url()).href);
+      await page.locator(".oriel-note", { hasText: "Jira is on" }).waitFor();
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+    },
+  },
   {
     name: "settings-source-servers-none",
     path: "/settings/connections",

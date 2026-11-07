@@ -622,6 +622,33 @@ The third row is the drift below: a connection with a standing problem syncs aga
 </ul>
 ```
 
+### Through a source server (decision 0059)
+
+Jira on through Atlassian's MCP server in the person's agent (OA-276) has a row like any connection's, with Sync, but no options and no Disconnect: what it reads is the server's, and the person turns it off under [Source servers](/components/source-servers). One line says so.
+
+```html specimen id=through title="Jira through Atlassian's server: Sync, and no Disconnect"
+<ul class="provider-rows">
+  <li class="provider-row connection-row" data-status="ready">
+    <span class="provider-icon" aria-hidden="true">J</span>
+    <div class="provider-main">
+      <span class="provider-name">Jira</span>
+      <span class="provider-about"
+        >SYN on oriel.atlassian.net, through Atlassian's Rovo MCP server</span
+      >
+      <span class="provider-status">
+        <span class="provider-mark" aria-hidden="true"></span>
+        <span class="provider-state">Synced 3 min ago</span>
+        <span>· 120 items</span>
+      </span>
+      <p class="settings-field-about">
+        Oriel reads it through atlassian, a server in your agent. Turn it off under Source servers.
+      </p>
+    </div>
+    <div class="provider-side"><button type="button" class="button">Sync</button></div>
+  </li>
+</ul>
+```
+
 ### Add a connection
 
 Every connector, one row each: its name and what it reads, then either Connect at the side or a line saying why it can't connect now. Picking one draws its [connect steps](/patterns/connect-steps) in the row's main column. These rows set no `data-status`, so they have no status line.
