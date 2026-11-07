@@ -1,12 +1,14 @@
 // `sheets-mcp`: the stdio server with no argument, or with `--fixture
-// <file.json>` its tools over a fixture held in memory; `sheets-mcp login`
+// <file.json>` its tools over a fixture held in memory, or with `--shared`
+// too, over the file itself, read afresh by each call and written by each
+// write, so several processes share one; `sheets-mcp login`
 // signs in to Google once, in the browser, and `sheets-mcp logout` forgets
 // the sign-in. Everything it says goes to stderr; stdout carries the
 // protocol only. What it's given comes in as `io`, so tests can run it
 // whole with no network, no clock and no browser.
 import { parseArgs } from "node:util";
 import { type AccessSource, fixedAccess, googleAccess } from "./access.ts";
-import { loadFixture } from "./fixture.ts";
+import { type Fixture, loadFixture, saveFixture } from "./fixture.ts";
 import type { After } from "./loopback.ts";
 import { type Fetch, googleClientOf, signIn } from "./oauth.ts";
 import type { Random } from "./pkce.ts";
@@ -33,6 +35,9 @@ export type CliIo = {
 export const usage = `Usage:
   sheets-mcp                     the MCP server, over stdio
   sheets-mcp --fixture <file>    the same tools over spreadsheets in a JSON file
+  sheets-mcp --fixture <file> --shared
+                                 the same, writing to the file, which each
+                                 call reads afresh
   sheets-mcp login               sign in to Google in your browser, once
   sheets-mcp logout              forget the sign-in
 
@@ -48,7 +53,11 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
   try {
     parsed = parseArgs({
       args: [...argv],
-      options: { fixture: { type: "string" }, help: { type: "boolean", short: "h" } },
+      options: {
+        fixture: { type: "string" },
+        shared: { type: "boolean" },
+        help: { type: "boolean", short: "h" },
+      },
       allowPositionals: true,
     });
   } catch {
@@ -57,7 +66,12 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
   }
   const { values, positionals } = parsed;
   const [command, ...rest] = positionals;
-  if (values.help || rest.length || (command !== undefined && values.fixture !== undefined)) {
+  if (
+    values.help ||
+    rest.length ||
+    (command !== undefined && values.fixture !== undefined) ||
+    (values.shared && values.fixture === undefined)
+  ) {
     io.stderr.write(usage);
     return values.help ? 0 : 2;
   }
@@ -105,7 +119,20 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
       );
       return 1;
     }
-    fetch = standIn(fixture, { now: () => new Date(io.now()).toISOString() }).fetch;
+    const now = () => new Date(io.now()).toISOString();
+    const path = values.fixture;
+    const shared = (current: Fixture): typeof fetch => {
+      return async (input, init) => {
+        const google = standIn(current, { now });
+        const response = await google.fetch(input, init);
+        if ((init?.method ?? "GET") !== "GET")
+          saveFixture(path, { spreadsheets: google.spreadsheets });
+        return response;
+      };
+    };
+    fetch = values.shared
+      ? (input, init) => shared(loadFixture(path))(input, init)
+      : standIn(fixture, { now }).fetch;
     source = fixedAccess(standInToken);
   } else {
     // The environment's client wins; else the one `login` kept, read at

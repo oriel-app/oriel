@@ -1,7 +1,7 @@
 // The command whole, as a person or a client runs it: what it writes to
 // stdout and stderr, and above all what it never writes.
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -344,11 +344,48 @@ test("--fixture serves the shipped fixture with no network, no token and no clie
   assert.deepEqual(run1.err, []);
 });
 
+test("--fixture with --shared writes to the file, which another process then reads", async () => {
+  const file = join(mkdtempSync(join(tmpdir(), "sheets-mcp-shared-")), "backlog.json");
+  copyFileSync(shipped, file);
+  const id = "1q2w3e4r5t6y7u8i9o0pBacklogFixture";
+  const writer = harness({
+    env: {},
+    lines: [
+      initialize,
+      callOf(1, "update_range", { spreadsheetId: id, range: "Backlog!C2", values: [["Blocked"]] }),
+    ],
+  });
+  assert.equal(await run(["--fixture", file, "--shared"], writer.io), 0);
+  const reader = harness({
+    env: {},
+    lines: [initialize, callOf(1, "read_range", { spreadsheetId: id, range: "Backlog!C2" })],
+  });
+  assert.equal(await run(["--fixture", file, "--shared"], reader.io), 0);
+  const [, read] = answers(reader.out);
+  assert.deepEqual(JSON.parse(read?.result.content[0]?.text ?? "").values, [["Blocked"]]);
+  // Without it, a write stays in the process's memory.
+  copyFileSync(shipped, file);
+  await run(["--fixture", file], writer.io);
+  const again = harness({
+    env: {},
+    lines: [initialize, callOf(1, "read_range", { spreadsheetId: id, range: "Backlog!C2" })],
+  });
+  await run(["--fixture", file], again.io);
+  const [, before] = answers(again.out);
+  assert.deepEqual(JSON.parse(before?.result.content[0]?.text ?? "").values, [["Done"]]);
+});
+
 test("a fixture that isn't one, or arguments that aren't, say so on stderr", async () => {
   const bad = harness();
   assert.equal(await run(["--fixture", join(bad.io.home, "missing.json")], bad.io), 1);
   assert.match(bad.err.join(""), /no such file/);
-  for (const argv of [["serve"], ["login", "extra"], ["--nope"], ["login", "--fixture", shipped]]) {
+  for (const argv of [
+    ["serve"],
+    ["login", "extra"],
+    ["--nope"],
+    ["login", "--fixture", shipped],
+    ["--shared"],
+  ]) {
     const wrong = harness();
     assert.equal(await run(argv, wrong.io), 2, argv.join(" "));
     assert.match(wrong.err.join(""), /^Usage:/);
