@@ -40,7 +40,7 @@ export const trackerDeclaration = {
   open: openTracker,
   options: object({}),
   standIn: {
-    for: ["jira"],
+    for: ["jira", "linear"],
     offer: {
       firstRun: 1,
       mark: "T",

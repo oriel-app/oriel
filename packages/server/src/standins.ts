@@ -1,7 +1,7 @@
-// Stand-in source servers for dev only (OA-276, OA-277):
-// `ORIEL_DEV_STANDINS=atlassian,slack pnpm dev` gives every process of the
+// Stand-in source servers for dev only (OA-276, OA-277, OA-278):
+// `ORIEL_DEV_STANDINS=atlassian,slack,linear pnpm dev` gives every process of the
 // person's agent Oriel starts one more MCP server for each,
-// packages/standin-mcp's stand-in for Atlassian's or Slack's, on its command
+// packages/standin-mcp's stand-in for Atlassian's, Slack's or Linear's, on its command
 // line only, never in the person's configuration, and has the connector's
 // entry for the real server know it at that command in place of its
 // address. The desktop app never names one.
@@ -19,6 +19,7 @@ const main = fileURLToPath(new URL("../../standin-mcp/src/main.ts", import.meta.
 const standIns: Record<string, string> = {
   atlassian: "atlassian-rovo-mcp-server",
   slack: "Slack MCP",
+  linear: "linear",
 };
 
 export function devStandIns(asked: string | undefined): {

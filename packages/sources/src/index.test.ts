@@ -84,6 +84,8 @@ test("each kind's keys have its declared shape, stricter than core's", () => {
     "jira.2:ACME-4",
     "folder:0123456789abcdef",
     "slack:C0A1B2C3D-1759309200.000100",
+    "linear:ENG-4",
+    "linear:P-5e2a9c41b7d0",
   ];
   for (const id of good) assert.ok(parseDeclared(id), id);
   assert.deepEqual(parseDeclared("jira.2:ACME-4"), {
@@ -100,8 +102,25 @@ test("each kind's keys have its declared shape, stricter than core's", () => {
     "folder:0123456789abcde",
     "folder:0123456789abcdef0",
     "sheets:anything",
+    "linear:eng-4",
+    "linear:ENG-0",
+    "linear:P-5E2A9C41B7D0",
+    "linear:P-summer-timetable-launch",
   ];
   for (const id of bad) assert.equal(parseDeclared(id), null, id);
+});
+
+test("Linear is declared right after Jira, and the stand-in tracker last", () => {
+  // An untagged create, from before migration 0031, goes to the first kind
+  // whose catalogue has its op: Jira's creates stay Jira's, and Linear's
+  // creates are its own.
+  assert.deepEqual(sourceKinds.slice(0, 2), ["jira", "linear"]);
+  assert.equal(sourceKinds.at(-1), "tracker");
+  const first = (op: string) => sourceKinds.find((kind) => specs[kind]?.ops[op]);
+  assert.equal(first("createEpic"), "jira");
+  assert.equal(first("createStory"), "jira");
+  assert.equal(first("createIssue"), "linear");
+  assert.equal(first("createProject"), "linear");
 });
 
 test("item IDs order by the declared kinds", () => {

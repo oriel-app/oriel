@@ -8,6 +8,7 @@
   "dependencies": {
     "@oriel/core": "workspace:*",
     "@oriel/jira": "workspace:*",
+    "@oriel/linear": "workspace:*",
     "@oriel/slack": "workspace:*"
   }
 }

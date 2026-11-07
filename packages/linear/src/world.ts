@@ -24,7 +24,8 @@ import {
   type Validator,
 } from "@oriel/core";
 
-const instant = refine(string, isInstant, "expected an instant");
+// Kept as text, as the generator writes it.
+const instant = refine(string, (text: string): boolean => isInstant(text), "expected an instant");
 // A date with no time, as a project's target and a cycle's ends are kept.
 const day = refine(string, (text) => /^\d{4}-\d{2}-\d{2}$/.test(text), "expected a date");
 const uuid = refine(
