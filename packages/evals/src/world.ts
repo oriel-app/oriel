@@ -51,6 +51,7 @@ import { groupings } from "@oriel/server/window";
 import { byItemId } from "@oriel/sources";
 import type { EvalCase, OrielWorkspace } from "./case.ts";
 import { fixtureOf, type Fixtures, regionNamed } from "./fixtures.ts";
+import { throughServers } from "./through.ts";
 
 // Every case's workspace and workstream.
 export const fixedId: Ulid = ulid(0, new Uint8Array(10));
@@ -77,6 +78,8 @@ export type WorldInput = {
   past?: true;
   // The kinds the case's window hasn't connected (decision 0059).
   off?: readonly string[];
+  // The kinds it has on through their source server (through.ts).
+  servers?: readonly string[];
 };
 
 // A loaded case's world, as `buildWorld` takes it, at the eval clock `now`.
@@ -98,6 +101,7 @@ export function caseWorld(
       ? { window: { workstreams: evalCase.window.workstreams, now: evalCase.window.at ?? now } }
       : {}),
     ...(evalCase.unfit ? { unfit: evalCase.unfit } : {}),
+    ...(evalCase.servers ? { servers: evalCase.servers } : {}),
     ...(evalCase.off ? { off: evalCase.off } : {}),
   };
 }
@@ -176,8 +180,11 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const connections = new Map<string, FixtureConnection>();
   try {
     for (const [kind, { loaded, declaration }] of fixtures)
-      if (connects(kind, declaration))
-        connections.set(kind, await loaded.connect(input.edited[kind] ?? 0));
+      if (connects(kind, declaration)) {
+        const plain = await loaded.connect(input.edited[kind] ?? 0);
+        const through = input.servers?.includes(kind) ? throughServers[kind] : undefined;
+        connections.set(kind, through ? await through(input.edited[kind] ?? 0, plain) : plain);
+      }
   } catch (error) {
     for (const connection of connections.values()) connection.close();
     throw error;

@@ -84,11 +84,13 @@ export function memorySite(
   // follow any other, as in a workflow that allows every transition, except
   // out of a status made final.
   const keys = { todo: "new", "in-progress": "indeterminate", done: "done" } as const;
+  // Listed from to-do to done, as the fixture's snapshot lists an issue's
+  // moves.
+  const order = { todo: 0, "in-progress": 1, done: 2 };
   const statuses = new Map(
-    [...fixture.issues.map((issue) => issue.status), ...(options.statuses ?? [])].map((status) => [
-      status.name,
-      status,
-    ]),
+    [...fixture.issues.map((issue) => issue.status), ...(options.statuses ?? [])]
+      .toSorted((a, b) => order[a.category] - order[b.category] || a.name.localeCompare(b.name))
+      .map((status) => [status.name, status]),
   );
   const final = new Set<string>();
   const statusView = (name: string) => ({
