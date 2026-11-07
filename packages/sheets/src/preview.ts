@@ -12,6 +12,11 @@
 // sheet, and applying a draft turns each letter into the header above it,
 // so the mapping keeps naming the same column when one is inserted or
 // moved (decision 0050).
+//
+// Through sheets-mcp (decision 0059) it's read through the server's read
+// tools, the same way. There, nothing was picked in Google's own page, so
+// a connection that maps no spreadsheet yet previews the person's most
+// recently changed ones, and a draft picks those it maps.
 import {
   array,
   boolean,
@@ -43,12 +48,15 @@ import {
 } from "./mapping.ts";
 import type { TabInfo } from "./google.ts";
 import { googleOf, picksOf } from "./open-connection.ts";
+import { recentSpreadsheets, serverGoogle } from "./sheets-mcp.ts";
 import { maxTabs } from "./source.ts";
 
 // The columns a preview shows, at most: past them a sheet is a database.
 const maxColumns = 52;
 // The tabs a list of names shows, at most.
 const maxListed = 1000;
+// The spreadsheets a connection through sheets-mcp that maps none previews.
+export const maxRecent = 5;
 
 // A tab's place in its source, as a table's `at` says it.
 const placeOf = (at: string): { id: string; sheetId: number } | null => {
@@ -66,14 +74,18 @@ export async function sheetsPreview(
   via: OpenVia,
   ask: PreviewAsk = {},
 ): Promise<PreviewTable[]> {
-  const { google } = googleOf(connection, via);
+  const google = via.server ? serverGoogle(via.server.read) : googleOf(connection, via).google;
   const picks = picksOf(connection.options);
+  const ids =
+    via.server && picks.spreadsheets.length === 0
+      ? await recentSpreadsheets(via.server.read, maxRecent)
+      : picks.spreadsheets.map((pick) => pick.id);
   const found: { pick: string; title: string; tab: TabInfo; at: string }[] = [];
-  for (const pick of picks.spreadsheets) {
-    const info = await google.tabs(pick.id);
+  for (const id of ids) {
+    const info = await google.tabs(id);
     if (info === "gone") continue;
     for (const tab of info.tabs)
-      found.push({ pick: pick.id, title: info.title, tab, at: `${pick.id}/${tab.sheetId}` });
+      found.push({ pick: id, title: info.title, tab, at: `${id}/${tab.sheetId}` });
   }
   const name = (each: (typeof found)[number]) => `${each.title} › ${each.tab.title}`;
   if (ask.names)
@@ -173,7 +185,9 @@ function settle(
   for (const tab of draft.tabs) {
     const place = placeOf(tab.at);
     const table = tables.find((each) => each.at === tab.at);
-    if (!place || !table || !picks.spreadsheets.some((pick) => pick.id === place.id))
+    // Only what the preview read: the picked spreadsheets, or, through
+    // sheets-mcp with none picked, the person's latest.
+    if (!place || !table)
       return { problem: "A tab it maps isn't in the picked spreadsheets any more." };
     const headers = table.rows[tab.header - 1];
     if (!headers) return { problem: `${table.name}: row ${tab.header} isn't in what Oriel read.` };
@@ -199,10 +213,10 @@ function settle(
   return {
     ...options,
     // As the card draws it: a tab the draft leaves out isn't read.
-    spreadsheets: picks.spreadsheets.map((pick) => ({
-      id: pick.id,
-      tabs: mapped.get(pick.id) ?? [],
-    })),
+    spreadsheets: [
+      ...picks.spreadsheets.map((pick) => pick.id),
+      ...[...mapped.keys()].filter((id) => !picks.spreadsheets.some((pick) => pick.id === id)),
+    ].map((id) => ({ id, tabs: mapped.get(id) ?? [] })),
   };
 }
 

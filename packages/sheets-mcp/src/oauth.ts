@@ -15,7 +15,8 @@ export const scopes = [
   "https://www.googleapis.com/auth/drive.metadata.readonly",
 ] as const;
 
-// GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if it has one. Google treats a
+// GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if it has one, as `login` reads
+// them and keeps them (token-file.ts). Google treats a
 // desktop client's secret as no secret, and PKCE does its work, so a client
 // with no secret leaves `client_secret` out of its requests.
 export type GoogleClient = { id: string; secret: string | null };
@@ -193,7 +194,7 @@ async function token(form: Record<string, string>, io: { fetch: Fetch }): Promis
       status: "refused",
       error,
       problem: secret
-        ? `Google refused this client (${response.status} ${error}): check GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if the client has one`
+        ? `Google refused this client (${response.status} ${error}): run \`sheets-mcp login\` again with GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if the client has one`
         : `Google refused the token request (${response.status}${error ? ` ${error}` : ""})`,
     };
   }

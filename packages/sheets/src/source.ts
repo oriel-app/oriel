@@ -23,6 +23,7 @@ import {
   type Log,
   parseItemId,
   type ReadResult,
+  ServerUnreadable,
   type Source,
   type SyncPage,
 } from "@oriel/core";
@@ -376,8 +377,11 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
           // Signed out is the whole account's: the sync fails, and the
           // connection asks to sign in again. So is a refresh Google refused
           // for want of the client's secret.
+          // An answer its server gave that Oriel can't read stops the
+          // whole sync too (decision 0059).
           if (
             error instanceof SecretRefused ||
+            error instanceof ServerUnreadable ||
             (error instanceof SheetsError && error.status === 401)
           )
             throw error;

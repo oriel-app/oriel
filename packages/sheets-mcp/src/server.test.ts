@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fixedAccess, notSignedIn } from "./access.ts";
 import type { Fixture } from "./fixture.ts";
 import { codes, handshake, modern, mcpServer } from "./server.ts";
-import { standIn } from "./stand-in.ts";
+import { standIn, standInToken } from "./stand-in.ts";
 import {
   answerOf,
   backlogId,
@@ -318,6 +318,41 @@ test("read_range gives rows of text, and the range Google read", async () => {
     await refused(server, "read_range", { spreadsheetId: backlogId, range: "Backlog!1A" }),
     /isn't A1 notation/,
   );
+});
+
+test("read_range asks Google for cells as entered with FORMULA, and for nothing else", async () => {
+  const { server, google } = overStandIn();
+  await checked(server, "read_range", { spreadsheetId: backlogId, range: "Backlog!A1:C2" });
+  await checked(server, "read_range", {
+    spreadsheetId: backlogId,
+    range: "Backlog!A1:C2",
+    valueRenderOption: "FORMULA",
+  });
+  assert.deepEqual(
+    google.calls.map((each) => new URL(each.url).searchParams.get("valueRenderOption")),
+    ["FORMATTED_VALUE", "FORMULA"],
+  );
+  assert.match(
+    await refused(server, "read_range", {
+      spreadsheetId: backlogId,
+      range: "Backlog!A1",
+      valueRenderOption: "UNFORMATTED_VALUE",
+    }),
+    /FORMATTED_VALUE or FORMULA/,
+  );
+});
+
+test("read_range with FORMULA keeps numbers and true/false as entered; as shown, all is text", async () => {
+  const server = mcpServer({
+    fetch: async () => Response.json({ range: "Backlog!A2:C2", values: [[3, true, "=A1"]] }),
+    source: fixedAccess(standInToken),
+  });
+  const args = { spreadsheetId: backlogId, range: "Backlog!A2:C2" };
+  assert.deepEqual(
+    (await checked(server, "read_range", { ...args, valueRenderOption: "FORMULA" })).values,
+    [[3, true, "=A1"]],
+  );
+  assert.deepEqual((await checked(server, "read_range", args)).values, [["3", "true", "=A1"]]);
 });
 
 test("read_range stops at the cell cap, says so, and pages on to the rest", async () => {

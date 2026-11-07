@@ -6,6 +6,7 @@
     "workstreams": [{ "name": "Boarding", "region": "boarding-epic" }],
     "at": "2026-10-01T12:00:00.000Z"
   },
+  "servers": ["sheets"],
   "unfit": {
     "sheets": {
       "spreadsheets": [{ "id": "1FwTrackerFixture000000000000000000000000000", "tabs": [] }]

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./fake": "./src/sheets-mcp-fake.ts",
     "./writer": "./src/writer.ts"
   },
   "scripts": {

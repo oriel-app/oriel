@@ -22,6 +22,10 @@ export type SourceServer = {
   writes: readonly string[];
   // Its vendor's own instructions for adding it to an agent.
   instructions: string;
+  // Whether what it reads is the person's to set, as Sheets' mapping of
+  // which tabs it reads: then a connection through it is kept, and waits for
+  // its options until they're set, as one made in the window does (OA-279).
+  keepsOptions?: true;
 };
 
 // What the person's agent said of one of its MCP servers: its name in the
@@ -38,6 +42,9 @@ export type FoundServer = {
   // How a remote one is reached, where the agent says: what a process that
   // loads it alone names it with, with its URL.
   transport?: "http" | "sse";
+  // A local one's command and its arguments, apart, as the agent runs it:
+  // never its environment, which may hold a secret.
+  local?: { command: string; args: readonly string[] };
 };
 
 // A found server Oriel knows, with the kind it serves and the entry it

@@ -2,7 +2,7 @@
 // tests: each with its tabs, and each tab's cells as rows of strings, the
 // first row first. A tab's grid is at least 1,000 rows by 26 columns, as a
 // new tab in Google's editor is, and grows to fit its rows.
-import { readFileSync } from "node:fs";
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
 export type FixtureTab = {
   sheetId: number;
@@ -76,6 +76,16 @@ export function loadFixture(path: string): Fixture {
   const problem = fixtureProblem(value);
   if (problem) throw new Error(`The fixture ${path} isn't one: ${problem}.`);
   return value as Fixture;
+}
+
+// Writes a fixture whole beside it, then moves it over it, so a process
+// reading it never sees half of one.
+export function saveFixture(path: string, fixture: Fixture): void {
+  const temporary = `${path}.${process.pid}.tmp`;
+  // `wx` never follows a link left at the temporary name.
+  rmSync(temporary, { force: true });
+  writeFileSync(temporary, `${JSON.stringify(fixture, null, 2)}\n`, { flag: "wx" });
+  renameSync(temporary, path);
 }
 
 export const minRows = 1000;

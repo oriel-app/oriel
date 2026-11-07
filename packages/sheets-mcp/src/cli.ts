@@ -1,19 +1,21 @@
 // `sheets-mcp`: the stdio server with no argument, or with `--fixture
-// <file.json>` its tools over a fixture held in memory; `sheets-mcp login`
+// <file.json>` its tools over a fixture held in memory, or with `--shared`
+// too, over the file itself, read afresh by each call and written by each
+// write, so several processes share one; `sheets-mcp login`
 // signs in to Google once, in the browser, and `sheets-mcp logout` forgets
 // the sign-in. Everything it says goes to stderr; stdout carries the
 // protocol only. What it's given comes in as `io`, so tests can run it
 // whole with no network, no clock and no browser.
 import { parseArgs } from "node:util";
 import { type AccessSource, fixedAccess, googleAccess } from "./access.ts";
-import { loadFixture } from "./fixture.ts";
+import { type Fixture, loadFixture, saveFixture } from "./fixture.ts";
 import type { After } from "./loopback.ts";
 import { type Fetch, googleClientOf, signIn } from "./oauth.ts";
 import type { Random } from "./pkce.ts";
 import { mcpServer } from "./server.ts";
 import { standIn, standInToken } from "./stand-in.ts";
 import { serveStdio } from "./stdio.ts";
-import { configFolder, tokenFile } from "./token-file.ts";
+import { clientFile, configFolder, tokenFile } from "./token-file.ts";
 
 export type CliIo = {
   env: Readonly<Record<string, string | undefined>>;
@@ -33,11 +35,15 @@ export type CliIo = {
 export const usage = `Usage:
   sheets-mcp                     the MCP server, over stdio
   sheets-mcp --fixture <file>    the same tools over spreadsheets in a JSON file
+  sheets-mcp --fixture <file> --shared
+                                 the same, writing to the file, which each
+                                 call reads afresh
   sheets-mcp login               sign in to Google in your browser, once
   sheets-mcp logout              forget the sign-in
 
-The server and login read GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if
-the client has one, from the environment.
+login reads GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if the client has
+one, from the environment, and keeps them beside the sign-in, so the server
+needs no environment. Set there, they win over what's kept.
 `;
 
 // The exit code.
@@ -47,7 +53,11 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
   try {
     parsed = parseArgs({
       args: [...argv],
-      options: { fixture: { type: "string" }, help: { type: "boolean", short: "h" } },
+      options: {
+        fixture: { type: "string" },
+        shared: { type: "boolean" },
+        help: { type: "boolean", short: "h" },
+      },
       allowPositionals: true,
     });
   } catch {
@@ -56,14 +66,21 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
   }
   const { values, positionals } = parsed;
   const [command, ...rest] = positionals;
-  if (values.help || rest.length || (command !== undefined && values.fixture !== undefined)) {
+  if (
+    values.help ||
+    rest.length ||
+    (command !== undefined && values.fixture !== undefined) ||
+    (values.shared && values.fixture === undefined)
+  ) {
     io.stderr.write(usage);
     return values.help ? 0 : 2;
   }
-  const file = tokenFile(configFolder(io.env, io.home));
-  const client = googleClientOf(io.env);
+  const folder = configFolder(io.env, io.home);
+  const file = tokenFile(folder);
+  const keptClient = clientFile(folder);
 
   if (command === "login") {
+    const client = googleClientOf(io.env);
     if (!client) {
       say("Set GOOGLE_CLIENT_ID first, and GOOGLE_CLIENT_SECRET if the client has one.");
       return 1;
@@ -74,12 +91,15 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
       say(`Didn't sign in: ${result.problem}.`);
       return 1;
     }
+    // The client first: a token kept alone would be refreshed with none.
+    keptClient.write(client);
     file.write(result.tokens.refresh);
-    say(`Signed in. The sign-in is kept in ${file.path}.`);
+    say(`Signed in. The sign-in is kept in ${folder}.`);
     return 0;
   }
   if (command === "logout") {
-    say(file.remove() ? `Signed out: deleted ${file.path}.` : "Not signed in.");
+    const removed = [file.remove(), keptClient.remove()].some(Boolean);
+    say(removed ? `Signed out: deleted the sign-in in ${folder}.` : "Not signed in.");
     return 0;
   }
   if (command !== undefined) {
@@ -99,10 +119,26 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
       );
       return 1;
     }
-    fetch = standIn(fixture, { now: () => new Date(io.now()).toISOString() }).fetch;
+    const now = () => new Date(io.now()).toISOString();
+    const path = values.fixture;
+    const shared = (current: Fixture): typeof fetch => {
+      return async (input, init) => {
+        const google = standIn(current, { now });
+        const response = await google.fetch(input, init);
+        if ((init?.method ?? "GET") !== "GET")
+          saveFixture(path, { spreadsheets: google.spreadsheets });
+        return response;
+      };
+    };
+    fetch = values.shared
+      ? (input, init) => shared(loadFixture(path))(input, init)
+      : standIn(fixture, { now }).fetch;
     source = fixedAccess(standInToken);
   } else {
-    source = googleAccess({ client, file, fetch, now: io.now });
+    // The environment's client wins; else the one `login` kept, read at
+    // each refresh, so a `login` while the server runs is used at once.
+    const given = googleClientOf(io.env);
+    source = googleAccess({ client: () => given ?? keptClient.read(), file, fetch, now: io.now });
   }
   await serveStdio(mcpServer({ fetch, source, log: say }), io.stdin, io.stdout);
   return 0;

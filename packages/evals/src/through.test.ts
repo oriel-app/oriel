@@ -9,7 +9,7 @@ import { bindingsFor } from "@oriel/bindings";
 import { itemId } from "@oriel/core";
 import { loadSlackFixture } from "@oriel/slack";
 import { sources } from "@oriel/sources";
-import { loadFixtures, regionNamed } from "./fixtures.ts";
+import { itemNamed, loadFixtures, regionNamed } from "./fixtures.ts";
 import { buildWorld } from "./world.ts";
 
 const fixtures = loadFixtures({ jira: sources.jira, folder: sources.folder });
@@ -60,4 +60,71 @@ test("through Slack's server, a world is the fixture's own", async (t) => {
   assert.deepEqual(await through.reader.read(ids), read);
   assert.deepEqual(await through.evidence(), await plain.evidence());
   assert.deepEqual(await through.reader.search("fare", 50), await plain.reader.search("fare", 50));
+});
+
+// Sheets through packages/sheets-mcp (OA-279): the draft cases' spreadsheets
+// previewed through the server are the fixture's own, table for table, so
+// draft-sheets-tracker and injection-sheets-header read their headers
+// through it with nothing else changed.
+for (const [id, name] of [
+  ["1FwTrackerFixture000000000000000000000000000", "the tracker"],
+  ["1FwRaidFixture000000000000000000000000000000", "the RAID log"],
+] as const)
+  test(`through sheets-mcp, ${name} waiting for its mapping previews as it does through Google`, async (t) => {
+    const sheetsFixtures = loadFixtures({
+      jira: sources.jira,
+      folder: sources.folder,
+      sheets: sources.sheets,
+    });
+    const build = (servers: string[]) =>
+      buildWorld({
+        fixtures: sheetsFixtures,
+        region: null,
+        items: [],
+        edited: {},
+        window: { workstreams: [], now: "2026-10-01T12:00:00.000Z" as never },
+        unfit: { sheets: { spreadsheets: [{ id, tabs: [] }] } },
+        servers,
+      });
+    const [plain, through] = await Promise.all([build([]), build(["sheets"])]);
+    t.after(() => {
+      plain.close();
+      through.close();
+    });
+    const previews = async (world: typeof plain) =>
+      (await world.waiting?.preview())?.filter((each) => each.source === "Google Sheets");
+    const [before, after] = await Promise.all([previews(plain), previews(through)]);
+    assert.ok(before?.[0]?.tables.length);
+    assert.deepEqual(after, before);
+  });
+
+test("through sheets-mcp, a world's Sheets items are the fixture's, read as each cell shows", async (t) => {
+  const sheetsFixtures = loadFixtures({
+    jira: sources.jira,
+    folder: sources.folder,
+    sheets: sources.sheets,
+  });
+  const region = regionNamed(sheetsFixtures, "weather-epic") ?? null;
+  const items = [
+    "sheets:tracker/Tracker/FW-106",
+    "sheets:tracker/Tracker/FW-108",
+    "sheets:contacts/Contacts/+44 1632 960202",
+  ].map((name) => {
+    const found = itemNamed(sheetsFixtures, name);
+    assert.ok("id" in found, name);
+    return found.id;
+  });
+  const build = (servers: string[]) =>
+    buildWorld({ fixtures: sheetsFixtures, region, items, edited: {}, servers });
+  const [plain, through] = await Promise.all([build([]), build(["sheets"])]);
+  t.after(() => {
+    plain.close();
+    through.close();
+  });
+  const read = async (world: typeof plain) =>
+    (await world.reader.read(items)).map((each) => [
+      each.id,
+      each.status === "ok" ? each.content.title : each.status,
+    ]);
+  assert.deepEqual(await read(through), await read(plain));
 });

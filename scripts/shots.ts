@@ -1683,6 +1683,14 @@ const drafted = async (page: Page) => {
   await page.locator(".window-chat .working").waitFor({ state: "detached" });
 };
 
+// The window chat's draft of a Sheets mapping through sheets-mcp (OA-279):
+// its Backlog tab, the first the preview reads.
+const sheetsMcpDraftScript = `const [waiting] = await source.preview();
+const backlog = waiting.tables.find((table) => table.name.endsWith("› Backlog"));
+if (!backlog?.at) return null;
+source.configure({ connection: waiting.connection, options: { tabs: [{ at: backlog.at, header: 1, end: "blank", hidden: false, key: "A", title: "B", status: "C", states: { todo: ["To do"], "in-progress": ["In progress", "In review", "Blocked"], done: ["Done"] }, assignee: "D", estimate: "F" }] } });
+return waiting.why;`;
+
 // A server of its own for Make a workstream on the overview: each pass of
 // the scenes deletes what the last one made first.
 const suggesting = (await writing({ mode: "fixture" })).serving;
@@ -4064,6 +4072,59 @@ scenes.push(
       const section = page.locator("section", { has: page.locator("#settings-source-servers") });
       await section.getByRole("switch", { name: "Linear on" }).waitFor();
       await section.scrollIntoViewIfNeeded();
+    },
+  },
+  // Oriel's own Sheets server, packages/sheets-mcp, found as a local
+  // server, and Google Sheets on through it, answering from what its
+  // fixture mode recorded (OA-279); then the window chat's draft of which
+  // tab it reads, from the person's latest spreadsheets.
+  {
+    name: "settings-source-servers-sheets-found",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheetsMcp: "found", state: setupFinished }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Google Sheets off" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "settings-source-servers-sheets-on",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheetsMcp: "on", state: setupFinished }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Google Sheets on" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "sheets-mcp-draft",
+    path: "/",
+    window: true,
+    make: () =>
+      firstRunServer(
+        start,
+        (deps) =>
+          scripted(deps, (input) =>
+            /\bdraft\b/i.test(input.text)
+              ? [
+                  { run: sheetsMcpDraftScript },
+                  {
+                    text: "Your Product backlog's Backlog tab reads like a tracker. I drafted it with Key as each row's key and Status as its state; apply it below if that's right.",
+                  },
+                ]
+              : planning(input),
+          ),
+        async () => notes,
+        { cli: { signedIn: true }, sheetsMcp: "on", state: setupFinished },
+      ),
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".ask-input").fill("Draft how Oriel reads my spreadsheets.");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.locator(".window-chat .draft-card").waitFor();
+      await page.locator(".window-chat .working").waitFor({ state: "detached" });
     },
   },
   {

@@ -39,6 +39,9 @@ import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { loadSheetsFixture } from "../packages/sheets/src/fixture.ts";
 import { scope, tokenEndpoint } from "../packages/sheets/src/oauth.ts";
 import { fixtureGoogle, standInToken } from "../packages/sheets/src/stand-in.ts";
+import { loadCalls as loadSheetsCalls } from "../packages/sheets/src/calls.ts";
+import { sheetsMcpMain, sheetsServer } from "../packages/sheets/src/sheets-mcp.ts";
+import { replayCalls } from "../packages/core/src/recorded-calls.ts";
 
 // The Jira account SYN in memory takes, as the onboarding types it.
 export const jiraAccount = { email: "pm@example.com", token: "shots-only-value" };
@@ -138,6 +141,21 @@ export type FirstRunOptions = {
   // And Linear's MCP server (OA-278), as the stand-in of it answers
   // Ferrowick's Linear in memory: found, or Linear on through it.
   linear?: "found" | "on";
+  // And packages/sheets-mcp (OA-279), as its fixture mode answered, from
+  // its recorded calls: found, or Google Sheets on through it.
+  sheetsMcp?: "found" | "on";
+};
+
+// sheets-mcp as the person's agent lists it: a local server, started by the
+// command Oriel knows it by.
+const sheetsMcpFound = {
+  name: "sheets",
+  status: "connected" as const,
+  reports: sheetsServer.reports,
+  url: null,
+  command: `node ${sheetsMcpMain}`,
+  tools: [...sheetsServer.reads, ...sheetsServer.writes],
+  local: { command: "node", args: [sheetsMcpMain] },
 };
 
 // Atlassian's server as the person's agent lists it, under the name they
@@ -362,7 +380,10 @@ export async function firstRunServer(
   const atlassianTools = standInCaller(atlassianStandIn());
   const slackTools = slackCaller(slackStandIn());
   const linearTools = linearCaller(linearStandIn());
-  const standing = options.atlassian || options.slack || options.linear;
+  const sheetsTools = replayCalls(
+    ["preview.json", "sync.json"].flatMap((name) => loadSheetsCalls(name).calls),
+  );
+  const standing = options.atlassian || options.slack || options.linear || options.sheetsMcp;
   const state = options.data ? setupFile(join(options.data, "setup.json")) : memorySetup();
   if (options.state) state.set({ ...state.get(), ...options.state });
 
@@ -381,6 +402,7 @@ export async function firstRunServer(
             ...(options.atlassian ? [atlassianFound] : []),
             ...(options.slack ? [slackFound] : []),
             ...(options.linear ? [linearFound] : []),
+            ...(options.sheetsMcp ? [sheetsMcpFound] : []),
           ]
         : options.found || options.trackerOn
           ? [await askTiny()]
@@ -397,7 +419,9 @@ export async function firstRunServer(
                   ? slackTools
                   : server.name === linearFound.name
                     ? linearTools
-                    : atlassianTools,
+                    : server.name === sheetsMcpFound.name
+                      ? sheetsTools
+                      : atlassianTools,
               spent: () => ({
                 inputTokens: 0,
                 outputTokens: 0,
@@ -446,7 +470,17 @@ export async function firstRunServer(
     await postTo(serving, "/api/actions/source.on", { kind: "slack", server: "slack" });
   if (options.linear === "on")
     await postTo(serving, "/api/actions/source.on", { kind: "linear", server: linearFound.name });
-  if (options.atlassian === "on" || options.slack === "on" || options.linear === "on") {
+  if (options.sheetsMcp === "on")
+    await postTo(serving, "/api/actions/source.on", {
+      kind: "sheets",
+      server: sheetsMcpFound.name,
+    });
+  if (
+    options.atlassian === "on" ||
+    options.slack === "on" ||
+    options.linear === "on" ||
+    options.sheetsMcp === "on"
+  ) {
     await postTo(serving, "/api/servers/dismiss", {});
     await serving.app.settled();
   }

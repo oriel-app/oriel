@@ -204,7 +204,11 @@ export type AppOptions = {
   // Starts a process of the person's agent that calls one of their servers
   // with only `tools` (decision 0059), for tests and screenshots: Settings'
   // models when absent.
-  callServer?: (server: FoundServer, tools: readonly string[]) => Promise<Calling | null>;
+  callServer?: (
+    server: FoundServer,
+    tools: readonly string[],
+    known: SourceServer,
+  ) => Promise<Calling | null>;
   // The themes window.css has, the default first.
   themes?: readonly string[];
   // Whether the page may set where a CLI is: only behind the desktop app's
@@ -444,8 +448,21 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Which kinds are on, and what the person's agent has to turn one on with
   // (decision 0059). A kind has a connection of its own while a flag makes
   // one, or the window made one, open or shut.
+  // A kind's first live connection of its own: not one kept only for the
+  // options a source server reads with (`keptFor`), which reaches nothing
+  // without its server.
+  const keptFor = (reports: string) => `through:${reports}`;
+  const ownFirst = (kind: string): Connection | null =>
+    connections
+      .list()
+      .find(
+        (each) =>
+          each.kind === kind &&
+          each.disconnectedAt === null &&
+          !each.identity.startsWith(keptFor("")),
+      ) ?? null;
   const connectedKind = (kind: string) =>
-    flags.some((flag) => flag.kind === kind) || connections.first(kind) !== null;
+    flags.some((flag) => flag.kind === kind) || ownFirst(kind) !== null;
   const kindStore = sourceKindStore(db);
   // What's on changed, once the start has opened what it does: made below.
   let turned = async (): Promise<void> => {};
@@ -503,7 +520,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
     // One the window made, with its secret, if the window connects its kind.
     // One that can't open is left shut, so the window asks for it again.
-    const connection = inWindow(modes, kind) ? connections.first(kind) : null;
+    const connection = inWindow(modes, kind) ? ownFirst(kind) : null;
     if (!connection) return;
     const secret = await connections.secret(connection);
     if (!(await windows.vet(connection, secret))) {
@@ -546,7 +563,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // another server now, or through none, opens again.
   const throughOpen = new Map<
     SourceKind,
-    { key: string; server: string; agent: () => string | null }
+    { key: string; server: string; agent: () => string | null; via: ThroughServer }
   >();
   const serverKey = (server: Recognized | null) =>
     server
@@ -559,8 +576,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       : null;
   const callServer =
     options.callServer ??
-    ((server: FoundServer, tools: readonly string[]) =>
-      options.models?.serverCalls(store.get(), server, tools, log) ?? Promise.resolve(null));
+    ((server: FoundServer, tools: readonly string[], known: SourceServer) =>
+      options.models?.serverCalls(store.get(), server, tools, log, known) ?? Promise.resolve(null));
   // Calls the server from a process of the person's agent that starts on
   // the first call and stops once it's been quiet a while, with only
   // `tools`: one for reads, another for a change set's writes.
@@ -581,7 +598,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (quiet) clearTimeout(quiet);
       quiet = null;
       active += 1;
-      const at = (current ??= callServer(server.found, tools));
+      const at = (current ??= callServer(server.found, tools, server.known));
       try {
         const calling = await at;
         if (!calling) throw new Error(`No agent runs ${server.known.name} now.`);
@@ -603,12 +620,22 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   // Opens a kind through its source server: its first connection if it has
   // one, so its items keep their IDs, else one of the server's own, which
-  // nothing keeps, as what's on is the kind's switch. One that can't open is
-  // left shut, with why, naming the server.
+  // nothing keeps, as what's on is the kind's switch, unless what the server
+  // reads is the person's to set, as Sheets' mapping (`keepsOptions`): that
+  // one is kept, with no secret, so they last (OA-279). One that can't open
+  // is left shut, with why, naming the server.
   const openThrough = async (kind: SourceKind, server: Recognized) => {
     const reads = lazyCalls(server, server.known.reads);
     const writes = lazyCalls(server, server.known.writes);
-    const own = connections.first(kind);
+    let own = connections.first(kind);
+    if (!own && server.known.keepsOptions) {
+      const made = await connections.connect({
+        kind,
+        identity: keptFor(server.known.reports),
+        options: {},
+      });
+      own = "taken" in made ? made.taken : made.connection;
+    }
     const connection: Connection = own ?? {
       id: newId(),
       kind,
@@ -621,20 +648,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       connectedAt: now(),
       disconnectedAt: null,
     };
+    const via: ThroughServer = {
+      known: server.known,
+      found: server.found,
+      read: reads.call,
+      write: writes.call,
+    };
     try {
       const opened = await openOne(
         kind,
         { ...connection, secret: null },
-        {
-          fixture: false,
-          kept: false,
-          server: {
-            known: server.known,
-            found: server.found,
-            read: reads.call,
-            write: writes.call,
-          },
-        },
+        { fixture: false, kept: false, server: via },
       );
       const close = opened.close;
       opened.close = () => {
@@ -650,6 +674,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         key: serverKey(server) ?? "",
         server: server.found.name,
         agent: reads.agent,
+        via,
       });
       problems.delete(connection.id);
     } catch (error) {
@@ -672,6 +697,19 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   // Why a kind on through its server couldn't open, until it does.
   const throughProblems = new Map<SourceKind, string>();
+  // What a connection open through its kind's source server reads through,
+  // or null when it isn't.
+  const throughFor = (connection: Connection): ThroughServer | null =>
+    byPrefix.get(connection.prefix)?.connection.id === connection.id
+      ? (throughOpen.get(connection.kind)?.via ?? null)
+      : null;
+  // The same, where what it reads through it is the person's to set
+  // (`keepsOptions`): its options are set, and its source previewed for
+  // them, through the server.
+  const setThrough = (connection: Connection): ThroughServer | null => {
+    const through = throughFor(connection);
+    return through?.known.keepsOptions ? through : null;
+  };
   // A stand-in opens below, while what it stands in for isn't on.
   for (const kind of sourceKinds)
     if (!declared(kind).standIn && switches.on(kind)) await openKind(kind);
@@ -1238,12 +1276,16 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (changed.length === 0) return { connection: before, changed, replaced, problem: null };
       let opened = current.opened;
       if (options.length > 0) {
-        const secret = await connections.secret(before);
+        // Set through its source server, it opens through it again.
+        const through = setThrough(connection);
+        const secret = through ? null : await connections.secret(before);
         try {
           opened = await openOne(
             connection.kind,
             { ...before, options: next, secret },
-            { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
+            through
+              ? { fixture: false, kept: false, server: through }
+              : { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
           );
         } catch (error) {
           log("connections: one couldn't open with its options", {
@@ -1383,12 +1425,10 @@ export async function createApp(options: AppOptions): Promise<App> {
   const whyWaits = (connection: Connection): string | null => {
     if (connection.disconnectedAt !== null || byFlag.has(connection.id)) return null;
     // Open through a source server, it reads what the server gives it
-    // (decision 0059): one of its own options, if it has none, doesn't wait.
-    if (
-      throughOpen.has(connection.kind) &&
-      byPrefix.get(connection.prefix)?.connection.id === connection.id
-    )
-      return null;
+    // (decision 0059): one of its own options, if it has none, doesn't wait,
+    // unless they're the person's to set through it (`keepsOptions`).
+    const through = throughFor(connection);
+    if (through && !through.known.keepsOptions) return null;
     const declaration = declared(connection.kind);
     if (!declaration.preview) return null;
     return (
@@ -1456,11 +1496,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     const at = Date.parse(now());
     const holds = first.every((place) => had?.tables.some((table) => table.at === place));
     if (!fresh && had?.options === key && at - had.at < 5 * 60_000 && holds) return had.tables;
-    const secret = await connections.secret(connection);
-    const via = openVia(connection.kind, connection.id, {
-      kept: true,
-      fetch: windows.viaFor(connection.kind).fetch,
-    });
+    // Through its source server, while it's set through one.
+    const through = setThrough(connection);
+    const secret = through ? null : await connections.secret(connection);
+    const via = openVia(
+      connection.kind,
+      connection.id,
+      through
+        ? { kept: false, server: through }
+        : { kept: true, fetch: windows.viaFor(connection.kind).fetch },
+    );
     const ask = names ? { names: true as const } : { first };
     const tables = (await declaration.preview?.({ ...connection, secret }, via, ask)) ?? [];
     kept.set(connection.id, { options: key, at, tables });

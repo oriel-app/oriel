@@ -389,3 +389,52 @@ test("Noticed's pass runs on the threads' provider: Sonnet at low effort, or Cod
   await none.look(defaultSettings);
   assert.equal(await none.noticer(defaultSettings), null);
 });
+
+test("Claude Code starts a local server by its command and arguments only where they're its entry's", async () => {
+  const called: unknown[] = [];
+  const harness = models({
+    env,
+    key: null,
+    check: found,
+    serverCalls: (_cli, _kind, options) => {
+      called.push(options.server);
+      return { call: async () => ({ content: [] }), spent: () => ({}) as never, close: () => {} };
+    },
+  });
+  await harness.look(defaultSettings);
+  const local = { command: "node", args: ["/checkout/packages/sheets-mcp/src/main.ts"] };
+  const server = {
+    name: "sheets",
+    status: "connected" as const,
+    reports: "sheets-mcp",
+    url: null,
+    command: "node /checkout/packages/sheets-mcp/src/main.ts",
+    tools: ["read_range"],
+    local,
+  };
+  const known = (command: string) => ({
+    name: "sheets-mcp",
+    reports: "sheets-mcp",
+    at: { command },
+    reads: ["read_range"],
+    writes: [],
+    instructions: "",
+  });
+  await harness.serverCalls(
+    defaultSettings,
+    server,
+    ["read_range"],
+    quiet,
+    known("node /checkout/packages/sheets-mcp/src/main.ts"),
+  );
+  // Another command, or none, is a server Claude Code can't load alone.
+  await harness.serverCalls(
+    defaultSettings,
+    server,
+    ["read_range"],
+    quiet,
+    known("node /elsewhere/main.ts"),
+  );
+  await harness.serverCalls(defaultSettings, server, ["read_range"], quiet);
+  assert.deepEqual(called, [{ name: "sheets", local }, { name: "sheets" }, { name: "sheets" }]);
+});

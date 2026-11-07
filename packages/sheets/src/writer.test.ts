@@ -13,6 +13,7 @@ import {
   type SourceWriter,
   ulid,
   type WriteRequest,
+  WriteStalled,
 } from "@oriel/core";
 import { rowKey } from "./attrs.ts";
 import { fixturePicks } from "./declared-fixture.ts";
@@ -20,6 +21,7 @@ import { type FixtureCell, loadSheetsFixture } from "./fixture.ts";
 import { googleReads } from "./google.ts";
 import { maxRows } from "./grid.ts";
 import type { SheetsPicks } from "./mapping.ts";
+import { fakeId, fakePicks, fakeRows, fakeServer } from "./sheets-mcp-fake.ts";
 import { sheetsSource } from "./source.ts";
 import { fixtureGoogle, type StandInCall, standInToken } from "./stand-in.ts";
 import { sheetsWriter } from "./writer.ts";
@@ -611,4 +613,226 @@ test("a cell an array formula fills is never written, nor a new row under one", 
     refused(false, /a formula fills the assignee column/),
   );
   assert.deepEqual(writes(), []);
+});
+
+// Through sheets-mcp (OA-279): the same checks, through its read tools, and
+// each mutation as its one write call.
+function throughServer(rows = fakeRows()) {
+  const server = fakeServer(rows);
+  const writer = sheetsWriter(
+    { picks: fakePicks, prefix: "sheets", server: { read: server.read, write: server.write } },
+    () => {},
+  );
+  const written = () =>
+    server.calls.filter((call) => ["update_range", "append_rows"].includes(call.tool));
+  return { server, writer, written };
+}
+
+test("through sheets-mcp, an edit is one update_range of the one cell, RAW, read back", async () => {
+  const { server, writer, written } = throughServer();
+  const result = await writer.apply(
+    request(
+      "setField",
+      row(fakeId, 0, "BL-2"),
+      { field: "status", value: "Done" },
+      { status: "To do" },
+    ),
+  );
+  assert.deepEqual(written(), [
+    {
+      tool: "update_range",
+      args: {
+        spreadsheetId: fakeId,
+        range: "'Backlog'!C3",
+        values: [["Done"]],
+        valueInputOption: "RAW",
+      },
+    },
+  ]);
+  assert.equal(server.rows[2]?.[2], "Done");
+  assert.equal(result.before.status, "To do");
+  assert.equal(result.after.status, "Done");
+});
+
+test("through sheets-mcp, a new row is one append_rows after the table, found where it landed", async () => {
+  const { server, writer, written } = throughServer();
+  const result = await writer.apply(
+    request("addRow", null, {
+      spreadsheet: fakeId,
+      sheetId: 0,
+      values: { key: "BL-4", title: '=HYPERLINK("x")', status: "To do" },
+    }),
+  );
+  assert.deepEqual(written(), [
+    {
+      tool: "append_rows",
+      args: {
+        spreadsheetId: fakeId,
+        range: "'Backlog'!A1:C4",
+        values: [["BL-4", '=HYPERLINK("x")', "To do"]],
+        valueInputOption: "RAW",
+      },
+    },
+  ]);
+  assert.deepEqual(server.rows[4], ["BL-4", '=HYPERLINK("x")', "To do"]);
+  assert.equal(result.item.id, row(fakeId, 0, "BL-4").id);
+});
+
+test("through sheets-mcp, a new row goes under the table, never under a notes block below it", async () => {
+  const { server, writer, written } = throughServer([
+    ...fakeRows(),
+    ["", "", "", "", ""],
+    ["Notes", "BL-2 waits on the gateway team.", "", "", ""],
+  ]);
+  await writer.apply(
+    request("addRow", null, {
+      spreadsheet: fakeId,
+      sheetId: 0,
+      values: { key: "BL-4", title: "Bulk edit", status: "To do" },
+    }),
+  );
+  assert.equal(written()[0]?.args.range, "'Backlog'!A1:C4");
+  assert.deepEqual(server.rows[4], ["BL-4", "Bulk edit", "To do"]);
+  assert.equal(server.rows[6]?.[0], "Notes");
+  // One the server put anywhere else isn't reported as added.
+  const astray = sheetsWriter(
+    {
+      picks: fakePicks,
+      prefix: "sheets",
+      server: {
+        read: server.read,
+        write: async () => ({
+          content: [],
+          structuredContent: { updatedRange: "'Backlog'!A9:C9", updatedRows: 1 },
+        }),
+      },
+    },
+    () => {},
+  );
+  await assert.rejects(
+    astray.apply(
+      request("addRow", null, {
+        spreadsheet: fakeId,
+        sheetId: 0,
+        values: { key: "BL-9", title: "Elsewhere" },
+      }),
+    ),
+    /outside the table Oriel reads/,
+  );
+});
+
+test("through sheets-mcp, a number is read as entered, so an edit's Undo writes the number back", async () => {
+  const { server, writer, written } = throughServer();
+  server.formulas.set("2,3", 3);
+  const result = await writer.apply(
+    request("setField", row(fakeId, 0, "BL-2"), { field: "estimate", value: 5 }, { estimate: 3 }),
+  );
+  assert.equal(result.before.estimate, 3);
+  assert.deepEqual(written()[0]?.args.values, [[5]]);
+  // Text "3" where the diff saw the number 3 has changed.
+  server.formulas.set("2,3", "3");
+  await assert.rejects(
+    writer.apply(
+      request("setField", row(fakeId, 0, "BL-2"), { field: "estimate", value: 8 }, { estimate: 3 }),
+    ),
+    /now, not/,
+  );
+});
+
+test("through sheets-mcp, a row can't be deleted, and the writer says so before anything is offered", async () => {
+  const { writer, written } = throughServer();
+  assert.match(writer.unsendable?.deleteRow ?? "", /can't be taken back/);
+  await assert.rejects(
+    writer.apply(request("deleteRow", row(fakeId, 0, "BL-2"), {})),
+    refused(false, /can't be taken back/),
+  );
+  assert.deepEqual(written(), []);
+  // Through Google's own API, it can.
+  assert.equal(setup().writer.unsendable, undefined);
+});
+
+test("through sheets-mcp, a cell holding a formula, or one a formula fills, isn't written over", async () => {
+  const { server, writer, written } = throughServer();
+  // Column E: BL-1's total, entered as a formula, and BL-2's, filled by an
+  // array formula elsewhere, as FORMULA renders them.
+  server.formulas.set("1,4", "=D2");
+  server.formulas.set("2,4", "");
+  const tab = { ...fakePicks.spreadsheets[0]!.tabs[0]!, estimate: "Total" };
+  const mapped = { spreadsheets: [{ id: fakeId, tabs: [tab] }] };
+  const totals = sheetsWriter(
+    { picks: mapped, prefix: "sheets", server: { read: server.read, write: server.write } },
+    () => {},
+  );
+  await assert.rejects(
+    totals.apply(request("setField", row(fakeId, 0, "BL-1"), { field: "estimate", value: 4 })),
+    /holds a formula/,
+  );
+  await assert.rejects(
+    totals.apply(request("setField", row(fakeId, 0, "BL-2"), { field: "estimate", value: 4 })),
+    /a formula elsewhere put there/,
+  );
+  // Text that starts with `=` reads as a formula through the server, so
+  // it's never written over either.
+  await assert.rejects(
+    writer.apply(request("setField", row(fakeId, 0, "BL-3"), { field: "title", value: "Plain" })),
+    /holds a formula/,
+  );
+  assert.deepEqual(written(), []);
+});
+
+test("through sheets-mcp, a cell that moved since approval is a conflict, and nothing is written", async () => {
+  const { writer, written } = throughServer();
+  await assert.rejects(
+    writer.apply(
+      request(
+        "setField",
+        row(fakeId, 0, "BL-2"),
+        { field: "status", value: "Done" },
+        { status: "In progress" },
+      ),
+    ),
+    /holds “To do” now, not “In progress”/,
+  );
+  assert.deepEqual(written(), []);
+});
+
+test("through sheets-mcp, a write it turns away was refused; one Google didn't answer may have landed", async () => {
+  const { server } = throughServer();
+  const answering = (text: string) =>
+    sheetsWriter(
+      {
+        picks: fakePicks,
+        prefix: "sheets",
+        server: {
+          read: server.read,
+          write: async () => ({ content: [{ type: "text", text }], isError: true }),
+        },
+      },
+      () => {},
+    );
+  const edit = () =>
+    request("setField", row(fakeId, 0, "BL-2"), { field: "status", value: "Done" });
+  await assert.rejects(
+    answering("Google refused: this account can't open or change that spreadsheet.").apply(edit()),
+    refused(true, /sheets-mcp refused the write/),
+  );
+  const unsure = await answering("Couldn't reach Google. Check the connection, then try again.")
+    .apply(edit())
+    .catch((error: unknown) => error);
+  assert.ok(unsure instanceof Error && !(unsure instanceof SourceRefused));
+  // A process that never sent it: nothing landed.
+  const stalled = sheetsWriter(
+    {
+      picks: fakePicks,
+      prefix: "sheets",
+      server: {
+        read: server.read,
+        write: async () => {
+          throw new WriteStalled("Oriel stopped Claude Code: it asked for another call.");
+        },
+      },
+    },
+    () => {},
+  );
+  await assert.rejects(stalled.apply(edit()), refused(false, /another call/));
 });

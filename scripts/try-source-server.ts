@@ -6,11 +6,15 @@
 // fixture into the index, and approves one scripted change set, which
 // replays through the server's write tools: for Jira a rename of SYN-10,
 // for Slack a reply to Amara's question, for Linear ENG-4 planned into
-// cycle 14. On Claude Code that spends a
+// cycle 14, for Sheets BL-108 moved on, after mapping the Backlog tab of
+// packages/sheets-mcp's shipped fixture, which it runs in fixture mode, as
+// a local server Claude Code starts by its command. On Claude Code that spends a
 // little of the person's plan on its smallest model; on Codex, none. The
 // index is in memory.
-// Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear]
+// Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear|sheets]
 import { checkCodex } from "../packages/agent/src/index.ts";
+import { rowKey } from "../packages/sheets/src/attrs.ts";
+import { backlogPicks } from "./record-source-mcp.ts";
 import { models as findModels } from "../packages/server/src/model.ts";
 import { scriptedAgent } from "../packages/server/src/scripted-agent.ts";
 import { memorySettings } from "../packages/server/src/settings.ts";
@@ -18,9 +22,22 @@ import { devStandIns } from "../packages/server/src/standins.ts";
 import { json, testApp } from "../packages/server/src/testing.ts";
 import type { DiffView, ThreadView } from "../packages/web/src/view.ts";
 
-// What each kind tries: its stand-in, the one write it approves, and the
-// items the workstream that asks for it holds.
-const kinds = {
+// BL-108 of sheets-mcp's shipped fixture, as Oriel keys it.
+const bl108 = `sheets:${rowKey("1q2w3e4r5t6y7u8i9o0pBacklogFixture", 0, "BL-108")}`;
+
+// What each kind tries: its stand-in, the one write it approves, the items
+// the workstream that asks for it holds, and the options it's set to first,
+// where they're the person's to set through the server.
+const kinds: Record<
+  string,
+  {
+    standIn: string;
+    name: string;
+    items: readonly string[];
+    write: readonly [string, readonly unknown[]];
+    options?: Record<string, unknown>;
+  }
+> = {
   jira: {
     standIn: "atlassian",
     name: "Jira",
@@ -39,15 +56,25 @@ const kinds = {
     items: ["linear:ENG-4"],
     write: ["linear.setCycle", ["linear:ENG-4", 14]],
   },
-} as const;
+  sheets: {
+    standIn: "sheets",
+    name: "Google Sheets",
+    items: [bl108],
+    write: ["sheets.setField", [bl108, "status", "In progress"]],
+    options: backlogPicks,
+  },
+};
 
 const agent = process.argv[2];
 const kind = process.argv[3] ?? "jira";
 if ((agent !== "claude-code" && agent !== "codex") || !Object.hasOwn(kinds, kind)) {
-  console.error("Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear]");
+  console.error(
+    "Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear|sheets]",
+  );
   process.exit(2);
 }
-const trying = kinds[kind as keyof typeof kinds];
+const trying = kinds[kind];
+if (!trying) throw new Error(`no kind ${kind}`);
 const standIns = devStandIns(trying.standIn);
 if (!standIns) throw new Error("no stand-in");
 const settings = memorySettings({
@@ -94,6 +121,14 @@ try {
   const on = await it.post("/api/actions/source.on", { kind, server: found.server });
   if (on.status !== 200) throw new Error(`${trying.name} didn't turn on: ${on.status}`);
   await it.app.settled();
+  if (trying.options) {
+    const waiting = await it.connection(kind);
+    const set = await it.post(`/api/connections/${waiting?.id ?? ""}/options`, {
+      options: trying.options,
+    });
+    if (set.status !== 200) throw new Error(`${trying.name}'s options didn't set: ${set.status}`);
+    await it.app.settled();
+  }
   const opened = await it.connection(kind);
   if (!opened) {
     const why = (await it.connections()).servers.kinds.find((each) => each.kind === kind);

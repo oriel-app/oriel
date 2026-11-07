@@ -899,6 +899,8 @@ test("the person's servers are the CLI's answer to mcp_status, as Oriel looks th
         url: null,
         command: "tracker-mcp --x",
         tools: [],
+        // Its command and arguments apart, and never its environment.
+        local: { command: "tracker-mcp", args: ["--x"] },
       },
     ],
   );

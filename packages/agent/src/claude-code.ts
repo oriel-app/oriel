@@ -495,6 +495,7 @@ export function claudeCodeServersOf(answer: unknown): FoundServer[] {
         command: text(config.command) ? [text(config.command), ...args].join(" ") : null,
         tools,
         ...(remote.includes(text(config.type)) ? { transport: text(config.type) as "http" } : {}),
+        ...(text(config.command) ? { local: { command: text(config.command), args } } : {}),
       },
     ];
   });
