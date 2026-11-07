@@ -140,6 +140,17 @@ export type ActionDeps = {
       input: ActionInput<"source.disconnect">,
     ): Promise<Pick<ConnectionView, "id" | "kind" | "number">>;
   };
+  // Which kinds are on (decision 0059): one turned on, by the person,
+  // through a source server found for it, or one off by choice, and one
+  // turned off, by the person or the agent. Each gives the server it was
+  // on through, for its Undo; a kind Oriel has none of, or one already in
+  // that state, is an ActionError. And the overview's card of what Oriel
+  // found, dismissed.
+  kinds: {
+    on(kind: string, server: string | undefined): Promise<{ server: string | null }>;
+    off(kind: string, by: "person" | "agent"): Promise<{ server: string | null }>;
+    dismiss(): void;
+  };
   // What a draft would replace now, such as the options a connection has,
   // to tell one the user can still apply from one they've moved past, and
   // the name of what it sets; null when that's gone (decision 0051).
@@ -1125,6 +1136,33 @@ const handlers = {
       changed: null,
       events: [{ name: "source.synced", source: of.kind, ok: !("problem" in outcome) }],
     };
+  },
+
+  // Who turned a kind on or off is counted, by its kind only, never the
+  // source server's name (decision 0059). Its Undo turns it back, through
+  // the server it was on through.
+  "source.off": async ({ kind }, actor, deps) => {
+    const by = actor.kind === "agent" ? "agent" : "person";
+    const { server } = await deps.kinds.off(kind, by);
+    return {
+      output: { kind },
+      undo: { action: "source.on", input: { kind, ...(server ? { server } : {}) } },
+      changed: null,
+      events: [{ name: "source.turned", source: kind, on: false, by }],
+    };
+  },
+  "source.on": async ({ kind, server }, _actor, deps) => {
+    await deps.kinds.on(kind, server);
+    return {
+      output: { kind },
+      undo: { action: "source.off", input: { kind } },
+      changed: null,
+      events: [{ name: "source.turned", source: kind, on: true, by: "person" }],
+    };
+  },
+  "source.dismiss-found": async (_, _actor, deps) => {
+    deps.kinds.dismiss();
+    return { output: {}, undo: null, changed: null, events: [] };
   },
 
   // Every page watching hears from the index, as after a sync.

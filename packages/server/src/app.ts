@@ -49,6 +49,7 @@ import {
   type Sketch,
   type Sandbox,
   type SourceKind,
+  type SourceServer,
   syncSource,
   type ToOpen,
   type Ulid,
@@ -68,6 +69,7 @@ import {
   open,
   runStore,
   challengeStore,
+  sourceKindStore,
   outsideToolStore,
   type StoredEvent,
   telemetryStore,
@@ -78,6 +80,7 @@ import {
   byItemId,
   declarationOf,
   itemDocs,
+  knownServers,
   namespacesOf,
   recognizerOf,
   sourceKinds,
@@ -121,6 +124,7 @@ import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import { type Challenger, challenger } from "./challenger.ts";
 import {
   memorySettings,
+  type Settings,
   type SettingsService,
   settingsService,
   type SettingsStore,
@@ -135,6 +139,7 @@ import { views } from "./views.ts";
 import { noticedService } from "./noticed.ts";
 import { estimateKey } from "./signals.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
+import { type Discovery, discoverWith, sourceServers } from "./source-servers.ts";
 
 export type { SourceMode, SourceModes } from "./modes.ts";
 
@@ -185,6 +190,12 @@ export type AppOptions = {
   models?: Models;
   // The person's settings; in memory, the defaults, when absent.
   settings?: SettingsStore;
+  // Asks the person's agent for its MCP servers (decision 0059), for tests
+  // and screenshots; Settings' models when absent.
+  discover?: (settings: Settings) => Promise<Discovery>;
+  // The source servers Oriel knows, by kind: the connectors' when absent,
+  // and a test's own entry in tests and screenshots.
+  knownServers?: readonly { kind: string; server: SourceServer }[];
   // The themes window.css has, the default first.
   themes?: readonly string[];
   // Whether the page may set where a CLI is: only behind the desktop app's
@@ -414,9 +425,39 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Shut ones whose options no longer fit their source, by prefix, with why
   // (decision 0051): they wait for their options, which opens them again.
   const unfit = new Map<string, string>();
-  for (const kind of sourceKinds) {
-    // A stand-in opens below, while what it stands in for isn't connected.
-    if (declared(kind).standIn) continue;
+  // Which kinds are on, and what the person's agent has to turn one on with
+  // (decision 0059). A kind has a connection of its own while a flag makes
+  // one, or the window made one, open or shut.
+  const connectedKind = (kind: string) =>
+    flags.some((flag) => flag.kind === kind) || connections.first(kind) !== null;
+  // What's on changed, once the start has opened what it does: made below.
+  let turned = async (): Promise<void> => {};
+  const switches = sourceServers({
+    store: sourceKindStore(db),
+    workspaceId,
+    known: options.knownServers ?? knownServers,
+    kinds: sourceKinds
+      .filter((kind) => !declared(kind).standIn)
+      .map((kind) => ({ kind, name: declared(kind).name })),
+    connected: connectedKind,
+    discover: () => (options.discover ?? discoverWith(options.models))(store.get()),
+    changed: () => turned(),
+    heard: () => told(),
+    sync: () => {
+      const running = options.models?.choose(store.get()).model;
+      return {
+        every: store.get().sourceSync,
+        plan: running?.provider.kind === "claude-code",
+      };
+    },
+    now,
+    log,
+  });
+  // Opens a kind's first connection: the one a flag makes, at every start,
+  // or one the window made, if the window connects its kind. A flag's that
+  // can't open stops the start; one the window made is left shut, so the
+  // window asks for it again.
+  const openKind = async (kind: SourceKind) => {
     // A flag's connection is its kind's first, made at every start, and
     // follows what the flag names. One that can't open stops the start.
     const flag = flags.find((each) => each.kind === kind);
@@ -437,16 +478,16 @@ export async function createApp(options: AppOptions): Promise<App> {
       const connection = connections.flagged(kind, opened.identity ?? flag.identity, flag.options);
       byPrefix.set(connection.prefix, { connection, opened });
       byFlag.add(connection.id);
-      continue;
+      return;
     }
     // One the window made, with its secret, if the window connects its kind.
     // One that can't open is left shut, so the window asks for it again.
     const connection = inWindow(modes, kind) ? connections.first(kind) : null;
-    if (!connection) continue;
+    if (!connection) return;
     const secret = await connections.secret(connection);
     if (!(await windows.vet(connection, secret))) {
       shut.set(connection.prefix, connection);
-      continue;
+      return;
     }
     try {
       const opened = await openOne(
@@ -464,17 +505,36 @@ export async function createApp(options: AppOptions): Promise<App> {
         error: error instanceof Error ? error.message : "",
       });
     }
-  }
+  };
+  // A kind turned off: its connections close, and nothing of them shows,
+  // though they and their items stay, for when it's on again.
+  const closeKind = (kind: SourceKind) => {
+    for (const each of [...byPrefix.values()].filter((one) => one.connection.kind === kind)) {
+      byPrefix.delete(each.connection.prefix);
+      each.opened.close?.();
+    }
+    for (const connection of [...shut.values()].filter((one) => one.kind === kind)) {
+      shut.delete(connection.prefix);
+      unfit.delete(connection.prefix);
+    }
+  };
+  // A stand-in opens below, while what it stands in for isn't on.
+  for (const kind of sourceKinds)
+    if (!declared(kind).standIn && switches.on(kind)) await openKind(kind);
+  // Whether a kind's surfaces show (decision 0059): not one a person or the
+  // agent turned off, one a person turned on whose source server went, or a
+  // stand-in while what it stands in for is on. A kind that was never on
+  // keeps what it had, as Slack's namespace while it isn't connected.
+  const kindShows = (kind: string) =>
+    !switches.turnedOff().includes(kind) &&
+    !switches.went(kind) &&
+    !(declarationOf(kind)?.standIn && !standingIn(kind));
   // The stand-ins (decision 0059): each open while none of the kinds it
-  // stands in for has a connection, a flag's or one the window made, open
-  // or shut, and closed while one has. Closed, nothing of it shows, and its
+  // stands in for is on, and closed while one is. Closed, nothing of it shows, and its
   // items stay in the index, for when it's on again. Its one connection is
   // Oriel's, which the window neither configures nor disconnects.
   const standingIn = (kind: SourceKind) =>
-    modes[kind]?.mode !== "off" &&
-    !(declared(kind).standIn?.for ?? []).some(
-      (other) => flags.some((flag) => flag.kind === other) || connections.first(other) !== null,
-    );
+    !(declared(kind).standIn?.for ?? []).some((other) => switches.on(other));
   const standIns = async () => {
     for (const kind of sourceKinds) {
       if (!declared(kind).standIn) continue;
@@ -1150,8 +1210,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         : noOptionsYet)
     );
   };
+  // None of a kind that's off, whose source nothing reads (decision 0059).
   const waitingConnections = (): { connection: Connection; why: string }[] =>
     connections.list().flatMap((connection) => {
+      if (!kindShows(connection.kind)) return [];
       const why = whyWaits(connection);
       return why === null ? [] : [{ connection, why }];
     });
@@ -1194,6 +1256,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     names = false,
   ): Promise<PreviewTable[]> => {
     const declaration = declared(connection.kind);
+    // Nothing reads the source of a kind that's off (decision 0059).
+    if (!kindShows(connection.kind))
+      throw new ActionError(
+        "conflict",
+        `${declaration.name} is off. Turn it on in Settings to read it again.`,
+      );
     const key = JSON.stringify(connection.options);
     const kept = names ? listed : previews;
     const had = kept.get(connection.id);
@@ -1408,6 +1476,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         };
       }),
     );
+  // What a region's module has of each kind but those off, whose namespace
+  // and item doc it doesn't name (decision 0059).
+  const unlessOff = <T>(byKind: Partial<Record<string, T>>): Partial<Record<string, T>> =>
+    Object.fromEntries(Object.entries(byKind).filter(([kind]) => kindShows(kind)));
   const regionBindings = (
     region: Region,
     thread?: Ulid,
@@ -1417,12 +1489,14 @@ export async function createApp(options: AppOptions): Promise<App> {
     bindingsFor(region, {
       reader,
       namespaces: readable(
-        namespacesOf(
-          records(),
-          opens().map(({ connection, opened }) => ({ kind: connection.kind, opened })),
+        unlessOff(
+          namespacesOf(
+            records(),
+            opens().map(({ connection, opened }) => ({ kind: connection.kind, opened })),
+          ),
         ),
       ),
-      items: itemDocs,
+      items: unlessOff(itemDocs),
       oriel: reads,
       ...(thread ? { thread } : {}),
       ...(shown ? { shown } : {}),
@@ -1567,7 +1641,44 @@ export async function createApp(options: AppOptions): Promise<App> {
     asksBeforeQuitting: options.working !== undefined,
     saved: () => guarding?.changed(),
     picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
+    // Another agent may have other servers, so what's on may change.
+    agentChanged: () => void switches.look(),
+    synced: () => lookEvery(),
   });
+  // What's on changed: a kind that turned on opens and syncs, one that
+  // turned off closes, the stand-ins follow, and every page hears.
+  turned = () =>
+    betweenSyncs(async () => {
+      const reopened: SourceKind[] = [];
+      for (const kind of sourceKinds) {
+        if (declared(kind).standIn) continue;
+        const held =
+          openedOf(kind) !== null || [...shut.values()].some((each) => each.kind === kind);
+        if (!switches.on(kind)) {
+          for (const each of opens().filter((one) => one.connection.kind === kind))
+            unarm(each.connection.id);
+          closeKind(kind);
+        } else if (!held) {
+          await openKind(kind);
+          for (const each of opens().filter((one) => one.connection.kind === kind))
+            arm(each.connection);
+          reopened.push(kind);
+        }
+      }
+      await standIns();
+      sets.rewire(wiring());
+      for (const kind of reopened) void syncKind(kind);
+    });
+  // Oriel looks for the person's servers when it opens, when they press
+  // sync, and every so many minutes if they set that.
+  let stopLooking = (): void => {};
+  const lookEvery = () => {
+    stopLooking();
+    const minutes = store.get().sourceSync;
+    stopLooking = minutes === null ? () => {} : every(minutes * 60_000, () => void switches.look());
+  };
+  lookEvery();
+  void switches.look();
   const conversation = turns({
     threads,
     workstreams,
@@ -1633,10 +1744,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       newId,
       log,
     });
+  // A workstream's member of a kind that's off doesn't show, and stays in
+  // it for when the kind is on again (decision 0059).
+  const shownMember = (id: string) => kindShows(parseItemId(id)?.kind ?? "");
   const viewer = views({
     workstreams,
     threads,
     records,
+    shown: shownMember,
     presentations: sources,
     asOf: () => asOf ?? now(),
     now,
@@ -1722,6 +1837,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     emit,
     markSeen: (at, seq) => markSeen(db, workspaceId, at, seq),
+    kinds: {
+      on: (kind, server) => switches.turnOn(kind, server),
+      off: (kind, by) => switches.turnOff(kind, by),
+      dismiss: () => switches.dismiss(),
+    },
     // Made once the overview's reads are, below; no action runs before.
     noticed: () => noticed,
     turns: conversation,
@@ -1963,14 +2083,15 @@ export async function createApp(options: AppOptions): Promise<App> {
               ? "open"
               : "signed-out",
       flagged: byFlag.has(kept.id),
+      own: ownConnections.has(kept.id),
     };
   };
   // Every connection open or shut, in declared order, then by number.
   const kinds: readonly string[] = sourceKinds;
-  // A stand-in isn't one a person connected, so it isn't among them.
+  // A stand-in on is among them, as the tracker that's on (decision 0059),
+  // which Oriel keeps itself.
   const connectionsView = (): ConnectionView[] =>
     [...opens().map((each) => each.connection), ...shut.values()]
-      .filter((connection) => !ownConnections.has(connection.id))
       .toSorted((a, b) => kinds.indexOf(a.kind) - kinds.indexOf(b.kind) || a.number - b.number)
       .map(connectionView);
 
@@ -1986,7 +2107,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         id: summary.id,
         name: summary.name,
         createdAt: summary.createdAt as Instant,
-        members: workstreams.region(summary.id as Ulid, summary.version)?.items ?? [],
+        members: (workstreams.region(summary.id as Ulid, summary.version)?.items ?? []).filter(
+          (member) => shownMember(member.id),
+        ),
       }));
   const overview = async (): Promise<OverviewView> => {
     const all = records();
@@ -2171,9 +2294,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       overview,
       noticed,
+      lookForServers: () => switches.look(),
       connections: () => ({
         connections: connectionsView(),
-        connectable: sourceKinds.filter((kind) => windows.connectable(kind)),
+        // A kind turned off isn't offered: nothing of it shows (decision 0059).
+        connectable: sourceKinds.filter(
+          (kind) => windows.connectable(kind) && !switches.turnedOff().includes(kind),
+        ),
         refused: Object.fromEntries(
           sourceKinds.flatMap((kind) => {
             const why = windows.why(kind);
@@ -2186,6 +2313,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         standingIn: opens()
           .filter((each) => declared(each.connection.kind).standIn)
           .map((each) => each.connection.kind),
+        servers: switches.view(),
       }),
       pick: (kind, given, query) => windows.pick(kind, given, query),
       choices: (id, query) => windows.choices(live(id as Ulid), query),
@@ -2310,6 +2438,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       await setup.idle();
       for (const stop of timers.values()) stop();
       timers.clear();
+      stopLooking();
+      switches.close();
       await Promise.all(waiting.values());
       await syncing.catch(() => {});
       await noticed.stop();

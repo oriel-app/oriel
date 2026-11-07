@@ -11,3 +11,4 @@ export * from "./workspaces.ts";
 export * from "./noticed.ts";
 export * from "./search-only.ts";
 export * from "./outside-tools.ts";
+export * from "./source-kinds.ts";

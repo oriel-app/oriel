@@ -42,6 +42,9 @@ export const windowRoutes: Record<string, ProgramWay> = {
   "POST /setup/cli": { not: setup },
   "POST /setup/ai": { not: setup },
   "POST /setup/progress": { not: setup },
+  "POST /servers/look": {
+    not: "Asking the person's agent for its MCP servers starts their own servers: the person does, with Sync (decision 0059).",
+  },
   "POST /connections/pick": { not: connecting },
   "POST /connections/browser": { not: connecting },
   "POST /connections/:id/pick": { not: connecting },

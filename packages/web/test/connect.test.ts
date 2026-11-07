@@ -21,7 +21,7 @@ import {
 } from "../src/connections.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import type { ConnectStep } from "../src/view.ts";
-import { connectionView, connectors } from "../testing.ts";
+import { connectionView, connectors, serversView } from "../testing.ts";
 
 const steps = connectors.jira?.connect?.steps as readonly ConnectStep[];
 const typed = { site: "oriel.atlassian.net", email: "pm@example.com", token: "pasted" };
@@ -212,7 +212,14 @@ test("the first run offers none a stand-in on stands in for, and the stand-in in
   };
   const model: ConnectionsModel = {
     ...initConnections(),
-    view: { connections: [], connectable: [], refused: {}, picker: false, standingIn: ["tracker"] },
+    view: {
+      connections: [],
+      connectable: [],
+      refused: {},
+      picker: false,
+      standingIn: ["tracker"],
+      servers: serversView(),
+    },
   };
   const all = { ...connectors, tracker };
   assert.deepEqual(

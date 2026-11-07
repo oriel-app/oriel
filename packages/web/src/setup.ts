@@ -5,6 +5,7 @@
 // connection's first sync reads, the page asks for it again each second.
 // Which screen shows is the page's own.
 import { type Effect, errorOf, get, post, report, type Replied } from "./http.ts";
+import { lookForServers } from "./connections.ts";
 import type { CliCommand, SetupView } from "./view.ts";
 
 export type SetupScreen =
@@ -12,8 +13,9 @@ export type SetupScreen =
   | "ai"
   | "key"
   | "other-ways"
-  // Your work: the sources; a connector's steps, by its kind; the first
-  // sync.
+  // Your work: what Oriel found in the person's agent (decision 0059); the
+  // sources; a connector's steps, by its kind; the first sync.
+  | "found"
   | "work"
   | "connect"
   | "reading";
@@ -208,7 +210,14 @@ export function setupReplied(model: SetupModel, msg: Replied): [SetupModel, Effe
       if (!msg.ok) return [{ ...model, ...done, problem: errorOf(msg.body) }, []];
       const view = msg.body as SetupView;
       const chosen = tag.kind === "setupAi" && view.firstRun?.steps.ai === "done";
-      return polling({ ...model, ...done, view, ...(chosen ? { screen: "work" as const } : {}) });
+      // With the AI set up, Oriel looks in it for the person's servers.
+      const [next, effects] = polling({
+        ...model,
+        ...done,
+        view,
+        ...(chosen ? { screen: "found" as const } : {}),
+      });
+      return [next, chosen ? [...effects, lookForServers] : effects];
     }
     case "setupKey":
       if (!msg.ok) return [{ ...model, sending: false, keyProblem: errorOf(msg.body) }, []];

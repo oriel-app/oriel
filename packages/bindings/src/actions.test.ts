@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ActionDeclaration, actions, type Ulid, ulid } from "@oriel/core";
-import { intentFns } from "./actions.ts";
+import { intentFns, windowIntentFns } from "./actions.ts";
 import { bindingsFor } from "./bindings.ts";
 import { fixtureReader, fixtureRegion, namespaces, runGuest, snapshotAfter } from "./testing.ts";
 import { typecheck } from "./typecheck.ts";
@@ -19,7 +19,7 @@ test("every direct action open to the agent is a function, with the registry's d
     declared.class.kind === "direct" && declared.closed?.agent === undefined ? [name] : [],
   );
   assert.deepEqual(
-    intentFns.map((fn) => `${fn.space}.${fn.name}`),
+    [...intentFns, ...windowIntentFns].map((fn) => `${fn.space}.${fn.name}`),
     open,
   );
   assert.ok(!open.includes("held.send"), "a person's action is never the agent's");
@@ -27,7 +27,7 @@ test("every direct action open to the agent is a function, with the registry's d
   const given = new Set<string>(intentFns.map((fn) => fn.action));
   for (const action of ["changeset.unreject", "changeset.dismiss-look", "changeset.second-look"])
     assert.ok(!given.has(action), action);
-  for (const fn of intentFns) assert.equal(fn.doc, actions[fn.action].doc);
+  for (const fn of [...intentFns, ...windowIntentFns]) assert.equal(fn.doc, actions[fn.action].doc);
   const { dts } = own();
   assert.match(
     dts,
@@ -170,4 +170,19 @@ test("the items of a cluster the overview names may join a workstream, but not b
     () => chat().intend("workstream.add", [{ items: ["jira:SYN-80"] }]),
     /isn't in this region/,
   );
+});
+
+test("the agent turns a kind off in the window chat only, and never turns one on", () => {
+  const overview = async () => ({ view: null, items: [] });
+  const chat = bindingsFor(region, { reader, namespaces, thread: threadId, overview });
+  assert.match(chat.dts, /\n {2}off\(input: \{ kind: string \}\): void;/);
+  assert.deepEqual(chat.intend("source.off", [{ kind: "slack" }]), {
+    action: "source.off",
+    input: { kind: "slack" },
+  });
+  assert.doesNotMatch(chat.dts, /\bon\(input/);
+  assert.throws(() => chat.intend("source.on", [{ kind: "slack" }]), /isn't an action here/);
+  // A workstream's thread answers about its workstream, not the window.
+  assert.doesNotMatch(own().dts, /declare const source/);
+  assert.throws(() => own().intend("source.off", [{ kind: "slack" }]), /isn't an action here/);
 });

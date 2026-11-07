@@ -154,8 +154,8 @@ export type Choice = { id: string; name: string };
 // from it, and when it last synced; why its last sync didn't work, and what
 // it left out, a line each; whether it's open, waiting for options that fit
 // its source (decision 0051), or signed out since its source turned it
-// away; and whether a flag of `pnpm dev` makes it, so the
-// window can't set or disconnect it.
+// away; whether a flag of `pnpm dev` makes it, so the
+// window can't set or disconnect it; and whether it's a stand-in's.
 export type ConnectionView = {
   id: string;
   kind: string;
@@ -179,6 +179,9 @@ export type ConnectionView = {
   report: readonly string[];
   state: "open" | "waiting" | "signed-out";
   flagged: boolean;
+  // A stand-in's (decision 0059): Oriel keeps it itself, so the window
+  // neither sets, syncs nor disconnects it.
+  own: boolean;
 };
 
 // Every connection, which kinds the window may connect now and why not the
@@ -191,6 +194,40 @@ export type ConnectionsView = {
   picker: boolean;
   // The stand-ins on now, by kind (decision 0059).
   standingIn: string[];
+  // What Oriel found in the person's agent, and which kinds are on.
+  servers: SourceServersView;
+};
+
+// A source server Oriel found in the person's agent (decision 0059): the
+// kind it serves, its name in the agent, the name Oriel knows it by, and
+// whether its kind is on.
+export type FoundServerView = { kind: string; server: string; known: string; on: boolean };
+
+// What Oriel found in the agent picked in Settings, by its name, when it
+// last looked, whether it's looking now, and why the last look failed; the
+// kinds on now or turned off, each with the server it came through, or
+// null for its own connection, and who turned it off; for each kind with a
+// server Oriel knows and none found, that server and its vendor's own
+// instructions; the overview's card of what changed, until it's dismissed;
+// and when sync runs, every so many minutes or null for when Oriel opens
+// and when the person presses sync, and whether it spends their plan.
+export type SourceServersView = {
+  agent: string | null;
+  looking: boolean;
+  problem: string | null;
+  found: FoundServerView[];
+  kinds: {
+    kind: string;
+    on: boolean;
+    server: string | null;
+    offBy: "person" | "agent" | null;
+  }[];
+  missing: { kind: string; server: string; instructions: string }[];
+  card: {
+    appeared: FoundServerView[];
+    gone: { kind: string; server: string; on: boolean }[];
+  } | null;
+  sync: { every: number | null; plan: boolean };
 };
 
 // What a connection's review step shows (decision 0051): whether it waits
@@ -1053,6 +1090,9 @@ export type SettingsView = {
   asksBeforeQuitting: boolean;
   timeFormat: TimeFormat;
   afterApprove: AfterApprove;
+  // How often Oriel reads the person's source servers, in minutes, or null
+  // for when it opens and when they press sync (decision 0059).
+  sourceSync: number | null;
 };
 
 // Today's use of one provider instance, counted by Oriel: thread turns, and
@@ -1095,6 +1135,7 @@ export type SettingsChange =
   | { askBeforeQuitting: boolean }
   | { timeFormat: TimeFormat }
   | { afterApprove: AfterApprove }
+  | { sourceSync: number | null }
   | { model: ModelPick }
   | { titleModel: ModelPick }
   | { provider: string; on: boolean }

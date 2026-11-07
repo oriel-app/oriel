@@ -23,6 +23,7 @@ import type { AppOptions } from "../packages/server/src/app.ts";
 import { legacySecret, memorySecrets } from "../packages/server/src/connection.ts";
 import { models } from "../packages/server/src/model.ts";
 import type { Serving } from "../packages/server/src/serve.ts";
+import { askTiny, testKnown } from "../packages/server/src/servers/testing.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
 import { type SetupState, memorySetup, setupFile } from "../packages/server/src/setup/state.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
@@ -113,9 +114,12 @@ export type FirstRunOptions = {
   sheetsTabs?: number;
   // A database to start on, without a data folder.
   db?: string;
-  // The stand-in tracker kept off, so the first run offers Jira's connect
-  // step, as it did before decision 0059 (OA-275 replaces that step).
-  standInOff?: true;
+  // The person's Claude Code lists the tiny test tracker server (decision
+  // 0059), which Oriel knows by its test-only entry, for Jira's kind.
+  found?: true;
+  // And the person turned Jira on through it, so the stand-in steps aside
+  // and the first run offers Jira's connect step too, until OA-280.
+  trackerOn?: true;
 };
 
 type Start = (
@@ -321,8 +325,13 @@ export async function firstRunServer(
     sources: {
       jira: { mode: "window", fetch: fetchJira },
       ...(options.sheets ? { sheets: { mode: "window" as const, fetch: fetchSheets } } : {}),
-      ...(options.standInOff ? { tracker: { mode: "off" as const } } : {}),
     },
+    // The person's agent, as a fake that asks the tiny server itself.
+    discover: async () => ({
+      agent: { id: "claude-code", name: "Claude Code" },
+      found: options.found || options.trackerOn ? [await askTiny()] : [],
+    }),
+    knownServers: testKnown,
     ...(options.sheets ? { clients: { sheets: sheetsClient } } : {}),
     anywhere: true,
     legacyJira: legacySecret(secrets),
@@ -351,6 +360,10 @@ export async function firstRunServer(
       front: async () => {},
     },
   });
+  if (options.trackerOn) {
+    await postTo(serving, "/api/servers/look", {});
+    await postTo(serving, "/api/actions/source.on", { kind: "jira", server: "work-tracker" });
+  }
   if (options.folder) {
     const url = new URL("/api/connections", serving.url);
     const reply = await serving.app.api(
@@ -369,6 +382,25 @@ export async function firstRunServer(
     if (!reply || reply.status !== 200) throw new Error("the first run's folder didn't connect");
   }
   return serving;
+}
+
+// A POST to the server's API, as the page sends it, which must work.
+export async function postTo(serving: Serving, path: string, body: unknown): Promise<void> {
+  const url = new URL(path, serving.url);
+  const reply = await serving.app.api(
+    {
+      method: "POST",
+      url: url.pathname,
+      headers: {
+        host: url.host,
+        origin: serving.url.replace(/\/$/, ""),
+        "content-type": "application/json",
+      },
+      body: async () => JSON.stringify(body),
+    },
+    url,
+  );
+  if (!reply || reply.status !== 200) throw new Error(`${path} didn't work`);
 }
 
 // A made-up client of Oriel's for Google, which only the stand-in sees.
@@ -442,6 +474,9 @@ export async function timedPath(
     await count("signed in");
   }
   await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+  await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
+  await count("found");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("heading", { name: /Connect where your work lives|Welcome back/ }).waitFor();
   await page.locator(".provider-row", { hasText: "Epics and stories" }).waitFor();
   await count("your work");
@@ -476,6 +511,8 @@ export async function timedSheets(
   await page.waitForURL(/\/setup$/);
   await page.locator(".provider-row#provider-claude-code").waitFor();
   await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+  await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("heading", { name: "Connect where your work lives" }).waitFor();
   await count("your work");
   const row = page.locator(".provider-row", { hasText: "Google Sheets" });

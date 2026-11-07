@@ -43,6 +43,16 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.disconnected"; source: SourceKind; later: boolean }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
+  // A kind turned on or off (decision 0059), by the person or the agent,
+  // and, on an Undo, whose turning it undid: the kind only, never the
+  // source server's name or address.
+  | {
+      name: "source.turned";
+      source: SourceKind;
+      on: boolean;
+      by: "person" | "agent";
+      undoes?: Actor;
+    }
   // `size` is how many items it started with.
   | {
       name: "workstream.created";

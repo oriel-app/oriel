@@ -272,6 +272,7 @@ function world(startedBy: Actor | null = { kind: "user" }) {
     applied: () => assert.fail(),
     edit: () => assert.fail("nothing is edited here"),
     sources: unreached("sources"),
+    kinds: unreached("kinds"),
     markSeen: () => assert.fail("the overview isn't left here"),
     drafted: () => null,
     running: (thread) => thread === busy || thread === mine,

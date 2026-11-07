@@ -22,6 +22,8 @@ import {
   codexPlan,
   codexPlanOf,
   codexProvider,
+  codexServers,
+  codexServersOf,
   codexTitler,
   codexVersion,
   modelsOf,
@@ -760,4 +762,60 @@ test("through the agent loop: the run happens in Oriel's sandbox and its transcr
   assert.match(answer.contentItems[0]?.text ?? "", /^Returned: \d+/);
   assert.deepEqual(events.at(-1), { kind: "done", usage: { inputTokens: 4000, outputTokens: 40 } });
   await closed(fake.spawned[0]);
+});
+
+test("the person's servers are Codex's own list of them, with no thread and no model request", async () => {
+  const listed = {
+    data: [
+      {
+        name: "work-tracker",
+        runtimeStatus: null,
+        serverInfo: { name: "example-tracker", version: "1" },
+        tools: { search_issues: { name: "search_issues" }, get_issue: { name: "get_issue" } },
+        toolsError: null,
+        authStatus: "unsupported",
+      },
+      { name: "signed-out", serverInfo: null, tools: { x: {} }, authStatus: "notLoggedIn" },
+      { name: "off", runtimeStatus: "disabled", tools: {} },
+    ],
+    nextCursor: null,
+  };
+  const effective = {
+    config: {
+      mcp_servers: {
+        "work-tracker": { command: "tracker-mcp", args: ["--stdio"], env: { TOKEN: "secret" } },
+        "signed-out": { url: "https://mcp.example.invalid/v1", bearer_token_env_var: "T" },
+      },
+    },
+  };
+  assert.deepEqual(codexServersOf([listed], effective), [
+    {
+      name: "work-tracker",
+      status: "connected",
+      reports: "example-tracker",
+      url: null,
+      command: "tracker-mcp --stdio",
+      tools: ["search_issues", "get_issue"],
+    },
+    {
+      name: "signed-out",
+      status: "needs-auth",
+      reports: null,
+      url: "https://mcp.example.invalid/v1",
+      command: null,
+      tools: [],
+    },
+    { name: "off", status: "disabled", reports: null, url: null, command: null, tools: [] },
+  ]);
+  assert.ok(!JSON.stringify(codexServersOf([listed], effective)).includes("secret"));
+
+  const fake = fakeCodex({ servers: ["work-tracker"], live: true });
+  const found = await codexServers(cli, { env: {}, spawn: fake.spawn });
+  assert.deepEqual(
+    found.map((each) => [each.name, each.status]),
+    [["work-tracker", "connected"]],
+  );
+  const [run] = fake.spawned;
+  assert.deepEqual(run?.requests.get("mcpServerStatus/list"), { detail: "toolsAndAuthOnly" });
+  assert.ok(!run?.requests.has("thread/start") && !run?.requests.has("turn/start"));
 });

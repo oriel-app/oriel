@@ -564,3 +564,20 @@ test("a draft that changes only which status values mean which state still draws
   assert.ok(card.tables?.[0]?.lines.some((line) => /To do, Blocked are to do/.test(line)));
   assert.deepEqual(card.said, []);
 });
+
+test("a waiting connection of a kind turned off offers no preview, so nothing reads its source", async (t) => {
+  const it = await sheetsApp(t);
+  const sheets = await connected(it);
+  assert.equal(sheets.state, "waiting");
+  assert.equal((await it.post("/api/actions/source.off", { kind: "sheets" })).status, 200);
+  const reply = await it.post("/api/window-chat/messages", {
+    text: "Draft how Oriel should read the spreadsheets.",
+  });
+  await it.app.settled();
+  const view = json<ThreadView>(await it.get(`/api/threads/${json<{ id: string }>(reply).id}`));
+  assert.ok(!view.entries.some((e) => e.kind === "draft" || e.kind === "block"));
+  // Nor does its review step, even asked for fresh.
+  const asked = it.standIn.calls.length;
+  assert.equal((await it.get(`/api/connections/${sheets.id}/review?fresh=1`)).status, 409);
+  assert.equal(it.standIn.calls.length, asked);
+});

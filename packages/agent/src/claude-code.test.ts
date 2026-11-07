@@ -13,8 +13,11 @@ import { test } from "node:test";
 import {
   checkClaudeCode,
   claudeCodePlan,
+  claudeCodeServers,
+  claudeCodeServersOf,
   claudeCodeProvider,
   claudeCodeTitler,
+  discoveryArgs,
   harnessArgs,
   harnessEnv,
   harnessRunTool,
@@ -130,6 +133,8 @@ type FakeOptions = {
   ask?: string[];
   // Its answer to `get_usage`, or "refused".
   usage?: Message | "refused";
+  // Its answers to `mcp_status`, one a call, the last again after them.
+  servers?: Message[][];
 };
 
 // A stand-in for Claude Code: answers `initialize`, reports its init, plays
@@ -228,6 +233,20 @@ function fakeClaude(options: FakeOptions = {}) {
                 usage === "refused" || usage === undefined
                   ? { subtype: "error", request_id: message.request_id, error: "not here" }
                   : { subtype: "success", request_id: message.request_id, response: usage },
+            });
+          } else if (
+            message.type === "control_request" &&
+            (message.request as Message).subtype === "mcp_status"
+          ) {
+            const all = options.servers ?? [];
+            const listed = (all.length > 1 ? all.shift() : all[0]) ?? [];
+            emit({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: message.request_id,
+                response: { mcpServers: listed },
+              },
             });
           } else if (message.type === "control_request") {
             emit({
@@ -841,4 +860,79 @@ test("through the agent loop: the run happens in Oriel's sandbox and its transcr
   };
   assert.match(answer.response.mcp_response.result.content[0]?.text ?? "", /^Returned: \d+/);
   await closed(fake.spawned[0]);
+});
+
+const tracker = {
+  name: "work-tracker",
+  status: "connected",
+  serverInfo: { name: "example-tracker", version: "1" },
+  config: { type: "http", url: "https://mcp.example.invalid/v1", headers: { Authorization: "x" } },
+  scope: "user",
+  source: "user",
+  tools: [{ name: "search_issues" }, { name: "mcp__work-tracker__get_issue" }],
+};
+
+test("the person's servers are the CLI's answer to mcp_status, as Oriel looks them up", () => {
+  assert.deepEqual(
+    claudeCodeServersOf({
+      mcpServers: [
+        tracker,
+        { name: "local", status: "weird", config: { command: "tracker-mcp", args: ["--x"] } },
+        { name: "oriel", status: "connected", source: "sdk", tools: [{ name: "run" }] },
+        "not a server",
+      ],
+    }),
+    [
+      {
+        name: "work-tracker",
+        status: "connected",
+        reports: "example-tracker",
+        url: "https://mcp.example.invalid/v1",
+        command: null,
+        tools: ["search_issues", "get_issue"],
+      },
+      {
+        name: "local",
+        status: "failed",
+        reports: null,
+        url: null,
+        command: "tracker-mcp --x",
+        tools: [],
+      },
+    ],
+  );
+  assert.deepEqual(claudeCodeServersOf(null), []);
+});
+
+test("listing the person's servers loads their own, with no tool, no hook and no message", () => {
+  const args = discoveryArgs();
+  assert.ok(!args.includes("--strict-mcp-config") && !args.includes("--mcp-config"));
+  assert.ok(!args.includes("--allowed-tools"), "nothing is allowed");
+  // --safe-mode loads no server at all; the user's settings hold theirs.
+  assert.ok(!args.includes("--safe-mode"));
+  assert.equal(args[args.indexOf("--tools") + 1], "");
+  assert.equal(args[args.indexOf("--setting-sources") + 1], "user");
+  assert.deepEqual(JSON.parse(args[args.indexOf("--settings") + 1] ?? ""), {
+    disableAllHooks: true,
+  });
+  assert.equal(args[args.indexOf("--permission-mode") + 1], "dontAsk");
+});
+
+test("listing the person's servers makes no model request, and waits out one still connecting", async () => {
+  const pending = { ...tracker, status: "pending", tools: [] };
+  const fake = fakeClaude({ servers: [[pending], [tracker]] });
+  const found = await claudeCodeServers(cli, { spawn: fake.spawn, env: {}, pollMs: 0 });
+  assert.deepEqual(
+    found.map((each) => [each.name, each.status]),
+    [["work-tracker", "connected"]],
+  );
+  const [run] = fake.spawned;
+  assert.ok(!run?.wrote.some((m) => m.type === "user"), "no message, so no model call");
+  assert.deepEqual(
+    run?.wrote
+      .filter((m) => m.type === "control_request")
+      .map((m) => (m.request as Message).subtype),
+    ["initialize", "mcp_status", "mcp_status"],
+  );
+  await closed(run);
 });

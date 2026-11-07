@@ -95,7 +95,14 @@ test("the window chat's window namespace adds within its budget, in its module o
     namespaces: {},
     overview: async () => ({ view: null, items: [] }),
   }).dts;
-  const added = shape(chat) - shape(plain);
+  // source.off, in the window chat too (decision 0059), has its own budget:
+  // 156 bytes in OA-275, the hub's to approve.
+  const turning = 160;
+  const start = chat.indexOf("declare const source: {");
+  const off = chat.slice(start, chat.indexOf("\n};\n", start) + 4);
+  assert.match(off, /\n {2}off\(input: \{ kind: string \}\): void;\n/);
+  assert.ok(shape(off) <= turning, `source.off adds ${shape(off)} bytes`);
+  const added = shape(chat.replace(off, "")) - shape(plain);
   assert.ok(added > 0 && added <= window, `window adds ${added} bytes`);
 });
 
@@ -125,8 +132,8 @@ test("a waiting connection's preview and draft add within their own budget, in t
   const drafted = bindingsFor(region, { reader, namespaces: {}, overview, waiting }).dts;
   const added = shape(drafted) - shape(chat);
   assert.ok(added > 0 && added <= drafting, `drafting adds ${added} bytes`);
-  // No waiting connection, no source namespace.
-  assert.doesNotMatch(chat, /declare const source/);
+  // No waiting connection, no preview and no drafts: only source.off.
+  assert.doesNotMatch(chat, /preview\(|configure\(/);
 });
 
 test("a waiting Sheets connection's draft, in its own form, typechecks in the window chat's module", async () => {

@@ -109,10 +109,13 @@ const expectations = {
   "exact-diff": object({ grader: literal("exact-diff"), golden: goldenPath }),
   "zero-mutations": object({ grader: literal("zero-mutations") }),
   // The calls a turn's intents apply as, in order, each on the case's own
-  // workstream: an action and, for one that takes items, which.
+  // workstream: an action and, for one that takes items, which; and the
+  // input's other fields it must have, such as the kind it turns off.
   intents: object({
     grader: literal("intents"),
-    calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemName)) })),
+    calls: atLeastOne(
+      object({ action: text, items: optional(atLeastOne(itemName)), with: optional(record(text)) }),
+    ),
   }),
   // A plan from nothing: the run's mutations are creates into `kind` alone,
   // `epics` epics and from `stories.atLeast` to `stories.atMost` stories,

@@ -1,0 +1,21 @@
+{
+  "id": "off-slack-window",
+  "split": "train",
+  "kind": 2,
+  "window": {
+    "workstreams": [
+      {
+        "name": "Weather",
+        "region": "weather-epic"
+      }
+    ],
+    "at": "2026-10-01T12:00:00.000Z"
+  },
+  "prompt": "Stop showing me Slack.",
+  "expect": [
+    {
+      "grader": "intents",
+      "calls": [{ "action": "source.off", "with": { "kind": "slack" } }]
+    }
+  ]
+}

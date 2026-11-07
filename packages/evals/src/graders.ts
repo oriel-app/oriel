@@ -343,9 +343,13 @@ export function gradeDrafts(
 
 // The calls the turn's intents applied as, in order: each the expected
 // action, on the case's own workstream where it names one, with the same
-// items in any order; and nothing written.
+// items in any order and the fields `with` names; and nothing written.
 export function gradeIntents(
-  expected: readonly { action: string; items?: readonly string[] }[],
+  expected: readonly {
+    action: string;
+    items?: readonly string[];
+    with?: Readonly<Record<string, string>>;
+  }[],
   actual: readonly AppliedCall[],
   mutations: readonly CapturedMutation[],
   workstream: string,
@@ -360,7 +364,8 @@ export function gradeIntents(
       const wrong =
         call.action !== want.action ||
         ("workstream" in call.input && call.input["workstream"] !== workstream) ||
-        (want.items !== undefined && !(Array.isArray(items) && same(items, want.items)));
+        (want.items !== undefined && !(Array.isArray(items) && same(items, want.items))) ||
+        Object.entries(want.with ?? {}).some(([key, value]) => call.input[key] !== value);
       return wrong
         ? [`expected ${want.action} ${JSON.stringify(want.items ?? [])}, got ${callLine(call)}`]
         : [];

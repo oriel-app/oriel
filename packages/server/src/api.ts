@@ -129,6 +129,9 @@ export type ApiDeps = {
   // now, and whether there's a folder picker. Connecting, configuring,
   // syncing and disconnecting one are actions (decision 0049).
   connections(): ConnectionsView;
+  // Asks the agent picked in Settings for its MCP servers again, as Sync
+  // does (decision 0059), once that look ends.
+  lookForServers(): Promise<void>;
   // A connector's pick step's list, from what its steps before it gave,
   // before anything is connected: a read, which keeps nothing.
   pick(
@@ -923,6 +926,29 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const configured = await deps.dispatch("source.configure", input, user);
         if (!("connection" in configured)) throw new Refused(400, configured.problem);
         return json(200, configured);
+      },
+    },
+    {
+      // Looks for the person's source servers again, as pressing sync does
+      // (decision 0059): a read of the agent's own list, which turns nothing
+      // on. The reply is every connection, with what it found.
+      method: "POST",
+      path: at("/servers/look"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        await deps.lookForServers();
+        return json(200, deps.connections());
+      },
+    },
+    {
+      // The overview's card of what Oriel found, dismissed: it shows again
+      // only for another change.
+      method: "POST",
+      path: at("/servers/dismiss"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        await deps.dispatch("source.dismiss-found", {}, user);
+        return json(200, deps.connections());
       },
     },
     {

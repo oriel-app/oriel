@@ -17,6 +17,7 @@ import {
   openOf,
   stepOf,
 } from "./connections.ts";
+import { FoundRows } from "./found.tsx";
 import { type Dispatch, Mark, plural } from "./parts.tsx";
 import type { Model } from "./root.ts";
 import type { SetupMsg, SetupScreen } from "./setup.ts";
@@ -49,6 +50,8 @@ export function SetupPage(props: { model: Model; dispatch: Dispatch }) {
           <OtherWays model={model} send={send} show={show} dispatch={dispatch} />
         ) : setup.screen === "connect" ? (
           <Connect model={model} dispatch={dispatch} show={show} />
+        ) : setup.screen === "found" ? (
+          <Found model={model} dispatch={dispatch} show={show} />
         ) : setup.screen === "reading" ? (
           <Reading model={model} dispatch={dispatch} send={send} show={show} />
         ) : (
@@ -438,6 +441,78 @@ function sourceOf(model: Model, kind: string) {
     state: connectState(model.connections, kind),
   };
 }
+// What Oriel found in the person's agent (decision 0059): each source
+// server it knows, with what it turns on and a click to turn that on; for a
+// kind with none, the server that would, and its vendor's instructions.
+// Then Your work, which starts on the stand-in tracker if no tracker is on.
+function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): void }) {
+  const { model, dispatch, show } = props;
+  const servers = model.connections.view?.servers ?? null;
+  const agent = servers?.agent ?? "your AI";
+  const sendConnections = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
+  return (
+    <>
+      <h1 class="setup-title">See what Oriel found</h1>
+      <p class="setup-lede">
+        Oriel reads your work through the MCP servers already in {agent}. It never adds or signs in
+        to one; turn on what you want Oriel to read.
+      </p>
+      {servers === null || (servers.looking && servers.found.length === 0) ? (
+        <p class="cli-line cli-waiting" role="status">
+          <span class="spinner" aria-hidden="true" />
+          Looking in {agent}…
+        </p>
+      ) : servers.found.length > 0 ? (
+        <FoundRows
+          found={servers.found}
+          connections={model.connections}
+          connectors={model.connectors}
+          dispatch={dispatch}
+        />
+      ) : (
+        <p class="setup-lede">
+          Oriel didn't find a server it knows in {agent}. You can add one later, in {agent}.
+        </p>
+      )}
+      {servers?.problem && (
+        <p class="setup-problem" role="alert">
+          {servers.problem}
+        </p>
+      )}
+      {model.connections.switchProblem && (
+        <p class="setup-problem" role="alert">
+          {model.connections.switchProblem}
+        </p>
+      )}
+      {servers && servers.missing.length > 0 && (
+        <ul class="found-missing" aria-label={`Not found in ${agent}`}>
+          {servers.missing.map((each) => (
+            <li key={each.kind}>
+              {model.connectors[each.kind]?.name ?? each.kind}: add {each.server} to {agent}.{" "}
+              <a href={each.instructions} target="_blank" rel="noreferrer">
+                How to add it
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Foot>
+        <button
+          type="button"
+          class="button primary setup-next"
+          onClick={() => {
+            // Seen here, so the overview's card doesn't say it again.
+            if (servers?.card) sendConnections({ type: "foundDismissed" });
+            show("work");
+          }}
+        >
+          Continue
+        </button>
+      </Foot>
+    </>
+  );
+}
+
 type Source = NonNullable<ReturnType<typeof sourceOf>>;
 
 const sources = (model: Model): Source[] =>

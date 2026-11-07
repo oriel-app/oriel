@@ -70,6 +70,7 @@ function world() {
     applied: () => assert.fail("nothing applies here"),
     edit: () => assert.fail("nothing is edited here"),
     sources: unreached("sources"),
+    kinds: unreached("kinds"),
     markSeen: () => assert.fail("the overview isn't left here"),
     drafted: () => null,
     running: () => false,

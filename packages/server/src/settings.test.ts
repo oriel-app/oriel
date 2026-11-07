@@ -232,3 +232,49 @@ test("an approval stays on its thread by default, goes on once picked, and anyth
   });
   assert.equal(settingsChange({ afterApprove: "elsewhere" }).ok, false);
 });
+
+test("picking another agent asks it for its servers; a change of model on the same one doesn't", async () => {
+  const store = memorySettings();
+  const listed: string[] = [];
+  const chooser = models({
+    key: null,
+    env: { PATH: "" },
+    check: async () => ({ ok: true, cli: { path: "/usr/bin/claude", version: "2.1.314" } }),
+    checkCodex: async () => ({
+      ok: true,
+      cli: { path: "/usr/bin/codex", version: "0.166.0" },
+      models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true }],
+      account: { plan: null, email: null, personal: false },
+    }),
+    servers: async (_cli, kind) => {
+      listed.push(kind);
+      return [];
+    },
+  });
+  await chooser.look(store.get());
+  let changed = 0;
+  let synced = 0;
+  const service = settingsService({
+    store,
+    models: chooser,
+    themes: ["graphite"],
+    cliPaths: false,
+    picked: quiet,
+    agentChanged: () => (changed += 1),
+    synced: () => (synced += 1),
+  });
+  await service.change({ model: { provider: "claude-code", model: "claude-sonnet-5-5" } });
+  assert.equal(changed, 0, "Claude Code ran threads already");
+  await service.change({ model: { provider: "codex", model: "gpt-6.1-sol" } });
+  assert.equal(changed, 1);
+  assert.deepEqual(await chooser.servers(store.get()), {
+    agent: { id: "codex", name: "Codex" },
+    found: [],
+  });
+  assert.deepEqual(listed, ["codex"]);
+  // How often sync runs is kept, every so many minutes or on open and sync.
+  assert.equal((await service.change({ sourceSync: 30 })).sourceSync, 30);
+  assert.equal(synced, 1);
+  assert.equal(settingsChange({ sourceSync: 2 }).ok, false);
+  assert.equal(settingsChange({ sourceSync: null }).ok, true);
+});

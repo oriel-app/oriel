@@ -11,7 +11,7 @@ import { noAi, initSettings } from "../src/settings.ts";
 import type { CliView, SetupView } from "../src/view.ts";
 import { questionsFrom } from "../src/window-chat.ts";
 import { blankForm } from "../src/connections.ts";
-import { connectionView, connectorViews, overviewView } from "../testing.ts";
+import { connectionView, connectorViews, overviewView, serversView } from "../testing.ts";
 
 function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   let effects: Effect[] = [];
@@ -75,7 +75,7 @@ test("the first run loads what Oriel found, then looks again, and opens where it
   assert.deepEqual([back.setup.screen, back.setup.resumed], ["work", true]);
 });
 
-test("Continue runs the test turn once, and the AI chosen moves on to your work", () => {
+test("Continue runs the test turn once, and the AI chosen moves on to what Oriel found in it", () => {
   const [model] = run(init({ page: "setup" })[0], replied("setup", view()));
   const [testing, effects] = run(model, { type: "setup", msg: { type: "continueClicked" } });
   assert.deepEqual(posts(effects), [["/api/setup/ai", { ai: "claude-code" }]]);
@@ -95,7 +95,10 @@ test("Continue runs the test turn once, and the AI chosen moves on to your work"
   });
   assert.deepEqual(posts(again), [["/api/setup/ai", { ai: "claude-code", anyway: true }]]);
   const [chosen, loads] = run(anyway, replied("setupAi", view({}, { ai: "done" })));
-  assert.equal(chosen.setup.screen, "work");
+  // What Oriel found in the AI comes next, from a fresh look at it
+  // (decision 0059), then Your work.
+  assert.equal(chosen.setup.screen, "found");
+  assert.ok(posts(loads).some(([url]) => url === "/api/servers/look"));
   // Settings shows the AI chosen too.
   assert.ok(gets(loads).includes("/api/settings"));
 });
@@ -152,7 +155,14 @@ test("the last screen ends on the overview once a source is read, unless one fai
     init({ page: "setup" })[0],
     replied("setup", view({}, { ai: "done" })),
     replied("connectors", { connectors: connectorViews }),
-    replied("connections", { connections: [], connectable: ["jira"], refused: {}, picker: true }),
+    replied("connections", {
+      connections: [],
+      connectable: ["jira"],
+      refused: {},
+      picker: true,
+      standingIn: [],
+      servers: serversView(),
+    }),
     { type: "setup", msg: { type: "workDone" } },
   );
   assert.equal(model.setup.screen, "reading");
@@ -271,6 +281,7 @@ test("with no AI set up, the ask bar says so, but not before Oriel has looked", 
       asksBeforeQuitting: false,
       timeFormat: "relative" as const,
       afterApprove: "stay" as const,
+      sourceSync: null,
     },
   });
   assert.equal(noAi(settings(0, "missing")), true);

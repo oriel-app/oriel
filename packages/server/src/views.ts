@@ -58,6 +58,9 @@ export type ViewDeps = {
   threads: ThreadStore;
   // The index's live records, from every source.
   records: () => readonly IndexRecord[];
+  // Whether a workstream shows a member: not one of a kind turned off
+  // (decision 0059), which it keeps for when it's on again. All, if absent.
+  shown?: (id: string) => boolean;
   presentations: Presentations;
   // The instant item rows count idle days back from.
   asOf: () => Instant;
@@ -280,6 +283,7 @@ export function views(deps: ViewDeps) {
     const { find } = lookup();
     const asOf = deps.asOf();
     return items
+      .filter((member) => deps.shown?.(member.id) ?? true)
       .map((member) => {
         const record = find(member);
         return {
@@ -321,7 +325,7 @@ export function views(deps: ViewDeps) {
           ? { kind: "cluster", grouping: origin.grouping, label: workstream.name || null }
           : { kind: origin.kind },
       version: workstream.version,
-      size: latest?.items.length ?? 0,
+      size: (latest?.items ?? []).filter((member) => deps.shown?.(member.id) ?? true).length,
       createdAt: workstream.createdAt,
       threads: counts(threads.ofWorkstream(id, deps.now())),
       done: doneOf(id),

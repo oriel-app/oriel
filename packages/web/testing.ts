@@ -20,6 +20,7 @@ import type {
   OverviewView,
   SearchResultView,
   SettingsView,
+  SourceServersView,
   ThreadSummaryView,
   ThreadView,
   WindowView,
@@ -218,6 +219,20 @@ export const connectionView = (over: Partial<ConnectionView> = {}): ConnectionVi
   report: [],
   state: "open",
   flagged: false,
+  own: false,
+  ...over,
+});
+
+// What Oriel found in the person's agent: nothing yet, unless overridden.
+export const serversView = (over: Partial<SourceServersView> = {}): SourceServersView => ({
+  agent: "Claude Code",
+  looking: false,
+  problem: null,
+  found: [],
+  kinds: [],
+  missing: [],
+  card: null,
+  sync: { every: null, plan: true },
   ...over,
 });
 
@@ -329,6 +344,7 @@ export const settingsView = (over: Partial<SettingsView> = {}): SettingsView => 
   asksBeforeQuitting: false,
   timeFormat: "relative",
   afterApprove: "stay",
+  sourceSync: null,
   ...over,
 });
 

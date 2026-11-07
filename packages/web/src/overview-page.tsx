@@ -37,6 +37,7 @@ import type {
 } from "./view.ts";
 import { ConnectCards } from "./connect-steps.tsx";
 import { openConnections, standingIn } from "./connections.ts";
+import { FoundCard } from "./found.tsx";
 import { StatusBar } from "./window-page.tsx";
 import { AskBar } from "./window-chat-view.tsx";
 import { NoticedStrip, PinnedStrip } from "./noticed-strip.tsx";
@@ -93,6 +94,7 @@ export function OverviewPage(props: {
         plans={standingIn(connectors, connections).length > 0}
         dispatch={dispatch}
       />
+      <FoundCard connections={connections} connectors={connectors} dispatch={dispatch} />
       <ConnectCards connections={connections} connectors={connectors} dispatch={dispatch} />
       <NoticedStrip
         view={model.noticed}
