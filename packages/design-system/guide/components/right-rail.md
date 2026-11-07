@@ -337,7 +337,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 - **Disabled** is `aria-disabled="true"` on Sync now, at 0.5, while a turn runs or a sync is under way (`.sync-now[aria-disabled]` in `window.css`). It stays in the tab order so its tooltip can say why; clicks do nothing.
 - **Busy**: syncing sets `aria-busy="true"` too, and the icon pulses (`.sync-now[aria-busy] .icon` in `window.css`), and holds still under reduced motion. The tooltip says "Syncing…".
 - **Stale** is the behind note itself: the region's version is older than the workstream's.
-- **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1". A new thread's rail says "No items" and "No workstream yet: your first message makes one, with this thread. What a change set here creates joins it." The behind note wins over the empty one.
+- **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1". A new thread's rail says "No items" and "No workstream yet: your first message makes one, with this thread. What a change set here creates joins it." The behind note wins over the empty one. Oriel's thread for moving the stand-in tracker's issues into a tracker that turned on says, in place of the empty note, "What this change creates goes to the workstreams that hold the issues it makes again.", and once it applied, "Its items went to {workstreams}." (decision 0059, OA-278); its own workstream then ends, done.
 - **Error** and **loading** have no look of their own: the rail comes with the thread's page, which has its own loading and error lines.
 - **Active** isn't styled.
 
