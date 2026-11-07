@@ -74,6 +74,7 @@ import {
   runStore,
   challengeStore,
   sourceKindStore,
+  type StandInMove,
   outsideToolStore,
   type StoredEvent,
   telemetryStore,
@@ -567,6 +568,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     let current: Promise<Calling | null> | null = null;
     let quiet: ReturnType<typeof setTimeout> | null = null;
     let agent: string | null = null;
+    // Calls in flight: it stops only once none is.
+    let active = 0;
     const close = () => {
       if (quiet) clearTimeout(quiet);
       quiet = null;
@@ -576,6 +579,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     };
     const call: ToolCaller = async (each) => {
       if (quiet) clearTimeout(quiet);
+      quiet = null;
+      active += 1;
       const at = (current ??= callServer(server.found, tools));
       try {
         const calling = await at;
@@ -584,11 +589,14 @@ export async function createApp(options: AppOptions): Promise<App> {
         return await calling.calls.call(each);
       } catch (error) {
         // A process that failed a call starts afresh for the next.
-        if (current === at) close();
+        if ((current as Promise<Calling | null> | null) === at && active === 1) close();
         throw error;
       } finally {
-        quiet = setTimeout(close, 20_000);
-        quiet.unref();
+        active -= 1;
+        if (active === 0 && (current as Promise<Calling | null> | null) !== null) {
+          quiet = setTimeout(close, 20_000);
+          quiet.unref();
+        }
       }
     };
     return { call, close, agent: () => agent };
@@ -1876,7 +1884,12 @@ export async function createApp(options: AppOptions): Promise<App> {
   const lookEvery = () => {
     stopLooking();
     const minutes = store.get().sourceSync;
-    stopLooking = minutes === null ? () => {} : every(minutes * 60_000, () => void switches.look());
+    // Each tick looks, then syncs every kind on through its server.
+    const tick = async () => {
+      await switches.look();
+      for (const kind of throughOpen.keys()) await syncKind(kind);
+    };
+    stopLooking = minutes === null ? () => {} : every(minutes * 60_000, () => void tick());
   };
   lookEvery();
   void switches.look();
@@ -2127,39 +2140,50 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
     }
   };
-  // Once Oriel's offer applied in full, every workstream holds the new
-  // items in place of the stand-in's, and the stand-in steps aside.
-  const moved = async (set: ChangeSet) => {
-    const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
-    if (!move || move.movedAt || set.mutations.some((m) => m.status !== "applied")) return false;
-    const by = { kind: "change-set", changeSetId: set.id } as const;
-    const into = new Map(
+  // The stand-in's item each create of a move made again, by its ID, to the
+  // item it made.
+  const pairsOf = (set: ChangeSet, move: StandInMove) =>
+    new Map(
       set.mutations.flatMap((m) => {
         const from = m.ref ? move.items[m.ref] : undefined;
-        return from && m.applied ? [[from, m.applied.item.id] as const] : [];
+        return from && m.applied ? [[from as string, m.applied.item.id] as const] : [];
       }),
     );
+  // Every workstream holding one of `pairs`' items holds its pair in its
+  // place.
+  const swapMembers = async (set: ChangeSet, pairs: ReadonlyMap<string, ItemId>) => {
+    const by = { kind: "change-set", changeSetId: set.id } as const;
     for (const workstream of workstreams.list(workspaceId)) {
       const region = workstreams.region(workstream.id, workstream.version);
-      const held = (region?.items ?? []).filter((member) => into.has(member.id));
+      const held = (region?.items ?? []).filter((member) => pairs.has(member.id));
       if (!held.length) continue;
-      await dispatch(
-        "workstream.add",
-        {
-          workstream: workstream.id,
-          items: held.flatMap((member) => {
-            const made = into.get(member.id);
-            return made ? [made] : [];
-          }),
-        },
-        by,
-      );
+      const items = held.flatMap((member) => {
+        const pair = pairs.get(member.id);
+        return pair ? [pair] : [];
+      });
+      await dispatch("workstream.add", { workstream: workstream.id, items }, by);
       await dispatch(
         "workstream.remove",
         { workstream: workstream.id, items: held.map((member) => member.id) },
         by,
       );
     }
+  };
+  // Once Oriel's offer applied in full, and every issue of the stand-in has
+  // its new item, every workstream holds the new items in place of the
+  // stand-in's, and the stand-in steps aside. One the person left out of
+  // it, or one made since, stays only in the stand-in, which stays on.
+  const moved = async (set: ChangeSet) => {
+    const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
+    if (!move || move.movedAt || set.mutations.some((m) => m.status !== "applied")) return false;
+    const pairs = pairsOf(set, move);
+    const open = openedOf(move.standIn as SourceKind);
+    const left = (open ? recordsOf(open) : []).filter(
+      (record) =>
+        (record.facets.kind === "epic" || record.facets.kind === "story") && !pairs.has(record.id),
+    );
+    if (left.length) return false;
+    await swapMembers(set, pairs);
     kindStore.moved(workspaceId, set.id, now());
     emit({
       name: "standin.moving",
@@ -2167,13 +2191,28 @@ export async function createApp(options: AppOptions): Promise<App> {
       workspaceId,
       source: move.into as SourceKind,
       step: "moved",
-      items: into.size,
+      items: pairs.size,
     });
     await betweenSyncs(async () => {
       await standIns();
       sets.rewire(wiring());
     });
     return true;
+  };
+  // A move reverted: its workstreams hold the stand-in's items again, and
+  // the stand-in is on again beside the kind, as when the move was offered.
+  const unmoved = async (set: ChangeSet) => {
+    const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
+    if (!move?.movedAt) return;
+    const back = new Map(
+      [...pairsOf(set, move)].map(([from, to]) => [to as string, from as ItemId] as const),
+    );
+    kindStore.moved(workspaceId, set.id, null);
+    await betweenSyncs(async () => {
+      await standIns();
+      sets.rewire(wiring());
+    });
+    await swapMembers(set, back);
   };
   // Who hears each change a call publishes, besides the window: the MCP
   // door's subscriptions.
@@ -2398,8 +2437,11 @@ export async function createApp(options: AppOptions): Promise<App> {
         const each = byPrefix.get(prefix);
         if (each) await syncOpen(each, !each.opened.incremental);
       });
-    // A move's new items are in the index now, for its workstreams to hold.
+    // A move's new items are in the index now, for its workstreams to hold;
+    // a revert of one gives them back the stand-in's.
     if (moving) await moved(set);
+    const original = set.revertOf ? await sets.get(set.revertOf) : null;
+    if (original) await unmoved(original);
   };
 
   // A live connection as the window shows it: open, or shut since its

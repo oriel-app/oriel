@@ -36,6 +36,7 @@ async function world(
     script?: Script;
     // Changes an answer on its way back, as a server that changed might.
     answer?: (call: ToolCall, answer: unknown) => unknown;
+    every?: (ms: number, then: () => void) => () => void;
   } = {},
 ) {
   const site = standInSite();
@@ -45,6 +46,7 @@ async function world(
   const agent = fakeAgent(options.found ?? (() => [atlassian()]));
   const it = await testApp(t, {
     ...(options.live ? { live: true } : { connect: {} }),
+    ...(options.every ? { every: options.every } : {}),
     discover: agent.discover,
     plan: () => [{ run: "script" }],
     scripts: { script: options.script ?? (async () => ({ value: null })) },
@@ -273,4 +275,17 @@ test("turned on through its server, Jira is offered the stand-in's issues, and m
     ["jira"],
     "the stand-in steps aside",
   );
+});
+
+test("set to sync every few minutes, each tick syncs Jira through its server", async (t) => {
+  const ticks: (() => void)[] = [];
+  const it = await world(t, { every: (_ms, then) => (ticks.push(then), () => {}) });
+  await it.turnOn();
+  assert.equal((await it.post("/api/settings", { sourceSync: 15 })).status, 200);
+  const before = it.made.filter((each) => each.call.tool === "searchJiraIssuesUsingJql").length;
+  ticks.at(-1)?.();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await it.app.settled();
+  const after = it.made.filter((each) => each.call.tool === "searchJiraIssuesUsingJql").length;
+  assert.ok(after > before, "the tick synced through the server");
 });

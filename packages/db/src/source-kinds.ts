@@ -105,7 +105,8 @@ export function sourceKindStore(db: DatabaseSync) {
         at,
       );
     },
-    moved(workspaceId: Ulid, changeSetId: Ulid, at: Instant): void {
+    // When it applied, or null once reverted.
+    moved(workspaceId: Ulid, changeSetId: Ulid, at: Instant | null): void {
       markMoved.run(at, workspaceId, changeSetId);
     },
     // Each kind a person or the agent chose for, by kind.

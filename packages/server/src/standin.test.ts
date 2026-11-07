@@ -286,6 +286,60 @@ test("rejected, Oriel's offer to move the stand-in's issues leaves both trackers
   assert.equal(it.site?.issue("SYN-900"), null, "nothing was made in Jira");
 });
 
+test("a move with an issue left out keeps the stand-in on, for the issue still only there", async (t) => {
+  const it = await fresh(t);
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
+  const entry = view.entries.find((each) => each.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  await it.approve(entry.changeSetId);
+  assert.equal((await it.connect("jira", details)).status, 200);
+  const offer = await moving(it);
+  const diff = json<DiffView>(await it.post(`/api/change-sets/${offer.changeSetId}/diff`));
+  const last = diff.lines.at(-1)?.mutationId;
+  assert.ok(last);
+  assert.equal(
+    (await it.post(`/api/change-sets/${offer.changeSetId}/edit`, { remove: [last] })).status,
+    200,
+  );
+  assert.equal((await it.approve(offer.changeSetId)).status, 200);
+  assert.deepEqual(
+    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
+      (each) => each.kind,
+    ),
+    ["jira", "tracker"],
+    "the left-out story stays reachable, in the stand-in",
+  );
+});
+
+test("a move reverted puts the stand-in back on, with its workstream holding its issues again", async (t) => {
+  const it = await fresh(t);
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
+  const entry = view.entries.find((each) => each.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  await it.approve(entry.changeSetId);
+  assert.equal((await it.connect("jira", details)).status, 200);
+  const offer = await moving(it);
+  assert.equal((await it.approve(offer.changeSetId)).status, 200);
+  const kinds = async () =>
+    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
+      (each) => each.kind,
+    );
+  assert.deepEqual(await kinds(), ["jira"]);
+  it.advance(1000);
+  const reverted = await it.post(`/api/change-sets/${offer.changeSetId}/revert`);
+  assert.equal(reverted.status, 200);
+  // Made, the revert is a change set of its own: until it applies, the move
+  // stands.
+  assert.deepEqual(await kinds(), ["jira"]);
+  const { revert } = json<{ revert: string }>(reverted);
+  assert.equal((await it.approve(revert)).status, 200);
+  assert.deepEqual(await kinds(), ["jira", "tracker"]);
+  const overview = json<OverviewView>(await it.get("/api/overview"));
+  assert.ok(
+    overview.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Tracker"),
+  );
+});
+
 test("the stand-in shows as a writable connector with no connect steps", async (t) => {
   const it = await fresh(t);
   const { connectors } = json<{ connectors: ConnectorView[] }>(await it.get("/api/connectors"));

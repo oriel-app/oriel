@@ -125,7 +125,14 @@ test("each tool's answer reads as REST's body, from its text or its structured c
   assert.equal(bodyOf("getJiraIssue", failed("Issue does not exist")).status, 404);
   assert.equal(bodyOf("getJiraIssue", failed("You do not have permission")).status, 403);
   assert.equal(bodyOf("getJiraIssue", failed("Unauthorized: sign in again")).status, 401);
-  assert.equal(bodyOf("editJiraIssue", failed("Field 'summary' is locked")).status, 400);
+  assert.equal(bodyOf("getJiraIssue", failed("Something went wrong")).status, 400);
+  // A write that failed for no reason it gives may have landed.
+  assert.equal(bodyOf("editJiraIssue", failed("Something went wrong"), true).status, 502);
+  assert.equal(bodyOf("createJiraIssue", failed("Jira answered 500."), true).status, 500);
+  assert.equal(
+    bodyOf("editJiraIssue", failed("Jira answered 400. Field is locked"), true).status,
+    400,
+  );
   const site = siteOf(text([{ id: "c1", url: "https://acme.atlassian.net/", name: "acme" }]), null);
   assert.deepEqual(site, { cloudId: "c1", url: "https://acme.atlassian.net", name: "acme" });
 });
@@ -159,6 +166,13 @@ test("a search that says more remain with no way to them fails closed, as Atlass
   assert.throws(() => searchBody(capped), ServerUnreadable);
   assert.throws(() => searchBody({ issues: [], isLast: false }), ServerUnreadable);
   assert.throws(() => searchBody({ results: [] }), ServerUnreadable);
+  // A page that doesn't say whether more remain, or an empty cursor.
+  assert.throws(() => searchBody({ issues: { nodes: [], totalCount: 85 } }), ServerUnreadable);
+  assert.throws(
+    () => searchBody({ issues: { nodes: [1], pageInfo: { hasNextPage: true, endCursor: "" } } }),
+    ServerUnreadable,
+  );
+  assert.throws(() => searchBody({ issues: [1], nextPageToken: "" }), ServerUnreadable);
 });
 
 test("a sync whose answer isn't JSON stops before it gives a page, naming the server", async () => {

@@ -89,23 +89,28 @@ const textOf = (answer: ToolAnswer): string =>
 
 // A failed tool's words as the status REST would have answered, so the
 // source reads a missing issue as gone and the writer a refusal as nothing
-// changed. A refusal is the default: nothing says it landed.
-function statusOf(words: string): number {
-  if (/\b(401|unauthori[sz]ed|not authenticated|sign(ed)? ?in)\b/i.test(words)) return 401;
-  if (/\b(404|does not exist|not found|no such|can ?not find)\b/i.test(words)) return 404;
-  if (/\b(403|forbidden|permission)\b/i.test(words)) return 403;
-  if (/\b(429|rate limit|too many requests)\b/i.test(words)) return 429;
-  return 400;
+// changed. Only words that say so are a refusal: a write that failed for a
+// reason it doesn't give may have landed, so it reads as a server's error;
+// a read that did reads as a refusal, which stops it either way.
+function statusOf(words: string, write: boolean): number {
+  // A status as the words name one, never a number an issue's key holds.
+  const code = /\b(?:status|http|answered|code|error)\W{0,3}([45]\d\d)\b/i.exec(words)?.[1];
+  if (code) return Number(code);
+  if (/\b(unauthori[sz]ed|not authenticated|sign(ed)? ?in)\b/i.test(words)) return 401;
+  if (/\b(does not exist|not found|no such|can ?not find)\b/i.test(words)) return 404;
+  if (/\b(forbidden|permission)\b/i.test(words)) return 403;
+  if (/\b(rate limit|too many requests)\b/i.test(words)) return 429;
+  return write ? 502 : 400;
 }
 
 // A tool's answer as a REST response: its structured content, or the JSON
 // of its text, or, for a failed one, the status its words mean.
-export function bodyOf(tool: string, answer: ToolAnswer): JiraResponse {
+export function bodyOf(tool: string, answer: ToolAnswer, write = false): JiraResponse {
   if (!isObject(answer) || !Array.isArray(answer.content))
     throw new ServerUnreadable(`${tool} answered with no content`);
   const words = textOf(answer);
   if (answer.isError === true)
-    return { status: statusOf(words), body: { errorMessages: [words.slice(0, 300)] } };
+    return { status: statusOf(words, write), body: { errorMessages: [words.slice(0, 300)] } };
   if (answer.structuredContent !== undefined && answer.structuredContent !== null)
     return { status: 200, body: answer.structuredContent };
   try {
@@ -129,21 +134,28 @@ const listOf = (body: unknown, key: string): unknown[] | null =>
 // them can't be read: a sweep that stopped there would take the rest away.
 export function searchBody(body: unknown): unknown {
   if (!isObject(body)) throw new ServerUnreadable(`${t.search} answered with no issues`);
+  const more = () =>
+    new ServerUnreadable(`${t.search} said more issues remain, with no way to them`);
   if (Array.isArray(body.issues)) {
-    const token = typeof body.nextPageToken === "string" ? body.nextPageToken : null;
-    if (token === null && body.isLast === false)
-      throw new ServerUnreadable(`${t.search} said more issues remain, with no way to them`);
+    const given = body.nextPageToken;
+    if (given !== undefined && given !== null && (typeof given !== "string" || given === ""))
+      throw more();
+    const token = typeof given === "string" ? given : null;
+    if (token === null && body.isLast === false) throw more();
     return { issues: body.issues, nextPageToken: token, isLast: token === null };
   }
   const page = isObject(body.issues) ? body.issues : null;
-  if (!page || !Array.isArray(page.nodes))
+  if (!page || !Array.isArray(page.nodes) || !isObject(page.pageInfo))
     throw new ServerUnreadable(`${t.search} answered with no issues`);
-  const info = isObject(page.pageInfo) ? page.pageInfo : {};
+  const info = page.pageInfo;
+  if (typeof info.hasNextPage !== "boolean")
+    throw new ServerUnreadable(`${t.search} didn't say whether more issues remain`);
   const token =
-    info.hasNextPage === true && typeof info.endCursor === "string" ? info.endCursor : null;
+    info.hasNextPage && typeof info.endCursor === "string" && info.endCursor !== ""
+      ? info.endCursor
+      : null;
   const remaining = typeof page.remainingCount === "number" ? page.remainingCount : 0;
-  if (token === null && (info.hasNextPage === true || remaining > 0))
-    throw new ServerUnreadable(`${t.search} said more issues remain, with no way to them`);
+  if (token === null && (info.hasNextPage || remaining > 0)) throw more();
   return { issues: page.nodes, nextPageToken: token, isLast: token === null };
 }
 
@@ -186,14 +198,18 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
   const { cloudId } = options;
   const typeNames = new Map<string, string>();
 
-  const ask = async (caller: ToolCaller | undefined, call: ToolCall): Promise<JiraResponse> => {
+  const ask = async (
+    caller: ToolCaller | undefined,
+    call: ToolCall,
+    write: boolean,
+  ): Promise<JiraResponse> => {
     if (!caller) throw new Error(`refusing a write on the read side: ${call.tool}`);
-    return bodyOf(call.tool, await caller(call));
+    return bodyOf(call.tool, await caller(call), write);
   };
   const read = (tool: string, args: Record<string, unknown>) =>
-    ask(options.read, { tool, args: { cloudId, ...args } });
+    ask(options.read, { tool, args: { cloudId, ...args } }, false);
   const write = (tool: string, args: Record<string, unknown>) =>
-    ask(options.write, { tool, args: { cloudId, ...args } });
+    ask(options.write, { tool, args: { cloudId, ...args } }, true);
   // A read whose answer is reshaped into REST's, unless it failed.
   const reshaped = async (
     response: Promise<JiraResponse>,
