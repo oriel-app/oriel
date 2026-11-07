@@ -25,7 +25,9 @@ Inside the page:
 
 ### One top line
 
-`--inset-top` (`--space-3`) and `--head-row` (2rem) put the first line of every column at the same height: the sidebar's head, a page's title, a thread's rail and the panel's head. "Every column's first line: how far down it starts, and how tall it is, its contents centred, so the sidebar, the page, the rail and the panel share one top line" (`--inset-top` in `window.css`). A new column's first row should be `min-height: var(--head-row)`, starting `--inset-top` down.
+`--inset-top` (`--space-3`) and `--head-row` (2rem) put the first line of every column at the same height: the sidebar's head, a thread's rail inside the page and the panel's head. "Every column's first line: how far down it starts, and how tall it is, its contents centred, so the sidebar, the page, the rail and the panel share one top line" (`--inset-top` in `window.css`). A new column's first row should be `min-height: var(--head-row)`, starting `--inset-top` down.
+
+The page column sets its own `--inset-top`: `--frame-room`, the [frame](/components/frame)'s band, the bead's resting height and `--space-4` (`.shell-main` in `window.css`). So every page's first line starts below where [the bead](/components/bead) rests, and a resting bead covers no page head. A page that starts `--inset-top` down gets this for free.
 
 `--slide-panel` (0.375rem) is how far the panel and the chat slide as they arrive. See [Motion](/foundations/motion).
 

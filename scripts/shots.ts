@@ -1785,15 +1785,29 @@ const scenes: Scene[] = [
     act: async (page) => {
       await approveIt(page);
       await page.locator(beadSays, { hasText: "Couldn't apply" }).waitFor();
-      // The room the bead makes grows the page as its padding glides in,
-      // and the thread's own scroll lands wherever the glide had got to, so
-      // once the padding is still the page goes to its top.
-      await page.evaluate(`(async () => {
-        await new Promise((frame) => requestAnimationFrame(() => requestAnimationFrame(frame)));
-        const main = document.querySelector(".shell-main");
-        await Promise.all(main.getAnimations().map((glide) => glide.finished));
-        scrollTo(0, 0);
+      // Cut short to fit a phone, its sentence ends in an ellipsis, and
+      // keeps every word for a screen reader, as the alert says it; its
+      // Dismiss is whole.
+      const said = await page.evaluate<{
+        words: string;
+        alert: string;
+        cut: boolean;
+        dismiss: boolean;
+      }>(`(() => {
+        const said = document.querySelector(".bead-layer .bead-said");
+        return {
+          words: said.textContent,
+          alert: document.querySelector(".bead-alert").textContent,
+          cut: said.scrollWidth > said.clientWidth,
+          dismiss: [...document.querySelectorAll(".bead-action")].every(
+            (action) => action.scrollWidth <= action.clientWidth,
+          ),
+        };
       })()`);
+      const narrow = (page.viewportSize()?.width ?? 0) <= 760;
+      if (said.words !== said.alert || (narrow && !said.cut) || !said.dismiss)
+        throw new Error(`The bead's failure lost words or its action: ${JSON.stringify(said)}`);
+      await page.evaluate("scrollTo(0, 0)");
     },
   },
   {
@@ -4115,6 +4129,9 @@ try {
         // scrolled to, which a scene's last step leaves to chance: shoot it
         // from the top, once it has stayed there for three frames.
         if (!scene.window) await page.evaluate(toTop);
+        // The bead moves on springs, not CSS, which a shot's disabled
+        // animations don't settle: it waits for the bead to rest.
+        await page.locator(".bead-wrap[data-moving]").waitFor({ state: "detached" });
         // The sidebar scrolls on its own, and a focus sometimes leaves it a
         // pixel or two down that no scene asked for.
         await page.evaluate(unnudged);

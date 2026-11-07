@@ -65,7 +65,9 @@ Beside the change, the Undo is an accent word at the end of the line that says w
 In the bead the same `UndoButton` takes the class `.bead-action` and, on the note ⌘Z undoes, shows the key:
 
 ```html specimen id=in-bead title="The same Undo, in the bead" height=96
-<div class="shell" style="--sidebar: 0rem">
+<div class="shell" style="--sidebar: 0rem; width: 564px; min-height: 0; height: 100vh">
+  <div class="shell-main" style="grid-column: 2"></div>
+  <div class="frame" style="right: auto; width: 560px"></div>
   <div
     class="bead-wrap"
     role="region"
@@ -73,14 +75,31 @@ In the bead the same `UndoButton` takes the class `.bead-action` and, on the not
     aria-keyshortcuts="F8"
     data-tone="note"
     data-count="1"
-    data-held
-    style="--w: 205px; --h: 34px"
+    style="right: auto; width: 560px; --bead-room: 458px"
   >
-    <div class="bead">
+    <svg class="bead-shape" aria-hidden="true">
+      <defs>
+        <filter
+          id="cast-in-bead"
+          filterUnits="userSpaceOnUse"
+          x="-100"
+          y="-100"
+          width="10000"
+          height="2000"
+        >
+          <feDropShadow dx="0" dy="1" stdDeviation="2.2" />
+        </filter>
+      </defs>
+      <path
+        filter="url(#cast-in-bead)"
+        d="M157.5,-2V0C164.68,0 170.5,5.82 170.5,13V28C170.5,36.84 177.66,44 186.5,44H373.5C382.34,44 389.5,36.84 389.5,28V13C389.5,5.82 395.32,0 402.5,0V-2Z"
+      />
+    </svg>
+    <div class="bead" style="left: 171px; clip-path: none">
       <div class="bead-layer" tabindex="-1">
         <div class="bead-row">
-          <span class="bead-said">Removed SYN-23</span>
-          <button
+          <span class="bead-said">Removed SYN-23</span
+          ><button
             type="button"
             class="bead-action"
             aria-label="Undo removing SYN-23"

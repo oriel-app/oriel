@@ -15,7 +15,7 @@ Oriel moves little. A dense tool read all day shouldn't make people wait for it,
 - `--duration-quick` (120ms): **a state**. Something changes where it is: a chevron turns, a switch flips, a hidden action fades in, a list dims while it reloads.
 - `--duration-move` (180ms): **a place**. Something travels or arrives: the item panel slides in, the window chat arrives, the sidebar folds, the drawer opens, a swiped row slides.
 - `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`): how a move settles, fast then gentle. Use it for anything that arrives.
-- `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a shape that changes** (decision 0056). Only [the bead](/components/bead) uses them, as it grows from a dot and changes shape between notes.
+- `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a small flourish** (decision 0056). Only [the bead](/components/bead) uses them, for its count's pop and its caught-up mark. Its shape moves on springs of its own, in script (see below).
 
 They're shared: no theme changes them. A rule may not write a duration as a literal, since Oriel's theme check fails it. Keyframe durations are the exception: the pulse's is the shared `--pulse` (1.6s), and the spinner's and the install bar's are literals. See [Drift](#drift).
 
@@ -33,10 +33,10 @@ tokens motion
 - **A swipe** (`.swipe-row` in `window.css`) slides a row left to show its actions. While a finger holds it, it follows at once with no transition.
 - **Chevrons** turn 90° when their disclosure opens, at quick speed.
 - **The switch** (`.switch` in `window.css`) slides its knob and fills its track, at quick speed with `--ease-out`.
-- **The bead** (`.bead` in `window.css`) shows as a dot for a moment, then grows on the spring, and changes shape between notes; its words come in with a 2px blur and go faster than they came, and arriving, they wait for the shape to settle and grow a little as they come (`.bead-wrap[data-arriving]`). Its times are `calc()` over the motion tokens. A failure settles with `--ease-out`, not the spring. Going, it shrinks back to the dot and fades. All caught up plays its one flourish once: the mark draws, its panes light, and a glint crosses it, in about 1.6s.
+- **The bead** is the one thing moved by script, on springs (`advance` in `packages/web/src/bead-motion.ts`; decision 0056, amended): it drops from the frame's band as a small bead, spreads to its note's width, and its words fade in, unblurring; height leads with a little overshoot, width follows, softer. A new note reflows it and swaps its words. Leaving, its words go first, it narrows back, and the band takes it back. At rest it's still, but for its swell under the pointer, and no animation frame runs. The springs step in whole ticks, so they land in the same place at any frame rate. All caught up plays its one flourish once: the mark draws, its panes light, and a glint crosses it, in about 1.6s. See [The bead](/components/bead#motion).
 - **Fades:** a hidden row action appearing, Browse's clusters dimming to 0.55 while a grouping loads, and Needs you's background flashing the accent tint once when the overview's count points at it.
 
-Entries use `@starting-style`: the panel and the chat are drawn at their start (transparent, offset) for their first frame, then transition to rest. There's no script. An engine without `@starting-style` (Safari before 17.5, Firefox before 129) just shows them at rest, which is fine.
+Entries use `@starting-style`: the panel and the chat are drawn at their start (transparent, offset) for their first frame, then transition to rest. There's no script, but for the bead. An engine without `@starting-style` (Safari before 17.5, Firefox before 129) just shows them at rest, which is fine.
 
 Every transition and animation in window.css now:
 
@@ -103,7 +103,7 @@ reduced-motion
 
 The block is the last thing in `window.css`, so it wins over every rule above it of the same weight; a rule written after it would win back. A new transition or animation that moves something must be added to this block, never to a block of its own. A fade or a colour change may stay.
 
-The bead (decision 0056) is in it: it only fades. It arrives at its size, swaps its words at once, shows its marks drawn and its panes lit, and fades out where it is, with no spring, no glint and no hairline, and the page's move to make room for it is instant.
+The bead (decision 0056, amended) reads the same query in script (`reducedMotion` in `packages/web/src/undo-stack.tsx`): it only fades. It arrives at its size, swaps its words at once, and fades out where it is, with no drop or spread. The block shows its marks drawn and its panes lit, with no glint.
 
 Two gaps:
 
