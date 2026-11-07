@@ -108,6 +108,11 @@ test("Slack on through its server syncs the person's channel with its read tools
   const connection = await it.connection("slack");
   assert.equal(connection?.about, "ferrowick-example.slack.com, through Slack's MCP server");
   assert.equal(connection?.through, "slack");
+  assert.equal(
+    connection?.state,
+    "open",
+    "it reads the channels the server lists, waiting for none",
+  );
   assert.ok((connection?.items ?? 0) > 10);
   assert.ok(
     it.made.every((each) => reads.includes(each.call.tool)),

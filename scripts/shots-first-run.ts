@@ -26,6 +26,8 @@ import type { Serving } from "../packages/server/src/serve.ts";
 import { askTiny, testKnown } from "../packages/server/src/servers/testing.ts";
 import { atlassianServer } from "../packages/jira/src/atlassian.ts";
 import { atlassianStandIn, standInCaller } from "../packages/jira/src/atlassian-standin.ts";
+import { slackServer } from "../packages/slack/src/slack-mcp.ts";
+import { slackStandIn, standInCaller as slackCaller } from "../packages/slack/src/slack-standin.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
 import { type SetupState, memorySetup, setupFile } from "../packages/server/src/setup/state.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
@@ -125,6 +127,9 @@ export type FirstRunOptions = {
   // The person's Claude Code lists Atlassian's MCP server (OA-276), as the
   // stand-in of it answers SYN in memory: found, or Jira on through it.
   atlassian?: "found" | "on";
+  // And Slack's MCP server (OA-277), as the stand-in of it answers
+  // Ferrowick in memory: found, or Slack on through it.
+  slack?: "found" | "on";
 };
 
 // Atlassian's server as the person's agent lists it, under the name they
@@ -136,6 +141,17 @@ const atlassianFound = {
   url: "https://mcp.atlassian.com/v2/mcp?tools=all",
   command: null,
   tools: [...atlassianServer.reads, ...atlassianServer.writes],
+  transport: "http" as const,
+};
+
+// Slack's server as the person's agent lists it.
+const slackFound = {
+  name: "slack",
+  status: "connected" as const,
+  reports: slackServer.reports,
+  url: "https://mcp.slack.com/mcp",
+  command: null,
+  tools: [...slackServer.reads, ...slackServer.writes],
   transport: "http" as const,
 };
 
@@ -336,6 +352,8 @@ export async function firstRunServer(
   // SYN in memory, as one stand-in of Atlassian's server answers every
   // process: sync's and replay's.
   const atlassianTools = standInCaller(atlassianStandIn());
+  const slackTools = slackCaller(slackStandIn());
+  const standing = options.atlassian || options.slack;
   const state = options.data ? setupFile(join(options.data, "setup.json")) : memorySetup();
   if (options.state) state.set({ ...state.get(), ...options.state });
 
@@ -349,19 +367,19 @@ export async function firstRunServer(
     // The person's agent, as a fake that asks the tiny server itself.
     discover: async () => ({
       agent: { id: "claude-code", name: "Claude Code" },
-      found: options.atlassian
-        ? [atlassianFound]
+      found: standing
+        ? [...(options.atlassian ? [atlassianFound] : []), ...(options.slack ? [slackFound] : [])]
         : options.found || options.trackerOn
           ? [await askTiny()]
           : [],
     }),
-    ...(options.atlassian
+    ...(standing
       ? {
           // Each process of the person's agent, as the stand-in answers it.
-          callServer: async () => ({
+          callServer: async (server) => ({
             agent: { id: "claude-code", name: "Claude Code", kind: "claude-code" },
             calls: {
-              call: atlassianTools,
+              call: server.name === "slack" ? slackTools : atlassianTools,
               spent: () => ({
                 inputTokens: 0,
                 outputTokens: 0,
@@ -403,9 +421,12 @@ export async function firstRunServer(
       front: async () => {},
     },
   });
-  if (options.atlassian) await postTo(serving, "/api/servers/look", {});
-  if (options.atlassian === "on") {
+  if (standing) await postTo(serving, "/api/servers/look", {});
+  if (options.atlassian === "on")
     await postTo(serving, "/api/actions/source.on", { kind: "jira", server: "atlassian" });
+  if (options.slack === "on")
+    await postTo(serving, "/api/actions/source.on", { kind: "slack", server: "slack" });
+  if (options.atlassian === "on" || options.slack === "on") {
     await postTo(serving, "/api/servers/dismiss", {});
     await serving.app.settled();
   }
