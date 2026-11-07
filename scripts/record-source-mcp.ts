@@ -461,11 +461,18 @@ async function recordSheetsWorld() {
     `${JSON.stringify(
       {
         recorded:
-          "From packages/sheets-mcp in its fixture mode, on fixtures/sheets/ as it serves it (scripts/record-source-mcp.ts): each cell as it shows, with no notes, comments, merges or hidden rows.",
-        calls,
+          "From packages/sheets-mcp in its fixture mode, on fixtures/sheets/ as it serves it (scripts/record-source-mcp.ts): each cell as it shows, with no notes, comments, merges or hidden rows, and each answer's structured content alone.",
+        // Each answer's structured content alone, which the parser reads
+        // first, so the cells aren't kept twice.
+        calls: calls.map(({ call, answer }) => {
+          const { structuredContent } = answer as ToolAnswer;
+          return structuredContent === undefined
+            ? { call, answer }
+            : { call, answer: { ...(answer as ToolAnswer), content: [], structuredContent } };
+        }),
       },
       null,
-      2,
+      1,
     )}\n`,
   );
   console.log(`world.json: ${calls.length} calls`);
