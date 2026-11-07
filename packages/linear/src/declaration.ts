@@ -46,9 +46,9 @@ export const linearDeclaration = {
   namespace: (records, context: LinearContext | undefined) =>
     linearNamespace(new Map(records.map((record) => [record.id, record.facets.kind])), context),
   specs: linearSpecs,
-  // Its item doc and its namespace, with its team's statuses and cycles:
-  // 2,717 bytes in OA-278.
-  budget: 2_750,
+  // Its item doc and its namespace, with its team's cycles and team():
+  // 2,808 bytes in OA-278.
+  budget: 2_850,
   open: openLinear,
   // The team it reads, by its key; the server's first when absent.
   options: object({

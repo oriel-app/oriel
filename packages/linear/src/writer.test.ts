@@ -13,6 +13,7 @@ import {
   type ToolCaller,
   type Ulid,
   type WriteRequest,
+  WriteStalled,
 } from "@oriel/core";
 import { linearServer, linearTools as t } from "./linear-mcp.ts";
 import { linearStandIn, standInCaller, standInWorld } from "./linear-standin.ts";
@@ -245,4 +246,25 @@ test("the stand-in tracker's issues move into Linear as projects and the issues 
     "new:3": "tracker:T-3",
   });
   for (const m of mutations) assert.ok(linearSpecs.ops[m.op]?.args(m.args).ok, m.op);
+});
+
+test("a write the replay turned away unsent is refused as unsent, so it can be sent again", async () => {
+  const tools = standInCaller(linearStandIn(standInWorld(loadLinearWorld())));
+  const writer = linearWriter({
+    team,
+    read: tools,
+    write: async () => {
+      throw new WriteStalled("the replay denied the call");
+    },
+  });
+  await assert.rejects(
+    writer.apply({
+      mutationId: "01JMUTATION000000000000001" as Ulid,
+      op: "createProject",
+      target: null,
+      expectedStableId: null,
+      args: { name: "Winter timetable" },
+    } as WriteRequest<"linear"> as Parameters<SourceWriter<"linear">["apply"]>[0]),
+    (error: unknown) => error instanceof SourceRefused && !error.sent,
+  );
 });

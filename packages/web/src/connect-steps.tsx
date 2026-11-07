@@ -790,7 +790,7 @@ export function ConnectCards(props: {
   const connectable = connections.view?.connectable ?? [];
   const only = readOnlyOnly(connections, connectors);
   // Nothing another does the work of is offered here (decision 0059), as
-  // Jira while the stand-in tracker or Linear is the person's.
+  // one kind while the stand-in or another kind it stands in for is on.
   const replaced = replacedKinds(connectors, connections);
   return (
     <>

@@ -56,6 +56,7 @@ test("on, a project's region creates issues in it, in the team's cycles to come,
     [
       "getItem",
       "listItems",
+      "team",
       "createIssue",
       "setTitle",
       "setDescription",
@@ -67,14 +68,21 @@ test("on, a project's region creates issues in it, in the team's cycles to come,
     ],
   );
   const types = spec.types(scope).join("\n");
+  // Cycles by number and date; no status's or cycle's name, which are the
+  // source's text, reaches the declarations: team() gives them.
   assert.match(
     types,
-    /type LinearStatus = "Triage" \| "Backlog" \| "Todo" \| "In Progress" \| "In Review" \| "Done" \| "Canceled";/,
+    /ENG's cycles to come, by number: 13 is under way until 2026-11-16; 14 starts 2026-11-16/,
   );
-  assert.match(
-    types,
-    /ENG's cycles to come, by number: 13 \(Timetable freeze\) is under way until 2026-11-16; 14 starts 2026-11-16/,
+  assert.doesNotMatch(types, /Timetable freeze|In Review|Triage/);
+  const team = (await (
+    fns.find((fn) => fn.name === "team") as { run: (v: [], h: never) => Promise<unknown> }
+  ).run([], {} as never)) as { statuses: { name: string }[]; cycles: { name: string | null }[] };
+  assert.deepEqual(
+    team.statuses.map((each) => each.name),
+    ["Triage", "Backlog", "Todo", "In Progress", "In Review", "Done", "Canceled"],
   );
+  assert.ok(team.cycles.some((each) => each.name === "Timetable freeze"));
   assert.match(types, /type LinearCycle = 13 \| 14;/);
   const write = (name: string) => fns.find((fn) => fn.name === name) as NamespaceWrite;
   // As stored: what's left out is absent.

@@ -266,8 +266,8 @@ export const pickedChoice = (form: ConnectForm): PickChoiceView | null =>
 
 // The kinds the window doesn't offer to connect, as another does their
 // work (decision 0059): those a stand-in on now stands in for, and, while
-// one of a stand-in's kinds is open, as Linear through its server, the
-// others it stands in for: one tracker is the person's already.
+// one of a stand-in's kinds is open, as through its source server, the
+// others it stands in for: one of them is the person's already.
 export const replacedKinds = (connectors: Connectors, model: ConnectionsModel): Set<string> =>
   new Set([
     ...standingIn(connectors, model).flatMap(({ standIn }) => standIn.for),

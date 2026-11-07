@@ -18,6 +18,7 @@ import {
   type SourceServer,
   type ToolAnswer,
   type ToolCaller,
+  WriteStalled,
 } from "@oriel/core";
 import { type StatusType, statusTypes } from "./world.ts";
 
@@ -389,7 +390,15 @@ export type LinearReads = ReturnType<typeof linearReads>;
 // landed.
 export function linearWrites(write: ToolCaller) {
   const save = async <T>(tool: string, args: Json, parse: (value: unknown) => T): Promise<T> => {
-    const answer = bodyOf(tool, await write({ tool, args }));
+    const answer = bodyOf(
+      tool,
+      await write({ tool, args }).catch((error: unknown) => {
+        // Never sent, or turned away unprocessed: none of it landed.
+        if (error instanceof WriteStalled)
+          throw new SourceRefused(error.message, { sent: false, cause: error });
+        throw error;
+      }),
+    );
     if ("failed" in answer) {
       const why = `${linearServer.name} refused it`;
       if (turnedAway(answer.failed)) throw new SourceRefused(why, { sent: true });
