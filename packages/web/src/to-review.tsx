@@ -1,10 +1,11 @@
 // While a change set awaiting review is mostly above or below what's on
 // screen, a pill over the thread's composer says so, and goes to the nearest
-// one (OA-260). Mostly: less than half of it shows, or of the screen when
-// it's taller, and what's behind the composer doesn't show. Where each one
-// is comes from IntersectionObservers, never from the page's scroll. With
-// none out of view, there is no pill.
+// one (OA-260). Mostly: less than half of it shows, or of the room above the
+// composer when it's taller (`placed`, OA-272), and what's behind the
+// composer doesn't show. Where each one is comes from IntersectionObservers,
+// never from the page's scroll. With none out of view, there is no pill.
 import { useEffect, useState } from "preact/hooks";
+import { placed, watching } from "./change-set.ts";
 import { plural } from "./parts.tsx";
 import { changeSetAnchor } from "./route.ts";
 
@@ -20,55 +21,35 @@ export function ToReview(props: { ids: readonly string[]; onShow(changeSetId: st
       const set = document.getElementById(changeSetAnchor(id));
       return set ? [[set, id]] : [];
     });
-    const seen = new Map<string, { view: Side | "shown" | "gone"; upTo: boolean }>();
-    const settle = () => {
-      const sides: Record<string, Side> = {};
-      for (const [id, { view, upTo }] of seen)
-        if (view !== "shown") sides[id] = view === "gone" ? (upTo ? "above" : "below") : view;
-      setOut(sides);
-    };
-    const mark = (id: string, change: Partial<{ view: Side | "shown" | "gone"; upTo: boolean }>) =>
-      seen.set(id, { view: "gone", upTo: false, ...seen.get(id), ...change });
-    // In the window with everything above it: a jump past the window, as
-    // with End, crosses it, so nothing is left on the wrong side.
-    const upTo = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const id = sets.find(([set]) => set === entry.target)?.[1];
-          if (id !== undefined) mark(id, { upTo: entry.isIntersecting });
-        }
-        settle();
-      },
-      { rootMargin: "1000000px 0px 0px 0px" },
-    );
-    for (const [set] of sets) upTo.observe(set);
-    // In the window above the composer, mostly: one observer each, whose
-    // threshold is where half of it, or half the screen, shows. Measured
-    // again as the sets, the composer or the window change size.
+    // Each one's place, as of the frame it was seen in.
+    const seen = new Map<string, { place: Side | "shown"; time: number }>();
+    // Two observers each, from `watching`, so that every change of where
+    // one is calls back: a jump that crosses no half too, as with End.
+    // Measured again as the sets, the composer or the window change size;
+    // an entry an observer let go of had queued is older, and goes unread.
     const composer = document.querySelector(".thread .composer");
     let views: IntersectionObserver[] = [];
     const measure = () => {
       for (const view of views) view.disconnect();
       const hidden = composer ? Math.max(0, innerHeight - composer.getBoundingClientRect().top) : 0;
-      views = sets.map(([set, id]) => {
-        const half = Math.min(
-          0.5,
-          innerHeight / (2 * Math.max(1, set.getBoundingClientRect().height)),
-        );
-        const view = new IntersectionObserver(
-          ([entry]) => {
-            if (!entry) return;
-            const { boundingClientRect: box, intersectionRect: shows, rootBounds } = entry;
-            const mostly = shows.height * 2 >= Math.min(box.height, innerHeight);
-            const side: Side = box.top < (rootBounds?.top ?? 0) ? "above" : "below";
-            mark(id, { view: !entry.isIntersecting ? "gone" : mostly ? "shown" : side });
-            settle();
-          },
-          { rootMargin: `0px 0px -${hidden}px 0px`, threshold: [0, half] },
-        );
-        view.observe(set);
-        return view;
-      });
+      const room = innerHeight - hidden;
+      views = sets.flatMap(([set, id]) =>
+        watching(set.getBoundingClientRect().height, room).map(({ top, thresholds }) => {
+          const view = new IntersectionObserver(
+            (entries) => {
+              const entry = entries.at(-1);
+              if (!entry || entry.time < (seen.get(id)?.time ?? -1)) return;
+              seen.set(id, { place: placed(entry.boundingClientRect, room), time: entry.time });
+              const sides: Record<string, Side> = {};
+              for (const [key, { place }] of seen) if (place !== "shown") sides[key] = place;
+              setOut(sides);
+            },
+            { rootMargin: `${-top}px 0px -${hidden}px 0px`, threshold: thresholds },
+          );
+          view.observe(set);
+          return view;
+        }),
+      );
     };
     measure();
     const resized = new ResizeObserver(measure);
@@ -76,7 +57,6 @@ export function ToReview(props: { ids: readonly string[]; onShow(changeSetId: st
     if (composer) resized.observe(composer);
     addEventListener("resize", measure);
     return () => {
-      upTo.disconnect();
       resized.disconnect();
       removeEventListener("resize", measure);
       for (const view of views) view.disconnect();

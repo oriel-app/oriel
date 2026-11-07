@@ -1,6 +1,7 @@
 // What a change set's card works out from its diff and where it sits on
 // screen: what Approve writes, counted; a line's sentence with its item
-// named once; and whether its actions stick above the composer.
+// named once; whether its actions stick above the composer; and whether
+// it shows, for the pill that points to one to review.
 import type { DiffView } from "./view.ts";
 
 type Line = DiffView["lines"][number];
@@ -115,4 +116,28 @@ export function watchStuck<T>(props: {
   return () => {
     for (const stop of stops) stop();
   };
+}
+
+// Where a change set is against the room the window leaves above the
+// composer, from the window's top to `room`: shown while half of it, or
+// half the room when it's taller, shows there; otherwise above or below,
+// by whether it ends above the room's bottom edge (OA-260, OA-272).
+export type Box = { top: number; bottom: number };
+
+export function placed(set: Box, room: number): "shown" | "above" | "below" {
+  const shows = Math.min(set.bottom, room) - Math.max(set.top, 0);
+  if (shows > 0 && shows * 2 >= Math.min(set.bottom - set.top, room)) return "shown";
+  return set.bottom <= room ? "above" : "below";
+}
+
+// The IntersectionObservers that call back whenever `placed` can change,
+// for a change set `height` tall: one on the room, at the share that is
+// half of it, or of the room; and one from far above the window down to
+// the room's bottom edge, at all of it. Each root's top, and its
+// thresholds; their bottom is the room's.
+export function watching(height: number, room: number): { top: number; thresholds: number[] }[] {
+  return [
+    { top: 0, thresholds: [Math.min(0.5, Math.max(1, room) / (2 * Math.max(1, height)))] },
+    { top: -1000000, thresholds: [1] },
+  ];
 }

@@ -11,9 +11,9 @@ summary: A small pill floating over a thread's composer while a change set await
 
 ## What it is
 
-A thread can hold several change sets, and one awaiting review can sit far above or below what's on screen. While one is mostly out of view (less than half of it shows, or less than half the screen for one taller than it, and what's behind the composer doesn't show), the pill says so: "1 change set to review above", or below, floating just over the thread's composer. A click glides the page to the nearest one and puts focus on its heading. It goes as soon as none is mostly out of view (OA-260).
+A thread can hold several change sets, and one awaiting review can sit far above or below what's on screen. While one is mostly out of view (less than half of it shows, or less than half the room above the composer for one taller than that room, and what's behind the composer doesn't show), the pill says so: "1 change set to review above", or below, floating just over the thread's composer. A click glides the page to the nearest one and puts focus on its heading. It goes as soon as none is mostly out of view (OA-260).
 
-It's drawn by `ToReview` in `packages/web/src/to-review.tsx`. Where each change set is comes from an IntersectionObserver over the change sets awaiting review (`toReview` in `packages/web/src/view.ts`), never from scroll events.
+It's drawn by `ToReview` in `packages/web/src/to-review.tsx`. Where each change set is comes from IntersectionObservers over the change sets awaiting review (`toReview` in `packages/web/src/view.ts`), never from scroll events. `placed` in `packages/web/src/change-set.ts` reads where one is, and `watching` gives the observers that hear every change of it, so a jump such as End or Page Down can't leave a pill pointing the wrong way (OA-272).
 
 ## When to use it
 
@@ -82,7 +82,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 </main>
 ```
 
-- **The column** (`.to-review`): absolute, over the composer (`.thread .composer` is sticky, so it holds it), centred. It never covers the composer, the bead at the top, or the selection bar, which isn't on a thread's page.
+- **The column** (`.to-review`): absolute, over the composer (the thread's dock is sticky, so it holds it), centred. It never covers the composer, the bead at the top, or the selection bar, which isn't on a thread's page.
 - **A pill** (`.to-review-pill`): `--surface`, a `--border-thin` hairline in `--accent`, `--radius-lg`, `--shadow`; `--text-sm`, medium, in `--accent`, on one line. The accent means "your move": a change set to review.
 
 ## States
@@ -131,6 +131,6 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 
 ## Where the app uses it
 
-- `ToReview` in `packages/web/src/to-review.tsx`, given the thread's change sets awaiting review by `ThreadPage` in `packages/web/src/thread-page.tsx`, and drawn by `Composer` over its field. A click sends `toReviewClicked`; `goingTo` in `packages/web/src/thread.ts` asks for the glide.
+- `ToReview` in `packages/web/src/to-review.tsx`, given the thread's change sets awaiting review by `ThreadPage` in `packages/web/src/thread-page.tsx`, and drawn by `ChatInput` over its field. A click sends `toReviewClicked`; `goingTo` in `packages/web/src/thread.ts` asks for the glide.
 - With After you approve set to go on, `approvedIn` in `packages/web/src/approved.ts` glides the same way to the next change set to review in the same thread (`nextToReview` in `packages/web/src/thread.ts`) before it moves to another thread.
 - CSS `.to-review` and `.to-review-pill` in `window.css`.

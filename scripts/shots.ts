@@ -3284,15 +3284,11 @@ const scenes: Scene[] = [
     act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
   },
   {
-    // Two change sets awaiting review: the earlier, out of view, gets the
-    // pill. Until the page is at the latest, the later can read as below.
+    // Two change sets awaiting review: the earlier, out of view, gets the pill.
     name: "thread-to-review",
     path: `/threads/${twoToReview}`,
     window: true,
-    act: async (page) => {
-      await page.getByRole("button", { name: /to review above$/ }).waitFor();
-      await page.getByRole("button", { name: /to review below$/ }).waitFor({ state: "detached" });
-    },
+    act: (page) => page.getByRole("button", { name: /to review above$/ }).waitFor(),
   },
   {
     // The pill clicked: the page goes to the earlier, its heading focused.
@@ -3300,7 +3296,6 @@ const scenes: Scene[] = [
     path: `/threads/${twoToReview}`,
     window: true,
     act: async (page) => {
-      await page.getByRole("button", { name: /to review below$/ }).waitFor({ state: "detached" });
       await page.getByRole("button", { name: /to review above$/ }).click();
       // Glided there: its heading near the top of the window, and still, so
       // the shot isn't taken partway through the glide.
