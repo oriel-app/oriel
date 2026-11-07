@@ -368,6 +368,33 @@ test("a move's revert that deleted nothing in Jira leaves the move as it was", a
   );
 });
 
+test("a move's revert stopped partway, then retried, gives every workstream back all the stand-in's issues", async (t) => {
+  const it = await fresh(t);
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
+  const entry = view.entries.find((each) => each.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  await it.approve(entry.changeSetId);
+  assert.equal((await it.connect("jira", details)).status, 200);
+  const offer = await moving(it);
+  assert.equal((await it.approve(offer.changeSetId)).status, 200);
+  it.advance(1000);
+  const { revert } = json<{ revert: string }>(
+    await it.post(`/api/change-sets/${offer.changeSetId}/revert`),
+  );
+  // Jira refuses one delete: the revert stops there.
+  it.site?.refuse("SYN-901");
+  await it.approve(revert);
+  it.site?.allow("SYN-901");
+  it.advance(1000);
+  assert.equal((await it.post(`/api/change-sets/${revert}/apply`)).status, 200);
+  await it.app.settled();
+  const overview = json<OverviewView>(await it.get("/api/overview"));
+  assert.ok(
+    overview.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Tracker"),
+  );
+  assert.ok(!overview.workstreams.some((row) => row.bySource.some((by) => by.source === "Jira")));
+});
+
 test("the stand-in shows as a writable connector with no connect steps", async (t) => {
   const it = await fresh(t);
   const { connectors } = json<{ connectors: ConnectorView[] }>(await it.get("/api/connectors"));

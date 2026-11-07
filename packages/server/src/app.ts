@@ -2202,10 +2202,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // A move reverted, in full or part: for each item the revert deleted,
   // workstreams hold the stand-in's again, and the stand-in is on again
   // beside the kind, as when the move was offered. A revert that deleted
-  // nothing changes nothing.
+  // nothing changes nothing. Each apply of the revert, a Retry too, swaps
+  // what it deleted: one already swapped back is held no more.
   const unmoved = async (set: ChangeSet, revert: ChangeSet) => {
     const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
-    if (!move?.movedAt) return;
+    if (!move) return;
     const deleted = new Set<string>(
       revert.mutations.flatMap((m) =>
         m.op === "deleteItem" && m.status === "applied" && typeof m.target === "string"
@@ -2219,11 +2220,13 @@ export async function createApp(options: AppOptions): Promise<App> {
         .map(([from, to]) => [to as string, from as ItemId] as const),
     );
     if (!back.size) return;
-    kindStore.moved(workspaceId, set.id, null);
-    await betweenSyncs(async () => {
-      await standIns();
-      sets.rewire(wiring());
-    });
+    if (move.movedAt) {
+      kindStore.moved(workspaceId, set.id, null);
+      await betweenSyncs(async () => {
+        await standIns();
+        sets.rewire(wiring());
+      });
+    }
     await swapMembers(set, back);
   };
   // Who hears each change a call publishes, besides the window: the MCP
