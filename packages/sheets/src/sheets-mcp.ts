@@ -126,27 +126,39 @@ export function readSpreadsheet(body: Json): ServerSpreadsheet {
   return { title, tabs };
 }
 
-// `read_range`'s answer: its rows of text, and where to read on when it
+type Scalar = string | number | boolean;
+const isScalar = (cell: unknown): cell is Scalar =>
+  typeof cell === "string" ||
+  typeof cell === "boolean" ||
+  (typeof cell === "number" && Number.isFinite(cell));
+
+// `read_range`'s answer: its rows, of text as shown, or with FORMULA, of
+// text, numbers and true/false as entered, and where to read on when it
 // was cut.
 export function readValues(body: Json): {
-  values: string[][];
+  values: Scalar[][];
   next: string | null;
   truncated: boolean;
 } {
   const values = body.values;
   if (
     !Array.isArray(values) ||
-    !values.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string")) ||
+    !values.every((row) => Array.isArray(row) && row.every(isScalar)) ||
     typeof body.truncated !== "boolean"
   )
     throw new ServerUnreadable(`${t.read} gave cells Oriel can't read`);
-  return { values: values as string[][], next: text(body.nextRange), truncated: body.truncated };
+  return { values: values as Scalar[][], next: text(body.nextRange), truncated: body.truncated };
 }
 
 // A cell as entered, from the server's FORMULA rendering: a formula is
-// text that starts with `=`; a cell a formula elsewhere fills is empty.
-const enteredOf = (formula: string | undefined): Entered =>
-  formula === undefined || formula === "" ? null : formula.startsWith("=") ? { formula } : formula;
+// text that starts with `=`; a number or true/false is itself; a cell a
+// formula elsewhere fills is empty.
+const enteredOf = (held: Scalar | undefined): Entered =>
+  held === undefined || held === ""
+    ? null
+    : typeof held === "string" && held.startsWith("=")
+      ? { formula: held }
+      : held;
 
 // How many spreadsheets one listing asks for, and the most pages a sync
 // reads to find one spreadsheet's last change.
@@ -195,9 +207,9 @@ export function serverGoogle(read: ToolCaller): Google {
     start: number,
     end: number,
     render: "FORMATTED_VALUE" | "FORMULA",
-  ): Promise<string[][]> => {
+  ): Promise<Scalar[][]> => {
     const last = columnLetters(Math.max(tab.columns, 1) - 1);
-    const rows: string[][] = [];
+    const rows: Scalar[][] = [];
     let range = `${quoteTab(tab.title)}!A${start + 1}:${last}${end}`;
     for (;;) {
       const got = await readOf(read, t.read, {
@@ -252,7 +264,7 @@ export function serverGoogle(read: ToolCaller): Google {
       const rows: (Cell | null)[][] = Array.from({ length: height }, (_, r) => {
         const width = Math.max(shown[r]?.length ?? 0, formulas[r]?.length ?? 0);
         return Array.from({ length: width }, (_, c) => {
-          const value = shown[r]?.[c] ?? "";
+          const value = String(shown[r]?.[c] ?? "");
           const held = entered ? { entered: enteredOf(formulas[r]?.[c]) } : {};
           return value === "" && !held.entered
             ? null
@@ -326,13 +338,21 @@ export function serverWrites(write: ToolCaller) {
         values: [[value ?? ""]],
       });
     },
-    // A row after the table whose header row is `header` (1 for the
-    // first), holding `cells` from column A: the 0-based row it went in.
-    async append(id: string, tab: string, header: number, cells: readonly CellValue[]) {
+    // A row after the table from its header row, `header` (1 for the
+    // first), to its last, `last` (0-based), holding `cells` from column
+    // A: the 0-based row it went in. The range ends at the table's last
+    // row, so nothing below it, as a notes block, is taken for the table.
+    async append(
+      id: string,
+      tab: string,
+      header: number,
+      last: number,
+      cells: readonly CellValue[],
+    ) {
       const width = columnLetters(Math.max(cells.length, 1) - 1);
       const body = await send(t.append, {
         spreadsheetId: id,
-        range: `${quoteTab(tab)}!A${header}:${width}`,
+        range: `${quoteTab(tab)}!A${header}:${width}${last + 1}`,
         values: [cells.map((value) => value ?? "")],
       });
       return writtenRow(t.append, body);

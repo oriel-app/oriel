@@ -136,6 +136,10 @@ function wantOption(args: Record<string, unknown>): string {
 const count = (value: unknown) => (typeof value === "number" ? value : 0);
 const str = (value: unknown) => (typeof value === "string" ? value : "");
 const strings = (row: unknown) => (Array.isArray(row) ? row.map((v) => String(v ?? "")) : []);
+const scalars = (row: unknown) =>
+  Array.isArray(row)
+    ? row.map((v) => (typeof v === "number" || typeof v === "boolean" ? v : String(v ?? "")))
+    : [];
 
 // Drive's search terms quote a string with `'`, and escape `'` and `\`.
 // https://developers.google.com/workspace/drive/api/guides/ref-search-terms
@@ -328,7 +332,11 @@ const readRange: Tool = {
   outputSchema: object(
     {
       range: text("The range Google read, cut to the tab's size, in A1 notation."),
-      values: { type: "array", items: { type: "array", items: { type: "string" } } },
+      values: {
+        type: "array",
+        items: { type: "array", items: { type: ["string", "number", "boolean"] } },
+        description: "Rows of text as shown; with FORMULA, numbers and true/false as entered.",
+      },
       truncated: {
         type: "boolean",
         description: `Whether rows were left out to keep to ${cellCap.toLocaleString("en")} cells.`,
@@ -350,7 +358,9 @@ const readRange: Tool = {
       { majorDimension: "ROWS", valueRenderOption: render },
     )) as { range?: unknown; values?: unknown[] };
     const returned = str(answer.range) || range;
-    const rows = (answer.values ?? []).map(strings);
+    // As entered, a number or true/false stays one, so a client writing it
+    // back writes what was there.
+    const rows = (answer.values ?? []).map(render === "FORMULA" ? scalars : strings);
     let cells = 0;
     let kept = 0;
     while (kept < rows.length && cells + (rows[kept]?.length ?? 0) <= cellCap)

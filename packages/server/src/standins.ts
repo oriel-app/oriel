@@ -6,7 +6,7 @@
 // fixture, on its command line only, never in the person's configuration,
 // and has the connector's entry for the real server know it at that
 // command in place of its own. The desktop app never names one.
-import { copyFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,7 +47,8 @@ export function devStandIns(asked: string | undefined): {
   // journal, or a copy of sheets-mcp's fixture.
   const kept = (name: string) => {
     if (name !== "sheets") return join(tmpdir(), `oriel-standin-${name}-${process.pid}.jsonl`);
-    const copy = join(tmpdir(), `oriel-standin-sheets-${process.pid}.json`);
+    // In a folder of its own, which no one else can have made first.
+    const copy = join(mkdtempSync(join(tmpdir(), "oriel-standin-sheets-")), "backlog.json");
     copyFileSync(backlog, copy);
     return copy;
   };

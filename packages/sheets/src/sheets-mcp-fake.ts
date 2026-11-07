@@ -11,7 +11,8 @@ export type FakeServer = {
   // The tab's rows as text, as the sheet shows them; a cell's formula, by
   // `<row>,<column>` 0-based, shows here as its result.
   rows: string[][];
-  formulas: Map<string, string>;
+  // Each cell as entered, where it isn't its text: a formula, or a number.
+  formulas: Map<string, string | number | boolean>;
   calls: ToolCall[];
   read: ToolCaller;
   write: ToolCaller;
@@ -102,9 +103,11 @@ export function fakeServer(rows: string[][], title = "Backlog"): FakeServer {
         });
       }
       if (tool === "append_rows") {
-        // After the table that starts at the range's first row.
+        // After the table that starts at the range's first row, within it,
+        // as Google's append finds it.
+        const end = range.bounds.endRow ?? Infinity;
         let at = range.bounds.startRow ?? 0;
-        while (server.rows[at]?.some((cell) => cell !== "")) at += 1;
+        while (at < end && server.rows[at]?.some((cell) => cell !== "")) at += 1;
         server.rows.splice(at, 0, (values[0] ?? []).map(text));
         return answer({
           tableRange: String(args.range),

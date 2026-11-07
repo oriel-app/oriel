@@ -448,8 +448,21 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Which kinds are on, and what the person's agent has to turn one on with
   // (decision 0059). A kind has a connection of its own while a flag makes
   // one, or the window made one, open or shut.
+  // A kind's first live connection of its own: not one kept only for the
+  // options a source server reads with (`keptFor`), which reaches nothing
+  // without its server.
+  const keptFor = (reports: string) => `through:${reports}`;
+  const ownFirst = (kind: string): Connection | null =>
+    connections
+      .list()
+      .find(
+        (each) =>
+          each.kind === kind &&
+          each.disconnectedAt === null &&
+          !each.identity.startsWith(keptFor("")),
+      ) ?? null;
   const connectedKind = (kind: string) =>
-    flags.some((flag) => flag.kind === kind) || connections.first(kind) !== null;
+    flags.some((flag) => flag.kind === kind) || ownFirst(kind) !== null;
   const kindStore = sourceKindStore(db);
   // What's on changed, once the start has opened what it does: made below.
   let turned = async (): Promise<void> => {};
@@ -507,7 +520,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
     // One the window made, with its secret, if the window connects its kind.
     // One that can't open is left shut, so the window asks for it again.
-    const connection = inWindow(modes, kind) ? connections.first(kind) : null;
+    const connection = inWindow(modes, kind) ? ownFirst(kind) : null;
     if (!connection) return;
     const secret = await connections.secret(connection);
     if (!(await windows.vet(connection, secret))) {
@@ -616,7 +629,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     const writes = lazyCalls(server, server.known.writes);
     let own = connections.first(kind);
     if (!own && server.known.keepsOptions) {
-      const made = await connections.connect({ kind, identity: "", options: {} });
+      const made = await connections.connect({
+        kind,
+        identity: keptFor(server.known.reports),
+        options: {},
+      });
       own = "taken" in made ? made.taken : made.connection;
     }
     const connection: Connection = own ?? {

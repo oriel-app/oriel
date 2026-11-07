@@ -668,7 +668,7 @@ test("through sheets-mcp, a new row is one append_rows after the table, found wh
       tool: "append_rows",
       args: {
         spreadsheetId: fakeId,
-        range: "'Backlog'!A1:C",
+        range: "'Backlog'!A1:C4",
         values: [["BL-4", '=HYPERLINK("x")', "To do"]],
         valueInputOption: "RAW",
       },
@@ -676,6 +676,67 @@ test("through sheets-mcp, a new row is one append_rows after the table, found wh
   ]);
   assert.deepEqual(server.rows[4], ["BL-4", '=HYPERLINK("x")', "To do"]);
   assert.equal(result.item.id, row(fakeId, 0, "BL-4").id);
+});
+
+test("through sheets-mcp, a new row goes under the table, never under a notes block below it", async () => {
+  const { server, writer, written } = throughServer([
+    ...fakeRows(),
+    ["", "", "", "", ""],
+    ["Notes", "BL-2 waits on the gateway team.", "", "", ""],
+  ]);
+  await writer.apply(
+    request("addRow", null, {
+      spreadsheet: fakeId,
+      sheetId: 0,
+      values: { key: "BL-4", title: "Bulk edit", status: "To do" },
+    }),
+  );
+  assert.equal(written()[0]?.args.range, "'Backlog'!A1:C4");
+  assert.deepEqual(server.rows[4], ["BL-4", "Bulk edit", "To do"]);
+  assert.equal(server.rows[6]?.[0], "Notes");
+  // One the server put anywhere else isn't reported as added.
+  const astray = sheetsWriter(
+    {
+      picks: fakePicks,
+      prefix: "sheets",
+      server: {
+        read: server.read,
+        write: async () => ({
+          content: [],
+          structuredContent: { updatedRange: "'Backlog'!A9:C9", updatedRows: 1 },
+        }),
+      },
+    },
+    () => {},
+  );
+  await assert.rejects(
+    astray.apply(
+      request("addRow", null, {
+        spreadsheet: fakeId,
+        sheetId: 0,
+        values: { key: "BL-9", title: "Elsewhere" },
+      }),
+    ),
+    /outside the table Oriel reads/,
+  );
+});
+
+test("through sheets-mcp, a number is read as entered, so an edit's Undo writes the number back", async () => {
+  const { server, writer, written } = throughServer();
+  server.formulas.set("2,3", 3);
+  const result = await writer.apply(
+    request("setField", row(fakeId, 0, "BL-2"), { field: "estimate", value: 5 }, { estimate: 3 }),
+  );
+  assert.equal(result.before.estimate, 3);
+  assert.deepEqual(written()[0]?.args.values, [[5]]);
+  // Text "3" where the diff saw the number 3 has changed.
+  server.formulas.set("2,3", "3");
+  await assert.rejects(
+    writer.apply(
+      request("setField", row(fakeId, 0, "BL-2"), { field: "estimate", value: 8 }, { estimate: 3 }),
+    ),
+    /now, not/,
+  );
 });
 
 test("through sheets-mcp, a row can't be deleted, and the writer says so before anything is offered", async () => {

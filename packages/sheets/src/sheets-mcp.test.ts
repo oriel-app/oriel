@@ -194,7 +194,7 @@ test("an answer Oriel can't read stops the sync, naming the server, with nothing
   for (const read of [
     broken("get_spreadsheet", { title: "Product backlog" }),
     broken("get_spreadsheet", { title: "x", tabs: [{ sheetId: -1, title: "Backlog" }] }),
-    broken("read_range", { values: [[1, 2]], truncated: false }),
+    broken("read_range", { values: [[{ cell: 1 }]], truncated: false }),
     broken("read_range", { values: [["a"]] }),
     broken("list_spreadsheets", { files: [] }),
     // Text that isn't JSON.

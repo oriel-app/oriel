@@ -332,7 +332,19 @@ export function sheetsWriter(
       sent();
       // After the table, where its server's append puts it, which may be
       // past rows a sync skips as blank.
-      index = await toServer.append(spreadsheet, read.tab.title, read.mapping.header, cells);
+      index = await toServer.append(
+        spreadsheet,
+        read.tab.title,
+        read.mapping.header,
+        read.last,
+        cells,
+      );
+      // Anywhere but in the table, or right under it, a sync wouldn't
+      // read it as one of the tab's rows.
+      if (index < read.mapping.header || index > read.last + 1)
+        throw new Error(
+          `the new row went in at row ${index + 1}, outside the table Oriel reads, so check the tab`,
+        );
     } else
       await post(
         spreadsheetPath(spreadsheet, ":batchUpdate"),
