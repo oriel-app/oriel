@@ -267,14 +267,17 @@ export const pickedChoice = (form: ConnectForm): PickChoiceView | null =>
 // The kinds the window doesn't offer to connect, as another does their
 // work (decision 0059): those a stand-in on now stands in for, and, while
 // one of a stand-in's kinds is open, as through its source server, the
-// others it stands in for: one of them is the person's already.
+// others it stands in for: one of them is the person's already. One that's
+// open itself is never among them, so its row still shows it connected.
 export const replacedKinds = (connectors: Connectors, model: ConnectionsModel): Set<string> =>
-  new Set([
-    ...standingIn(connectors, model).flatMap(({ standIn }) => standIn.for),
-    ...Object.values(connectors).flatMap(({ standIn }) =>
-      standIn?.for.some((kind) => openOf(model, kind)) ? standIn.for : [],
-    ),
-  ]);
+  new Set(
+    [
+      ...standingIn(connectors, model).flatMap(({ standIn }) => standIn.for),
+      ...Object.values(connectors).flatMap(({ standIn }) =>
+        standIn?.for.some((kind) => openOf(model, kind)) ? standIn.for : [],
+      ),
+    ].filter((kind) => !openOf(model, kind)),
+  );
 
 // The connectors the first run offers, in their declared order: none
 // another does the work of (`replacedKinds`).

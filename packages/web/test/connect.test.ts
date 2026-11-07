@@ -263,6 +263,32 @@ test("while Linear is open, Jira isn't offered, as one tracker is the person's a
     ["folder"],
   );
   assert.ok(replacedKinds(all, model).has("jira"));
+  // The one that's open still shows, connected.
+  assert.ok(!replacedKinds(all, model).has("linear"));
+});
+
+test("a tracker connected in the first run stays in its list, connected, once the stand-in steps aside", () => {
+  const tracker = {
+    ...connectors.jira!,
+    kind: "tracker",
+    connect: null,
+    standIn: { for: ["jira", "linear"], offer: connectors.jira!.connect!.offer },
+  };
+  const model: ConnectionsModel = {
+    ...initConnections(),
+    view: {
+      connections: [{ kind: "jira", state: "open" } as ConnectionView],
+      connectable: ["folder"],
+      refused: {},
+      picker: false,
+      standingIn: [],
+      servers: serversView(),
+    },
+  };
+  assert.deepEqual(
+    offered({ ...connectors, tracker }, model).map((connector) => connector.kind),
+    ["jira", "folder"],
+  );
 });
 
 test("in Settings, an option applies at once with an Undo, and Disconnect asks first", () => {
