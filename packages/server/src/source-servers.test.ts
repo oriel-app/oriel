@@ -136,17 +136,17 @@ test("a kind stays on only through the server the person picked, not another rep
   await it.look();
   const on = await it.post("/api/actions/source.on", { kind: "jira", server: "work-tracker" });
   assert.equal(on.status, 200);
-  assert.equal(it.app.sourceServer("jira")?.found.name, "work-tracker");
   // The picked one goes; the lookalike, reporting the same name, stays.
   found = [other];
-  const servers = await it.look();
+  let servers = await it.look();
   assert.deepEqual(servers.kinds, []);
-  assert.equal(it.app.sourceServer("jira"), null, "nothing syncs through the lookalike");
   assert.deepEqual((await it.connections()).standingIn, ["tracker"]);
   // The picked one is back: on again, through it.
   found = [other, picked];
-  await it.look();
-  assert.equal(it.app.sourceServer("jira")?.found.name, "work-tracker");
+  servers = await it.look();
+  assert.deepEqual(servers.kinds, [
+    { kind: "jira", on: true, server: "work-tracker", offBy: null },
+  ]);
 });
 
 test("a server Oriel didn't find can't be turned on, and a look that fails names the agent and keeps what's on", async (t) => {

@@ -43,6 +43,17 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.disconnected"; source: SourceKind; later: boolean }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
+  // A sync through a kind's source server (decision 0059), whoever asked:
+  // how many items it listed, how long it took, and which agent ran it,
+  // whether it worked. Never a title, the server's name or its address.
+  | {
+      name: "source.server-synced";
+      source: SourceKind;
+      agent: "claude-code" | "codex";
+      items: number;
+      ms: number;
+      ok: boolean;
+    }
   // A kind turned on or off (decision 0059), by the person or the agent,
   // and, on an Undo, whose turning it undid: the kind only, never the
   // source server's name or address.

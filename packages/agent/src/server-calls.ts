@@ -73,7 +73,10 @@ const nothingSpent = (): Spent => ({
 // configuration is ever read.
 export type CalledServer =
   | { name: string; url: string; transport: "http" | "sse" }
-  | { name: string; dev: DevServer };
+  | { name: string; dev: DevServer }
+  // By name alone, as Codex loads it from the person's own configuration;
+  // Claude Code can't load such a one alone.
+  | { name: string };
 
 export type ServerCallsOptions = {
   server: CalledServer;
@@ -122,9 +125,11 @@ export const callerPrompt =
 
 // The server as the process's `--mcp-config` names it, alone.
 function configOf(server: CalledServer): Record<string, unknown> {
-  return "dev" in server
-    ? { type: "stdio", command: server.dev.command, args: server.dev.args }
-    : { type: server.transport, url: server.url };
+  if ("dev" in server) return { type: "stdio", command: server.dev.command, args: server.dev.args };
+  if ("url" in server) return { type: server.transport, url: server.url };
+  throw new ProviderError(
+    `Claude Code can't load ${server.name} on its own: Oriel reads a source through Claude Code only from a remote server.`,
+  );
 }
 
 // The command line for a Claude Code process that calls one server: the

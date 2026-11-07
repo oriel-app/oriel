@@ -166,6 +166,8 @@ export type TestOptions = {
   // 0059); none, when absent.
   discover?: AppOptions["discover"];
   knownServers?: AppOptions["knownServers"];
+  // How a sync or a replay calls one of them; nothing, when absent.
+  callServer?: AppOptions["callServer"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -215,8 +217,10 @@ export async function testApp(
     limits: { ...limits, ...options.limits },
     now,
     sandbox: options.sandbox ?? fakeSandbox(options.scripts ?? {}),
-    ...(options.models
-      ? { models: options.models }
+    ...(options.models ? { models: options.models } : {}),
+    // Models run the agent unless a test gives its own beside them.
+    ...(options.models && !options.agent
+      ? {}
       : { agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)) }),
     ...(options.challenger ? { challenger: options.challenger } : {}),
     ...(options.settings ? { settings: options.settings } : {}),
@@ -230,6 +234,7 @@ export async function testApp(
     noticer: options.noticer ?? (async () => null),
     ...(options.discover ? { discover: options.discover } : {}),
     ...(options.knownServers ? { knownServers: options.knownServers } : {}),
+    ...(options.callServer ? { callServer: options.callServer } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),
   });
   t.after(() => app.close());

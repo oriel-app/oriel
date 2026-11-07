@@ -61,6 +61,7 @@ import { fileSecrets, legacyFile } from "./connection.ts";
 import { databaseName, inWindow } from "./modes.ts";
 import { models as findModels } from "./model.ts";
 import { settingsFile } from "./settings.ts";
+import { devStandIns } from "./standins.ts";
 import { usageFile } from "./usage.ts";
 import { doorPorts, firstDoorPort, firstPort, keepPort, keptPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
@@ -311,6 +312,9 @@ const log: Log = (message, fields) => console.log(JSON.stringify({ message, ...f
 // `.env`'s key, the person's Claude Code, their Codex as a preview, or none.
 const settings = settingsFile(join(dir, "settings.json"), log);
 const claudeCodePath = values["claude-code"];
+// Stand-in source servers, in dev only: the desktop app's start above never
+// reads this.
+const standIns = devStandIns(process.env.ORIEL_DEV_STANDINS);
 const models =
   values.agent === "scripted"
     ? null
@@ -318,6 +322,7 @@ const models =
         key: anthropicKey(envFile),
         ...(claudeCodePath ? { claudeCodePath } : {}),
         counts: usageFile(join(dir, "usage.json"), log),
+        ...(standIns ? { dev: standIns.dev } : {}),
       });
 await models?.look(settings.get());
 // The MCP door's port, kept beside the database it serves, and never moved.
@@ -339,6 +344,7 @@ const serving = await serve(
     // (decision 0049).
     secrets: fileSecrets(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), named)),
     ...(models ? { models } : {}),
+    ...(standIns ? { knownServers: standIns.known } : {}),
     settings,
     log,
   },

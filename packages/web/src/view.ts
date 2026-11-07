@@ -182,6 +182,9 @@ export type ConnectionView = {
   // A stand-in's (decision 0059): Oriel keeps it itself, so the window
   // neither sets, syncs nor disconnects it.
   own: boolean;
+  // The source server it reads through, by its name in the person's agent
+  // (decision 0059): turned off in Source servers, never disconnected.
+  through: string | null;
 };
 
 // Every connection, which kinds the window may connect now and why not the
@@ -221,6 +224,8 @@ export type SourceServersView = {
     on: boolean;
     server: string | null;
     offBy: "person" | "agent" | null;
+    // Why it couldn't open through its server, naming it, until it does.
+    problem?: string | null;
   }[];
   missing: { kind: string; server: string; instructions: string }[];
   card: {

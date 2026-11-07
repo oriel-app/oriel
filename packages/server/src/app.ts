@@ -49,7 +49,11 @@ import {
   type Sketch,
   type Sandbox,
   type SourceKind,
+  type FoundServer,
+  type Recognized,
   type SourceServer,
+  type ThroughServer,
+  type ToolCaller,
   syncSource,
   type ToOpen,
   type Ulid,
@@ -119,7 +123,7 @@ import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
 import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
-import type { Models } from "./model.ts";
+import type { Calling, Models } from "./model.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import { type Challenger, challenger } from "./challenger.ts";
 import {
@@ -196,6 +200,10 @@ export type AppOptions = {
   // The source servers Oriel knows, by kind: the connectors' when absent,
   // and a test's own entry in tests and screenshots.
   knownServers?: readonly { kind: string; server: SourceServer }[];
+  // Starts a process of the person's agent that calls one of their servers
+  // with only `tools` (decision 0059), for tests and screenshots: Settings'
+  // models when absent.
+  callServer?: (server: FoundServer, tools: readonly string[]) => Promise<Calling | null>;
   // The themes window.css has, the default first.
   themes?: readonly string[];
   // Whether the page may set where a CLI is: only behind the desktop app's
@@ -353,7 +361,12 @@ export async function createApp(options: AppOptions): Promise<App> {
   const openVia = (
     kind: SourceKind,
     id: Ulid,
-    how: { kept: boolean; fetch?: typeof fetch | undefined; own?: OwnItems },
+    how: {
+      kept: boolean;
+      fetch?: typeof fetch | undefined;
+      own?: OwnItems;
+      server?: ThroughServer;
+    },
   ): OpenVia => {
     const client = options.clients?.[kind];
     return {
@@ -364,6 +377,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(client ? { client } : {}),
       ...(how.kept ? { keep: (secret: string) => connections.rekey(id, secret) } : {}),
       ...(how.own ? { own: how.own } : {}),
+      ...(how.server ? { server: how.server } : {}),
     };
   };
   // Opens a connection through its connector's declaration, or its
@@ -377,6 +391,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       kept: boolean;
       fetch?: typeof fetch | undefined;
       own?: OwnItems;
+      server?: ThroughServer;
     },
   ): Promise<Opened> => {
     const declaration = declared(kind);
@@ -458,6 +473,10 @@ export async function createApp(options: AppOptions): Promise<App> {
   // can't open stops the start; one the window made is left shut, so the
   // window asks for it again.
   const openKind = async (kind: SourceKind) => {
+    // Through the source server the person turned it on through, while the
+    // agent lists it, in place of any connection of its own (decision 0059).
+    const server = switches.serverFor(kind);
+    if (server) return openThrough(kind, server);
     // A flag's connection is its kind's first, made at every start, and
     // follows what the flag names. One that can't open stops the start.
     const flag = flags.find((each) => each.kind === kind);
@@ -509,6 +528,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // A kind turned off: its connections close, and nothing of them shows,
   // though they and their items stay, for when it's on again.
   const closeKind = (kind: SourceKind) => {
+    throughOpen.delete(kind);
+    throughProblems.delete(kind);
     for (const each of [...byPrefix.values()].filter((one) => one.connection.kind === kind)) {
       byPrefix.delete(each.connection.prefix);
       each.opened.close?.();
@@ -518,6 +539,130 @@ export async function createApp(options: AppOptions): Promise<App> {
       unfit.delete(connection.prefix);
     }
   };
+  // What each kind open through a source server was opened through, and
+  // the agent its processes run on, for telemetry. A kind on through
+  // another server now, or through none, opens again.
+  const throughOpen = new Map<
+    SourceKind,
+    { key: string; server: string; agent: () => string | null }
+  >();
+  const serverKey = (server: Recognized | null) =>
+    server
+      ? JSON.stringify([
+          server.found.name,
+          server.found.url,
+          server.found.command,
+          [...server.found.tools],
+        ])
+      : null;
+  const callServer =
+    options.callServer ??
+    ((server: FoundServer, tools: readonly string[]) =>
+      options.models?.serverCalls(store.get(), server, tools, log) ?? Promise.resolve(null));
+  // Calls the server from a process of the person's agent that starts on
+  // the first call and stops once it's been quiet a while, with only
+  // `tools`: one for reads, another for a change set's writes.
+  const lazyCalls = (server: Recognized, tools: readonly string[]) => {
+    let current: Promise<Calling | null> | null = null;
+    let quiet: ReturnType<typeof setTimeout> | null = null;
+    let agent: string | null = null;
+    const close = () => {
+      if (quiet) clearTimeout(quiet);
+      quiet = null;
+      const was = current;
+      current = null;
+      void was?.then((calling) => calling?.calls.close()).catch(() => {});
+    };
+    const call: ToolCaller = async (each) => {
+      if (quiet) clearTimeout(quiet);
+      const at = (current ??= callServer(server.found, tools));
+      try {
+        const calling = await at;
+        if (!calling) throw new Error(`No agent runs ${server.known.name} now.`);
+        agent = calling.agent.kind;
+        return await calling.calls.call(each);
+      } catch (error) {
+        // A process that failed a call starts afresh for the next.
+        if (current === at) close();
+        throw error;
+      } finally {
+        quiet = setTimeout(close, 20_000);
+        quiet.unref();
+      }
+    };
+    return { call, close, agent: () => agent };
+  };
+  // Opens a kind through its source server: its first connection if it has
+  // one, so its items keep their IDs, else one of the server's own, which
+  // nothing keeps, as what's on is the kind's switch. One that can't open is
+  // left shut, with why, naming the server.
+  const openThrough = async (kind: SourceKind, server: Recognized) => {
+    const reads = lazyCalls(server, server.known.reads);
+    const writes = lazyCalls(server, server.known.writes);
+    const own = connections.first(kind);
+    const connection: Connection = own ?? {
+      id: newId(),
+      kind,
+      number: 1,
+      prefix: kind,
+      identity: "",
+      name: null,
+      options: {},
+      every: null,
+      connectedAt: now(),
+      disconnectedAt: null,
+    };
+    try {
+      const opened = await openOne(
+        kind,
+        { ...connection, secret: null },
+        {
+          fixture: false,
+          kept: false,
+          server: {
+            known: server.known,
+            found: server.found,
+            read: reads.call,
+            write: writes.call,
+          },
+        },
+      );
+      const close = opened.close;
+      opened.close = () => {
+        close?.();
+        reads.close();
+        writes.close();
+      };
+      byPrefix.set(connection.prefix, {
+        connection: own ? connection : { ...connection, identity: opened.identity ?? "" },
+        opened,
+      });
+      throughOpen.set(kind, {
+        key: serverKey(server) ?? "",
+        server: server.found.name,
+        agent: reads.agent,
+      });
+      problems.delete(connection.id);
+    } catch (error) {
+      reads.close();
+      writes.close();
+      log("source servers: a kind couldn't open through its server", {
+        kind,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (own) shut.set(own.prefix, own);
+      // The agent's own words for why its process failed, such as its
+      // plan's limit; never what the server answered.
+      const why =
+        error instanceof Error && error.name === "ProviderError" ? ` ${error.message}` : "";
+      throughProblems.set(
+        kind,
+        `${declared(kind).name} couldn't open through ${server.known.name}.${why}`,
+      );
+    }
+  };
+  // Why a kind on through its server couldn't open, until it does.
+  const throughProblems = new Map<SourceKind, string>();
   // A stand-in opens below, while what it stands in for isn't on.
   for (const kind of sourceKinds)
     if (!declared(kind).standIn && switches.on(kind)) await openKind(kind);
@@ -741,11 +886,30 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Why each connection's last sync didn't work, by its ID, until one does.
   const problems = new Map<Ulid, string>();
   const syncOpen = async (each: Open, full: boolean): Promise<string | null> => {
+    const through = throughOpen.get(each.connection.kind);
+    const started = Date.now();
+    // A sync through a source server, counted: never what it read.
+    const counted = (ok: boolean) => {
+      const agent = through?.agent();
+      if (agent === "claude-code" || agent === "codex")
+        emit({
+          name: "source.server-synced",
+          at: now(),
+          workspaceId,
+          source: each.connection.kind,
+          agent,
+          items: recordsOf(each).length,
+          ms: Date.now() - started,
+          ok,
+        });
+    };
     try {
       await syncInto(each.connection, each.opened, full, { items: lagging(each) });
       problems.delete(each.connection.id);
+      counted(true);
       return null;
     } catch (error) {
+      counted(false);
       log("connections: a sync failed", {
         source: each.connection.prefix,
         error: error instanceof Error ? error.message : String(error),
@@ -1658,7 +1822,17 @@ export async function createApp(options: AppOptions): Promise<App> {
           for (const each of opens().filter((one) => one.connection.kind === kind))
             unarm(each.connection.id);
           closeKind(kind);
-        } else if (!held) {
+        } else if (
+          !held ||
+          serverKey(switches.serverFor(kind)) !== (throughOpen.get(kind)?.key ?? null)
+        ) {
+          // Not open, or open through something else than the server it's on
+          // through now, as a connection of its own once its server is on.
+          if (held) {
+            for (const each of opens().filter((one) => one.connection.kind === kind))
+              unarm(each.connection.id);
+            closeKind(kind);
+          }
           await openKind(kind);
           for (const each of opens().filter((one) => one.connection.kind === kind))
             arm(each.connection);
@@ -1667,8 +1841,25 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
       await standIns();
       sets.rewire(wiring());
-      for (const kind of reopened) void syncKind(kind);
+      for (const kind of reopened) {
+        const run = syncKind(kind).finally(() => kindSyncs.delete(run));
+        kindSyncs.add(run);
+      }
     });
+  // What Settings shows of source servers, with why a kind on through one
+  // couldn't open.
+  const serversView = () => {
+    const view = switches.view();
+    return {
+      ...view,
+      kinds: view.kinds.map((each) => {
+        const problem = throughProblems.get(each.kind as SourceKind);
+        return problem ? { ...each, problem } : each;
+      }),
+    };
+  };
+  // The syncs of kinds that just turned on, which `settled` waits for.
+  const kindSyncs = new Set<Promise<unknown>>();
   // Oriel looks for the person's servers when it opens, when they press
   // sync, and every so many minutes if they set that.
   let stopLooking = (): void => {};
@@ -1901,7 +2092,11 @@ export async function createApp(options: AppOptions): Promise<App> {
           : { outcome: done, changed: [], replaced: {} };
       },
       sync: async ({ connection: id }) => {
-        const connection = live(id as Ulid);
+        // One open through a source server isn't kept: it's the kind's.
+        const connection =
+          [...byPrefix.values()].find(
+            (each) => each.connection.id === id && throughOpen.has(each.connection.kind),
+          )?.connection ?? live(id as Ulid);
         if (byPrefix.get(connection.prefix)?.connection.id !== id)
           throw new ActionError(
             "conflict",
@@ -2084,6 +2279,8 @@ export async function createApp(options: AppOptions): Promise<App> {
               : "signed-out",
       flagged: byFlag.has(kept.id),
       own: ownConnections.has(kept.id),
+      through:
+        open?.connection.id === connection.id ? (throughOpen.get(kept.kind)?.server ?? null) : null,
     };
   };
   // Every connection open or shut, in declared order, then by number.
@@ -2313,7 +2510,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         standingIn: opens()
           .filter((each) => declared(each.connection.kind).standIn)
           .map((each) => each.connection.kind),
-        servers: switches.view(),
+        servers: serversView(),
       }),
       pick: (kind, given, query) => windows.pick(kind, given, query),
       choices: (id, query) => windows.choices(live(id as Ulid), query),
@@ -2364,6 +2561,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     settled: async () => {
       await conversation.settled();
+      await Promise.allSettled([...kindSyncs]);
       await secondLooks?.settled();
       await notifying?.idle();
       await guarding?.idle();
