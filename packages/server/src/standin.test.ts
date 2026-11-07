@@ -15,6 +15,7 @@ import type {
   OverviewView,
   ThreadView,
   WindowView,
+  WorkstreamsView,
 } from "@oriel/web/view";
 import { account, json, type Script, testApp } from "./testing.ts";
 
@@ -45,7 +46,8 @@ async function moving(it: Awaited<ReturnType<typeof testApp>>) {
   const note = view.entries.find((each) => each.kind === "note");
   const set = view.entries.find((each) => each.kind === "change-set");
   assert.ok(note?.kind === "note" && set?.kind === "change-set");
-  return { note: note.note, changeSetId: set.changeSetId };
+  assert.deepEqual(view.move, { went: null }, "its rail says where what it creates goes");
+  return { note: note.note, changeSetId: set.changeSetId, threadId: thread.id };
 }
 
 // A window with Jira not connected yet, as the desktop app's first run is.
@@ -233,6 +235,25 @@ test("a tracker turning on is offered the stand-in's issues; approved, the stand
     { source: "jira", step: "offered", items: 3 },
     { source: "jira", step: "moved", items: 3 },
   ]);
+  // The move's own workstream held nothing but the move: it's done, its
+  // thread with it, kept on the Done page, and both say where the items went.
+  const into = json<ThreadView>(await it.get(`/api/threads/${offer.threadId}`));
+  const holder = after.workstreams.find((row) => row.size === 3)?.name;
+  assert.ok(holder);
+  assert.deepEqual(
+    into.move?.went?.map((each) => each.name),
+    [holder],
+  );
+  assert.equal(into.state, "done");
+  assert.ok(
+    into.entries.some(
+      (each) => each.kind === "note" && each.note.kind === "moved" && each.note.into === "Jira",
+    ),
+  );
+  const streams = json<WorkstreamsView>(await it.get("/api/workstreams")).workstreams;
+  const own = streams.find((each) => each.name === "Into Jira");
+  assert.equal(own?.size, 0);
+  assert.notEqual(own?.done, null, "no empty Into Jira workstream lingers open");
   // Moved: nothing of the stand-in shows.
   assert.deepEqual(
     json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(

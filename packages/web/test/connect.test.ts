@@ -14,13 +14,14 @@ import {
   initConnections,
   noAiToAsk,
   offered,
+  replacedKinds,
   openOf,
   settingOf,
   standingIn,
   updateConnections,
 } from "../src/connections.ts";
 import type { Effect, Replied } from "../src/http.ts";
-import type { ConnectStep } from "../src/view.ts";
+import type { ConnectionView, ConnectStep } from "../src/view.ts";
 import { connectionView, connectors, serversView } from "../testing.ts";
 
 const steps = connectors.jira?.connect?.steps as readonly ConnectStep[];
@@ -235,6 +236,33 @@ test("the first run offers none a stand-in on stands in for, and the stand-in in
     offered(all, initConnections()).map((connector) => connector.kind),
     ["jira", "folder"],
   );
+});
+
+test("while Linear is open, Jira isn't offered, as one tracker is the person's already", () => {
+  const tracker = {
+    ...connectors.jira!,
+    kind: "tracker",
+    connect: null,
+    standIn: { for: ["jira", "linear"], offer: connectors.jira!.connect!.offer },
+  };
+  const linear = { ...connectors.jira!, kind: "linear", connect: null };
+  const model: ConnectionsModel = {
+    ...initConnections(),
+    view: {
+      connections: [{ kind: "linear", state: "open" } as ConnectionView],
+      connectable: ["jira"],
+      refused: {},
+      picker: false,
+      standingIn: [],
+      servers: serversView(),
+    },
+  };
+  const all = { ...connectors, tracker, linear };
+  assert.deepEqual(
+    offered(all, model).map((connector) => connector.kind),
+    ["folder"],
+  );
+  assert.ok(replacedKinds(all, model).has("jira"));
 });
 
 test("in Settings, an option applies at once with an Undo, and Disconnect asks first", () => {

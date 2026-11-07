@@ -2160,6 +2160,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // place.
   const swapMembers = async (set: ChangeSet, pairs: ReadonlyMap<string, ItemId>) => {
     const by = { kind: "change-set", changeSetId: set.id } as const;
+    const swapped: Ulid[] = [];
     for (const workstream of workstreams.list(workspaceId)) {
       const region = workstreams.region(workstream.id, workstream.version);
       const held = (region?.items ?? []).filter((member) => pairs.has(member.id));
@@ -2174,7 +2175,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         { workstream: workstream.id, items: held.map((member) => member.id) },
         by,
       );
+      swapped.push(workstream.id);
     }
+    return swapped;
   };
   // Once Oriel's offer applied in full, and every issue of the stand-in has
   // its new item, every workstream holds the new items in place of the
@@ -2190,8 +2193,31 @@ export async function createApp(options: AppOptions): Promise<App> {
         (record.facets.kind === "epic" || record.facets.kind === "story") && !pairs.has(record.id),
     );
     if (left.length) return false;
-    await swapMembers(set, pairs);
+    const swapped = await swapMembers(set, pairs);
     kindStore.moved(workspaceId, set.id, now());
+    // Its own workstream held nothing but the move: the thread says where
+    // its items went, and both end, done, where the Done page keeps them.
+    threads.append(
+      move.threadId as Ulid,
+      {
+        role: "note",
+        note: {
+          kind: "moved",
+          changeSet: set.id,
+          into: declared(move.into as SourceKind).name,
+          workstreams: swapped,
+        },
+      },
+      newId(),
+      now(),
+    );
+    const own = threads.get(move.threadId as Ulid, now())?.workstreamId;
+    if (own && !workstreams.region(own, workstreams.get(own)?.version ?? 0)?.items.length)
+      await dispatch(
+        "workstream.done",
+        { workstream: own },
+        { kind: "change-set", changeSetId: set.id },
+      );
     emit({
       name: "standin.moving",
       at: now(),

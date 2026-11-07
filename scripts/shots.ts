@@ -4043,6 +4043,76 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
+  // Linear's MCP server found, and Linear on through it, a stand-in of it
+  // answering Ferrowick's Linear (OA-278): Settings, the overview, Browse
+  // by epic and an issue's panel.
+  {
+    name: "settings-source-servers-linear-found",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, linear: "found", state: setupFinished }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Linear off" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "settings-source-servers-linear-on",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, linear: "on", state: setupFinished }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Linear on" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "linear-overview",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, linear: "on", state: setupFinished }),
+    act: (page) => page.getByText("Summer timetable launch").first().waitFor(),
+  },
+  {
+    name: "linear-browse",
+    path: "/browse?grouping=epic",
+    make: firstRun({ cli: { signedIn: true }, linear: "on", state: setupFinished }),
+    act: (page) =>
+      page.locator(".cluster-toggle", { hasText: "Summer timetable launch" }).first().waitFor(),
+  },
+  {
+    name: "linear-panel",
+    path: "/browse?grouping=epic&item=linear%3AENG-5",
+    make: firstRun({ cli: { signedIn: true }, linear: "on", state: setupFinished }),
+    act: (page) => page.locator(".item-panel .panel-facts").waitFor(),
+  },
+  // A person who started on Oriel's own tracker turns Linear on: the same
+  // move Jira gets, and once applied, its thread is done, its rail says
+  // where the items went, and it offers no Revert, saying why.
+  {
+    name: "move-into-linear-applied",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, linear: "found", state: setupFinished }),
+    window: true,
+    act: async (page) => {
+      await approvedPlan(page);
+      const thread = await page.evaluate(async () => {
+        const on = await fetch("/api/actions/source.on", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "linear", server: "linear" }),
+        });
+        if (!on.ok) throw new Error(`source.on: ${on.status}`);
+        const listed = (await (await fetch("/api/threads")).json()) as {
+          threads: { id: string; title: string }[];
+        };
+        return listed.threads.find((each) => each.title === "Into Linear")?.id ?? "";
+      });
+      if (!thread) throw new Error("no thread offers the move");
+      await page.goto(new URL(`/threads/${thread}`, page.url()).href);
+      await page.getByRole("button", { name: "Approve and apply" }).click();
+      await page.locator(".rail-note", { hasText: "Its items went to" }).waitFor();
+    },
+  },
   // A person who started on Oriel's own tracker turns Jira on through
   // Atlassian's server: Oriel offers one change set that makes the
   // tracker's issues again in Jira, in a thread of its own.

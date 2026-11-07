@@ -264,10 +264,22 @@ export const stepOf = (steps: readonly ConnectStep[], form: ConnectForm): Connec
 export const pickedChoice = (form: ConnectForm): PickChoiceView | null =>
   form.choices?.find((choice) => choice.value === (form.tried ?? form.picked)) ?? null;
 
-// The connectors the first run offers, in their declared order: none a
-// stand-in on now stands in for (decision 0059).
+// The kinds the window doesn't offer to connect, as another does their
+// work (decision 0059): those a stand-in on now stands in for, and, while
+// one of a stand-in's kinds is open, as through its source server, the
+// others it stands in for: one of them is the person's already.
+export const replacedKinds = (connectors: Connectors, model: ConnectionsModel): Set<string> =>
+  new Set([
+    ...standingIn(connectors, model).flatMap(({ standIn }) => standIn.for),
+    ...Object.values(connectors).flatMap(({ standIn }) =>
+      standIn?.for.some((kind) => openOf(model, kind)) ? standIn.for : [],
+    ),
+  ]);
+
+// The connectors the first run offers, in their declared order: none
+// another does the work of (`replacedKinds`).
 export const offered = (connectors: Connectors, model: ConnectionsModel): ConnectorView[] => {
-  const replaced = new Set(standingIn(connectors, model).flatMap(({ standIn }) => standIn.for));
+  const replaced = replacedKinds(connectors, model);
   const off = turnedOff(model);
   return Object.values(connectors)
     .filter((connector) => connector.connect?.offer.firstRun !== undefined)

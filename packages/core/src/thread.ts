@@ -117,11 +117,20 @@ const movingNote = object({
   into: string,
   items: number,
 });
+// That move applied: the workstreams that hold its items now, in place of
+// the stand-in's, by ID.
+const movedNote = object({
+  kind: literal("moved"),
+  changeSet: refine(string, isUlid, "expected a change set ID"),
+  into: string,
+  workstreams: array(refine(string, isUlid, "expected a workstream ID")),
+});
 export const orielNote = union(
   rejectedNote,
   unrejectedNote,
   unknownChipsNote,
   movingNote,
+  movedNote,
   object({
     kind: literal("quotes"),
     checked: refine(

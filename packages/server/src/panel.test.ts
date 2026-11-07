@@ -199,7 +199,7 @@ test("the window says where each item it shows lives, for a link to its source",
 test("only an item ID reads; a GET changes nothing", async (t) => {
   const app = await testApp(t);
   assert.equal((await app.get(path("SYN-88"))).status, 400);
-  assert.equal((await app.get(path("linear:ABC-1"))).status, 400);
+  assert.equal((await app.get(path("nosuch:ABC-1"))).status, 400);
   assert.equal((await app.get("/api/items/%E0%A4%A")).status, 400);
   const events = app.app.telemetry().length;
   await app.get(path("jira:SYN-88"));

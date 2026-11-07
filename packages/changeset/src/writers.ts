@@ -6,6 +6,7 @@
 // nowhere else.
 import type { Log, SourceKind, SourceWriter } from "@oriel/core";
 import { jiraWriterOf } from "@oriel/jira/writer";
+import { linearWriterOf } from "@oriel/linear/writer";
 import { sheetsWriterOf } from "@oriel/sheets/writer";
 import { slackWriterOf } from "@oriel/slack/writer";
 import { trackerWriterOf } from "@oriel/tracker/writer";
@@ -17,6 +18,7 @@ import { trackerWriterOf } from "@oriel/tracker/writer";
 // declarations with op specs.
 const lines = {
   jira: jiraWriterOf,
+  linear: linearWriterOf,
   slack: slackWriterOf,
   sheets: sheetsWriterOf,
   tracker: trackerWriterOf,

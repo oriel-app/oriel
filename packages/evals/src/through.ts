@@ -1,5 +1,5 @@
 // A fixture connected through its kind's source server (decision 0059,
-// OA-276, OA-277), as a case asks with `servers`: a stand-in of the server answers
+// OA-276, OA-277, OA-278), as a case asks with `servers`: a stand-in of the server answers
 // in memory, from the fixture after the case's edits, and the connector's
 // own parser syncs and reads through it, as the app does. Its index must be
 // the fixture's, item for item, or the case's world isn't the one its
@@ -99,8 +99,12 @@ async function slack(_edited: number, plain: FixtureConnection): Promise<Fixture
   };
 }
 
+// Linear, which is on only through Linear's server: its fixture already
+// connects through a stand-in of it (@oriel/linear's declared fixture).
+const linear = async (_edited: number, plain: FixtureConnection) => plain;
+
 // The kinds a case may have on through their source server, each as its
 // stand-in connects it.
 export const throughServers: Readonly<
   Record<string, (edited: number, plain: FixtureConnection) => Promise<FixtureConnection>>
-> = { jira, slack };
+> = { jira, slack, linear };

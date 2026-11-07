@@ -408,6 +408,11 @@ export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slac
       };
     return {
       ...writer,
+      // Slack's server has no tool to delete a message (slack-mcp.ts).
+      unsendable: {
+        deleteMessage: "A Slack post can't be taken back",
+        deleteReply: "A Slack reply can't be taken back",
+      },
       apply: fresh(writer.apply),
       current: fresh(writer.current),
       read: fresh(writer.read),

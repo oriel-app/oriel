@@ -8,6 +8,8 @@
 // - slack: Slack's server, in the channels the fixture picked, or, through
 //   the real server, those `--channels` names; the reads are every message
 //   the sync listed.
+// - linear: Linear's server, on the first team it lists, ENG in the
+//   fixture; the reads are every item the sync listed.
 //
 // By default it records the kind's stand-in (`@oriel/<kind>/standin`, its
 // fixture world in memory), in this process. With `--through codex --server
@@ -16,7 +18,7 @@
 // model and only that server's read tools: point it at our test site or
 // workspace, never a person's data. People are replaced with numbered
 // placeholders, as `pnpm record:jira` does. Nothing is written.
-// Usage: node scripts/record-source-mcp.ts <jira|slack> [--through codex --server <name>] [--channels <a,b>]
+// Usage: node scripts/record-source-mcp.ts <jira|slack|linear> [--through codex --server <name>] [--channels <a,b>]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { checkCodex, codexServerCalls } from "../packages/agent/src/index.ts";
@@ -34,6 +36,10 @@ import { atlassianServer } from "../packages/jira/src/atlassian.ts";
 import { standInCaller as atlassianCaller } from "../packages/jira/src/atlassian-standin.ts";
 import { callsDir as jiraCalls } from "../packages/jira/src/calls-cassette.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
+import { callsDir as linearCalls } from "../packages/linear/src/calls.ts";
+import { linearServer } from "../packages/linear/src/linear-mcp.ts";
+import { standInCaller as linearCaller } from "../packages/linear/src/linear-standin.ts";
+import { openLinear } from "../packages/linear/src/open-connection.ts";
 import { openJira } from "../packages/jira/src/open-connection.ts";
 import { callsDir as slackCalls } from "../packages/slack/src/calls-cassette.ts";
 import { loadSlackFixture } from "../packages/slack/src/fixture.ts";
@@ -65,6 +71,53 @@ export function scrubSlack(value: unknown, people = new Map<string, string>()): 
         return [key, placeholder(`name:${each}`, (n) => `Person ${n}`)];
       if (["email", "phone", "skype"].includes(key) || key.startsWith("image_")) return [key, ""];
       return [key, scrubSlack(each, people)];
+    }),
+  );
+}
+
+// A Linear answer with its people as numbered placeholders, by their names
+// and email addresses wherever they appear, and its workspace's address as
+// a placeholder's: none of our test workspace is in the repo.
+export function scrubLinear(value: unknown, people = new Map<string, string>()): unknown {
+  const placeholder = (key: string) => {
+    const made = people.get(key) ?? `Person ${people.size + 1}`;
+    people.set(key, made);
+    return made;
+  };
+  if (typeof value === "string")
+    return value.replace(/https:\/\/linear\.app\/[a-z0-9-]+/g, "https://linear.app/oriel-test");
+  if (Array.isArray(value)) return value.map((item) => scrubLinear(item, people));
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, each]) => {
+      // A person as an object: its name and contact, whatever beside them.
+      if (
+        ["assignee", "lead", "creator", "createdBy"].includes(key) &&
+        typeof each === "object" &&
+        each !== null &&
+        !Array.isArray(each)
+      )
+        return [
+          key,
+          Object.fromEntries(
+            Object.entries(each).map(([field, value]) =>
+              ["name", "displayName"].includes(field) && typeof value === "string"
+                ? [field, placeholder(`name:${value}`)]
+                : field === "email"
+                  ? [field, ""]
+                  : [field, scrubLinear(value, people)],
+            ),
+          ),
+        ];
+      if (["assignee", "lead", "creator", "createdBy", "name", "displayName"].includes(key)) {
+        // A person's name, where the object or the field is a person's.
+        const person =
+          key !== "name" ||
+          ("email" in value && typeof (value as Record<string, unknown>).email === "string");
+        if (typeof each === "string" && person) return [key, placeholder(`name:${each}`)];
+      }
+      if (key === "email" && typeof each === "string") return [key, ""];
+      return [key, scrubLinear(each, people)];
     }),
   );
 }
@@ -122,6 +175,19 @@ const kinds: Record<string, Kind> = {
       };
     },
     open: openSlack as Kind["open"],
+    reads: (listed) => listed.map((record) => record.id),
+  },
+  linear: {
+    server: linearServer,
+    dir: linearCalls,
+    standIn: () => linearCaller(),
+    standInLine:
+      "From the stand-in (@oriel/linear/standin, Ferrowick's Linear in memory), not Linear's server: re-record with --through codex.",
+    realLine: (version) =>
+      `From Linear's MCP server, through Codex ${version}, in our test workspace.`,
+    scrub: scrubLinear,
+    connection: () => ({ prefix: "linear", identity: "", options: {} }),
+    open: openLinear as Kind["open"],
     reads: (listed) => listed.map((record) => record.id),
   },
 };
@@ -228,7 +294,7 @@ if (import.meta.main) {
   const channels = values.channels ? values.channels.split(",").map((name) => name.trim()) : null;
   if (!kind) {
     console.error(
-      "Usage: node scripts/record-source-mcp.ts <jira|slack> [--through codex --server <name>] [--channels <a,b>]",
+      "Usage: node scripts/record-source-mcp.ts <jira|slack|linear> [--through codex --server <name>] [--channels <a,b>]",
     );
     process.exitCode = 2;
   } else if (values.through === undefined) {

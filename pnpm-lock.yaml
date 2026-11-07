@@ -64,6 +64,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/linear':
+        specifier: workspace:*
+        version: link:../linear
       '@oriel/sheets':
         specifier: workspace:*
         version: link:../sheets
@@ -153,6 +156,12 @@ importers:
         specifier: workspace:*
         version: link:../db
 
+  packages/linear:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/sandbox:
     dependencies:
       '@oriel/bindings':
@@ -192,6 +201,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/linear':
+        specifier: workspace:*
+        version: link:../linear
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox
@@ -233,6 +245,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/linear':
+        specifier: workspace:*
+        version: link:../linear
       '@oriel/sheets':
         specifier: workspace:*
         version: link:../sheets
@@ -251,6 +266,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/linear':
+        specifier: workspace:*
+        version: link:../linear
       '@oriel/slack':
         specifier: workspace:*
         version: link:../slack

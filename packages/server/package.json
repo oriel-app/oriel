@@ -24,6 +24,7 @@
     "@oriel/folder": "workspace:*",
     "@oriel/groupings": "workspace:*",
     "@oriel/jira": "workspace:*",
+    "@oriel/linear": "workspace:*",
     "@oriel/sandbox": "workspace:*",
     "@oriel/sheets": "workspace:*",
     "@oriel/slack": "workspace:*",

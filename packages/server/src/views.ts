@@ -198,6 +198,7 @@ export function changeSetView(
   applying: boolean,
   writable: boolean,
   stalled: boolean,
+  cannotUndo: string | null = null,
 ): ChangeSetView {
   return {
     id: set.id,
@@ -222,6 +223,7 @@ export function changeSetView(
     ),
     revertOf: set.revertOf,
     reverts: all.filter((other) => other.revertOf === set.id).map((other) => other.id),
+    ...(cannotUndo !== null && { cannotUndo }),
     createdAt: set.createdAt,
   };
 }
@@ -474,6 +476,22 @@ export function views(deps: ViewDeps) {
     return { ...block, items };
   };
 
+  // A move's thread (decision 0059): what the rail says in place of its
+  // items, since a move's go to the workstreams that held the stand-in's.
+  const moveOf = (messages: readonly Message[]) => {
+    const notes = messages.flatMap((m) => (m.role === "note" ? [m.note] : []));
+    const moved = notes.findLast((note) => note.kind === "moved");
+    if (moved?.kind === "moved") return { move: { went: wentTo(moved.workstreams) } };
+    return notes.some((note) => note.kind === "moving") ? { move: { went: null } } : {};
+  };
+
+  // Workstreams by ID, as a line links to them, less any gone since.
+  const wentTo = (ids: readonly string[]) =>
+    ids.flatMap((id) => {
+      const workstream = workstreams.get(id as Ulid);
+      return workstream ? [{ id, name: workstream.name }] : [];
+    });
+
   // A stored chat message as the window shows it; null for an agent event
   // in a shape this server doesn't know.
   const entry = (
@@ -535,7 +553,14 @@ export function views(deps: ViewDeps) {
                   into: note.into,
                   items: note.items,
                 }
-              : { kind: note.kind, changeSetId: note.changeSet },
+              : note.kind === "moved"
+                ? {
+                    kind: note.kind,
+                    changeSetId: note.changeSet,
+                    into: note.into,
+                    workstreams: wentTo(note.workstreams),
+                  }
+                : { kind: note.kind, changeSetId: note.changeSet },
       };
     }
     if (message.role === "marker") {
@@ -733,6 +758,8 @@ export function views(deps: ViewDeps) {
       // Whether a change set can be approved here; by the thread's own
       // `writable` unless given.
       writable: (changeSetId: string) => boolean = () => deps.writable,
+      // Why one that applied can't be undone, where a writer can't send it.
+      cannotUndo: (changeSetId: string) => string | null = () => null,
     ): Promise<ThreadView | null> {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
@@ -773,6 +800,7 @@ export function views(deps: ViewDeps) {
         doneBy: thread.doneBy,
         regionVersion: thread.regionVersion,
         members: members(region?.items ?? []),
+        ...moveOf(messages),
         entries,
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
@@ -784,6 +812,7 @@ export function views(deps: ViewDeps) {
             applying(set.id),
             writable(set.id),
             stalled(set.id),
+            cannotUndo(set.id),
           );
           const look = looks.get(set.id);
           return look === undefined ? view : { ...view, secondLook: look };

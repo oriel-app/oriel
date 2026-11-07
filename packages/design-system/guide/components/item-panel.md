@@ -418,6 +418,79 @@ else hide(button);</code></pre>
 </div>
 ```
 
+```html specimen id=linear height=620 pad=0 title="A Linear sub-issue: the issue's facts, then Linear's own, its team, project, cycle and parent"
+<div class="shell" data-folded>
+  <aside class="item-panel" aria-labelledby="item-panel-title-l">
+    <header class="panel-head">
+      <p class="panel-source">Linear · ENG-5</p>
+      <button type="button" class="panel-close" aria-label="Close the panel">×</button>
+      <span role="tooltip" popover="manual" class="tooltip">Close (Esc)</span>
+      <h2 id="item-panel-title-l" class="panel-title" tabindex="-1">
+        Alert copy for a moved sailing
+      </h2>
+      <div class="panel-actions">
+        <a
+          class="button panel-open"
+          href="https://linear.app/ferrowick/issue/ENG-5"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Open in Linear</a
+        >
+      </div>
+    </header>
+    <p class="panel-read" role="status">
+      Read <time datetime="2026-11-05T16:41:00Z" title="Nov 5, 2026, 16:41">just now</time>
+    </p>
+    <div class="panel-body">
+      <dl class="panel-facts">
+        <div class="panel-fact">
+          <dt>Type</dt>
+          <dd>Sub-issue</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Status</dt>
+          <dd>Todo</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Assignee</dt>
+          <dd>Ines Carvalho</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Estimate</dt>
+          <dd>1 point</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Labels</dt>
+          <dd>notifications</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Team</dt>
+          <dd>ENG</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Project</dt>
+          <dd>Summer timetable launch</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Cycle</dt>
+          <dd>Cycle 13, Timetable freeze</dd>
+        </div>
+        <div class="panel-fact">
+          <dt>Parent</dt>
+          <dd>ENG-4</dd>
+        </div>
+      </dl>
+      <section>
+        <h3 class="panel-heading">Description</h3>
+        <div class="reply panel-prose">
+          <p>Short, with the old and new times. Reviewed by support.</p>
+        </div>
+      </section>
+    </div>
+  </aside>
+</div>
+```
+
 ```html specimen id=narrow width=390 height=640 pad=0 title="On a phone (≤760px): the whole screen, no left edge"
 <div class="shell" data-folded>
   <aside class="item-panel" aria-labelledby="item-panel-title-n" data-steps>
@@ -710,6 +783,7 @@ else hide(button);</code></pre>
 - Notes: "This item moved to {key} {title}.", "This item isn't in {source} any more.", "Oriel can't read this item in {source} now.", "{source} sent this item in a shape Oriel can't show."
 - A conversation's day header is the weekday, month and day ("Wednesday, November 4"), plus " · 17 days later" when it's a day or more after the message before. Times under it are the clock alone. "(edited)" after an edited message, with "Edited {when}" on hover.
 - Fact names and values, headings, labels and empty lines are the source's words, not Oriel's.
+- A tracker's issue shows the issues shape's facts first, Type, Status, Assignee, Estimate and Labels, each only where its tracker has it, then its own (decision 0059): Linear's Team, Project, Cycle and Parent, or a project's Lead and Target date (OA-278). Linear keeps its descriptions as markdown, so they read as a reply does.
 
 ## Where the app uses it
 

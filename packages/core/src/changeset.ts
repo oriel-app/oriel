@@ -227,6 +227,10 @@ export interface ChangeSets {
   // Whether every source it still has to write to has a writer here. When
   // not, it can be reviewed and rejected, never approved.
   writable(id: Ulid): boolean;
+  // Why it offers no Revert though it applied, when that's because a writer
+  // can't send what would undo it (`SourceWriter.unsendable`), in a
+  // person's words; null otherwise.
+  cannotUndo(id: Ulid): string | null;
   // Ends a change set that started landing, or may have: its unapplied
   // changes are rejected for good, and a revert covers exactly what applied.
   // The warnings name any change that may already have landed. Dismissing

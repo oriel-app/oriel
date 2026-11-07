@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // A stand-in MCP server, by the name of the one it stands in for:
-// `node packages/standin-mcp/src/main.ts <atlassian|slack> [--journal <file>]`. For
+// `node packages/standin-mcp/src/main.ts <atlassian|slack|linear> [--journal <file>]`. For
 // dev and tests only. With a journal, every process given the same one
 // shares its writes (journal.ts).
 import { parseArgs } from "node:util";
 import { atlassianInfo, atlassianStandIn } from "@oriel/jira/standin";
+import { linearInfo, linearStandIn } from "@oriel/linear/standin";
 import { slackInfo, slackStandIn } from "@oriel/slack/standin";
 import { journaled } from "./journal.ts";
 import { serveLines, standInServer } from "./mcp.ts";
@@ -12,6 +13,7 @@ import { serveLines, standInServer } from "./mcp.ts";
 const standIns = {
   atlassian: { info: atlassianInfo, tools: atlassianStandIn },
   slack: { info: slackInfo, tools: slackStandIn },
+  linear: { info: linearInfo, tools: () => linearStandIn() },
 };
 
 const { positionals, values } = parseArgs({

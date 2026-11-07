@@ -227,9 +227,11 @@ export function history(
     }
     if (message.role === "note") {
       // Oriel's check of an answer's quotes is the window's, to caption them,
-      // and its offer to move its tracker's issues is the person's to read.
-      if (message.note.kind !== "quotes" && message.note.kind !== "moving")
-        out.push({ role: "note", note: message.note, at: message.at });
+      // and its offer to move its tracker's issues, and where they went, are
+      // the person's to read.
+      const { note } = message;
+      if (note.kind !== "quotes" && note.kind !== "moving" && note.kind !== "moved")
+        out.push({ role: "note", note, at: message.at });
       continue;
     }
     if (message.role === "held") continue;

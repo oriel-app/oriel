@@ -207,3 +207,38 @@ test("with Jira not connected, the stand-in tracker is on, offering the window c
     /doesn't connect tracker/,
   );
 });
+
+test("Linear, on only through its server, is on in a window chat only where the case says so, and then the stand-in steps aside", async (t) => {
+  const all = loadFixtures({
+    jira: sources.jira,
+    linear: sources.linear,
+    folder: sources.folder,
+    tracker: sources.tracker,
+  });
+  const window = { workstreams: [], now: "2026-11-06T09:00:00.000Z" as never };
+  const base = {
+    fixtures: all,
+    region: null,
+    items: [],
+    edited: {},
+    window,
+    off: ["jira", "folder"],
+  };
+  const unsaid = await buildWorld(base);
+  t.after(() => unsaid.close());
+  assert.deepEqual(Object.keys(unsaid.namespaces), ["tracker"]);
+  const said = await buildWorld({ ...base, servers: ["linear"] });
+  t.after(() => said.close());
+  assert.deepEqual(Object.keys(said.namespaces), ["linear"]);
+  const { dts } = bindingsFor(said.region, { reader: said.reader, namespaces: said.namespaces });
+  assert.match(dts, /createProject\(project: /);
+  // A region holding its items has it on, as a person turned it on.
+  const held = await buildWorld({
+    fixtures: all,
+    region: namedRegion(all, "launch-project") ?? null,
+    items: [],
+    edited: {},
+  });
+  t.after(() => held.close());
+  assert.ok("linear" in held.namespaces);
+});

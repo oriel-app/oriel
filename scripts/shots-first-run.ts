@@ -28,6 +28,11 @@ import { atlassianServer } from "../packages/jira/src/atlassian.ts";
 import { atlassianStandIn, standInCaller } from "../packages/jira/src/atlassian-standin.ts";
 import { slackServer } from "../packages/slack/src/slack-mcp.ts";
 import { slackStandIn, standInCaller as slackCaller } from "../packages/slack/src/slack-standin.ts";
+import { standInFound as linearFound } from "../packages/linear/src/declared-fixture.ts";
+import {
+  linearStandIn,
+  standInCaller as linearCaller,
+} from "../packages/linear/src/linear-standin.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
 import { type SetupState, memorySetup, setupFile } from "../packages/server/src/setup/state.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
@@ -130,6 +135,9 @@ export type FirstRunOptions = {
   // And Slack's MCP server (OA-277), as the stand-in of it answers
   // Ferrowick in memory: found, or Slack on through it.
   slack?: "found" | "on";
+  // And Linear's MCP server (OA-278), as the stand-in of it answers
+  // Ferrowick's Linear in memory: found, or Linear on through it.
+  linear?: "found" | "on";
 };
 
 // Atlassian's server as the person's agent lists it, under the name they
@@ -353,7 +361,8 @@ export async function firstRunServer(
   // process: sync's and replay's.
   const atlassianTools = standInCaller(atlassianStandIn());
   const slackTools = slackCaller(slackStandIn());
-  const standing = options.atlassian || options.slack;
+  const linearTools = linearCaller(linearStandIn());
+  const standing = options.atlassian || options.slack || options.linear;
   const state = options.data ? setupFile(join(options.data, "setup.json")) : memorySetup();
   if (options.state) state.set({ ...state.get(), ...options.state });
 
@@ -368,7 +377,11 @@ export async function firstRunServer(
     discover: async () => ({
       agent: { id: "claude-code", name: "Claude Code" },
       found: standing
-        ? [...(options.atlassian ? [atlassianFound] : []), ...(options.slack ? [slackFound] : [])]
+        ? [
+            ...(options.atlassian ? [atlassianFound] : []),
+            ...(options.slack ? [slackFound] : []),
+            ...(options.linear ? [linearFound] : []),
+          ]
         : options.found || options.trackerOn
           ? [await askTiny()]
           : [],
@@ -379,7 +392,12 @@ export async function firstRunServer(
           callServer: async (server) => ({
             agent: { id: "claude-code", name: "Claude Code", kind: "claude-code" },
             calls: {
-              call: server.name === "slack" ? slackTools : atlassianTools,
+              call:
+                server.name === "slack"
+                  ? slackTools
+                  : server.name === linearFound.name
+                    ? linearTools
+                    : atlassianTools,
               spent: () => ({
                 inputTokens: 0,
                 outputTokens: 0,
@@ -426,7 +444,9 @@ export async function firstRunServer(
     await postTo(serving, "/api/actions/source.on", { kind: "jira", server: "atlassian" });
   if (options.slack === "on")
     await postTo(serving, "/api/actions/source.on", { kind: "slack", server: "slack" });
-  if (options.atlassian === "on" || options.slack === "on") {
+  if (options.linear === "on")
+    await postTo(serving, "/api/actions/source.on", { kind: "linear", server: linearFound.name });
+  if (options.atlassian === "on" || options.slack === "on" || options.linear === "on") {
     await postTo(serving, "/api/servers/dismiss", {});
     await serving.app.settled();
   }

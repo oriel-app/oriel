@@ -205,6 +205,12 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
   // channel, asked of the source; null when unknown. Without it, the
   // composition root names them.
   name?(id: string): Promise<string | null>;
+  // The ops a revert would send that it can't, by the op, each with a line
+  // saying so in a person's words, such as a post a source server has no
+  // tool to delete: "A Slack post can't be taken back". It says so before
+  // anything is offered, so a change set that would need one offers no
+  // Revert. None: it can send every op its catalogue has.
+  readonly unsendable?: Readonly<Record<string, string>>;
 }
 
 // What `apply` throws when nothing was sent or changed: the write never went

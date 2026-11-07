@@ -1064,6 +1064,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     // That row was sent before, and has just been found not in place: it is
     // unsent again.
     unsent?: true;
+    // A revert refused because a writer can't send what would undo it: its
+    // message is the writer's line, for a person.
+    unsendable?: true;
   };
   const refuse = (refusal: Refusal): never => {
     throw new ChangeSetError(refusal.code, refusal.message);
@@ -1365,9 +1368,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (!m.applied) continue;
       const create = created.get(m.applied.item.id);
       if (create && create !== m) continue;
-      const step = mustSpec(specs, m, set.mutations).spec.undo(m.args, m.applied);
+      const { prefix, spec } = mustSpec(specs, m, set.mutations);
+      const step = spec.undo(m.args, m.applied);
       if ("refused" in step)
         return refused(`mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`);
+      // What its writer says up front it can't send, such as a delete its
+      // source server has no tool for, is never offered, rather than
+      // stalling once sent.
+      const cannot = deps.sources[prefix]?.writer?.unsendable?.[step.op];
+      if (cannot !== undefined) return { ...refused(cannot), unsendable: true };
       // What it would put back must pass the catalogue as it is now.
       const kind = parseItemId(m.applied.item.id)?.kind;
       const back =
@@ -1896,6 +1905,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
     writable(id) {
       return unwritable(mustLoad(id)) === null;
+    },
+
+    cannotUndo(id) {
+      const set = mustLoad(id);
+      const refusal = revertRefusal(set, revertsOf(set));
+      return refusal?.unsendable ? refusal.message : null;
     },
 
     // Reverses exactly what has been applied (see `revertRefusal`). A partly

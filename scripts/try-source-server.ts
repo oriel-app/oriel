@@ -1,14 +1,15 @@
 // A kind through its source server, end to end on the person's own Claude
 // Code or Codex, against packages/standin-mcp's stand-in for its server, in
-// dev only (OA-276, OA-277). The agent's processes get the stand-in on their
+// dev only (OA-276, OA-277, OA-278). The agent's processes get the stand-in on their
 // command line, never in the person's configuration. It looks for the
 // person's servers, turns the kind on through the stand-in, syncs its
 // fixture into the index, and approves one scripted change set, which
 // replays through the server's write tools: for Jira a rename of SYN-10,
-// for Slack a reply to Amara's question. On Claude Code that spends a
+// for Slack a reply to Amara's question, for Linear ENG-4 planned into
+// cycle 14. On Claude Code that spends a
 // little of the person's plan on its smallest model; on Codex, none. The
 // index is in memory.
-// Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack]
+// Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear]
 import { checkCodex } from "../packages/agent/src/index.ts";
 import { models as findModels } from "../packages/server/src/model.ts";
 import { scriptedAgent } from "../packages/server/src/scripted-agent.ts";
@@ -32,12 +33,18 @@ const kinds = {
     items: ["slack:C0FW1WEATHR-1790071200.000100"],
     write: ["slack.reply", ["slack:C0FW1WEATHR-1790071200.000100", "Replied through the stand-in"]],
   },
+  linear: {
+    standIn: "linear",
+    name: "Linear",
+    items: ["linear:ENG-4"],
+    write: ["linear.setCycle", ["linear:ENG-4", 14]],
+  },
 } as const;
 
 const agent = process.argv[2];
 const kind = process.argv[3] ?? "jira";
 if ((agent !== "claude-code" && agent !== "codex") || !Object.hasOwn(kinds, kind)) {
-  console.error("Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack]");
+  console.error("Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear]");
   process.exit(2);
 }
 const trying = kinds[kind as keyof typeof kinds];

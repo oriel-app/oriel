@@ -209,7 +209,7 @@ test("history() reads past the region with no content, so its charts aren't the 
     // What `of` names is the agent's text: an ID of a kind no source
     // declares, or of nothing the index has, is refused.
     const refused: string[] = [];
-    for (const named of ["linear:ORL-1", "jira:SYN-999", "not an id"])
+    for (const named of ["nosuch:ORL-1", "jira:SYN-999", "not an id"])
       await bindings.read("history", [named]).catch((error: Error) => refused.push(error.message));
     return { value: { value, refused } };
   };

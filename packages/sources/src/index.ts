@@ -21,13 +21,17 @@ import {
 } from "@oriel/core";
 import { folderDeclaration } from "@oriel/folder";
 import { jiraDeclaration } from "@oriel/jira";
+import { linearDeclaration } from "@oriel/linear";
 import { sheetsDeclaration } from "@oriel/sheets";
 import { slackDeclaration } from "@oriel/slack";
 import { trackerDeclaration } from "@oriel/tracker";
 
-// Each under its own kind, which a test checks.
+// Each under its own kind, which a test checks. An untagged create, from
+// before migration 0031, goes to the first kind whose catalogue has its op,
+// so Linear comes after Jira, and the stand-in tracker last.
 const declared = {
   jira: jiraDeclaration,
+  linear: linearDeclaration,
   folder: folderDeclaration,
   slack: slackDeclaration,
   sheets: sheetsDeclaration,

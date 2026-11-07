@@ -14,6 +14,7 @@ test("every source declares its facets beyond the common ones, each with a label
     ),
     {
       jira: [["estimate", "Estimate"]],
+      linear: [["estimate", "Estimate"]],
       folder: [],
       slack: [["replies", "Replies"]],
       sheets: [
