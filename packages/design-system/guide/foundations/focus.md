@@ -52,7 +52,7 @@ These rules change the ring. Each was written for a reason, but together they gi
 | `.workstream-title:focus` in `window.css`                                              | No ring. The name's border turns `--line-strong` and it fills with `--surface`                         |
 | `.sidebar-search-field:focus-within` and `.filter-search:focus-within` in `window.css` | The frame's border in `--focus`, plus a 1px ring; the input's own outline off. Written twice, the same |
 | `.context-menu-item:is(:hover, :focus-visible)` in `window.css`                        | No ring. A `--surface-hover` fill, the same as hover                                                   |
-| `.bead-action:focus-visible` in `window.css`                                           | The ring 2px **inside**, in `--bead-accent`: the accent wouldn't read on the bead's ink                |
+| `.bead-action:focus-visible` in `window.css`                                           | The ring 2px **inside**, in `--focus`: the bead's room under the band is tight                         |
 
 Three more remove the ring on purpose, and should stay that way. A change set, the item panel's title and the sidebar's Needs you take focus from the app (`tabIndex={-1}`) so a screen reader starts there. They aren't controls, and a ring would mark something nobody tabbed to (`.change-set:focus`, `.panel-title:focus` and `.sidebar-needs` in `window.css`).
 

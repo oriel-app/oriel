@@ -24,6 +24,7 @@ html {
   --layer-bar: 3;
   --layer-float: 4;
   --layer-sticky: 5;
+  --layer-frame: 6;
   --layer-sheet: 18;
   --layer-panel: 19;
   --layer-veil: 20;
@@ -46,32 +47,37 @@ html {
   --ins-soft: var(--done-soft);
   --handed-off: var(--done);
   --handed-off-soft: var(--done-soft);
-  --sidebar-bg: color-mix(in srgb, var(--bg) 96%, var(--text));
+  /* The frame (decision 0056, amended): the sidebar, a band along the top
+     of the page column and one down its right are one material, and the
+     column is set into it, its top corners curved like a table's apron
+     running into its leg, in the frame's slight shadow. On a narrow screen
+     the bar is the frame, and the corners curve from its lower edge. */
+  --sidebar-bg: var(--frame);
+  --frame-band: 4px;
+  --frame-curve: var(--frame-corner);
+  --frame-top: calc(var(--bar-height) + var(--frame-band));
+  --frame-shadow: inset 0 2px 3px -1px var(--frame-shade);
+  /* How far the frame's colour reaches out from the column's edge. */
+  --frame-reach: 100vmax;
   /* What dims the page under the drawer and a dialog: the ink, or in the
      dark, the paper. */
   --scrim: color-mix(in srgb, var(--text) 32%, transparent);
-  /* The bead (decision 0056): written on its ink in the paper's colour, and
-     its states lifted toward the paper so they read on the ink. In the dark
-     it is darker than the page, so a hairline rings it. At rest it is a dot. */
-  --bead-text: var(--bg);
-  --bead-faint: color-mix(in srgb, var(--bead-text) 60%, var(--bead));
-  --bead-ring: transparent;
-  --bead-accent: color-mix(in srgb, var(--accent) 45%, var(--bg));
-  --bead-working: color-mix(in srgb, var(--in-progress) 45%, var(--bg));
-  --bead-done: color-mix(in srgb, var(--done) 45%, var(--bg));
-  --bead-danger: color-mix(in srgb, var(--danger) 45%, var(--bg));
-  --bead-dot: 0.625rem;
+  /* The bead grows from the band, in the frame's colour: the bead it drops
+     as, its resting height, how far each neck reaches along the band, what
+     it keeps clear of the column's corners beyond them, and its swell under
+     the pointer. The column's top keeps room for it, so it covers no page
+     head. */
+  --bead-seed: 22px;
+  --bead-height: 2.75rem;
+  --bead-neck: 13px;
+  --bead-gap: 12px;
+  --bead-swell: 5px;
+  --frame-room: calc(var(--frame-band) + var(--bead-height) + var(--space-4));
 }
 
 @media (prefers-color-scheme: dark) {
   html {
     --scrim: color-mix(in srgb, var(--bg) 40%, transparent);
-    --bead-text: var(--text);
-    --bead-ring: var(--line-strong);
-    --bead-accent: var(--accent);
-    --bead-working: var(--in-progress);
-    --bead-done: var(--done);
-    --bead-danger: var(--danger);
   }
 }
 
@@ -110,8 +116,9 @@ html {
   --type-other: var(--line-strong);
   --avatar: var(--surface-hover);
   --avatar-text: var(--text-muted);
-  /* The bead's ink: the page's own, and in the dark, deeper than the page. */
-  --bead: var(--text);
+  /* The frame: the sidebar's material, and the shadow it casts on the page. */
+  --frame: #edece8;
+  --frame-shade: rgb(40 32 20 / 0.16);
 
   /* Type. A sans for everything but the thread, panel and page titles. */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
@@ -150,7 +157,9 @@ html {
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 8px;
-  /* The bead: a pill on one line, a card on two. */
+  /* The page column's top corners, in the frame; and the bead's lower ones. */
+  --frame-corner: 26px;
+  --frame-corner-narrow: 18px;
   --bead-radius: 1rem;
   --border-thin: 1px;
   --border-thick: 2px;
@@ -212,7 +221,8 @@ html {
     --derived: #b5b3ac;
     --del: #9a9890;
     --tint: 16%;
-    --bead: #0b0b0a;
+    --frame: #222220;
+    --frame-shade: rgb(0 0 0 / 0.55);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
     --shadow: 0 2px 4px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
   }
@@ -249,7 +259,8 @@ html {
   --type-other: var(--line-strong);
   --avatar: var(--surface-hover);
   --avatar-text: var(--text-muted);
-  --bead: var(--text);
+  --frame: #e9e3d5;
+  --frame-shade: rgb(60 40 10 / 0.18);
 
   --title-weight: var(--weight-regular);
 
@@ -266,7 +277,9 @@ html {
   --radius-sm: 0;
   --radius: 2px;
   --radius-lg: 4px;
-  /* The bead is a printed slip. */
+  /* A tighter corner, and the bead a printed slip. */
+  --frame-corner: 12px;
+  --frame-corner-narrow: 8px;
   --bead-radius: 2px;
 }
 
@@ -289,7 +302,8 @@ html {
     --derived: #bdb7c6;
     --del: #a39a86;
     --tint: 16%;
-    --bead: #0d0c0a;
+    --frame: #27241e;
+    --frame-shade: rgb(0 0 0 / 0.6);
   }
 }
 
@@ -410,19 +424,14 @@ a {
 
 /* The shell: the sidebar beside the page. */
 
-/* The sidebar stays on screen as the page scrolls; its column, painted
-   here, runs the page's whole height below it, however long the page. */
+/* The sidebar stays on screen as the page scrolls; the frame, painted
+   here, runs the page's whole height beside it, however long the page. */
 .shell {
   --sidebar: 15.5rem;
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
   min-height: 100vh;
-  background: linear-gradient(
-    to right,
-    var(--sidebar-bg) calc(var(--sidebar) - 1px),
-    var(--line) calc(var(--sidebar) - 1px) var(--sidebar),
-    transparent var(--sidebar)
-  );
+  background: var(--frame);
   /* The panel's width, and the room it takes beside the page. */
   --panel: 30rem;
   --beside: 0rem;
@@ -435,12 +444,37 @@ a {
   --sidebar: 3.25rem;
 }
 
+/* The page column, set into the frame: the band down its right, and its
+   first line far enough down to leave the bead room. */
 .shell-main {
+  --inset-top: var(--frame-room);
   min-width: 0;
-  margin-right: var(--beside);
+  margin-right: calc(var(--beside) + var(--frame-band));
+  background: var(--bg);
   /* The page lays out by its own width, which the panel beside it narrows. */
   container: page / inline-size;
-  transition: padding-top var(--duration-move) var(--ease-out);
+}
+
+/* The band along the column's top and the curve of its top corners: the
+   frame's colour reaching out from a box as wide as the column, fixed as
+   the page scrolls under it, cut to the column's top. The bead grows from
+   its lower edge. */
+.frame {
+  position: fixed;
+  top: var(--frame-top);
+  right: calc(var(--beside) + var(--frame-band));
+  left: var(--sidebar);
+  z-index: var(--layer-frame);
+  height: calc(2 * var(--frame-curve) + var(--space-6));
+  border-radius: var(--frame-curve) var(--frame-curve) 0 0;
+  box-shadow:
+    0 0 0 var(--frame-reach) var(--frame),
+    var(--frame-shadow);
+  clip-path: inset(
+    calc(-1 * var(--frame-band)) calc(-1 * (var(--beside) + var(--frame-band))) var(--space-6) 0
+  );
+  pointer-events: none;
+  transition: left var(--duration-move) ease;
 }
 
 .icon {
@@ -476,7 +510,6 @@ a {
   height: 100vh;
   padding: var(--inset-top) var(--space-3) var(--space-3);
   overflow: hidden auto;
-  border-right: var(--border-thin) solid var(--line);
   background: var(--sidebar-bg);
   scrollbar-width: thin;
 }
@@ -1139,9 +1172,7 @@ button.nav-more {
   gap: var(--space-2);
   min-height: var(--bar-height);
   padding: 0 var(--space-3);
-  border-bottom: var(--border-thin) solid var(--line);
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--frame);
 }
 
 .bar-menu {
@@ -1172,8 +1203,11 @@ button.nav-more {
 }
 
 @media (max-width: 760px) {
+  /* The bar is the frame: no bands beside the page, and a tighter curve. */
   html {
     --bar-height: 2.75rem;
+    --frame-band: 0px;
+    --frame-curve: var(--frame-corner-narrow);
   }
 
   /* The drawer floats over the page, so it takes no room beside it. */
@@ -1181,7 +1215,6 @@ button.nav-more {
   .shell[data-folded] {
     --sidebar: 0rem;
     grid-template-columns: minmax(0, 1fr);
-    background: none;
   }
 
   .bar {
@@ -4620,243 +4653,170 @@ a.replies:hover {
   gap: var(--space-2);
 }
 
-/* The bead (decision 0056): the one stack of Undo notes, an ink pill at the
-   top centre of the page column, on the window's top line, clear of the
-   sidebar and of the panel or window chat over the page. It hangs from its
-   anchor, growing sideways from the centre and down, and in the narrow bar
-   sits in the bar. It never reaches the composer or the ask bar. */
+/* The bead (decision 0056, amended): the one stack of Undo notes, the
+   frame's own material grown down from the band at the top centre of the
+   page column, clear of the sidebar and of the panel or window chat over the
+   page. Only its shape is drawn (`.bead-shape`); its words sit still on
+   whole pixels at their rested size, and a clip reveals them as the shape
+   grows (undo-stack.tsx, bead-motion.ts). It never reaches past the
+   column's corners, and never the composer or the ask bar. */
 @media (min-width: 761px) {
   .shell:is([data-panel], [data-chat]) {
     --bead-beside: var(--panel);
   }
 }
 
+/* As wide as what's left of the column, at the band's lower edge, with no
+   height: the bead hangs from it. */
 .bead-wrap {
-  --bead-max: max(
-    10rem,
-    min(28rem, calc(100vw - var(--sidebar) - var(--bead-beside) - 2 * var(--space-2)))
-  );
-  --bead-ease: var(--ease-spring);
-  --bead-time: var(--duration-morph);
   position: fixed;
-  top: var(--inset-top);
-  left: calc(50% + (var(--sidebar) - var(--bead-beside)) / 2);
+  top: var(--frame-top);
+  right: calc(var(--frame-band) + var(--bead-beside));
+  left: var(--sidebar);
   z-index: var(--layer-toast);
-  width: 0;
   height: 0;
-}
-
-.bead,
-.bead-under {
-  position: absolute;
-  left: 0;
-  border-radius: var(--bead-radius);
-  background: var(--bead);
-  transform: translateX(-50%);
-  transition:
-    width var(--bead-time) var(--bead-ease),
-    height var(--bead-time) var(--bead-ease),
-    top var(--bead-time) var(--bead-ease),
-    opacity var(--duration-quick) var(--ease-out);
-}
-
-/* A dot sits on the middle of the top line; anything taller hangs from it. */
-.bead {
-  z-index: var(--layer-raised);
-  top: calc((var(--head-row) - min(var(--h, var(--bead-dot)), var(--head-row))) / 2);
-  width: var(--w, var(--bead-dot));
-  height: var(--h, var(--bead-dot));
-  overflow: hidden;
-  color: var(--bead-text);
-  box-shadow:
-    0 0 0 var(--border-thin) var(--bead-ring),
-    var(--shadow);
-}
-
-@starting-style {
-  .bead {
-    top: calc((var(--head-row) - var(--bead-dot)) / 2);
-    width: var(--bead-dot);
-    height: var(--bead-dot);
-    opacity: 0;
-  }
-}
-
-/* Arriving, it shows as the dot for a moment before it grows, and its
-   words wait for the shape to settle. */
-.bead-wrap[data-arriving] .bead {
-  transition-delay:
-    calc(var(--duration-quick) * 2 / 3), calc(var(--duration-quick) * 2 / 3),
-    calc(var(--duration-quick) * 2 / 3), 0s;
-}
-
-/* A failure settles without the spring: good news may bounce, bad news
-   doesn't. Going, its words go first, then it shrinks to the dot and fades. */
-.bead-wrap[data-tone="problem"],
-.bead-wrap[data-leaving] {
-  --bead-ease: var(--ease-out);
-  --bead-time: calc(var(--duration-move) + var(--duration-quick) * 2 / 3);
-}
-
-.bead-wrap[data-leaving] {
-  --bead-time: calc(2 * var(--duration-quick));
   pointer-events: none;
 }
 
-.bead-wrap[data-leaving] .bead {
-  top: calc((var(--head-row) - var(--bead-dot)) / 2);
-  width: var(--bead-dot);
-  height: var(--bead-dot);
-  opacity: 0;
-  transition-delay:
-    calc(var(--duration-quick) / 2), calc(var(--duration-quick) / 2),
-    calc(var(--duration-quick) / 2), calc(var(--duration-move) + var(--duration-quick) * 3 / 4);
-}
-
-/* Two or three notes: the ones behind show as edges under the bead. */
-.bead-under {
-  top: calc(var(--h, var(--bead-dot)) - var(--space-1));
-  width: calc(var(--w, var(--bead-dot)) - 1.25rem);
-  height: var(--space-2);
-  border-radius: 0 0 var(--bead-radius) var(--bead-radius);
-  box-shadow: 0 0 0 var(--border-thin) var(--bead-ring);
-  opacity: 0;
-}
-
-.bead-under[data-depth="2"] {
-  top: var(--h, var(--bead-dot));
-  width: calc(var(--w, var(--bead-dot)) - 2.5rem);
-}
-
-.bead-wrap:is([data-count="2"], [data-count="3"]) .bead-under[data-depth="1"] {
-  opacity: 0.55;
-}
-
-.bead-wrap[data-count="3"] .bead-under[data-depth="2"] {
-  opacity: 0.28;
-}
-
-.bead-wrap:is([data-open], [data-leaving]) .bead-under {
-  opacity: 0;
-}
-
-/* What it says, laid out at its own width and centred, so as the bead's
-   edges move its words don't. */
-.bead-layer {
+.bead-shape {
   position: absolute;
   top: 0;
-  left: 50%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  overflow: visible;
+}
+
+.bead-shape path {
+  fill: var(--frame);
+}
+
+.bead-shape feDropShadow {
+  flood-color: var(--frame-shade);
+}
+
+/* Its words, at their rested size, centred; the clip that reveals them is
+   set as the shape moves. */
+.bead {
+  position: absolute;
+  top: 0;
+  width: max-content;
+  border-radius: 0 0 var(--bead-radius) var(--bead-radius);
+  color: var(--text);
+  clip-path: inset(0 50% 100% 50%);
+  pointer-events: auto;
+}
+
+.bead-wrap[data-leaving] .bead {
+  pointer-events: none;
+}
+
+/* Reduced motion: it only fades, shape and words together. */
+.bead-wrap[data-reduced] {
+  opacity: var(--bead-shown, 0);
+}
+
+/* What it says, laid out at its own width, up to the room the column
+   leaves it. */
+.bead-layer {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: max-content;
-  max-width: var(--bead-max);
-  min-height: var(--head-row);
-  padding: 0.3125rem 0.375rem 0.3125rem var(--space-3);
+  max-width: var(--bead-room, 28rem);
+  min-height: var(--bead-height);
+  padding: 0 var(--space-3) 0 var(--space-4);
   font-size: var(--text-md);
   line-height: 1.35;
-  transform: translateX(-50%);
 }
 
-/* Its words come in as its shape settles, and go faster than they came.
-   Arriving, they wait longer and grow a little as they come. */
-.bead-row > * {
-  animation: bead-words-in calc(var(--duration-move) + var(--duration-quick) / 3) var(--ease-out)
-    calc(var(--duration-quick) * 2 / 3) backwards;
-}
-
-.bead-wrap[data-arriving] .bead-row > * {
-  --bead-words-from: translateY(2px) scale(0.94);
-  animation-duration: calc(2 * var(--duration-quick));
-  animation-delay: var(--duration-move);
-}
-
-.bead-layer[data-gone] {
-  animation: bead-words-out var(--duration-quick) var(--ease-out) forwards;
-}
-
-.bead-layer[data-gone] .bead-row > * {
-  animation: none;
-}
-
-@keyframes bead-words-in {
-  from {
-    opacity: 0;
-    filter: blur(2px);
-    transform: var(--bead-words-from, translateY(3px));
-  }
-}
-
-@keyframes bead-words-out {
-  to {
-    opacity: 0;
-    filter: blur(2px);
-    transform: translateX(-50%) translateY(-3px);
-  }
+.bead-layer:focus-visible {
+  outline: none;
 }
 
 .bead-row {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-width: 0;
 }
 
 .bead-row[data-bare] {
-  padding-right: var(--space-2);
+  padding-right: var(--space-1);
 }
 
+/* One line; cut short with an ellipsis where the room is less, its whole
+   sentence still there to be read. Its action is never cut. */
 .bead-said {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
-  text-wrap: pretty;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bead-action {
   flex: none;
+  margin: calc(-1 * var(--space-1)) 0;
   padding: var(--space-1) var(--space-2);
   border: 0;
   border-radius: var(--bead-radius);
   background: none;
-  color: var(--bead-accent);
+  color: var(--accent);
   font-size: var(--text-md);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-strong);
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .bead-action:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--bead-accent) 18%, var(--bead));
+  background: var(--accent-soft);
 }
 
 .bead-action:focus-visible {
-  outline: var(--border-thick) solid var(--bead-accent);
+  outline: var(--border-thick) solid var(--focus);
   outline-offset: -2px;
 }
 
 .bead-action:disabled {
-  color: var(--bead-faint);
+  color: var(--text-faint);
   cursor: default;
 }
 
 .bead-action kbd {
   margin-left: var(--space-1);
-  color: var(--bead-faint);
+  color: var(--text-faint);
   font: var(--weight-regular) var(--text-xs) var(--font);
 }
 
-@media (hover: none) {
+/* Secondary words go first where there's less room: the key, and why a
+   note can't be undone. */
+@media (hover: none), (max-width: 760px) {
   .bead-action kbd {
     display: none;
   }
 }
 
+@media (max-width: 760px) {
+  .bead-cannot {
+    display: none;
+  }
+
+  .bead-layer {
+    padding-left: var(--space-3);
+  }
+}
+
 .bead-cannot {
-  padding-right: var(--space-2);
-  color: var(--bead-faint);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
   font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* How many notes there are, popping as each arrives. */
@@ -4868,7 +4828,7 @@ a.replies:hover {
   height: 1.125rem;
   padding: 0 var(--space-1);
   border-radius: var(--bead-radius);
-  background: color-mix(in srgb, var(--bead-text) 16%, var(--bead));
+  background: color-mix(in srgb, var(--text) 10%, var(--frame));
   font-size: var(--text-xs);
   font-weight: var(--weight-strong);
   font-variant-numeric: tabular-nums;
@@ -4881,26 +4841,26 @@ a.replies:hover {
   }
 }
 
-/* Held open: newest first, nearest the top line, each with its Undo. */
+/* Held open: newest first, nearest the band, each with its Undo. */
 .bead-layer[data-list] {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  padding: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-2);
 }
 
 .bead-layer[data-list] .bead-row {
-  gap: var(--space-3);
-  min-height: 1.75rem;
+  justify-content: space-between;
+  min-height: 2rem;
   padding-left: var(--space-2);
 }
 
 .bead-layer[data-list] .bead-row + .bead-row {
-  border-top: var(--border-thin) solid color-mix(in srgb, var(--bead-text) 10%, var(--bead));
+  border-top: var(--border-thin) solid color-mix(in srgb, var(--text) 10%, var(--frame));
 }
 
 .bead-layer[data-list] .bead-row + .bead-row .bead-said {
-  color: color-mix(in srgb, var(--bead-text) 78%, var(--bead));
+  color: var(--text-muted);
 }
 
 /* Its marks: an apply under way, breathing; applied, a check that draws
@@ -4917,17 +4877,17 @@ a.replies:hover {
   width: var(--space-2);
   height: var(--space-2);
   border-radius: 50%;
-  background: var(--bead-working);
+  background: var(--in-progress);
   animation: pulse var(--pulse) ease-in-out infinite;
 }
 
 .bead-mark[data-mark="applied"] circle {
-  fill: color-mix(in srgb, var(--bead-done) 22%, var(--bead));
+  fill: var(--done-soft);
 }
 
 .bead-mark[data-mark="applied"] path {
   fill: none;
-  stroke: var(--bead-done);
+  stroke: var(--done);
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -4938,14 +4898,14 @@ a.replies:hover {
 }
 
 .bead-mark[data-mark="problem"] circle {
-  fill: color-mix(in srgb, var(--bead-danger) 24%, var(--bead));
-  stroke: var(--bead-danger);
+  fill: var(--danger-soft);
+  stroke: var(--danger);
   stroke-width: 1.2;
 }
 
 .bead-mark[data-mark="problem"] path {
   fill: none;
-  stroke: var(--bead-danger);
+  stroke: var(--danger);
   stroke-width: 1.8;
   stroke-linecap: round;
 }
@@ -4957,7 +4917,7 @@ a.replies:hover {
 }
 
 /* All caught up, the one flourish: Oriel's mark draws, its three panes
-   light one by one, and one glint crosses the glass, in about 1.6s. */
+   light one by one, and one glint crosses the bead, in about 1.6s. */
 .bead-mark[data-mark="caught-up"] {
   width: 1.125rem;
   height: 1.125rem;
@@ -4965,7 +4925,7 @@ a.replies:hover {
 
 .bead-frame {
   fill: none;
-  stroke: var(--bead-accent);
+  stroke: var(--accent);
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-dasharray: 1;
@@ -4978,7 +4938,7 @@ a.replies:hover {
 }
 
 .bead-pane {
-  fill: var(--bead-accent);
+  fill: var(--accent);
   opacity: 0;
   animation: bead-pane calc(2 * var(--duration-move)) var(--ease-out) forwards;
 }
@@ -5007,7 +4967,7 @@ a.replies:hover {
   background: linear-gradient(
     100deg,
     transparent 30%,
-    color-mix(in srgb, var(--bead-text) 20%, transparent) 50%,
+    color-mix(in srgb, var(--surface) 60%, transparent) 50%,
     transparent 70%
   );
   transform: translateX(-110%);
@@ -5019,53 +4979,6 @@ a.replies:hover {
 @keyframes bead-glint {
   to {
     transform: translateX(110%);
-  }
-}
-
-/* How long the note has left: a hairline that drains, and stops while
-   held. */
-.bead-time {
-  position: absolute;
-  right: var(--space-4);
-  bottom: 0;
-  left: var(--space-4);
-  height: var(--border-thin);
-  background: var(--bead-faint);
-  opacity: 0.6;
-  transform-origin: left;
-  animation: bead-drain var(--bead-life) linear forwards;
-}
-
-.bead-wrap[data-held] .bead-time {
-  animation-play-state: paused;
-}
-
-.bead-wrap:is([data-open], [data-leaving]) .bead-time {
-  opacity: 0;
-}
-
-@keyframes bead-drain {
-  from {
-    transform: scaleX(1);
-  }
-
-  to {
-    transform: scaleX(0);
-  }
-}
-
-/* Where it would cover a control on the page's top lines, the page moves
-   down under it for the note's life. */
-.shell[data-bead-room] .shell-main {
-  padding-top: calc(var(--bead-room) + var(--space-2));
-}
-
-/* In the narrow bar: centred, clear of the menu and its count, over the
-   brand. */
-@media (max-width: 760px) {
-  .bead-wrap {
-    --bead-max: calc(100vw - 7.5rem);
-    top: calc((var(--bar-height) - var(--head-row)) / 2);
   }
 }
 
@@ -6942,16 +6855,17 @@ button.overview-title:hover {
   }
 }
 
-@keyframes bead-fade {
-  to {
-    opacity: 0;
-  }
-}
-
 /* The first run (decision 0038): its own page, a column of steps, each a few
    rows and one way on. The rows are Settings' provider rows, with a mark,
    whose plans each is for, and its state and actions beneath. */
+/* Framed as a narrow screen is, at any width: its brand's row is the
+   frame, with no bands beside the page. */
 .setup-page {
+  --sidebar: 0rem;
+  --beside: 0rem;
+  --bar-height: 3.25rem;
+  --frame-band: 0px;
+  --frame-top: var(--bar-height);
   min-height: 100vh;
   background: var(--bg);
 }
@@ -6960,7 +6874,9 @@ button.overview-title:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-6);
+  min-height: var(--bar-height);
+  padding: 0 var(--space-6);
+  background: var(--frame);
   font-size: var(--text-lg);
   font-weight: var(--weight-strong);
 }
@@ -7550,7 +7466,7 @@ a.button.primary {
   .window-chat,
   .switch,
   .switch-knob,
-  .shell-main {
+  .frame {
     transition: none;
   }
 
@@ -7563,7 +7479,6 @@ a.button.primary {
   .sync-now[aria-busy] .icon,
   .spinner,
   .cli-bar::after,
-  .bead-row > *,
   .bead-count,
   .bead-dot,
   .bead-mark :is(path, rect),
@@ -7571,28 +7486,8 @@ a.button.primary {
     animation: none;
   }
 
-  /* The bead only fades: it arrives at its size, swaps its words at once,
-     shows its marks drawn, and goes as it is. */
-  .bead,
-  .bead-under {
-    transition-property: opacity;
-  }
-
-  .bead-wrap[data-arriving] .bead {
-    transition-delay: 0s;
-  }
-
-  .bead-wrap[data-leaving] .bead {
-    top: calc((var(--head-row) - min(var(--h, var(--bead-dot)), var(--head-row))) / 2);
-    width: var(--w, var(--bead-dot));
-    height: var(--h, var(--bead-dot));
-    transition-delay: 0s;
-  }
-
-  .bead-layer[data-gone] {
-    animation-name: bead-fade;
-  }
-
+  /* The bead only fades (bead-motion.ts): it arrives at its size, swaps
+     its words at once, shows its marks drawn, and goes as it is. */
   .change-set[data-closing] > :not(.change-set-head) {
     animation: none;
   }
@@ -7609,8 +7504,7 @@ a.button.primary {
     opacity: 0.4;
   }
 
-  .bead-glint,
-  .bead-time {
+  .bead-glint {
     display: none;
   }
 }

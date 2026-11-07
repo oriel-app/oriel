@@ -1,18 +1,38 @@
-// The one stack of Undo notes (OA-142), shown in the bead (decision 0056):
-// an ink pill at the top centre of the page column, on the window's top
-// line. It grows from a dot to say the newest note, with a count and edges
-// beneath it while there are more, and shrinks back to the dot as the last
-// one goes. A note that keeps its key changes shape in place: its edges
-// move, and its words don't. What last failed shows there too, with no
-// spring, until dismissed. None runs out while the pointer or focus is on
-// the bead, which opens it as a list, newest first, each with its Undo.
-// ⌘Z or Ctrl+Z undoes the newest that can be undone, and F8 takes the
+// The one stack of Undo notes (OA-142), shown in the bead (decision 0056,
+// amended): the frame's own material, grown down from the band at the top
+// centre of the page column. It drops as a small bead and spreads to say
+// the newest note, with a count and the material's lips beneath it while
+// there are more; a new note reflows it and swaps its words; and as the last
+// one goes, its words go first, it narrows back to the bead, and the band
+// takes it back (bead-motion.ts). At rest it is still. What last failed
+// shows there too, until dismissed. None runs out while the pointer or focus
+// is on the bead, which opens it as a list, newest first, each with its
+// Undo. ⌘Z or Ctrl+Z undoes the newest that can be undone, and F8 takes the
 // keyboard there. The window's one status region (`BeadStatus`) reads each
 // note out once as it shows, and its alert what failed.
 // Every note's model hears one hold, through `onHold`: an Undo lets go of the
 // keyboard's, and a bead that goes, as when a page swaps it for another,
 // lets go of both, since no leave event comes.
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from "preact/hooks";
+import {
+  type Aim,
+  advance,
+  arrive,
+  beadPath,
+  change,
+  frameDriver,
+  leave,
+  lipPath,
+  type Measures,
+  type Motion,
+  resting,
+  retarget,
+  room,
+  settle,
+  still,
+  swapped,
+  wordsClip,
+} from "./bead-motion.ts";
 import { type Dispatch, Link } from "./parts.tsx";
 import {
   type Held,
@@ -21,7 +41,6 @@ import {
   inShowingOrder,
   latestNote,
   notHeld,
-  undoMs,
   type UndoNote,
   type UndoProblem,
 } from "./undos.ts";
@@ -133,7 +152,7 @@ export function UndoStack(props: {
       }
       if (event.key !== "F8" || event.metaKey || event.ctrlKey || event.altKey) return;
       // With no action on its face, the bead itself, which focus opens.
-      const face = wrap.current?.querySelector<HTMLElement>(".bead-layer:not([data-gone])");
+      const face = wrap.current?.querySelector<HTMLElement>(".bead-layer");
       const action = face?.querySelector<HTMLElement>(".bead-action:not(:disabled)") ?? face;
       if (!action) return;
       event.preventDefault();
@@ -155,24 +174,6 @@ export function UndoStack(props: {
       }
     : null;
 
-  // The faces it showed before, their words fading as the next one's come;
-  // and the last, while the bead shrinks back to its dot.
-  const [, redraw] = useReducer((n: number) => n + 1, 0);
-  const last = useRef<Face | null>(null);
-  const leaving = useRef<Face | null>(null);
-  const fading = useRef<{ id: number; face: Face }[]>([]);
-  const faded = useRef(0);
-  const before = last.current ?? leaving.current;
-  if (face && before && before.key !== face.key)
-    fading.current = [...fading.current, { id: (faded.current += 1), face: before }];
-  if (face) leaving.current = null;
-  else if (last.current) leaving.current = last.current;
-  last.current = face;
-  const showing = face ?? leaving.current;
-  // Arriving from nothing, until it has grown: it holds as the dot a moment,
-  // and its words wait for the shape.
-  const arriving = useRef(true);
-  if (showing === null) arriving.current = true;
   // Going, it lets go: no leave event comes from a bead that isn't there.
   useLayoutEffect(() => {
     if (face !== null) return;
@@ -195,59 +196,169 @@ export function UndoStack(props: {
   });
   useEffect(() => tell?.({ alert: failed }), [failed]);
 
-  // The bead takes its face's size, measured at its final width, so the
-  // words lay out once and only the edges move.
+  // What the bead draws, and how it moves (bead-motion.ts). `drawn` is the
+  // face its words show: the newest, once the last one's words have gone,
+  // and the last one while it leaves. The motion and the shape live in refs
+  // and are drawn straight to the page each frame, with no render.
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  const drawn = useRef<Face | null>(null);
+  const latestFace = useRef(face);
+  latestFace.current = face;
+  const motion = useRef<Motion | null>(null);
+  const sizes = useRef<Sizes | null>(null);
+  const hovered = useRef(false);
+  const refocus = useRef(false);
+  const bead = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
-  // Held open, it may hang over the page; otherwise it makes room for what
-  // it would cover.
-  const opened = open && said.length > 1;
-  // What its size follows: measured again only when this changes, or the
-  // words reflow.
-  const shape =
-    face &&
-    [
-      opened,
-      face.count,
-      ...face.said.map((each) => (each.kind === "note" ? each.note.said : each.problem.said)),
-    ].join("\n");
-  useLayoutEffect(() => {
-    const at = layer.current;
-    const box = wrap.current;
-    if (!at || !box || face === null) return;
-    const size = () => {
-      const w = at.offsetWidth + 1;
-      const h = at.offsetHeight;
-      box.style.setProperty("--w", `${w}px`);
-      box.style.setProperty("--h", `${h}px`);
-      if (!opened) makeRoom(box, w, h);
-    };
-    size();
-    // And again as the page under it changes: another page, a page that
-    // loads, at the window's height or not, or the panel or sidebar moving
-    // it. Changes to the page are looked at once a frame.
-    const watching = new ResizeObserver(size);
-    watching.observe(at);
-    let frame = 0;
-    const changed = new MutationObserver(() => {
-      if (frame === 0) frame = requestAnimationFrame(() => ((frame = 0), size()));
-    });
-    const page = box.closest(".shell")?.querySelector(".shell-main");
-    if (page) {
-      watching.observe(page);
-      changed.observe(page, { childList: true, subtree: true });
+  const body = useRef<SVGPathElement>(null);
+  const lips = [useRef<SVGPathElement>(null), useRef<SVGPathElement>(null)];
+  const cast = useId();
+  const seed = () => sizes.current?.measures.seed ?? 0;
+
+  const now = motion.current ?? still(0);
+  if (face !== null) {
+    if (drawn.current === null || now.phase === "hidden" || now.phase === "leaving") {
+      motion.current = arrive(now, seed(), reducedMotion());
+      drawn.current = face;
+    } else if (wording(drawn.current) !== wording(face)) {
+      motion.current = change(now);
+      // Reduced motion swaps the words at once.
+      if (motion.current.phase === "swapping") {
+        refocus.current = bead.current?.contains(document.activeElement) === true;
+        drawn.current = face;
+      }
+    } else drawn.current = face;
+  } else if (drawn.current !== null) motion.current = leave(now);
+  // With nothing drawn, the next note starts from nothing.
+  else motion.current = null;
+  const showing = drawn.current;
+
+  // Each frame: the springs on, then the shape. A face whose words have
+  // gone gives way to the newest; one that has left, to nothing.
+  const frames = useRef<ReturnType<typeof frameDriver> | null>(null);
+  frames.current ??= frameDriver(
+    { request: (run) => requestAnimationFrame(run), cancel: (id) => cancelAnimationFrame(id) },
+    {
+      moving: () => motion.current !== null && !resting(motion.current),
+      step: (dt) => {
+        const at = sizes.current;
+        const was = motion.current;
+        if (!at || !was) return;
+        const next = settle(advance(was, dt, aimOf(at, hovered.current), at.measures));
+        motion.current = next;
+        if (next.phase === "swapping" && was.phase !== "swapping") {
+          refocus.current = bead.current?.contains(document.activeElement) === true;
+          drawn.current = latestFace.current;
+          redraw(0);
+        }
+        if (next.phase === "hidden" && drawn.current !== null && latestFace.current === null) {
+          drawn.current = null;
+          redraw(0);
+        }
+        draw();
+      },
+    },
+  );
+  useEffect(() => () => frames.current?.stop(), []);
+
+  // The shape now, straight to the page.
+  const draw = () => {
+    const at = sizes.current;
+    const m = motion.current;
+    if (!at || !m) return;
+    const shape = { width: m.width.value, height: m.height.value, wanted: at.width };
+    const column = at.column;
+    body.current?.setAttribute("d", beadPath(shape, column, at.measures));
+    // The notes behind the newest, as the material's lips beneath it,
+    // until it opens as a list or goes.
+    const face = drawn.current;
+    const behind = face && face.said.length === 1 && m.phase !== "leaving" ? face.count - 1 : 0;
+    lips.forEach((lip, i) =>
+      lip.current?.setAttribute(
+        "d",
+        behind > i ? lipPath(shape, column, at.measures, (i + 1) as 1 | 2) : "",
+      ),
+    );
+    const words = Math.max(0, Math.min(1, m.words.value));
+    const box = bead.current;
+    if (box) box.style.clipPath = wordsClip(shape, at.width, at.height, at.measures.radius);
+    const wrapped = wrap.current;
+    wrapped?.toggleAttribute("data-moving", !resting(m));
+    if (m.reduced) {
+      wrapped?.style.setProperty("--bead-shown", `${words}`);
+      layer.current?.removeAttribute("style");
+      return;
     }
-    addEventListener("resize", size);
-    return () => {
-      watching.disconnect();
-      changed.disconnect();
-      cancelAnimationFrame(frame);
-      removeEventListener("resize", size);
+    const style = layer.current?.style;
+    if (!style) return;
+    // Settled words take no transform or filter, so they draw crisp.
+    const settled = words > 0.98;
+    style.opacity = settled ? "" : `${words}`;
+    style.transform = settled ? "" : `translateY(${((1 - words) * -5).toFixed(2)}px)`;
+    style.filter = settled ? "" : `blur(${((1 - words) * 4).toFixed(2)}px)`;
+    if (box) box.style.pointerEvents = words > 0.5 ? "" : "none";
+  };
+
+  // Its size, from its words laid out at their final width, as wide as the
+  // room the column leaves it: measured again as the column or the words
+  // change, so a resize reflows it rather than breaking the frame.
+  const measure = () => {
+    const box = wrap.current;
+    const words = bead.current;
+    const at = layer.current;
+    if (!box || !words || !at) return;
+    const css = getComputedStyle(box);
+    const px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
+    const measures: Measures = {
+      seed: px("--bead-seed"),
+      neck: px("--bead-neck"),
+      corner: px("--frame-curve"),
+      gap: px("--bead-gap"),
+      swell: px("--bead-swell"),
+      radius: parseFloat(getComputedStyle(words).borderBottomLeftRadius) || 0,
     };
-  }, [face?.key, shape]);
+    const column = box.clientWidth;
+    box.style.setProperty("--bead-room", `${room(column, measures)}px`);
+    const width = at.offsetWidth;
+    const height = at.offsetHeight;
+    words.style.left = `${Math.round((column - width) / 2)}px`;
+    sizes.current = { column, width, height, measures };
+    aimAgain();
+    draw();
+  };
+  // Aimed anew at its size and the pointer, and moving if that moves it.
+  const aimAgain = () => {
+    const at = sizes.current;
+    if (at && motion.current)
+      motion.current = retarget(motion.current, aimOf(at, hovered.current), at.measures);
+    frames.current?.kick();
+  };
   useLayoutEffect(() => {
-    if (face === null) noRoom();
-  }, [face === null]);
-  useEffect(() => noRoom, []);
+    measure();
+    if (motion.current?.phase === "swapping") {
+      motion.current = swapped(motion.current);
+      if (refocus.current) {
+        refocus.current = false;
+        const action = layer.current?.querySelector<HTMLElement>(".bead-action:not(:disabled)");
+        (action ?? layer.current)?.focus();
+      }
+    }
+    frames.current?.kick();
+  });
+  useLayoutEffect(() => {
+    const box = wrap.current;
+    const at = layer.current;
+    if (!box || !at) return;
+    const watching = new ResizeObserver(() => measure());
+    watching.observe(box);
+    watching.observe(at);
+    return () => watching.disconnect();
+  }, [showing === null, showing?.key]);
+
+  const swell = (on: boolean) => {
+    hovered.current = on;
+    aimAgain();
+  };
 
   return (
     <>
@@ -263,62 +374,50 @@ export function UndoStack(props: {
           data-open={(open && showing.count > 1) || undefined}
           data-held={open || undefined}
           data-leaving={face === null || undefined}
-          data-arriving={arriving.current || undefined}
-          onMouseEnter={() => hold("pointer", true)}
-          onMouseLeave={() => hold("pointer", false)}
-          onFocusIn={() => hold("focus", true)}
-          onFocusOut={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-              hold("focus", false);
-          }}
+          data-reduced={motion.current?.reduced || undefined}
         >
-          <div class="bead-under" data-depth="2" />
-          <div class="bead-under" data-depth="1" />
+          <svg class="bead-shape" aria-hidden="true">
+            <defs>
+              <filter
+                id={cast}
+                filterUnits="userSpaceOnUse"
+                x="-100"
+                y="-100"
+                width="10000"
+                height="2000"
+              >
+                <feDropShadow dx="0" dy="1" stdDeviation="2.2" />
+              </filter>
+            </defs>
+            <path ref={lips[1]} filter={`url(#${cast})`} />
+            <path ref={lips[0]} filter={`url(#${cast})`} />
+            <path ref={body} filter={`url(#${cast})`} />
+          </svg>
           <div
+            ref={bead}
             class="bead"
-            onTransitionEnd={(event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.propertyName === "width" && arriving.current) {
-                arriving.current = false;
-                redraw(0);
-              }
-              if (event.propertyName !== "opacity") return;
-              if (last.current !== null || leaving.current === null) return;
-              leaving.current = null;
-              fading.current = [];
-              redraw(0);
+            onMouseEnter={() => {
+              swell(true);
+              hold("pointer", true);
+            }}
+            onMouseLeave={() => {
+              swell(false);
+              hold("pointer", false);
+            }}
+            onFocusIn={() => hold("focus", true)}
+            onFocusOut={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                hold("focus", false);
             }}
           >
-            {fading.current.map(({ id, face: was }) => (
-              <Layer
-                key={`was-${id}`}
-                face={was}
-                gone
-                latest={null}
-                dispatch={props.dispatch}
-                undo={undo}
-                onGone={() => {
-                  fading.current = fading.current.filter((each) => each.id !== id);
-                  redraw(0);
-                }}
-              />
-            ))}
-            <Layer
+            <BeadFace
               key={showing.key}
               face={showing}
-              gone={face === null}
               latest={latest?.key ?? null}
               dispatch={props.dispatch}
               undo={undo}
               at={layer}
             />
-            {face && face.tone !== "problem" && (
-              <div
-                key={`${face.key} ${said[0]?.kind === "note" ? said[0].note.said : ""} ${letGo.current}`}
-                class="bead-time"
-                style={{ "--bead-life": `${undoMs}ms` }}
-              />
-            )}
           </div>
         </div>
       )}
@@ -326,54 +425,27 @@ export function UndoStack(props: {
   );
 }
 
-// Where the bead, `w` by `h`, would cover a control on the page, such as
-// the overview's counts or Browse's view tabs, the page moves down under it
-// for the note's life, rather than be covered (decision 0056). The crumb it
-// may cover. Only the page's own top lines count: on a page scrolled past
-// them it covers what scrolled under it, as the bar does, and on a narrow
-// screen it sits in the bar.
-const narrowScreen = "(max-width: 760px)";
-const control = "a[href], button, input, select, textarea, [role='tab']";
+// What changing to `face` from what shows means: other words, which go
+// before the new ones come, or the same, changed in place, as when it opens
+// as a list.
+const wording = (face: Face): string => {
+  const [first] = face.said;
+  const words = first?.kind === "note" ? first.note.said : (first?.problem.said ?? "");
+  return `${face.key}\n${face.tone}\n${words}`;
+};
 
-function makeRoom(box: HTMLElement, w: number, h: number) {
-  const shell = box.closest<HTMLElement>(".shell");
-  const main = shell?.querySelector<HTMLElement>(".shell-main");
-  if (!shell || !main) return;
-  if (matchMedia(narrowScreen).matches) return noRoom();
-  const at = box.getBoundingClientRect();
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  const top = at.top;
-  const bottom = top + Math.max(h, 2 * rem);
-  // Once made, the room stays until the bead goes, so the page doesn't
-  // move back and forth as its notes change.
-  const had = parseFloat(shell.style.getPropertyValue("--bead-room")) || 0;
-  if (scrollY >= bottom || bottom - top <= had) return;
-  // Where the page's controls would be without the room it has now, as far
-  // as it has moved so far.
-  const moved = parseFloat(getComputedStyle(main).paddingTop) || 0;
-  const covers = (x: number, y: number) =>
-    document.elementsFromPoint(x, y + moved).some((element) => {
-      const found = element.closest(control);
-      return (
-        found !== null &&
-        found.closest(".shell-main") !== null &&
-        found.closest(".bead-wrap, .crumb") === null
-      );
-    });
-  const rows = [top + 4, (top + bottom) / 2, bottom - 4];
-  let covered = false;
-  for (let x = at.left - w / 2 + 4; x <= at.left + w / 2 - 4 && !covered; x += 12)
-    covered = rows.some((y) => covers(x, y));
-  if (!covered) return;
-  shell.style.setProperty("--bead-room", `${Math.ceil(bottom - top)}px`);
-  shell.setAttribute("data-bead-room", "");
-}
+// Its measures and its size now: the column it centres on, and its face's
+// width, clamped to the room, and height.
+type Sizes = { column: number; width: number; height: number; measures: Measures };
 
-function noRoom() {
-  const shell = document.querySelector<HTMLElement>(".shell[data-bead-room]");
-  shell?.removeAttribute("data-bead-room");
-  shell?.style.removeProperty("--bead-room");
-}
+const aimOf = (at: Sizes, hovered: boolean): Aim => ({
+  width: at.width,
+  height: at.height,
+  hovered,
+});
+
+const reducedMotion = () =>
+  typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // The window's one status region and alert for the bead, there from the
 // start on every page but a review link's, whichever page's bead is on
@@ -403,7 +475,7 @@ export function BeadStatus() {
       <p class="visually-hidden bead-status" role="status">
         <span key={told.n}>{told.status}</span>
       </p>
-      <p class="visually-hidden" role="alert">
+      <p class="visually-hidden bead-alert" role="alert">
         {told.alert}
       </p>
     </>
@@ -411,30 +483,22 @@ export function BeadStatus() {
 }
 
 // One face of the bead: its count, then each thing it says, with its mark
-// and its Undo, link or Dismiss. A face it showed before is inert as its
-// words fade, and says when they have.
-function Layer(props: {
+// and its Undo, link or Dismiss. A sentence cut short to fit keeps all its
+// words, for a screen reader; only its look ends in an ellipsis.
+function BeadFace(props: {
   face: Face;
-  gone: boolean;
   latest: string | null;
   dispatch: Dispatch;
   undo(onUndo: () => void): void;
   at?: { current: HTMLDivElement | null };
-  onGone?(): void;
 }) {
-  const { face, gone } = props;
+  const { face } = props;
   return (
     <div
       ref={props.at}
       class="bead-layer"
-      tabIndex={gone ? undefined : -1}
+      tabIndex={-1}
       data-list={face.said.length > 1 || undefined}
-      data-gone={gone || undefined}
-      inert={gone}
-      aria-hidden={gone || undefined}
-      onAnimationEnd={(event) => {
-        if (event.target === event.currentTarget && gone) props.onGone?.();
-      }}
     >
       {face.said.length === 1 && face.count > 1 && (
         <span class="bead-count" aria-hidden="true">
@@ -445,9 +509,7 @@ function Layer(props: {
         said.kind === "problem" ? (
           <div class="bead-row" key={said.key}>
             <BeadMark mark="problem" />
-            <span class="bead-said" key={said.problem.said}>
-              {said.problem.said}
-            </span>
+            <span class="bead-said">{said.problem.said}</span>
             <button type="button" class="bead-action" onClick={said.problem.onDismiss}>
               Dismiss
             </button>

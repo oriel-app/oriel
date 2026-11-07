@@ -151,6 +151,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
             data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
           >
             <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
+            <div class="frame" aria-hidden="true" />
             <button
               type="button"
               class="drawer-backdrop"

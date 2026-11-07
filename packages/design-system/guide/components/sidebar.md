@@ -3,7 +3,7 @@ title: Sidebar
 status: drifting
 group: Layout
 order: 60
-classes: shell, shell-main, sidebar, sidebar-head, brand, mark, sidebar-label, sidebar-fold, bar, bar-menu, bar-count, drawer-backdrop, sidebar-search, sidebar-search-row, sidebar-search-open, sidebar-search-field, sidebar-new, search-results, search-list, search-result, search-result-head, search-result-set, search-result-excerpt, sidebar-pages, nav-link, nav-name, nav-count, sidebar-needs, nav-waiting, nav-waiting-link, nav-waiting-text, nav-waiting-about, nav-waiting-on, nav-waiting-workstream, nav-more, state-dot, sidebar-workstreams, fold-head, fold-toggle, chevron, rail-title, rail-empty, nav-workstreams, nav-workstream-row, nav-workstream-menu, nav-disclose, nav-threads, nav-thread, working-dot, sidebar-done, nav-done, sidebar-sources, sources-line, warning-mark, nav-sources, source-row, source-synced, source-sync, source-changes, source-problem, add-source, sidebar-foot, icon, visually-hidden, tooltip
+classes: shell, shell-main, frame, sidebar, sidebar-head, brand, mark, sidebar-label, sidebar-fold, bar, bar-menu, bar-count, drawer-backdrop, sidebar-search, sidebar-search-row, sidebar-search-open, sidebar-search-field, sidebar-new, search-results, search-list, search-result, search-result-head, search-result-set, search-result-excerpt, sidebar-pages, nav-link, nav-name, nav-count, sidebar-needs, nav-waiting, nav-waiting-link, nav-waiting-text, nav-waiting-about, nav-waiting-on, nav-waiting-workstream, nav-more, state-dot, sidebar-workstreams, fold-head, fold-toggle, chevron, rail-title, rail-empty, nav-workstreams, nav-workstream-row, nav-workstream-menu, nav-disclose, nav-threads, nav-thread, working-dot, sidebar-done, nav-done, sidebar-sources, sources-line, warning-mark, nav-sources, source-row, source-synced, source-sync, source-changes, source-problem, add-source, sidebar-foot, icon, visually-hidden, tooltip
 summary: The column beside every page but a review link: the window, what needs you, the workstreams with their threads, Done, the sources and Settings. Folds to icons on a wide screen; a drawer under a bar on a narrow one.
 ---
 
@@ -13,7 +13,7 @@ summary: The column beside every page but a review link: the window, what needs 
 
 The sidebar is the app's one navigation, on every page but a review link and the first run. In Oriel's words: "the window, the threads waiting on the user, the user's workstreams with their threads under them, the latest done threads, the sources, and Settings at the foot. It stays quiet unless something is happening: what waits on the user is at the top, the rest fold" (`packages/web/src/sidebar.tsx`).
 
-It lives in the **shell**, the two-column grid every page sits in: `div.shell` holds `aside.sidebar` and `div.shell-main`, and the page goes in `.shell-main` (`App` in `packages/web/src/app.tsx`). The shell paints the sidebar's column the whole height of the page, so a long page never shows a gap under it (`.shell` in `window.css`).
+It lives in the **shell**, the two-column grid every page sits in: `div.shell` holds `aside.sidebar` and `div.shell-main`, and the page goes in `.shell-main` (`App` in `packages/web/src/app.tsx`). The sidebar is the [frame](/components/frame)'s material: the shell paints `--frame` the whole height of the page, so a long page never shows a gap under it, and there's no line between the sidebar and the page column, whose top corner curves into it (`.shell` and `.frame` in `window.css`).
 
 From top to bottom:
 
@@ -976,7 +976,7 @@ Sync here is hidden by `opacity`, not removed, so it stays in the tab order: tab
 
 ### Folded, on a wide screen
 
-Folded (`.shell[data-folded]`, above 760px), the sidebar is a 3.25rem strip of icons: the brand, the fold button, Search and New thread, Window, and Settings. Every `.sidebar-label` is still there for readers, visually hidden; Needs you, Workstreams, Done and Sources are not drawn (`@media (min-width: 761px)` in `window.css`). The fold button carries the count of threads waiting on the person, as a `.bar-count`. The search icon unfolds the sidebar and puts focus in the field.
+Folded (`.shell[data-folded]`, above 760px), the sidebar is a 3.25rem strip of icons, and the frame's curve follows the column's left edge: the brand, the fold button, Search and New thread, Window, and Settings. Every `.sidebar-label` is still there for readers, visually hidden; Needs you, Workstreams, Done and Sources are not drawn (`@media (min-width: 761px)` in `window.css`). The fold button carries the count of threads waiting on the person, as a `.bar-count`. The search icon unfolds the sidebar and puts focus in the field.
 
 ```html specimen id=folded title="Folded: icons only, the fold button counts what waits on you" height=420 pad=0
 <div class="shell" data-folded>
@@ -1072,7 +1072,7 @@ Settings sits right under Window here only because this specimen draws no Needs 
 
 ### Narrow screens: the bar and the drawer (760px and under)
 
-At 760px and under there's no column. A `.bar` heads the page instead: the menu button (`.bar-menu`), which counts the threads waiting on the person, and the brand. The sidebar becomes a drawer, `min(18rem, 86vw)` wide, off screen and out of the tab order (`visibility: hidden`) until the menu opens it; `.shell[data-drawer]` slides it in over a `--scrim` backdrop (`.shell[data-drawer] .sidebar` and `.drawer-backdrop` in `window.css`). The fold button isn't drawn, and the folded state doesn't apply.
+At 760px and under there's no column. A `.bar` heads the page instead: the menu button (`.bar-menu`), which counts the threads waiting on the person, and the brand. The bar is the frame here, in `--frame` with no line under it, and the page's top corners curve from its lower edge. The sidebar becomes a drawer, `min(18rem, 86vw)` wide, off screen and out of the tab order (`visibility: hidden`) until the menu opens it; `.shell[data-drawer]` slides it in over a `--scrim` backdrop (`.shell[data-drawer] .sidebar` and `.drawer-backdrop` in `window.css`). The fold button isn't drawn, and the folded state doesn't apply.
 
 ```html specimen id=narrow-closed title="390: the bar, the drawer closed" width=390 height=260 pad=0
 <div class="shell">

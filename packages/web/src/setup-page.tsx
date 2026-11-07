@@ -34,6 +34,7 @@ export function SetupPage(props: { model: Model; dispatch: Dispatch }) {
         <Mark />
         Oriel
       </header>
+      <div class="frame" aria-hidden="true" />
       <main class="setup" aria-busy={setup.view === null}>
         {setup.screen !== "reading" && (
           <Steps current={step} aiDone={setup.view?.firstRun?.steps.ai != null} />
