@@ -1,0 +1,17 @@
+{
+  "id": "plan-linear-next-cycle",
+  "split": "train",
+  "kind": 2,
+  "region": "launch-project",
+  "prompt": "The moved-sailing alert work won't make this cycle. Push what's planned for it now into the next one.",
+  "expect": [
+    {
+      "grader": "writes",
+      "calls": [
+        { "op": "setCycle", "item": "linear:ENG-4" },
+        { "op": "setCycle", "item": "linear:ENG-5" }
+      ]
+    },
+    { "grader": "avoids", "text": ["sprint"] }
+  ]
+}

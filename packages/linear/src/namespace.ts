@@ -252,7 +252,7 @@ const writes: { [O in Exclude<Offered, "createProject">]: (scope: Scope) => Name
   setEstimate: () =>
     set(
       "setEstimate",
-      "Set an issue's estimate in points; null clears it. A project takes none.",
+      "Set an issue's estimate in points; null clears it.",
       "estimate",
       "number | null",
       nullable(estimate),
@@ -280,7 +280,7 @@ const writes: { [O in Exclude<Offered, "createProject">]: (scope: Scope) => Name
   setCycle: (scope) =>
     set(
       "setCycle",
-      "Plan an issue into one of the team's cycles to come; null takes it out of its cycle.",
+      "Plan an issue into a cycle to come; null takes it out.",
       "cycle",
       "LinearCycle | null",
       nullable(cycleNumber),
@@ -295,7 +295,7 @@ const offered = (Object.keys(writes) as (keyof typeof writes)[]).filter(
 // What a Linear item is, in the declarations' `Item`: shape only, never
 // source text.
 export const linearItemDoc =
-  "A Linear item is an issue or a project of one Linear team: its title is its title, its text its title and description. Issues are planned into the team's cycles.";
+  "A Linear item is an issue or a project of one Linear team, its text its title and description. Issues are planned into the team's cycles.";
 
 const newRef = [
   "/** An item created earlier in this run. It exists once the change set is approved. */",
@@ -320,7 +320,7 @@ function types(scope: Scope, context: LinearContext): string[] {
   ];
   if (!scope.ids.length) return [...newRef, ...cycleType];
   return [
-    `/** This region's Linear items, of the team ${team.key}: issues, and projects. */`,
+    `/** This region's Linear items: ${team.key}'s issues and projects. */`,
     "type LinearId = Extract<RegionId, `linear:${string}`>;",
     ...newRef,
     "type LinearTarget = LinearId | NewRef;",
@@ -335,9 +335,9 @@ function types(scope: Scope, context: LinearContext): string[] {
     "  readonly title: string;",
     "  readonly description: string;",
     "  readonly status: string;",
-    "  /** An issue's project, by its ID; null for none, and for a project. */",
+    "  /** Its project's ID, an issue's in one. */",
     "  readonly project: string | null;",
-    "  /** The number of its cycle, past or to come; null for none. */",
+    "  /** Its cycle's number. */",
     "  readonly cycle: number | null;",
     "  readonly assignee: string | null;",
     "  /** Null when not estimated yet; a project's always is. */",

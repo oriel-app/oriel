@@ -4,7 +4,8 @@
 // says so, as Jira's and the folder's do, so search() reaches their items as
 // in a workspace with both; otherwise only in a case whose region holds its
 // items, or that asks in the window chat, so cases recorded before it was a
-// source see the index they were recorded with.
+// source see the index they were recorded with. A kind on only through its
+// source server is on in a window chat only where the case says so.
 //
 // Everything the agent can see must be the same on every run and every disk,
 // or cassettes won't replay, and each fixture's connection is.
@@ -158,12 +159,20 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       throw new Error(`the region holds ${kind ?? "unknown"} items, but no ${kind} fixture`);
   // A kind connects unless the case's window hasn't connected it; a
   // stand-in, in every case, while nothing it stands in for does, as the
-  // server opens it (decision 0059).
+  // server opens it (decision 0059). A kind on only through its source
+  // server, with no connection of its own, as Linear, is on in a window
+  // chat only where the case says it's on through its server (`servers`),
+  // as a person turns it on.
   const off = new Set(input.off ?? []);
+  const ownConnection = (declaration: SourceDeclaration) =>
+    declaration.connect !== undefined || declaration.live !== undefined;
   const plain = (kind: string, declaration: SourceDeclaration) =>
     !off.has(kind) &&
     !declaration.standIn &&
-    (declaration.fixture.everyCase === true || held.has(kind) || input.window !== undefined);
+    (declaration.fixture.everyCase === true ||
+      held.has(kind) ||
+      (input.window !== undefined &&
+        (ownConnection(declaration) || (input.servers ?? []).includes(kind))));
   const connects = (kind: string, declaration: SourceDeclaration) =>
     declaration.standIn
       ? !off.has(kind) &&
