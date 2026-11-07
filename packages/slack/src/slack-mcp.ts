@@ -111,7 +111,15 @@ function listOf(tool: string, body: unknown, key: string): unknown[] {
 // that stopped there would take the rest away.
 function nextOf(tool: string, body: unknown): string {
   if (!isObject(body)) return "";
-  const meta = isObject(body.response_metadata) ? body.response_metadata : {};
+  const { response_metadata, has_more } = body;
+  if (
+    (response_metadata !== undefined &&
+      response_metadata !== null &&
+      !isObject(response_metadata)) ||
+    (has_more !== undefined && has_more !== null && typeof has_more !== "boolean")
+  )
+    throw new ServerUnreadable(`${tool} said where its next page is in a way Oriel can't read`);
+  const meta = isObject(response_metadata) ? response_metadata : {};
   const given = meta.next_cursor ?? body.next_cursor;
   if (given !== undefined && given !== null && typeof given !== "string")
     throw new ServerUnreadable(`${tool} gave a cursor Oriel can't read`);
@@ -173,6 +181,18 @@ function postedTs(body: unknown): string | undefined {
   const p = link ? /\/p([0-9]{10})([0-9]{6})(?:[?#]|$)/.exec(link) : null;
   return p ? `${p[1]}.${p[2]}` : undefined;
 }
+
+// A message's text as Slack's send tool takes it, in markdown: every mark
+// that would make formatting, a link or a mention escaped with a
+// backslash, inline and at a line's start, so it posts as the plain text
+// the person approved, as the Web API's `mrkdwn: false` does. `&`, `<` and
+// `>` come escaped already (`escapeText`).
+export const plainMarkdown = (text: string): string =>
+  text
+    .replace(/[\\`*_~[\]()!|@]/g, (mark) => `\\${mark}`)
+    .replace(/^([ \t]*)([#=+-]|[0-9]+(?=[.)]))/gm, (_, space: string, mark: string) =>
+      /^[0-9]/.test(mark) ? `${space}${mark}\\` : `${space}\\${mark}`,
+    );
 
 // The most a page asks of each listing tool, as Slack's docs give them.
 const most = { history: 100, thread: 1000, channels: 200 };
@@ -291,7 +311,7 @@ export function slackServerApi(options: SlackServerOptions): SlackApi<string> & 
         if (!options.write) throw new Error(`refusing a write on the read side: ${method}`);
         const args = {
           channel_id: params.channel,
-          message: params.text,
+          message: plainMarkdown(params.text ?? ""),
           ...(params.thread_ts ? { thread_ts: params.thread_ts } : {}),
         };
         const body = bodyOf(method, t.send, await options.write({ tool: t.send, args }), true);

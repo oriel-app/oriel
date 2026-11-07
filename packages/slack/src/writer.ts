@@ -395,13 +395,25 @@ function valid<O extends SlackOp>(op: O, args: unknown): SlackArgs<O> {
 // tools (decision 0059).
 export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slack"> {
   const { through, credential } = writes;
-  if (through)
-    return slackWriter({
-      api: slackServerApi(through),
-      channels: writes.channels,
-      log,
-      whole: true,
-    });
+  if (through) {
+    // Each write, and each look at what it would change, lists the
+    // channels' names again, so a renamed one shows by its new name.
+    const api = slackServerApi(through);
+    const writer = slackWriter({ api, channels: writes.channels, log, whole: true });
+    const fresh =
+      <A extends unknown[], R>(call: (...args: A) => R) =>
+      (...args: A): R => {
+        api.forget();
+        return call(...args);
+      };
+    return {
+      ...writer,
+      apply: fresh(writer.apply),
+      current: fresh(writer.current),
+      read: fresh(writer.read),
+      ...(writer.name ? { name: fresh(writer.name) } : {}),
+    };
+  }
   if (!credential) throw new Error("a Slack connection writes with a token or a server");
   return slackWriter({
     api: writeApi({ credential, ...(writes.fetch ? { fetch: writes.fetch } : {}) }),

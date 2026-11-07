@@ -173,6 +173,15 @@ test("an answer it can't read stops the sync before any page lands, naming the s
     altered(t.history, (answer) =>
       json({ ...bodyOf(answer), has_more: true, response_metadata: {} }),
     ),
+    // A message whose thread isn't a ts: left out, the sweep would take it.
+    altered(t.history, (answer) => {
+      const [first, ...rest] = bodyOf(answer).messages as Record<string, unknown>[];
+      return json({ ...bodyOf(answer), messages: [{ ...first, thread_ts: "not-a-ts" }, ...rest] });
+    }),
+    // Paging said in a shape it can't read.
+    altered(t.history, (answer) =>
+      json({ ...bodyOf(answer), response_metadata: "broken", has_more: "true" }),
+    ),
     // A cursor that isn't one.
     altered(t.history, (answer) =>
       json({ ...bodyOf(answer), response_metadata: { next_cursor: 4 } }),

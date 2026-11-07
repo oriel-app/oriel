@@ -421,7 +421,10 @@ export function slackReads(api: SlackApi, log: Log, whole?: true) {
     const found: Message[] = [];
     for (const raw of parsed.value.messages) {
       const taken = looseMessage(raw);
-      if (!taken && whole)
+      // Through a server, one it can't place, or whose thread it can't, stops
+      // the sync: left out, the sweep would mark it gone.
+      const thread = taken?.message.thread_ts;
+      if (whole && (!taken || (thread !== undefined && !tsShape.test(thread))))
         throw new ServerUnreadable(`${method} listed a message Oriel can't place`);
       if (!taken) log("slack: skipped a message Oriel can't place", { method });
       else found.push(taken.message);

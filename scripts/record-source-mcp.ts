@@ -136,11 +136,14 @@ function scrubbed(
     ...answer,
     content: answer.content.map((block) => {
       if (typeof block !== "object" || block === null || !("text" in block)) return block;
+      let parsed: unknown;
       try {
-        return { ...block, text: JSON.stringify(scrub(JSON.parse(String(block.text)), people)) };
+        parsed = JSON.parse(String(block.text));
       } catch {
-        return block;
+        // Prose can't be scrubbed by its fields: check it by hand.
+        throw new Error("an answer isn't JSON, so Oriel can't scrub it: nothing was written");
       }
+      return { ...block, text: JSON.stringify(scrub(parsed, people)) };
     }),
     ...(answer.structuredContent === undefined
       ? {}
@@ -161,7 +164,7 @@ export async function recordCalls(
       recorded,
       calls: scrubbing
         ? calls.map(({ call, answer }) => ({
-            call,
+            call: { tool: call.tool, args: kind.scrub(call.args, people) as typeof call.args },
             answer: scrubbed(answer as ToolAnswer, kind.scrub, people),
           }))
         : calls,

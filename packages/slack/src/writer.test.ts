@@ -327,16 +327,29 @@ test("through Slack's server, a post and a reply are each one write call, escape
   );
   const author = fixture.users[0]?.id ?? "";
   const posted = await writer.apply(
-    request("postMessage", null, { channel: weather, text: "Ready <!channel> & go", author }),
+    request("postMessage", null, {
+      channel: weather,
+      text: "Ready <!channel> & read [the runbook](https://x.example) **now**",
+      author,
+    }),
   );
   assert.deepEqual(written, [
     {
       tool: t.send,
-      args: { channel_id: weather, message: "Ready &lt;!channel&gt; &amp; go" },
+      // Escaped for the Web API, then for markdown: it posts as written,
+      // with no mention, link or bold.
+      args: {
+        channel_id: weather,
+        message:
+          "Ready &lt;\\!channel&gt; &amp; read \\[the runbook\\]\\(https://x.example\\) \\*\\*now\\*\\*",
+      },
     },
   ]);
   assert.match(posted.item.stableId, new RegExp(`^${weather}-[0-9]{10}\\.[0-9]{6}$`));
-  assert.equal(posted.after.description, "Ready <!channel> & go");
+  assert.equal(
+    posted.after.description,
+    "Ready <!channel> & read [the runbook](https://x.example) **now**",
+  );
 
   const question = itemId("slack", `${weather}-1790071200.000100`);
   const replied = await writer.apply(request("reply", question, { text: "On it", author }));
@@ -418,4 +431,24 @@ test("a post the server failed without saying why may have landed: it's no refus
     ),
     (caught) => caught instanceof SourceRefused && /archived/.test(caught.message),
   );
+});
+
+test("through Slack's server, a write names a channel by its name now, though it was renamed", async () => {
+  const fixture = loadSlackFixture();
+  let name = "weather-disruptions";
+  const tools = standInCaller(slackStandIn(fixture));
+  const read = async (call: ToolCall) => {
+    const answer = await tools(call);
+    if (call.tool !== t.channels) return answer;
+    const body = JSON.parse(String((answer.content[0] as { text: string }).text));
+    body.channels = body.channels.map((each: { name: string }) => ({ ...each, name }));
+    return { content: [{ type: "text", text: JSON.stringify(body) }] };
+  };
+  const writer = slackWriterOf(
+    { channels: fixture.picked, through: { read, write: tools } },
+    () => {},
+  );
+  assert.equal(await writer.name?.(weather), "weather-disruptions");
+  name = "sailings";
+  assert.equal(await writer.name?.(weather), "sailings");
 });

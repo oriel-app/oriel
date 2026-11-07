@@ -189,7 +189,9 @@ export function slackStandIn(
         if (!yours.has(channel)) return failed("Slack refused it: not_in_channel");
         const body = await write("chat.postMessage", {
           channel,
-          text: text(args.message),
+          // Markdown as the real server reads it: a mark escaped with a
+          // backslash posts as itself.
+          text: text(args.message).replace(/\\([!-/:-@[-`{-~])/g, "$1"),
           ...(text(args.thread_ts) ? { thread_ts: text(args.thread_ts) } : {}),
         });
         if (body.ok !== true) return failed(`Slack refused it: ${text(body.error) || "failed"}`);
