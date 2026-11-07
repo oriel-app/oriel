@@ -49,6 +49,13 @@ const valueInputOption: Schema = {
   description:
     "RAW, the default, stores each value as given: `=SUM(A1:A3)` stays text. USER_ENTERED reads each value as if typed into the sheet, so it lets a formula through, and `3/4` may become a date.",
 };
+const renderOption: Schema = {
+  type: "string",
+  enum: ["FORMATTED_VALUE", "FORMULA"],
+  default: "FORMATTED_VALUE",
+  description:
+    "FORMATTED_VALUE, the default, gives each cell as the sheet shows it. FORMULA gives each as entered: a formula as its text, such as `=SUM(A1:A3)`, and a cell a formula elsewhere fills as empty.",
+};
 const updated: Schema = {
   updatedRange: text("The cells written, in A1 notation."),
   updatedRows: { type: "integer" },
@@ -110,6 +117,13 @@ function wantRows(args: Record<string, unknown>): (string | number | boolean | n
       `That's ${cells.toLocaleString("en")} cells; write at most ${cellCap.toLocaleString("en")} a call, in several calls.`,
     );
   return values as (string | number | boolean | null)[][];
+}
+
+function wantRender(args: Record<string, unknown>): string {
+  const option = args.valueRenderOption ?? "FORMATTED_VALUE";
+  if (option !== "FORMATTED_VALUE" && option !== "FORMULA")
+    throw new Refusal("`valueRenderOption` is FORMATTED_VALUE or FORMULA.");
+  return option;
 }
 
 function wantOption(args: Record<string, unknown>): string {
@@ -302,8 +316,15 @@ function nextRange(returned: string, kept: number): string | null {
 const readRange: Tool = {
   name: "read_range",
   title: "Read a range",
-  description: `Reads the cells in an A1 range, such as \`Backlog!A1:F50\`, \`'Q3 plan'!A:D\` or a tab's name alone for all of it, as rows of text as the sheet shows them. Empty cells at a row's end and empty rows at the end are left out. At most ${cellCap.toLocaleString("en")} cells come back; when there are more, \`truncated\` is true and \`nextRange\` is where to read on.`,
-  inputSchema: object({ spreadsheetId, range: text("The cells to read, in A1 notation.") }),
+  description: `Reads the cells in an A1 range, such as \`Backlog!A1:F50\`, \`'Q3 plan'!A:D\` or a tab's name alone for all of it, as rows of text as the sheet shows them, or, with \`valueRenderOption\` FORMULA, as entered, each formula as its text. Empty cells at a row's end and empty rows at the end are left out. At most ${cellCap.toLocaleString("en")} cells come back; when there are more, \`truncated\` is true and \`nextRange\` is where to read on.`,
+  inputSchema: object(
+    {
+      spreadsheetId,
+      range: text("The cells to read, in A1 notation."),
+      valueRenderOption: renderOption,
+    },
+    ["spreadsheetId", "range"],
+  ),
   outputSchema: object(
     {
       range: text("The range Google read, cut to the tab's size, in A1 notation."),
@@ -321,11 +342,12 @@ const readRange: Tool = {
   async call(args, google) {
     const id = wantId(args);
     const range = wantRange(args);
+    const render = wantRender(args);
     const answer = (await sheets(
       google,
       "GET",
       `/v4/spreadsheets/${encodeURIComponent(id)}/values/${encodeURIComponent(range)}`,
-      { majorDimension: "ROWS", valueRenderOption: "FORMATTED_VALUE" },
+      { majorDimension: "ROWS", valueRenderOption: render },
     )) as { range?: unknown; values?: unknown[] };
     const returned = str(answer.range) || range;
     const rows = (answer.values ?? []).map(strings);

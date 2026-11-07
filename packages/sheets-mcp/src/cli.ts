@@ -13,7 +13,7 @@ import type { Random } from "./pkce.ts";
 import { mcpServer } from "./server.ts";
 import { standIn, standInToken } from "./stand-in.ts";
 import { serveStdio } from "./stdio.ts";
-import { configFolder, tokenFile } from "./token-file.ts";
+import { clientFile, configFolder, tokenFile } from "./token-file.ts";
 
 export type CliIo = {
   env: Readonly<Record<string, string | undefined>>;
@@ -36,8 +36,9 @@ export const usage = `Usage:
   sheets-mcp login               sign in to Google in your browser, once
   sheets-mcp logout              forget the sign-in
 
-The server and login read GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if
-the client has one, from the environment.
+login reads GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if the client has
+one, from the environment, and keeps them beside the sign-in, so the server
+needs no environment. Set there, they win over what's kept.
 `;
 
 // The exit code.
@@ -60,10 +61,12 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
     io.stderr.write(usage);
     return values.help ? 0 : 2;
   }
-  const file = tokenFile(configFolder(io.env, io.home));
-  const client = googleClientOf(io.env);
+  const folder = configFolder(io.env, io.home);
+  const file = tokenFile(folder);
+  const keptClient = clientFile(folder);
 
   if (command === "login") {
+    const client = googleClientOf(io.env);
     if (!client) {
       say("Set GOOGLE_CLIENT_ID first, and GOOGLE_CLIENT_SECRET if the client has one.");
       return 1;
@@ -74,12 +77,15 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
       say(`Didn't sign in: ${result.problem}.`);
       return 1;
     }
+    // The client first: a token kept alone would be refreshed with none.
+    keptClient.write(client);
     file.write(result.tokens.refresh);
-    say(`Signed in. The sign-in is kept in ${file.path}.`);
+    say(`Signed in. The sign-in is kept in ${folder}.`);
     return 0;
   }
   if (command === "logout") {
-    say(file.remove() ? `Signed out: deleted ${file.path}.` : "Not signed in.");
+    const removed = [file.remove(), keptClient.remove()].some(Boolean);
+    say(removed ? `Signed out: deleted the sign-in in ${folder}.` : "Not signed in.");
     return 0;
   }
   if (command !== undefined) {
@@ -102,7 +108,10 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
     fetch = standIn(fixture, { now: () => new Date(io.now()).toISOString() }).fetch;
     source = fixedAccess(standInToken);
   } else {
-    source = googleAccess({ client, file, fetch, now: io.now });
+    // The environment's client wins; else the one `login` kept, read at
+    // each refresh, so a `login` while the server runs is used at once.
+    const given = googleClientOf(io.env);
+    source = googleAccess({ client: () => given ?? keptClient.read(), file, fetch, now: io.now });
   }
   await serveStdio(mcpServer({ fetch, source, log: say }), io.stdin, io.stdout);
   return 0;

@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { configFolder, tokenFile } from "./token-file.ts";
+import { clientFile, configFolder, tokenFile } from "./token-file.ts";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "sheets-mcp-token-"));
 const mode = (path: string) => statSync(path).mode & 0o777;
@@ -83,4 +83,26 @@ test("remove deletes the file, and says whether there was one", () => {
   assert.equal(file.remove(), true);
   assert.equal(file.read(), null);
   assert.equal(file.remove(), false);
+});
+
+test("the client is kept beside the token, 0600, with no secret when it has none", () => {
+  const folder = join(fresh(), "oriel-sheets-mcp");
+  const client = clientFile(folder);
+  assert.equal(client.read(), null);
+  client.write({ id: "123456789012-fake.apps.googleusercontent.com", secret: null });
+  assert.equal(mode(folder), 0o700);
+  assert.equal(mode(client.path), 0o600);
+  assert.deepEqual(JSON.parse(readFileSync(client.path, "utf8")), {
+    client_id: "123456789012-fake.apps.googleusercontent.com",
+  });
+  client.write({ id: "123456789012-fake.apps.googleusercontent.com", secret: "GOCSPX-fake" });
+  assert.deepEqual(client.read(), {
+    id: "123456789012-fake.apps.googleusercontent.com",
+    secret: "GOCSPX-fake",
+  });
+  // One this didn't write is none.
+  writeFileSync(client.path, JSON.stringify({ client_id: 7 }));
+  assert.equal(client.read(), null);
+  assert.equal(client.remove(), true);
+  assert.equal(client.remove(), false);
 });

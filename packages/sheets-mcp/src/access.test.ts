@@ -44,7 +44,7 @@ test("the kept refresh token buys an access token, held until a minute before it
   let now = 1_000_000;
   const google = endpoint(granted("access-1"), granted("access-2"));
   const source = googleAccess({
-    client,
+    client: () => client,
     file: memoryFile("refresh-1"),
     fetch: google.fetch,
     now: () => now,
@@ -64,7 +64,12 @@ test("the kept refresh token buys an access token, held until a minute before it
 
 test("calls at once share one refresh, and `again` gets a new token", async () => {
   const google = endpoint(granted("access-1"), granted("access-2"));
-  const source = googleAccess({ client, file: memoryFile("r"), fetch: google.fetch, now: () => 0 });
+  const source = googleAccess({
+    client: () => client,
+    file: memoryFile("r"),
+    fetch: google.fetch,
+    now: () => 0,
+  });
   const both = await Promise.all([source.access(), source.access()]);
   assert.deepEqual(both, [
     { status: "ok", token: "access-1" },
@@ -77,7 +82,7 @@ test("calls at once share one refresh, and `again` gets a new token", async () =
 test("a new refresh token from Google is kept on disk", async () => {
   const file = memoryFile("old");
   const source = googleAccess({
-    client,
+    client: () => client,
     file,
     fetch: endpoint(granted("a", "new")).fetch,
     now: () => 0,
@@ -88,18 +93,16 @@ test("a new refresh token from Google is kept on disk", async () => {
 
 test("no client, no sign-in, or one Google refuses is a sentence, with no token sent", async () => {
   const none = googleAccess({
-    client: null,
+    client: () => null,
     file: memoryFile("r"),
     fetch: endpoint().fetch,
     now: () => 0,
   });
-  assert.match(
-    ((await none.access()) as { problem: string }).problem,
-    /^GOOGLE_CLIENT_ID isn't set/,
-  );
+  // No client in its environment, and none `login` kept, is not signed in.
+  assert.equal(((await none.access()) as { problem: string }).problem, notSignedIn);
 
   const out = googleAccess({
-    client,
+    client: () => client,
     file: memoryFile(null),
     fetch: endpoint().fetch,
     now: () => 0,
@@ -107,7 +110,7 @@ test("no client, no sign-in, or one Google refuses is a sentence, with no token 
   assert.deepEqual(await out.access(), { status: "refused", problem: notSignedIn });
 
   const revoked = googleAccess({
-    client,
+    client: () => client,
     file: memoryFile("r"),
     fetch: endpoint({
       status: 400,
@@ -121,7 +124,7 @@ test("no client, no sign-in, or one Google refuses is a sentence, with no token 
   });
 
   const wrongClient = googleAccess({
-    client,
+    client: () => client,
     file: memoryFile("r"),
     fetch: endpoint({
       status: 401,
@@ -142,7 +145,7 @@ test("no client, no sign-in, or one Google refuses is a sentence, with no token 
 
 test("what must never be shown: the client, its project's number and every token seen", async () => {
   const source = googleAccess({
-    client: { id: client.id, secret: "GOCSPX-fake-secret" },
+    client: () => ({ id: client.id, secret: "GOCSPX-fake-secret" }),
     file: memoryFile("refresh-1"),
     fetch: endpoint(granted("access-1", "refresh-2")).fetch,
     now: () => 0,

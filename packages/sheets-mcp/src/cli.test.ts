@@ -11,7 +11,7 @@ import type { After } from "./loopback.ts";
 import { type Fetch, scopes, tokenEndpoint } from "./oauth.ts";
 import { standIn } from "./stand-in.ts";
 import { backlogId, smallFixture } from "./testing.ts";
-import { configFolder, tokenFile } from "./token-file.ts";
+import { clientFile, configFolder, tokenFile } from "./token-file.ts";
 
 // Made-up values; none is a real client or token.
 const clientId = "123456789012-fakeclient0abcdef.apps.googleusercontent.com";
@@ -44,7 +44,14 @@ function harness(over: Partial<CliIo> & { lines?: unknown[] } = {}) {
     ...over,
   };
   const folder = () => configFolder(io.env, io.home);
-  return { io, out, err, file: () => tokenFile(folder()), folder };
+  return {
+    io,
+    out,
+    err,
+    file: () => tokenFile(folder()),
+    client: () => clientFile(folder()),
+    folder,
+  };
 }
 
 // What must never show, whole or as its client's project number.
@@ -88,7 +95,7 @@ function google(granted: readonly string[] = scopes) {
   return { fetch, forms, api };
 }
 
-test("login signs in in the browser, keeps the refresh token 0600, and shows no secret", async () => {
+test("login signs in in the browser, keeps the refresh token and the client 0600, and shows no secret", async () => {
   const person = browser();
   const g = google();
   const run1 = harness({ open: person.open, fetch: g.fetch });
@@ -106,12 +113,14 @@ test("login signs in in the browser, keeps the refresh token 0600, and shows no 
   assert.equal(g.forms[0]?.get("client_secret"), clientSecret);
 
   assert.equal(run1.file().read(), refreshToken);
+  assert.deepEqual(run1.client().read(), { id: clientId, secret: clientSecret });
   assert.equal(statSync(run1.file().path).mode & 0o777, 0o600);
+  assert.equal(statSync(run1.client().path).mode & 0o777, 0o600);
   assert.equal(statSync(run1.folder()).mode & 0o777, 0o700);
   assert.deepEqual(run1.out, []);
   assert.deepEqual(run1.err, [
     "Opening your browser to sign in to Google…\n",
-    `Signed in. The sign-in is kept in ${run1.file().path}.\n`,
+    `Signed in. The sign-in is kept in ${run1.folder()}.\n`,
   ]);
   showsNoSecret(...run1.out, ...run1.err);
   // Nor the sign-in's own state and verifier.
@@ -128,6 +137,7 @@ test("login with a scope unticked keeps nothing, and says which", async () => {
   });
   assert.equal(await run(["login"], run1.io), 1);
   assert.equal(existsSync(run1.file().path), false);
+  assert.equal(existsSync(run1.client().path), false);
   assert.deepEqual(run1.err.slice(1), [
     "Didn't sign in: Google didn't grant drive.metadata.readonly; sign in again and leave both ticked.\n",
   ]);
@@ -141,13 +151,18 @@ test("login with no client says to set one, and opens nothing", async () => {
   ]);
 });
 
-test("logout deletes the sign-in, and says when there was none", async () => {
+test("logout deletes the sign-in and its client, and says when there was none", async () => {
   const run1 = harness();
   run1.file().write(refreshToken);
+  run1.client().write({ id: clientId, secret: clientSecret });
   assert.equal(await run(["logout"], run1.io), 0);
   assert.equal(run1.file().read(), null);
+  assert.equal(existsSync(run1.client().path), false);
   assert.equal(await run(["logout"], run1.io), 0);
-  assert.deepEqual(run1.err, [`Signed out: deleted ${run1.file().path}.\n`, "Not signed in.\n"]);
+  assert.deepEqual(run1.err, [
+    `Signed out: deleted the sign-in in ${run1.folder()}.\n`,
+    "Not signed in.\n",
+  ]);
   showsNoSecret(...run1.err);
 });
 
@@ -252,6 +267,50 @@ test("the server with no sign-in answers each tool so, and never opens a browser
   }
   assert.deepEqual(run1.err, []);
   showsNoSecret(...run1.out);
+});
+
+test("the server with no environment refreshes with the client login kept", async () => {
+  const g = google();
+  const run1 = harness({
+    env: {},
+    fetch: g.fetch,
+    lines: [
+      initialize,
+      callOf(1, "read_range", { spreadsheetId: backlogId, range: "Backlog!A1:B1" }),
+    ],
+  });
+  run1.file().write(refreshToken);
+  run1.client().write({ id: clientId, secret: clientSecret });
+  assert.equal(await run([], run1.io), 0);
+  const [, read] = answers(run1.out);
+  assert.equal(read?.result.isError, undefined);
+  assert.equal(g.forms[0]?.get("client_id"), clientId);
+  assert.equal(g.forms[0]?.get("client_secret"), clientSecret);
+  assert.deepEqual(run1.err, []);
+  showsNoSecret(...run1.out);
+});
+
+test("the environment's client wins over the one kept", async () => {
+  const g = google();
+  const run1 = harness({
+    fetch: g.fetch,
+    lines: [initialize, callOf(1, "read_range", { spreadsheetId: backlogId, range: "Backlog!A1" })],
+  });
+  run1.file().write(refreshToken);
+  run1.client().write({ id: "999999999999-other.apps.googleusercontent.com", secret: null });
+  await run([], run1.io);
+  assert.equal(g.forms[0]?.get("client_id"), clientId);
+});
+
+test("the server with neither a client nor a sign-in says to run login", async () => {
+  const run1 = harness({
+    env: {},
+    lines: [initialize, callOf(1, "list_spreadsheets", {})],
+  });
+  assert.equal(await run([], run1.io), 0);
+  const [, one] = answers(run1.out);
+  assert.equal(one?.result.isError, true);
+  assert.equal(one?.result.content[0]?.text, "Not signed in. Run `sheets-mcp login`.");
 });
 
 test("--fixture serves the shipped fixture with no network, no token and no client", async () => {

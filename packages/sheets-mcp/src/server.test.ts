@@ -320,6 +320,28 @@ test("read_range gives rows of text, and the range Google read", async () => {
   );
 });
 
+test("read_range asks Google for cells as entered with FORMULA, and for nothing else", async () => {
+  const { server, google } = overStandIn();
+  await checked(server, "read_range", { spreadsheetId: backlogId, range: "Backlog!A1:C2" });
+  await checked(server, "read_range", {
+    spreadsheetId: backlogId,
+    range: "Backlog!A1:C2",
+    valueRenderOption: "FORMULA",
+  });
+  assert.deepEqual(
+    google.calls.map((each) => new URL(each.url).searchParams.get("valueRenderOption")),
+    ["FORMATTED_VALUE", "FORMULA"],
+  );
+  assert.match(
+    await refused(server, "read_range", {
+      spreadsheetId: backlogId,
+      range: "Backlog!A1",
+      valueRenderOption: "UNFORMATTED_VALUE",
+    }),
+    /FORMATTED_VALUE or FORMULA/,
+  );
+});
+
 test("read_range stops at the cell cap, says so, and pages on to the rest", async () => {
   // 60 columns by 200 rows: 12,000 cells.
   const rows = Array.from({ length: 200 }, (_, r) =>

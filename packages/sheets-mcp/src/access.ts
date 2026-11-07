@@ -28,27 +28,28 @@ const earlyMs = 60_000;
 const projectOf = (id: string) => /^([0-9]{6,})-/.exec(id)?.slice(1) ?? [];
 
 export function googleAccess(deps: {
-  client: GoogleClient | null;
+  // The client to refresh with, read at each refresh; null when there's
+  // none, as before the first `login`.
+  client: () => GoogleClient | null;
   file: TokenFile;
   fetch: Fetch;
   // Milliseconds since the epoch.
   now: () => number;
 }): AccessSource {
-  const { client, file } = deps;
+  const { file } = deps;
   let held: Tokens | null = null;
   let pending: Promise<Access> | null = null;
   const seen = new Set<string>();
 
+  // Each client refreshed with, whose ID and secret are never shown.
+  const clients: GoogleClient[] = [];
+
   async function renew(): Promise<Access> {
-    if (!client)
-      return {
-        status: "refused",
-        problem:
-          "GOOGLE_CLIENT_ID isn't set in this server's environment. Add it to the server's entry in your MCP config.",
-      };
     // Read each time, so a `login` while the server runs is used at once.
+    const client = deps.client();
     const kept = file.read();
-    if (kept === null) return { status: "refused", problem: notSignedIn };
+    if (!client || kept === null) return { status: "refused", problem: notSignedIn };
+    clients.push(client);
     seen.add(kept);
     const refreshed = await refresh(client, kept, deps);
     if (refreshed.status === "signed-out")
@@ -74,11 +75,18 @@ export function googleAccess(deps: {
       pending ??= renew().finally(() => (pending = null));
       return pending;
     },
-    secrets: () => [
-      ...(client
-        ? [client.id, ...projectOf(client.id), ...(client.secret ? [client.secret] : [])]
-        : []),
-      ...seen,
-    ],
+    secrets: () => {
+      const current = deps.client();
+      return [
+        ...new Set([
+          ...[...clients, ...(current ? [current] : [])].flatMap((client) => [
+            client.id,
+            ...projectOf(client.id),
+            ...(client.secret ? [client.secret] : []),
+          ]),
+          ...seen,
+        ]),
+      ];
+    },
   };
 }

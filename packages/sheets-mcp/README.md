@@ -6,13 +6,13 @@ It has no dependencies. Node 24 runs its TypeScript directly, from a checkout of
 
 ## Tools
 
-| Tool                | Does                                                                                                                                                              | Annotations                         |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `list_spreadsheets` | Your spreadsheets, most recently changed first: ID, name, modified time, URL. An optional name filter (`query`), and paging (`pageSize`, `pageToken`).            | `readOnlyHint`                      |
-| `get_spreadsheet`   | One spreadsheet's title and its tabs: sheet ID, title, row and column counts, frozen rows, and the last frozen row's cells (usually the header).                  | `readOnlyHint`                      |
-| `read_range`        | The cells in an A1 range, as rows of text, with the range Google read. At most 5,000 cells; past that, `truncated` is true and `nextRange` says where to read on. | `readOnlyHint`                      |
-| `update_range`      | Writes rows of values over an A1 range. `valueInputOption` is `RAW` (the default: values as given) or `USER_ENTERED`, which lets a formula through.               | `destructiveHint`, `idempotentHint` |
-| `append_rows`       | Adds rows after the table in an A1 range, inserting rows so nothing below is written over. The same `valueInputOption`.                                           | not destructive, not idempotent     |
+| Tool                | Does                                                                                                                                                                                                                         | Annotations                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `list_spreadsheets` | Your spreadsheets, most recently changed first: ID, name, modified time, URL. An optional name filter (`query`), and paging (`pageSize`, `pageToken`).                                                                       | `readOnlyHint`                      |
+| `get_spreadsheet`   | One spreadsheet's title and its tabs: sheet ID, title, row and column counts, frozen rows, and the last frozen row's cells (usually the header).                                                                             | `readOnlyHint`                      |
+| `read_range`        | The cells in an A1 range, as rows of text, with the range Google read: as shown, or as entered with `valueRenderOption: FORMULA`. At most 5,000 cells; past that, `truncated` is true and `nextRange` says where to read on. | `readOnlyHint`                      |
+| `update_range`      | Writes rows of values over an A1 range. `valueInputOption` is `RAW` (the default: values as given) or `USER_ENTERED`, which lets a formula through.                                                                          | `destructiveHint`, `idempotentHint` |
+| `append_rows`       | Adds rows after the table in an A1 range, inserting rows so nothing below is written over. The same `valueInputOption`.                                                                                                      | not destructive, not idempotent     |
 
 Each tool has an `inputSchema` and an `outputSchema`, and answers with `structuredContent` and the same JSON as a text block. A tool that fails answers `isError: true` with one short sentence, such as `Not signed in. Run \`sheets-mcp login\`.`
 
