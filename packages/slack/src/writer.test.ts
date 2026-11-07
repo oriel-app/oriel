@@ -4,6 +4,7 @@ import {
   type ItemId,
   itemId,
   SourceRefused,
+  type ToolCall,
   type SourceWriter,
   ulid,
   type WriteRequest,
@@ -11,7 +12,9 @@ import {
 import { weather } from "../../../scripts/fixtures/slack.ts";
 import { fixtureApi, loadSlackFixture } from "./fixture.ts";
 import { slackSource } from "./source.ts";
-import { slackWriter, writeApi } from "./writer.ts";
+import { slackServer, slackServerApi, slackTools } from "./slack-mcp.ts";
+import { slackStandIn, standInCaller } from "./slack-standin.ts";
+import { slackWriter, slackWriterOf, writeApi } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
 // production. These tests cover the Web API mapping, not the approval gate.
@@ -295,4 +298,157 @@ test("the fixture's workspace is written in its own copy, never the fixture", as
     messages: { text: string }[];
   };
   assert.equal(history.messages[0]?.text, "Ready.");
+});
+
+// Through Slack's MCP server (OA-277): each mutation Slack's op specs name
+// becomes the server's write call, and its reads the server's read tools,
+// against the stand-in's Ferrowick in memory.
+const t = slackTools;
+
+test("through Slack's server, a post and a reply are each one write call, escaped, read back by the read tools", async () => {
+  const tools = standInCaller(slackStandIn(fixture));
+  const written: ToolCall[] = [];
+  const read: string[] = [];
+  const writer = slackWriterOf(
+    {
+      channels: fixture.picked,
+      through: {
+        read: async (call) => {
+          read.push(call.tool);
+          return tools(call);
+        },
+        write: async (call) => {
+          written.push({ tool: call.tool, args: { ...call.args } });
+          return tools(call);
+        },
+      },
+    },
+    () => {},
+  );
+  const author = fixture.users[0]?.id ?? "";
+  const posted = await writer.apply(
+    request("postMessage", null, {
+      channel: weather,
+      text: "Ready <!channel> & read [the runbook](https://x.example) **now**",
+      author,
+    }),
+  );
+  assert.deepEqual(written, [
+    {
+      tool: t.send,
+      // Escaped for the Web API, then for markdown: it posts as written,
+      // with no mention, link or bold.
+      args: {
+        channel_id: weather,
+        message:
+          "Ready &lt;\\!channel&gt; &amp; read \\[the runbook\\]\\(https://x.example\\) \\*\\*now\\*\\*",
+      },
+    },
+  ]);
+  assert.match(posted.item.stableId, new RegExp(`^${weather}-[0-9]{10}\\.[0-9]{6}$`));
+  assert.equal(
+    posted.after.description,
+    "Ready <!channel> & read [the runbook](https://x.example) **now**",
+  );
+
+  const question = itemId("slack", `${weather}-1790071200.000100`);
+  const replied = await writer.apply(request("reply", question, { text: "On it", author }));
+  assert.deepEqual(written.at(-1), {
+    tool: t.send,
+    args: { channel_id: weather, message: "On it", thread_ts: "1790071200.000100" },
+  });
+  assert.equal(replied.after.replies, (replied.before.replies as number) + 1);
+  assert.equal(written.length, 2, "nothing else wrote");
+  assert.ok(read.every((tool) => slackServer.reads.includes(tool)));
+});
+
+test("through Slack's server, undoing a post sends nothing: it has no tool to delete one", async () => {
+  const tools = standInCaller(slackStandIn(fixture));
+  const written: ToolCall[] = [];
+  const writer = slackWriter({
+    api: slackServerApi({
+      read: tools,
+      write: async (call) => {
+        written.push(call);
+        return tools(call);
+      },
+    }),
+    channels: fixture.picked,
+    log: () => {},
+    whole: true,
+  });
+  const author = fixture.users[0]?.id ?? "";
+  const posted = await writer.apply(
+    request("postMessage", null, { channel: weather, text: "Mine", author }),
+  );
+  await assert.rejects(
+    writer.apply(request("deleteMessage", posted.item.id, {})),
+    (error) =>
+      error instanceof SourceRefused && !error.sent && /no tool to delete/.test(error.message),
+  );
+  assert.equal(written.length, 1, "only the post went out");
+});
+
+test("a post the server failed without saying why may have landed: it's no refusal", async () => {
+  const tools = standInCaller(slackStandIn(fixture));
+  const writer = slackWriter({
+    api: slackServerApi({
+      read: tools,
+      write: async () => ({ content: [{ type: "text", text: "Oops" }], isError: true }),
+    }),
+    channels: fixture.picked,
+    log: () => {},
+  });
+  const error = await writer
+    .apply(
+      request("postMessage", null, {
+        channel: weather,
+        text: "Mine",
+        author: fixture.users[0]?.id ?? "",
+      }),
+    )
+    .catch((caught: unknown) => caught);
+  assert.ok(error instanceof Error && !(error instanceof SourceRefused));
+  // One naming Slack's code is a refusal, which made no change.
+  const refusing = slackWriter({
+    api: slackServerApi({
+      read: tools,
+      write: async () => ({
+        content: [{ type: "text", text: "Slack refused it: is_archived" }],
+        isError: true,
+      }),
+    }),
+    channels: fixture.picked,
+    log: () => {},
+  });
+  await assert.rejects(
+    refusing.apply(
+      request("postMessage", null, {
+        channel: weather,
+        text: "Mine",
+        author: fixture.users[0]?.id ?? "",
+      }),
+    ),
+    (caught) => caught instanceof SourceRefused && /archived/.test(caught.message),
+  );
+});
+
+test("through Slack's server, a write names a channel by its name now, though it was renamed", async () => {
+  const fixture = loadSlackFixture();
+  let name = "weather-disruptions";
+  const tools = standInCaller(slackStandIn(fixture));
+  const read = async (call: ToolCall) => {
+    const answer = await tools(call);
+    if (call.tool !== t.channels) return answer;
+    const body = JSON.parse(String((answer.content[0] as { text: string }).text));
+    body.channels = body.channels.map((each: { name: string }) => ({ ...each, name }));
+    return { content: [{ type: "text", text: JSON.stringify(body) }] };
+  };
+  const writer = slackWriterOf(
+    { channels: fixture.picked, through: { read, write: tools } },
+    () => {},
+  );
+  assert.equal(await writer.name?.(weather), "weather-disruptions");
+  name = "sailings";
+  assert.equal(await writer.name?.(weather), "sailings");
 });

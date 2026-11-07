@@ -112,3 +112,65 @@ export type ThroughServer = {
   read: ToolCaller;
   write: ToolCaller;
 };
+
+// A source server's answer Oriel can't read (decision 0059): the sync
+// stops, and the index stays as it was. Its message names the tool and what
+// was wrong, never the answer.
+export class ServerUnreadable extends Error {
+  override name = "ServerUnreadable";
+}
+
+// The words of an answer's text blocks, as one.
+export const answerText = (answer: ToolAnswer): string =>
+  answer.content
+    .flatMap((block) =>
+      typeof block === "object" && block !== null && "type" in block && block.type === "text"
+        ? [String((block as { text?: unknown }).text)]
+        : [],
+    )
+    .join("");
+
+// A tool's answer as JSON: its structured content, or its text parsed. Text
+// that isn't JSON can't be read.
+export function answerJson(tool: string, answer: ToolAnswer): unknown {
+  if (typeof answer !== "object" || answer === null || !Array.isArray(answer.content))
+    throw new ServerUnreadable(`${tool} answered with no content`);
+  if (answer.structuredContent !== undefined && answer.structuredContent !== null)
+    return answer.structuredContent;
+  try {
+    return JSON.parse(answerText(answer)) as unknown;
+  } catch {
+    throw new ServerUnreadable(`${tool} answered with text that isn't JSON`);
+  }
+}
+
+// A sync through a source server reads every page before it gives one, so
+// a page it can't read stops it before anything lands: the index stays as
+// it was.
+export async function* readWhole<T>(pages: AsyncIterable<T>): AsyncGenerator<T> {
+  const read: T[] = [];
+  for await (const page of pages) read.push(page);
+  yield* read;
+}
+
+// A tool as a stand-in of a source server serves it (packages/standin-mcp):
+// as `tools/list` shows it, and its answer to a call, failed or not.
+export type StandInTool = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations: { readOnlyHint: boolean; destructiveHint?: boolean };
+  call(args: Record<string, unknown>): Promise<StandInAnswer>;
+};
+
+export type StandInAnswer = { content: { type: "text"; text: string }[]; isError?: true };
+
+// A stand-in's tools as a caller in this process: what the person's agent
+// would answer through it, for tests.
+export const standInCalls =
+  (tools: readonly StandInTool[]): ToolCaller =>
+  async (call) => {
+    const tool = tools.find((each) => each.name === call.tool);
+    if (!tool) throw new Error(`the stand-in has no tool ${call.tool}`);
+    return tool.call({ ...call.args });
+  };

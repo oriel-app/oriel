@@ -4,7 +4,7 @@
 // other processes added since, in order, to its own copy. Without one, a
 // stand-in's writes change only its own process's copy.
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import type { StandInTool } from "@oriel/jira/standin";
+import type { StandInTool } from "@oriel/core";
 
 export function journaled(tools: StandInTool[], path: string): StandInTool[] {
   let applied = 0;

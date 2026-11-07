@@ -39,6 +39,7 @@ import {
 } from "./api.ts";
 import { slackTitle } from "./attrs.ts";
 import type { SlackWrites } from "./open-connection.ts";
+import { slackServerApi } from "./slack-mcp.ts";
 import {
   escapeText,
   isSlackOp,
@@ -73,6 +74,9 @@ export type SlackWriterOptions = {
   // The channels the server reads, by ID: the only ones it writes to.
   channels: readonly string[];
   log: Log;
+  // Through a source server: a conversation it can't place a message of
+  // stops the write, as it stops a sync.
+  whole?: true;
 };
 
 const auth = object({ user_id: string });
@@ -112,7 +116,7 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
 
   // Read as the source reads them, so a diff names a conversation as the
   // window does.
-  const reads = slackReads(api, log);
+  const reads = slackReads(api, log, options.whole);
 
   const where = (id: ItemId<"slack">) => {
     const parsed = parseItemId(id);
@@ -386,13 +390,33 @@ function valid<O extends SlackOp>(op: O, args: unknown): SlackArgs<O> {
 }
 
 // A Slack connection's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for Slack (decision 0049).
+// packages/changeset/src/writers.ts has for Slack (decision 0049). Through a
+// source server, its post is the server's write tool, its reads its read
+// tools (decision 0059).
 export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slack"> {
+  const { through, credential } = writes;
+  if (through) {
+    // Each write, and each look at what it would change, lists the
+    // channels' names again, so a renamed one shows by its new name.
+    const api = slackServerApi(through);
+    const writer = slackWriter({ api, channels: writes.channels, log, whole: true });
+    const fresh =
+      <A extends unknown[], R>(call: (...args: A) => R) =>
+      (...args: A): R => {
+        api.forget();
+        return call(...args);
+      };
+    return {
+      ...writer,
+      apply: fresh(writer.apply),
+      current: fresh(writer.current),
+      read: fresh(writer.read),
+      ...(writer.name ? { name: fresh(writer.name) } : {}),
+    };
+  }
+  if (!credential) throw new Error("a Slack connection writes with a token or a server");
   return slackWriter({
-    api: writeApi({
-      credential: writes.credential,
-      ...(writes.fetch ? { fetch: writes.fetch } : {}),
-    }),
+    api: writeApi({ credential, ...(writes.fetch ? { fetch: writes.fetch } : {}) }),
     channels: writes.channels,
     log,
   });

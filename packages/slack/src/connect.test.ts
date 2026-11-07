@@ -17,6 +17,7 @@ test("picked channels are found by name, with or without #, or by ID, once each"
       { id: "C0FW2RANDOM", name: "random" },
     ],
     missing: [],
+    self: "U0FWAMARA1",
   });
   // One channel a page: it followed the cursor.
   assert.equal(calls.filter((c) => c.method === "conversations.list").length, 2);

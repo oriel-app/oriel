@@ -4016,6 +4016,33 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
+  // Slack's MCP server found beside Atlassian's, and Slack on through it,
+  // a stand-in of it answering Ferrowick (OA-277).
+  {
+    name: "settings-source-servers-slack-found",
+    path: "/settings/connections",
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      slack: "found",
+      state: setupFinished,
+    }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Slack off" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "settings-source-servers-slack-on",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "on", slack: "on", state: setupFinished }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Slack on" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
   // A person who started on Oriel's own tracker turns Jira on through
   // Atlassian's server: Oriel offers one change set that makes the
   // tracker's issues again in Jira, in a thread of its own.

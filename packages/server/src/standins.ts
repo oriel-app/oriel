@@ -1,8 +1,9 @@
-// Stand-in source servers for dev only (OA-276): `ORIEL_DEV_STANDINS=atlassian
-// pnpm dev` gives every process of the person's agent Oriel starts one more
-// MCP server, packages/standin-mcp's stand-in for Atlassian's, on its command
-// line only, never in the person's configuration, and has Jira's entry for
-// Atlassian's server know it at that command in place of Atlassian's
+// Stand-in source servers for dev only (OA-276, OA-277):
+// `ORIEL_DEV_STANDINS=atlassian,slack pnpm dev` gives every process of the
+// person's agent Oriel starts one more MCP server for each,
+// packages/standin-mcp's stand-in for Atlassian's or Slack's, on its command
+// line only, never in the person's configuration, and has the connector's
+// entry for the real server know it at that command in place of its
 // address. The desktop app never names one.
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +16,10 @@ const main = fileURLToPath(new URL("../../standin-mcp/src/main.ts", import.meta.
 
 // Each stand-in, by its name on the command line: the real server's entry
 // it stands in for, by the name that entry reports.
-const standIns: Record<string, string> = { atlassian: "atlassian-rovo-mcp-server" };
+const standIns: Record<string, string> = {
+  atlassian: "atlassian-rovo-mcp-server",
+  slack: "Slack MCP",
+};
 
 export function devStandIns(asked: string | undefined): {
   dev: DevServer[];

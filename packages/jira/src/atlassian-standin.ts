@@ -10,22 +10,15 @@
 // real server's (packages/standin-mcp/README.md, "Re-recording"). Served
 // over stdio by packages/standin-mcp, and in memory to this package's tests:
 // `@oriel/jira/standin`.
+import { type StandInAnswer, type StandInTool, standInCalls } from "@oriel/core";
 import { textToAdf } from "./adf.ts";
 import { frozenAt } from "./declared-fixture.ts";
 import { loadJiraFixture } from "./fixture.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
 
-// A tool as a stand-in serves it: as `tools/list` shows it, and its answer
-// to a call, failed or not.
-export type StandInTool = {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: { readOnlyHint: boolean; destructiveHint?: boolean };
-  call(args: Record<string, unknown>): Promise<ToolResult>;
-};
-
-export type ToolResult = { content: { type: "text"; text: string }[]; isError?: true };
+// A tool as a stand-in serves it, and its answer, as core gives them.
+export type { StandInTool } from "@oriel/core";
+type ToolResult = StandInAnswer;
 
 // Its JSON as a tool's text, as the server it stands in for answers.
 const ok = (value: unknown): ToolResult => ({
@@ -63,13 +56,8 @@ export const standInSite = () => {
 
 // Its tools as a caller in this process: what the person's agent would
 // answer through it, for tests.
-export const standInCaller =
-  (tools: readonly StandInTool[] = atlassianStandIn()) =>
-  async (call: { tool: string; args: Readonly<Record<string, unknown>> }) => {
-    const tool = tools.find((each) => each.name === call.tool);
-    if (!tool) throw new Error(`the stand-in has no tool ${call.tool}`);
-    return tool.call({ ...call.args });
-  };
+export const standInCaller = (tools: readonly StandInTool[] = atlassianStandIn()) =>
+  standInCalls(tools);
 
 // The tools it serves, and what each is. Each read is marked read-only, as
 // the real server's are; each write isn't.

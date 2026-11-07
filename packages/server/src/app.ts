@@ -1382,6 +1382,13 @@ export async function createApp(options: AppOptions): Promise<App> {
   // yet or whose options no longer fit their source; each with why.
   const whyWaits = (connection: Connection): string | null => {
     if (connection.disconnectedAt !== null || byFlag.has(connection.id)) return null;
+    // Open through a source server, it reads what the server gives it
+    // (decision 0059): one of its own options, if it has none, doesn't wait.
+    if (
+      throughOpen.has(connection.kind) &&
+      byPrefix.get(connection.prefix)?.connection.id === connection.id
+    )
+      return null;
     const declaration = declared(connection.kind);
     if (!declaration.preview) return null;
     return (

@@ -19,13 +19,14 @@ import {
   optional,
   parseItemId,
   type ReadResult,
+  readWhole,
   type Result,
+  ServerUnreadable,
   type Source,
   type SyncPage,
   string,
   unknown,
 } from "@oriel/core";
-import { ServerUnreadable } from "./atlassian.ts";
 import { type JiraAttrs, type JiraContent, jiraText } from "./attrs.ts";
 import { jiraOps } from "./ops.ts";
 import { adfToText, plainDocument } from "./adf.ts";
@@ -264,12 +265,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     ops: jiraOps,
 
     sync(cursor) {
-      if (!options.whole) return pages(cursor);
-      return (async function* () {
-        const read: SyncPage<"jira", JiraAttrs>[] = [];
-        for await (const page of pages(cursor)) read.push(page);
-        yield* read;
-      })();
+      return options.whole ? readWhole(pages(cursor)) : pages(cursor);
     },
 
     async read(ids) {

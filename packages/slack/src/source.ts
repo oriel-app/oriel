@@ -22,7 +22,10 @@ import {
   optional,
   parseItemId,
   type ReadResult,
+  readWhole,
+  ServerUnreadable,
   type Source,
+  type SyncPage,
   string,
   unknown,
 } from "@oriel/core";
@@ -52,6 +55,10 @@ export type SlackSourceOptions = {
   // when absent.
   maxMessages?: number;
   log: Log;
+  // Through a source server (decision 0059): a sync reads every page before
+  // it gives one, and a message it can't place stops it, so one that fails
+  // leaves the index as it was.
+  whole?: true;
 };
 
 // How much one sync or read takes in. A channel past its cap lists only its
@@ -165,71 +172,12 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
   // the cap: older ones are left out of the index.
   const cutoff = new Map<string, string>();
 
-  const { people, channelName, messagesOf, conversation } = slackReads(api, log);
+  const { people, channelName, messagesOf, conversation } = slackReads(api, log, options.whole);
 
   return {
     kind: "slack",
 
-    // One page per page of each channel's history, newest first. A channel
-    // that can't be read throws, so the sync worker marks nothing gone.
-    async *sync() {
-      const named = people();
-      for (const channel of channels) {
-        const name = await channelName(channel);
-        let cursor = "";
-        let listed = 0;
-        let oldest: string | null = null;
-        let capped = false;
-        do {
-          const reply = await api("conversations.history", {
-            channel,
-            limit: pageSize,
-            ...(cursor ? { cursor } : {}),
-          });
-          const { found, next } = messagesOf(reply, "conversations.history");
-          // Replies sent to the channel too are listed here; they belong to
-          // their message, which reads them.
-          const roots = found.filter(isRoot);
-          const records: SlackRecord[] = [];
-          // Each message's text, for Oriel's sync to find references in.
-          const texts: Record<string, string> = {};
-          if (roots.length > cap - listed) capped = true;
-          for (const m of roots.slice(0, cap - listed)) {
-            oldest = m.ts;
-            const { author, body, parts } = await named(m);
-            const times = [m.ts, m.latest_reply, m.edited?.ts].filter(
-              (ts): ts is string => ts !== undefined && tsShape.test(ts),
-            );
-            const key = slackKey(channel, m.ts);
-            texts[key] = body;
-            records.push({
-              id: itemId("slack", key),
-              stableId: key,
-              title: slackTitle(author.name, body),
-              location: permalink(workspaceUrl, channel, m.ts),
-              updatedAt: tsInstant(times.toSorted().at(-1) ?? m.ts),
-              facets: slackFacets(),
-              attrs: {
-                channel: { id: channel, name },
-                author,
-                replies: m.reply_count ?? 0,
-                ...(asks(parts.map((part) => part.text).join("")) && { asks: true as const }),
-              },
-            });
-          }
-          listed += records.length;
-          yield { records, gone: [], cursor: null, texts };
-          cursor = next;
-          if (listed >= cap && cursor) capped = true;
-          if (capped) break;
-        } while (cursor);
-        // What the sweep is about to mark gone mustn't read as fine.
-        if (capped && oldest) {
-          log("slack: the listing stopped at a cap", { channel, messages: listed });
-          cutoff.set(channel, oldest);
-        } else cutoff.delete(channel);
-      }
-    },
+    sync: () => (options.whole ? readWhole(pages()) : pages()),
 
     // Each ID's message and replies, by `conversations.replies`. A message
     // in a channel the user didn't pick, or can't read now, is forbidden; one
@@ -309,6 +257,70 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
       return results;
     },
   };
+
+  // One page per page of each channel's history, newest first. A channel
+  // that can't be read throws, so the sync worker marks nothing gone.
+  async function* pages(): AsyncGenerator<SyncPage<"slack", SlackAttrs>> {
+    const named = people();
+    for (const channel of channels) {
+      const name = await channelName(channel);
+      let cursor = "";
+      let listed = 0;
+      let oldest: string | null = null;
+      let capped = false;
+      const cursors = new Set<string>();
+      do {
+        const reply = await api("conversations.history", {
+          channel,
+          limit: pageSize,
+          ...(cursor ? { cursor } : {}),
+        });
+        const { found, next } = messagesOf(reply, "conversations.history");
+        // Replies sent to the channel too are listed here; they belong to
+        // their message, which reads them.
+        const roots = found.filter(isRoot);
+        const records: SlackRecord[] = [];
+        // Each message's text, for Oriel's sync to find references in.
+        const texts: Record<string, string> = {};
+        if (roots.length > cap - listed) capped = true;
+        for (const m of roots.slice(0, cap - listed)) {
+          oldest = m.ts;
+          const { author, body, parts } = await named(m);
+          const times = [m.ts, m.latest_reply, m.edited?.ts].filter(
+            (ts): ts is string => ts !== undefined && tsShape.test(ts),
+          );
+          const key = slackKey(channel, m.ts);
+          texts[key] = body;
+          records.push({
+            id: itemId("slack", key),
+            stableId: key,
+            title: slackTitle(author.name, body),
+            location: permalink(workspaceUrl, channel, m.ts),
+            updatedAt: tsInstant(times.toSorted().at(-1) ?? m.ts),
+            facets: slackFacets(),
+            attrs: {
+              channel: { id: channel, name },
+              author,
+              replies: m.reply_count ?? 0,
+              ...(asks(parts.map((part) => part.text).join("")) && { asks: true as const }),
+            },
+          });
+        }
+        listed += records.length;
+        yield { records, gone: [], cursor: null, texts };
+        cursor = next;
+        if (cursors.has(cursor)) throw new Error("slack: the history repeated a page");
+        cursors.add(cursor);
+        if (listed >= cap && cursor) capped = true;
+        if (capped) break;
+      } while (cursor);
+      // What the sweep is about to mark gone mustn't read as fine.
+      if (capped && oldest) {
+        log("slack: the listing stopped at a cap", { channel, messages: listed });
+        cutoff.set(channel, oldest);
+      } else cutoff.delete(channel);
+    }
+  }
 }
 
 // When a message's text last changed, or null if it never has.
@@ -329,7 +341,7 @@ export function isRoot(m: Message | undefined): m is Message {
 // names, looked up once per call of `people` (a name changed since shows on
 // the next one), a channel's name, a page's messages, and a message with its
 // replies.
-export function slackReads(api: SlackApi, log: Log) {
+export function slackReads(api: SlackApi, log: Log, whole?: true) {
   // A person's name, or null when Slack has no such person.
   const personName = (id: string): Promise<string | null> =>
     api("users.profile.get", { user: id }).then(
@@ -409,6 +421,11 @@ export function slackReads(api: SlackApi, log: Log) {
     const found: Message[] = [];
     for (const raw of parsed.value.messages) {
       const taken = looseMessage(raw);
+      // Through a server, one it can't place, or whose thread it can't, stops
+      // the sync: left out, the sweep would mark it gone.
+      const thread = taken?.message.thread_ts;
+      if (whole && (!taken || (thread !== undefined && !tsShape.test(thread))))
+        throw new ServerUnreadable(`${method} listed a message Oriel can't place`);
       if (!taken) log("slack: skipped a message Oriel can't place", { method });
       else found.push(taken.message);
       if (taken?.odd.length) log("slack: left out odd fields", { method, fields: taken.odd });
@@ -420,6 +437,7 @@ export function slackReads(api: SlackApi, log: Log) {
   // message at the top of every page.
   async function conversation(channel: string, ts: string): Promise<Message[]> {
     const byTs = new Map<string, Message>();
+    const cursors = new Set<string>();
     let cursor = "";
     do {
       const reply = await api("conversations.replies", {
@@ -431,6 +449,8 @@ export function slackReads(api: SlackApi, log: Log) {
       const { found, next } = messagesOf(reply, "conversations.replies");
       for (const m of found) byTs.set(m.ts, m);
       cursor = next;
+      if (cursors.has(cursor)) throw new Error("slack: the replies repeated a page");
+      cursors.add(cursor);
       if (byTs.size > maxReplies && cursor) {
         log("slack: a message's replies stopped at a cap", { channel, replies: byTs.size - 1 });
         break;
