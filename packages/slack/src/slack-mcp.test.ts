@@ -1,26 +1,22 @@
 // Slack through Slack's MCP server (OA-277): the parser on each tool's
 // answer, from `fixtures/slack-mcp/`'s recorded calls, its failing closed on
-// an answer it can't read, and each mutation as the server's write call. No
-// server runs: the recordings answer, or the stand-in in memory.
+// an answer it can't read. No server runs: the recordings answer, or the
+// stand-in in memory. Each mutation as the server's write call is in
+// writer.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   type IndexRecord,
-  itemId,
   type ItemId,
   listed,
   type OpenVia,
   ServerUnreadable,
-  SourceRefused,
-  type SourceWriter,
   type ThroughServer,
   type ToolAnswer,
   type ToolCall,
   type ToolCaller,
   type ToOpen,
   replayCalls,
-  ulid,
-  type WriteRequest,
 } from "@oriel/core";
 import { weather } from "../../../scripts/fixtures/slack.ts";
 import { SlackError } from "./api.ts";
@@ -28,9 +24,8 @@ import { loadCalls } from "./calls-cassette.ts";
 import { fixtureApi, loadSlackFixture } from "./fixture.ts";
 import { openSlack, serverProblem } from "./open-connection.ts";
 import { slackServer, slackServerApi, slackServerReads, slackTools } from "./slack-mcp.ts";
-import { slackStandIn, standInCaller } from "./slack-standin.ts";
+import { standInCaller } from "./slack-standin.ts";
 import { slackSource } from "./source.ts";
-import { slackWriter, slackWriterOf } from "./writer.ts";
 
 const fixture = loadSlackFixture();
 const synced = loadCalls("sync.json");
@@ -222,7 +217,7 @@ test("who the person is, and their workspace, come from their profile, only at S
       ServerUnreadable,
     );
   await assert.rejects(
-    openSlack(connection, via(profile(({ user_id: _, ...body }) => body))),
+    openSlack(connection, via(profile((body) => ({ ...body, user_id: undefined })))),
     /didn't say who you are/,
   );
   // As a profile under `user`, or with the address as `team_url`.
@@ -302,134 +297,4 @@ test("the read side refuses a post before anything is sent", async () => {
     /refusing a write on the read side/,
   );
   assert.equal(calls, 0);
-});
-
-// Stands in for packages/changeset, the only place that mints approvals in
-// production. scripts/check-repo.ts allows this cast only in an adapter's
-// writer test.
-const approve = (request: WriteRequest<"slack">) =>
-  request as Parameters<SourceWriter<"slack">["apply"]>[0];
-let seq = 0;
-const request = (op: string, target: ItemId<"slack"> | null, args: unknown) =>
-  approve({
-    mutationId: ulid(0, new Uint8Array(10).fill(seq++ % 256)),
-    op,
-    target,
-    expectedStableId: target === null ? null : target.slice("slack:".length),
-    args,
-  });
-
-test("through Slack's server, a post and a reply are each one write call, escaped, read back by the read tools", async () => {
-  const tools = standInCaller(slackStandIn(fixture));
-  const written: ToolCall[] = [];
-  const read: string[] = [];
-  const writer = slackWriterOf(
-    {
-      channels: fixture.picked,
-      through: {
-        read: async (call) => {
-          read.push(call.tool);
-          return tools(call);
-        },
-        write: async (call) => {
-          written.push({ tool: call.tool, args: { ...call.args } });
-          return tools(call);
-        },
-      },
-    },
-    () => {},
-  );
-  const author = fixture.users[0]?.id ?? "";
-  const posted = await writer.apply(
-    request("postMessage", null, { channel: weather, text: "Ready <!channel> & go", author }),
-  );
-  assert.deepEqual(written, [
-    {
-      tool: t.send,
-      args: { channel_id: weather, message: "Ready &lt;!channel&gt; &amp; go" },
-    },
-  ]);
-  assert.match(posted.item.stableId, new RegExp(`^${weather}-[0-9]{10}\\.[0-9]{6}$`));
-  assert.equal(posted.after.description, "Ready <!channel> & go");
-
-  const question = itemId("slack", `${weather}-1790071200.000100`);
-  const replied = await writer.apply(request("reply", question, { text: "On it", author }));
-  assert.deepEqual(written.at(-1), {
-    tool: t.send,
-    args: { channel_id: weather, message: "On it", thread_ts: "1790071200.000100" },
-  });
-  assert.equal(replied.after.replies, (replied.before.replies as number) + 1);
-  assert.equal(written.length, 2, "nothing else wrote");
-  assert.ok(read.every((tool) => slackServer.reads.includes(tool)));
-});
-
-test("through Slack's server, undoing a post sends nothing: it has no tool to delete one", async () => {
-  const tools = standInCaller(slackStandIn(fixture));
-  const written: ToolCall[] = [];
-  const writer = slackWriter({
-    api: slackServerApi({
-      read: tools,
-      write: async (call) => {
-        written.push(call);
-        return tools(call);
-      },
-    }),
-    channels: fixture.picked,
-    log: () => {},
-    whole: true,
-  });
-  const author = fixture.users[0]?.id ?? "";
-  const posted = await writer.apply(
-    request("postMessage", null, { channel: weather, text: "Mine", author }),
-  );
-  await assert.rejects(
-    writer.apply(request("deleteMessage", posted.item.id, {})),
-    (error) =>
-      error instanceof SourceRefused && !error.sent && /no tool to delete/.test(error.message),
-  );
-  assert.equal(written.length, 1, "only the post went out");
-});
-
-test("a post the server failed without saying why may have landed: it's no refusal", async () => {
-  const tools = standInCaller(slackStandIn(fixture));
-  const writer = slackWriter({
-    api: slackServerApi({
-      read: tools,
-      write: async () => ({ content: [{ type: "text", text: "Oops" }], isError: true }),
-    }),
-    channels: fixture.picked,
-    log: () => {},
-  });
-  const error = await writer
-    .apply(
-      request("postMessage", null, {
-        channel: weather,
-        text: "Mine",
-        author: fixture.users[0]?.id ?? "",
-      }),
-    )
-    .catch((caught: unknown) => caught);
-  assert.ok(error instanceof Error && !(error instanceof SourceRefused));
-  // One naming Slack's code is a refusal, which made no change.
-  const refusing = slackWriter({
-    api: slackServerApi({
-      read: tools,
-      write: async () => ({
-        content: [{ type: "text", text: "Slack refused it: is_archived" }],
-        isError: true,
-      }),
-    }),
-    channels: fixture.picked,
-    log: () => {},
-  });
-  await assert.rejects(
-    refusing.apply(
-      request("postMessage", null, {
-        channel: weather,
-        text: "Mine",
-        author: fixture.users[0]?.id ?? "",
-      }),
-    ),
-    (caught) => caught instanceof SourceRefused && /archived/.test(caught.message),
-  );
 });

@@ -30,7 +30,7 @@ const call = async (
   return {
     error: result.isError === true,
     text,
-    body: (result.isError ? null : JSON.parse(text)) as Record<string, unknown> | null,
+    body: (result.isError ? {} : JSON.parse(text)) as Record<string, unknown>,
   };
 };
 
@@ -54,14 +54,14 @@ test("it lists the person's channels, and a channel's history by cursor", async 
   const server = standInServer(slackInfo, slackStandIn());
   const channels = await call(server, slackTools.channels);
   assert.deepEqual(
-    (channels.body?.channels as { id: string }[]).map((each) => each.id),
+    (channels.body.channels as { id: string }[]).map((each) => each.id),
     [weather],
   );
   const first = await call(server, slackTools.history, { channel_id: weather, limit: 3 });
-  const cursor = (first.body?.response_metadata as { next_cursor: string }).next_cursor;
-  assert.equal((first.body?.messages as unknown[]).length, 3);
+  const cursor = (first.body.response_metadata as { next_cursor: string }).next_cursor;
+  assert.equal((first.body.messages as unknown[]).length, 3);
   const second = await call(server, slackTools.history, { channel_id: weather, limit: 3, cursor });
-  const ts = (body: typeof first.body) => (body?.messages as { ts: string }[]).map((m) => m.ts);
+  const ts = (body: typeof first.body) => (body.messages as { ts: string }[]).map((m) => m.ts);
   assert.ok(ts(second.body).every((each) => !ts(first.body).includes(each)));
   const missing = await call(server, slackTools.history, { channel_id: "C0NOWHERE01" });
   assert.equal(missing.error, true);
@@ -76,13 +76,15 @@ test("a post lands in its own copy, and in every process's that shares its journ
   const reading = standInServer(slackInfo, journaled(slackStandIn(), journal));
   const alone = standInServer(slackInfo, slackStandIn());
   const posted = await call(writing, slackTools.send, { channel_id: weather, message: "Hello" });
-  const context = posted.body?.message_context as { message_ts: string; channel_id: string };
+  const context = posted.body.message_context as { message_ts: string; channel_id: string };
   assert.equal(context.channel_id, weather);
-  assert.match(String(posted.body?.message_link), /\/archives\/C0FW1WEATHR\/p[0-9]{16}$/);
+  assert.match(String(posted.body.message_link), /\/archives\/C0FW1WEATHR\/p[0-9]{16}$/);
   const latest = async (server: typeof writing) =>
     (
-      (await call(server, slackTools.history, { channel_id: weather, limit: 1 })).body
-        ?.messages as { ts: string; text: string }[]
+      (await call(server, slackTools.history, { channel_id: weather, limit: 1 })).body.messages as {
+        ts: string;
+        text: string;
+      }[]
     )[0];
   assert.equal((await latest(reading))?.text, "Hello");
   assert.equal((await latest(reading))?.ts, context.message_ts);
