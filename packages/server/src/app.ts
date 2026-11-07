@@ -2729,7 +2729,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     settled: async () => {
       await conversation.settled();
-      await Promise.allSettled([...kindSyncs]);
+      await Promise.allSettled(kindSyncs);
       await secondLooks?.settled();
       await notifying?.idle();
       await guarding?.idle();

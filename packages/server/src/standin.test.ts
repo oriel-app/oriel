@@ -215,7 +215,7 @@ test("a tracker turning on is offered the stand-in's issues; approved, the stand
       ["Jira", "Create a story “Launch email” in the new epic “Spring launch”."],
     ],
   );
-  const made = [...(it.site?.issue("SYN-900") ? ["SYN-900", "SYN-901", "SYN-902"] : [])];
+  const made = it.site?.issue("SYN-900") ? ["SYN-900", "SYN-901", "SYN-902"] : [];
   assert.deepEqual(
     made.map((key) => [it.site?.issue(key)?.summary, it.site?.issue(key)?.epic]),
     [
