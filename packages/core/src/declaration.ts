@@ -4,7 +4,8 @@ import type { ConnectOf, LiveOf, OptionField, PreviewAsk, ReviewOf } from "./con
 import type { StandIn } from "./connector-view.ts";
 import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
-import type { SourceKind } from "./ids.ts";
+import type { ItemId, SourceKind } from "./ids.ts";
+import type { CapturedMutation, NewRef } from "./sandbox.ts";
 import type { NamespaceSpec } from "./namespace.ts";
 import type { Opened, OpenVia, ToOpen } from "./open.ts";
 import type { OpSpecs } from "./ops.ts";
@@ -88,6 +89,14 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // whose index rows are their source of truth, so nothing syncs it; while
   // one is, nothing of it shows, and its items stay, for when it's on again.
   standIn?: StandIn;
+  // How it takes in a stand-in's issues once it's on (decision 0059): one
+  // create of a change set for each, epics first, each story in its epic's
+  // create, and the stand-in's item each create makes again, by its ref.
+  // Absent: it takes in none, and the stand-in steps aside as it turns on.
+  takeIssues?: (issues: readonly TakenIssue[]) => {
+    mutations: CapturedMutation[];
+    items: Readonly<Record<NewRef, ItemId>>;
+  };
   // The source servers it reads its kind through (decision 0059): how each
   // is recognised among the person's agent's MCP servers, and the tools it
   // must offer. A person turns its kind on through one Oriel finds. None:
@@ -98,6 +107,16 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // connect to. Its connection gives the context its namespace takes; one
   // with no namespace, anything.
   fixture: SourceFixture<Given<C>, Given<R>, Given<W>>;
+};
+
+// A stand-in's issue, in the issues shape, as another tracker takes it in.
+export type TakenIssue = {
+  id: ItemId;
+  kind: "epic" | "story";
+  summary: string;
+  description: string;
+  points: number | null;
+  epic: ItemId | null;
 };
 
 // What a declaration takes or gives where it declares nothing: anything.

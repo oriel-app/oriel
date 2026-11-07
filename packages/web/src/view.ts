@@ -301,7 +301,10 @@ export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
 export type NoteView =
   | { kind: "rejected"; changeSetId: string; via: "thread" | "review-link" }
   // The user undid their rejection of it (OA-258).
-  | { kind: "unrejected"; changeSetId: string };
+  | { kind: "unrejected"; changeSetId: string }
+  // Oriel's offer to move its own tracker's issues into one that turned on
+  // (decision 0059).
+  | { kind: "moving"; changeSetId: string; from: string; into: string; items: number };
 
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its

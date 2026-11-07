@@ -115,7 +115,14 @@ test("turning a tracker kind on through its server steps the stand-in aside, and
   assert.deepEqual(json(on), { undo: { action: "source.off", input: { kind: "jira" } } });
   let servers = await it.servers();
   assert.deepEqual(servers.kinds, [
-    { kind: "jira", on: true, server: "work-tracker", offBy: null },
+    {
+      kind: "jira",
+      on: true,
+      server: "work-tracker",
+      offBy: null,
+      // The test-only server isn't Atlassian's, which Jira opens through.
+      problem: "Jira couldn't open through Oriel's test tracker server.",
+    },
   ]);
   // The stand-in tracker is on only while no tracker kind is.
   assert.deepEqual((await it.connections()).standingIn, []);
@@ -145,7 +152,14 @@ test("a kind stays on only through the server the person picked, not another rep
   found = [other, picked];
   servers = await it.look();
   assert.deepEqual(servers.kinds, [
-    { kind: "jira", on: true, server: "work-tracker", offBy: null },
+    {
+      kind: "jira",
+      on: true,
+      server: "work-tracker",
+      offBy: null,
+      // The test-only server isn't Atlassian's, which Jira opens through.
+      problem: "Jira couldn't open through Oriel's test tracker server.",
+    },
   ]);
 });
 

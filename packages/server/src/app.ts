@@ -445,10 +445,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // one, or the window made one, open or shut.
   const connectedKind = (kind: string) =>
     flags.some((flag) => flag.kind === kind) || connections.first(kind) !== null;
+  const kindStore = sourceKindStore(db);
   // What's on changed, once the start has opened what it does: made below.
   let turned = async (): Promise<void> => {};
   const switches = sourceServers({
-    store: sourceKindStore(db),
+    store: kindStore,
     workspaceId,
     known: options.knownServers ?? knownServers,
     kinds: sourceKinds
@@ -678,8 +679,15 @@ export async function createApp(options: AppOptions): Promise<App> {
   // stands in for is on, and closed while one is. Closed, nothing of it shows, and its
   // items stay in the index, for when it's on again. Its one connection is
   // Oriel's, which the window neither configures nor disconnects.
+  // While Oriel's offer to move its issues into one that turned on hasn't
+  // applied, rejected or not, both stay.
   const standingIn = (kind: SourceKind) =>
-    !(declared(kind).standIn?.for ?? []).some((other) => switches.on(other));
+    !(declared(kind).standIn?.for ?? []).some(
+      (other) => switches.on(other) && !(moveOf(kind, other) && !moveOf(kind, other)?.movedAt),
+    );
+  const moveOf = (standIn: string, into: string) =>
+    kindStore.moves(workspaceId).find((each) => each.standIn === standIn && each.into === into) ??
+    null;
   const standIns = async () => {
     for (const kind of sourceKinds) {
       if (!declared(kind).standIn) continue;
@@ -1109,6 +1117,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         shut.delete(connection.prefix);
         // Its first sync just worked: what the last one said is past.
         problems.delete(connection.id);
+        await offerMoves();
         await standIns();
         sets.rewire(wiring());
         arm(connection);
@@ -1839,6 +1848,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           reopened.push(kind);
         }
       }
+      await offerMoves();
       await standIns();
       sets.rewire(wiring());
       for (const kind of reopened) {
@@ -2011,6 +2021,160 @@ export async function createApp(options: AppOptions): Promise<App> {
   // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
+  // When a kind a stand-in stands in for turns on, writable, and the
+  // stand-in has issues, Oriel offers one change set that makes each again
+  // there (decision 0059), in a thread of its own, from a run of Oriel's
+  // own, not the agent's. Each is offered once.
+  const offerMoves = async () => {
+    for (const kind of sourceKinds) {
+      const standIn = declared(kind).standIn;
+      const open = openedOf(kind);
+      if (!standIn || !open) continue;
+      for (const into of standIn.for) {
+        const take = declared(into).takeIssues;
+        if (!take || !switches.on(into) || !openedOf(into)?.opened.writes || moveOf(kind, into))
+          continue;
+        const issues = recordsOf(open).filter(
+          (record) => record.facets.kind === "epic" || record.facets.kind === "story",
+        );
+        if (!issues.length) continue;
+        const read = await open.opened.source.read(issues.map((record) => record.id));
+        const description = (id: ItemId) => {
+          const one = read.find((each) => each.id === id);
+          const text =
+            one?.status === "ok" ? (one.content as { description?: unknown }).description : "";
+          return typeof text === "string" ? text : "";
+        };
+        const { mutations, items } = take(
+          issues.map((record) => ({
+            id: record.id,
+            kind: record.facets.kind === "epic" ? "epic" : "story",
+            summary: record.title,
+            description: description(record.id),
+            points: record.facets.estimate ?? null,
+            epic: record.facets.container?.id ?? null,
+          })),
+        );
+        if (!mutations.length) continue;
+        const name = `Into ${declared(into).name}`;
+        const workstreamId = newId();
+        const threadId = newId();
+        const runId = newId();
+        const by = { kind: "sync", source: into } as const;
+        workstreams.create(
+          { id: workstreamId, workspaceId, name, origin: { kind: "thread" } },
+          [],
+          now(),
+          by,
+        );
+        threads.open({ id: threadId, workspaceId, workstreamId }, now());
+        threads.setTitle(threadId, name, now());
+        runs.record(
+          {
+            id: runId,
+            workspaceId,
+            threadId,
+            snapshot: index.snapshot(workspaceId),
+            regionVersion: 1,
+            systemPromptHash: "oriel",
+            dtsHash: "oriel",
+            model: "oriel",
+            inputTokens: 0,
+            outputTokens: 0,
+            wallMs: 0,
+            coldStartMs: null,
+            outcome: "ok",
+            startedAt: now(),
+          },
+          [],
+        );
+        const set = await sets.capture({ id: runId, threadId, workspaceId }, mutations);
+        threads.append(
+          threadId,
+          {
+            role: "note",
+            note: {
+              kind: "moving",
+              changeSet: set.id,
+              from: declared(kind).inSentence,
+              into: declared(into).name,
+              items: mutations.length,
+            },
+          },
+          newId(),
+          now(),
+        );
+        // Where a change set shows in its thread, as a run's does.
+        threads.append(
+          threadId,
+          { role: "agent", event: { kind: "change-set", changeSetId: set.id } },
+          newId(),
+          now(),
+        );
+        kindStore.offerMove(
+          workspaceId,
+          { standIn: kind, into, threadId, changeSetId: set.id, items },
+          now(),
+        );
+        emit({
+          name: "standin.moving",
+          at: now(),
+          workspaceId,
+          source: into,
+          step: "offered",
+          items: mutations.length,
+        });
+      }
+    }
+  };
+  // Once Oriel's offer applied in full, every workstream holds the new
+  // items in place of the stand-in's, and the stand-in steps aside.
+  const moved = async (set: ChangeSet) => {
+    const move = kindStore.moves(workspaceId).find((each) => each.changeSetId === set.id);
+    if (!move || move.movedAt || set.mutations.some((m) => m.status !== "applied")) return false;
+    const by = { kind: "change-set", changeSetId: set.id } as const;
+    const into = new Map(
+      set.mutations.flatMap((m) => {
+        const from = m.ref ? move.items[m.ref] : undefined;
+        return from && m.applied ? [[from, m.applied.item.id] as const] : [];
+      }),
+    );
+    for (const workstream of workstreams.list(workspaceId)) {
+      const region = workstreams.region(workstream.id, workstream.version);
+      const held = (region?.items ?? []).filter((member) => into.has(member.id));
+      if (!held.length) continue;
+      await dispatch(
+        "workstream.add",
+        {
+          workstream: workstream.id,
+          items: held.flatMap((member) => {
+            const made = into.get(member.id);
+            return made ? [made] : [];
+          }),
+        },
+        by,
+      );
+      await dispatch(
+        "workstream.remove",
+        { workstream: workstream.id, items: held.map((member) => member.id) },
+        by,
+      );
+    }
+    kindStore.moved(workspaceId, set.id, now());
+    emit({
+      name: "standin.moving",
+      at: now(),
+      workspaceId,
+      source: move.into as SourceKind,
+      step: "moved",
+      items: into.size,
+    });
+    await betweenSyncs(async () => {
+      await standIns();
+      sets.rewire(wiring());
+    });
+    return true;
+  };
   // Who hears each change a call publishes, besides the window: the MCP
   // door's subscriptions.
   const watchers = new Set<(changed: Changed) => void>();
@@ -2191,7 +2355,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // takes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
-    if (thread) {
+    // A move's items go to the workstreams that held the stand-in's.
+    const moving = kindStore.moves(workspaceId).some((each) => each.changeSetId === set.id);
+    if (thread && !moving) {
       const by = { kind: "change-set", changeSetId: set.id } as const;
       const workstream = workstreams.get(thread.workstreamId);
       const epic = set.mutations.find((m) => m.op === "createEpic" && m.applied);
@@ -2232,6 +2398,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         const each = byPrefix.get(prefix);
         if (each) await syncOpen(each, !each.opened.incremental);
       });
+    // A move's new items are in the index now, for its workstreams to hold.
+    if (moving) await moved(set);
   };
 
   // A live connection as the window shows it: open, or shut since its

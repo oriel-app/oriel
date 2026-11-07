@@ -1,7 +1,8 @@
 // Which kinds are on (decision 0059): the person's choice per kind, with the
 // source server it came through, and what the last look for the person's
 // servers found that Oriel knows, with the overview's card of what changed.
-// See migrations/0032_source_kinds.sql.
+// See migrations/0032_source_kinds.sql. And the change set that moves a
+// stand-in's issues into a kind that turned on: migrations/0033.
 import type { DatabaseSync } from "node:sqlite";
 import type { Instant, Ulid } from "@oriel/core";
 
@@ -19,6 +20,18 @@ export type FoundKind = { kind: string; server: string };
 export type FoundChange = { appeared: FoundKind[]; gone: FoundKind[] };
 
 export type Finds = { agent: string; found: FoundKind[]; card: FoundChange | null };
+
+// The change set that moves a stand-in's issues into `into`: its thread and
+// change set, the stand-in's item each create makes again, by its ref, and
+// when it applied, or null.
+export type StandInMove = {
+  standIn: string;
+  into: string;
+  threadId: Ulid;
+  changeSetId: Ulid;
+  items: Readonly<Record<string, string>>;
+  movedAt: Instant | null;
+};
 
 export type SourceKindStore = ReturnType<typeof sourceKindStore>;
 
@@ -49,7 +62,52 @@ export function sourceKindStore(db: DatabaseSync) {
     on conflict (workspace_id) do update set
       agent = excluded.agent, found = excluded.found, card = excluded.card, at = excluded.at`);
   const clearCard = db.prepare("update source_finds set card = null where workspace_id = ?");
+  const selectMoves = db.prepare(`
+    select stand_in, into_kind, thread_id, change_set_id, items, moved_at from stand_in_moves
+    where workspace_id = ? order by at`);
+  const insertMove = db.prepare(`
+    insert into stand_in_moves
+      (workspace_id, stand_in, into_kind, thread_id, change_set_id, items, at)
+    values (?, ?, ?, ?, ?, ?, ?)`);
+  const markMoved = db.prepare(
+    "update stand_in_moves set moved_at = ? where workspace_id = ? and change_set_id = ?",
+  );
   return {
+    // Every move Oriel offered, oldest first.
+    moves(workspaceId: Ulid): StandInMove[] {
+      return selectMoves.all(workspaceId).map((row) => {
+        const each = row as Record<string, string | null>;
+        const items = JSON.parse(each.items ?? "{}") as unknown;
+        return {
+          standIn: String(each.stand_in),
+          into: String(each.into_kind),
+          threadId: String(each.thread_id) as Ulid,
+          changeSetId: String(each.change_set_id) as Ulid,
+          items: isObject(items)
+            ? Object.fromEntries(
+                Object.entries(items).filter(
+                  (entry): entry is [string, string] => typeof entry[1] === "string",
+                ),
+              )
+            : {},
+          movedAt: (each.moved_at ?? null) as Instant | null,
+        };
+      });
+    },
+    offerMove(workspaceId: Ulid, move: Omit<StandInMove, "movedAt">, at: Instant): void {
+      insertMove.run(
+        workspaceId,
+        move.standIn,
+        move.into,
+        move.threadId,
+        move.changeSetId,
+        JSON.stringify(move.items),
+        at,
+      );
+    },
+    moved(workspaceId: Ulid, changeSetId: Ulid, at: Instant): void {
+      markMoved.run(at, workspaceId, changeSetId);
+    },
     // Each kind a person or the agent chose for, by kind.
     choices(workspaceId: Ulid): Map<string, KindChoice> {
       return new Map(

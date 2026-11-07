@@ -220,3 +220,57 @@ test("with Jira's own connection and Atlassian's server both on, Jira reads thro
   assert.match(jira?.about ?? "", /through Atlassian's Rovo MCP server$/);
   assert.ok(it.made.length > 0);
 });
+
+test("turned on through its server, Jira is offered the stand-in's issues, and makes them with its write tools", async (t) => {
+  const plan: Script = async () => ({
+    value: null,
+    writes: [
+      ["tracker.createEpic", [{ summary: "Spring launch" }], "new:1"],
+      ["tracker.createStory", [{ summary: "Pricing page", epic: "new:1" }], "new:2"],
+    ],
+  });
+  const it = await world(t, { script: plan });
+  // The window chat's plan lands in the stand-in first.
+  await it.post("/api/window-chat/messages", { text: "Draft a launch" });
+  await it.app.settled();
+  const chat = json<{ thread: string }>(await it.get("/api/window-chat")).thread;
+  const drafted = json<ThreadView>(await it.get(`/api/threads/${chat}`));
+  const first = drafted.entries.find((each) => each.kind === "change-set");
+  assert.ok(first?.kind === "change-set");
+  const approve = async (id: string) => {
+    const diff = json<DiffView>(await it.post(`/api/change-sets/${id}/diff`));
+    it.advance(1000);
+    const reply = await it.post(`/api/change-sets/${id}/approve`, { hash: diff.hash });
+    await it.app.settled();
+    return reply.status;
+  };
+  assert.equal(await approve(first.changeSetId), 200);
+  await it.turnOn();
+  assert.deepEqual(
+    (await it.connections()).connections.map((each) => each.kind),
+    ["jira", "tracker"],
+    "both stay while the offer waits",
+  );
+  const threads = json<{ threads: { id: string; title: string }[] }>(await it.get("/api/threads"));
+  const into = threads.threads.find((each) => each.title === "Into Jira");
+  assert.ok(into);
+  const offer = json<ThreadView>(await it.get(`/api/threads/${into.id}`)).entries.find(
+    (each) => each.kind === "change-set",
+  );
+  assert.ok(offer?.kind === "change-set");
+  assert.equal(await approve(offer.changeSetId), 200);
+  const made = it.made.filter((each) => each.call.tool === "createJiraIssue");
+  assert.deepEqual(
+    made.map((each) => [each.call.args.summary, each.call.args.issueTypeName]),
+    [
+      ["Spring launch", "Epic"],
+      ["Pricing page", "Story"],
+    ],
+  );
+  assert.ok(made.every((each) => each.tools === writes));
+  assert.deepEqual(
+    (await it.connections()).connections.map((each) => each.kind),
+    ["jira"],
+    "the stand-in steps aside",
+  );
+});

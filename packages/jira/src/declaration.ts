@@ -9,6 +9,7 @@ import { type JiraWrites, openJira } from "./open-connection.ts";
 import { jiraPanel } from "./panel.ts";
 import { type JiraScope, jiraRecognizer } from "./references.ts";
 import { jiraSpecs } from "./specs.ts";
+import { takeIssues } from "./take-issues.ts";
 
 export const jiraDeclaration = {
   kind: "jira",
@@ -41,5 +42,6 @@ export const jiraDeclaration = {
   live: jiraLive,
   // Atlassian's own MCP server, which Jira turns on through (decision 0059).
   servers: [atlassianServer],
+  takeIssues,
   fixture: jiraDeclaredFixture,
 } satisfies SourceDeclaration<Estimates | undefined, JiraScope, JiraWrites>;

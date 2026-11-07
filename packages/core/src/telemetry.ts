@@ -187,6 +187,15 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // fields set, by name, and by whom: the person in its panel, or a change
   // set's apply or revert. Never its words.
   | {
+      name: "standin.moving";
+      // The kind it moves into.
+      source: SourceKind;
+      step: "offered" | "moved";
+      items: number;
+    }
+  // Oriel offered one change set to move its stand-in's issues into a kind
+  // that turned on, or it applied, and how many (decision 0059).
+  | {
       name: "standin.written";
       source: SourceKind;
       by: "person" | "change-set";
