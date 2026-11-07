@@ -304,7 +304,12 @@ export type NoteView =
   | { kind: "unrejected"; changeSetId: string }
   // Oriel's offer to move its stand-in's issues into a kind that turned on
   // (decision 0059).
-  | { kind: "moving"; changeSetId: string; from: string; into: string; items: number };
+  | { kind: "moving"; changeSetId: string; from: string; into: string; items: number }
+  // That move applied, and the workstreams that hold its items now.
+  | { kind: "moved"; changeSetId: string; into: string; workstreams: WorkstreamRef[] };
+
+// A workstream as a line links to it.
+export type WorkstreamRef = { id: string; name: string };
 
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its
@@ -833,6 +838,11 @@ export type ThreadView = {
   // The workstream version the thread works in.
   regionVersion: number;
   members: MemberView[];
+  // Oriel's thread for moving a stand-in's issues into a kind that turned
+  // on (decision 0059), whose items go to the workstreams that held the
+  // stand-in's, never its own: those that hold them, once it applied, or
+  // null before. Absent for any other thread.
+  move?: { went: WorkstreamRef[] | null };
   entries: ChatEntry[];
   lastSeq: number;
   running: boolean;

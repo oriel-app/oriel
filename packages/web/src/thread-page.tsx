@@ -62,6 +62,7 @@ import {
   type RunView,
   type SecondLookView,
   type ThreadView,
+  type WorkstreamRef,
   holding,
   toReview,
   waitingOn,
@@ -379,6 +380,13 @@ function OrielNote({ note }: { note: NoteView }) {
         {note.items === 1 ? "the issue" : `the ${note.items} issues`} in {note.from} again in{" "}
         {note.into}, and your workstreams follow them there. Approve it, and {note.from} steps
         aside; reject it, and both stay.
+      </p>
+    );
+  if (note.kind === "moved")
+    return (
+      <p>
+        Your issues are in {note.into} now, and your workstreams follow them there. This workstream
+        had nothing else, so it's done.
       </p>
     );
   return (
@@ -1502,8 +1510,15 @@ function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
           </span>
         </p>
       )}
-      {view.members.length === 0 && !behind && (
-        <p class="rail-note">No items yet. What a change set here creates joins this workstream.</p>
+      {view.move ? (
+        <MovedTo went={view.move.went} />
+      ) : (
+        view.members.length === 0 &&
+        !behind && (
+          <p class="rail-note">
+            No items yet. What a change set here creates joins this workstream.
+          </p>
+        )
       )}
       <ItemListContext.Provider value={view.members.map((member) => member.ref.id)}>
         <ul class="members compact">
@@ -1513,6 +1528,21 @@ function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
         </ul>
       </ItemListContext.Provider>
     </aside>
+  );
+}
+
+// Where a move's items go: the workstreams that held the stand-in's, by
+// name once it applied.
+function MovedTo({ went }: { went: readonly WorkstreamRef[] | null }) {
+  const names = went?.map((workstream) => workstream.name) ?? [];
+  return (
+    <p class="rail-note">
+      {went === null
+        ? "What this change creates goes to the workstreams that hold the issues it makes again."
+        : names.length === 0
+          ? "No workstream held the issues it made again, so its items went to none."
+          : `Its items went to ${names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`}.`}
+    </p>
   );
 }
 
