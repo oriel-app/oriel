@@ -142,10 +142,12 @@ export type ApiDeps = {
     { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
   >;
   // A pick step's list again for a connection it made, by its ID, from its
-  // own account: a read, which keeps nothing.
+  // own account, or, through its source server, the list of the option
+  // `field` names (decision 0059): a read, which keeps nothing.
   choices(
     id: string,
     query: string,
+    field?: string,
   ): Promise<
     { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
   >;
@@ -898,18 +900,18 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A connection's pick step's list again, from its own account, for
-      // Settings to pick from. A read: nothing is kept, and its secret stays
+      // A connection's pick step's list again, from its own account, or
+      // through its source server, for Settings to pick from. A read: nothing is kept, and its secret stays
       // on the server.
       method: "POST",
       path: at("/connections/:id/pick"),
       async run([id = ""], request) {
-        const { query } = await readJson(
+        const { query, field } = await readJson(
           request,
           smallBody,
-          object({ query: optional(typedText(100)) }),
+          object({ query: optional(typedText(100)), field: optional(typedText(40)) }),
         );
-        const listed = await deps.choices(id, query ?? "");
+        const listed = await deps.choices(id, query ?? "", field);
         return "problem" in listed
           ? json(400, { error: listed.problem, fields: listed.fields ?? [] })
           : json(200, listed);

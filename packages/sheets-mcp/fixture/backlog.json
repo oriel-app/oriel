@@ -9,6 +9,7 @@
           "sheetId": 0,
           "title": "Backlog",
           "frozenRows": 1,
+          "notes": { "B3": "Excel export waits for the reporting rework." },
           "rows": [
             ["Key", "Title", "Status", "Owner", "Priority", "Estimate", "Sprint", "Updated"],
             [
@@ -196,6 +197,27 @@
             ["2026-10-31", "Demo on Friday: search (BL-103) and onboarding (BL-110)."],
             ["2026-11-03", "BL-120 profiled: most of the time is in the task list's first render."]
           ]
+        }
+      ],
+      "comments": [
+        {
+          "author": "Ama",
+          "content": "Should BL-103 cover projects archived before the migration?",
+          "createdTime": "2026-10-28T11:05:00.000Z",
+          "quoted": "Search finds archived projects",
+          "replies": [
+            {
+              "author": "Priya",
+              "content": "Yes, all of them. The old ones are in the same table now.",
+              "createdTime": "2026-10-28T13:40:00.000Z"
+            }
+          ]
+        },
+        {
+          "author": "Jonas",
+          "content": "Is the CSV export in this sprint or the next?",
+          "createdTime": "2026-10-15T09:20:00.000Z",
+          "resolved": true
         }
       ]
     },

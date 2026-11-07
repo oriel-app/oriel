@@ -1677,6 +1677,11 @@ button.nav-more {
   justify-content: flex-end;
 }
 
+/* What a person picks through a server just turned on, in the first run. */
+.found-picks {
+  margin-top: var(--space-3);
+}
+
 .found-missing {
   display: grid;
   gap: var(--space-1);
@@ -6898,6 +6903,12 @@ button.overview-title:hover {
 .choice input {
   margin: 0;
   accent-color: var(--accent);
+}
+
+/* A server's list may be long: it scrolls, with Find above it. */
+.connection-options .choices {
+  max-height: 18rem;
+  overflow-y: auto;
 }
 
 @media (max-width: 760px) {

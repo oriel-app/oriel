@@ -17,6 +17,7 @@ import {
   openOf,
   stepOf,
 } from "./connections.ts";
+import { ServerPicks } from "./connections-page.tsx";
 import { FoundRows } from "./found.tsx";
 import { type Dispatch, Mark, plural } from "./parts.tsx";
 import type { Model } from "./root.ts";
@@ -450,6 +451,23 @@ function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): 
   const servers = model.connections.view?.servers ?? null;
   const agent = servers?.agent ?? "your AI";
   const sendConnections = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
+  // Each kind on through its server with something to pick, such as Jira's
+  // project: picked here, or read as its server's first until then; one
+  // whose pick no longer fits waits here for another.
+  // In the order of what was found.
+  const picking = (model.connections.view?.connections ?? [])
+    .filter(
+      (each) =>
+        each.through !== null &&
+        each.picks.length > 0 &&
+        each.state !== "signed-out" &&
+        !each.flagged,
+    )
+    .toSorted(
+      (a, b) =>
+        (servers?.found.findIndex((each) => each.kind === a.kind) ?? 0) -
+        (servers?.found.findIndex((each) => each.kind === b.kind) ?? 0),
+    );
   return (
     <>
       <h1 class="setup-title">See what Oriel found</h1>
@@ -463,12 +481,28 @@ function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): 
           Looking in {agent}…
         </p>
       ) : servers.found.length > 0 ? (
-        <FoundRows
-          found={servers.found}
-          connections={model.connections}
-          connectors={model.connectors}
-          dispatch={dispatch}
-        />
+        <>
+          <FoundRows
+            found={servers.found}
+            connections={model.connections}
+            connectors={model.connectors}
+            dispatch={dispatch}
+          />
+          {picking.map((connection) => (
+            <section
+              key={connection.id}
+              class="found-picks"
+              aria-label={`What Oriel reads of ${model.connectors[connection.kind]?.name ?? connection.kind}`}
+            >
+              <ServerPicks
+                connection={connection}
+                connections={model.connections}
+                send={sendConnections}
+                of={model.connectors[connection.kind]?.name ?? connection.kind}
+              />
+            </section>
+          ))}
+        </>
       ) : (
         <p class="setup-lede">
           Oriel didn't find a server it knows in {agent}. You can add one later, in {agent}.

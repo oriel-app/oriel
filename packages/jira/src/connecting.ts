@@ -56,12 +56,12 @@ export const jiraOptionFields = [
   { kind: "pick", name: "project", label: "Project" },
   { kind: "read-only", name: "readOnly" },
 ] as const satisfies readonly OptionField[];
+// Through Atlassian's server, a connection with none reads the first
+// project it lists (decision 0059); one Oriel connects itself always has one.
 export const jiraOptions = object({
   readOnly: optional(boolean),
-  project: refine(
-    string,
-    (key) => key.length <= 32 && projectKey.test(key),
-    "expected a project key",
+  project: optional(
+    refine(string, (key) => key.length <= 32 && projectKey.test(key), "expected a project key"),
   ),
 });
 

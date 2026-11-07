@@ -3,7 +3,7 @@ title: Found in your agent
 status: stable
 group: Surfaces
 order: 42
-classes: found-card, found-rows, found-row, found-what, found-server, found-turns, found-on, found-actions, found-missing
+classes: found-card, found-rows, found-row, found-what, found-server, found-turns, found-on, found-actions, found-missing, found-picks
 summary: What Oriel found among the MCP servers in the person's agent (decision 0059): the overview's card when that changes, and the rows that say what each server turns on, with a click to turn it on.
 ---
 

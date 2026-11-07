@@ -3,7 +3,7 @@
 Stand-ins for the MCP servers Oriel reads sources through (decision 0059), over stdio, one per argument. They let Oriel's support for a source server be built and tried with no account at its vendor. Each reports the real server's name and tool names and answers with the real shapes, from a fixture world in memory. Private: never published, never bundled into the app.
 
 ```sh
-node packages/standin-mcp/src/main.ts <atlassian|slack> [--journal <file>]
+node packages/standin-mcp/src/main.ts <atlassian|slack|linear> [--journal <file>]
 ```
 
 It speaks MCP 2025-06-18 (`initialize`) and 2026-07-28 (`server/discover`), as `packages/sheets-mcp` does.
@@ -46,15 +46,36 @@ Slack documents its tools' names and arguments ([overview](https://docs.slack.de
 
 A message's `message_ts` and `user_id` are read as `ts` and `user`. A post's text goes to `slack_send_message` with every mark that would make formatting, a link or a mention escaped with a backslash, so it posts as the plain text the person approved, as the Web API's `mrkdwn: false` did; the stand-in reads it back as plain text. Check on re-recording that Slack's server honours a backslash escape. No tool deletes a message, so Revert can't undo a post or a reply through the server: it says so and sends nothing. A third-party write-up says Slack's search answers in markdown for a model to read; if the read tools answer that way too, the parser stops the sync, names the server and keeps the index, and needs a reader for it.
 
+## linear
+
+Stands in for Linear's MCP server, at `https://mcp.linear.app/mcp` (Streamable HTTP). What it reports in its handshake isn't documented, so Oriel knows it by its address alone; its read-only address, `/mcp/readonly`, has no write tools, so Oriel doesn't take it for this one. It answers from Ferrowick's Linear (`fixtures/linear`) in memory: two teams, ENG and OPS, each with its statuses, cycles, projects and issues. Its tools live in `packages/linear/src/linear-standin.ts`, so Linear's tests run them in memory too.
+
+Linear documents its server's address and how to add it to an agent ([MCP](https://linear.app/docs/mcp)), not its tools. Their names and arguments are from the server's own tool list as third-party listings show it; their answers aren't shown anywhere. Here:
+
+| Tool                  | Assumed until re-recorded                                                                                                                                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_teams`          | `limit`, `after`; JSON of `{ teams: [{ id, key, name }], pageInfo: { hasNextPage, endCursor } }`                                                                                                                                         |
+| `list_issue_statuses` | `team`; `{ statuses: [{ id, name, type }] }`, `type` one of Linear's (`backlog`, `unstarted`, `started`, `completed`, `canceled`, `triage`)                                                                                              |
+| `list_cycles`         | `teamId`, `type`; `{ cycles: [{ id, number, name, startsAt, endsAt }] }`                                                                                                                                                                 |
+| `list_users`          | `query`; `{ users: [{ id, name or displayName, active or isActive }] }`                                                                                                                                                                  |
+| `list_projects`       | `teamId`, `limit`, `after`; `{ projects: [{ id, slugId, name, description or summary, status, lead, targetDate, url, updatedAt }], pageInfo }`, a status as a name or `{ name, type }`                                                   |
+| `get_project`         | `query`; the project, bare or under `project`                                                                                                                                                                                            |
+| `list_issues`         | `team`, `orderBy`, `limit`, `after`; `{ issues: [{ id, identifier, title, description, state, assignee, project, cycle, parent, estimate, labels, url, updatedAt }], pageInfo }`, each link as an object with its `id` or as `<field>Id` |
+| `get_issue`           | `id`, `includeRelations`; the issue, bare or under `issue`                                                                                                                                                                               |
+| `save_issue`          | with `id` it updates, without it creates: `team`, `title`, `description`, `assignee`, `state`, `project`, `cycle`, `estimate`, `labels`, `parentId`; answers the issue saved                                                             |
+| `save_project`        | with `id` it updates, without it creates: `name`, `description`, `addTeams` or `setTeams`, `lead`, `targetDate`; answers the project saved                                                                                               |
+
+A list comes bare or under its name, and a page that doesn't say whether more remain is followed by the one after its last item while it was full. No tool deletes an issue or a project, so Revert can't undo a create through the server: the change set offers none. Linear's parser (`packages/linear/src/linear-mcp.ts`) fails closed on anything else it can't read: the sync stops, names the server, and leaves the index as it was. A connection reads one team, the one picked in Settings or the first run, else the first `list_teams` gives.
+
 ## In dev
 
 ```sh
-ORIEL_DEV_STANDINS=atlassian,slack pnpm dev
+ORIEL_DEV_STANDINS=atlassian,slack,linear pnpm dev
 ```
 
-Every process of your agent that Oriel starts gets each stand-in, as `atlassian-standin` or `slack-standin`, on its own command line (Claude Code's `--mcp-config`, Codex's `-c mcp_servers.…`), never in your configuration. The connector's entry for the real server knows it at its command. Turn Jira or Slack on through it in Settings › Source servers. The desktop app never reads this variable.
+Every process of your agent that Oriel starts gets each stand-in, as `atlassian-standin`, `slack-standin` or `linear-standin`, on its own command line (Claude Code's `--mcp-config`, Codex's `-c mcp_servers.…`), never in your configuration. The connector's entry for the real server knows it at its command. Turn Jira, Slack or Linear on through it in Settings › Source servers. The desktop app never reads this variable.
 
-`node scripts/try-source-server.ts <codex|claude-code> [jira|slack]` does the same end to end, with the index in memory: it finds the stand-in through your agent, turns the kind on, syncs its fixture, and approves one change set, which replays through the stand-in's write tools. On Claude Code it spends a little of your plan on Haiku, and prints how long each step took.
+`node scripts/try-source-server.ts <codex|claude-code> [jira|slack|linear|sheets]` does the same end to end, with the index in memory: it finds the stand-in through your agent, turns the kind on, syncs its fixture, and approves one change set, which replays through the stand-in's write tools. On Claude Code it spends a little of your plan on Haiku, and prints how long each step took.
 
 ## Re-recording from Atlassian's own server
 
@@ -72,4 +93,13 @@ Every process of your agent that Oriel starts gets each stand-in, as `atlassian-
 1. Add Slack's server to your Codex, at `https://mcp.slack.com/mcp`, and sign in to it as [Slack's instructions](https://docs.slack.dev/ai/slack-mcp-server/) say, as a person in our test workspace, never in anyone's real one. Oriel never does this for you.
 2. `node scripts/record-source-mcp.ts slack --through codex --server <its name in your Codex> --channels <a channel you're in>`. It reads only, through Codex's `mcpServer/tool/call`, with no model, with only the server's read tools. People's IDs and names become numbered placeholders, and the workspace's address `https://oriel-test.slack.com`.
 3. `pnpm --filter @oriel/slack check`. The recordings won't match Ferrowick, so the tests that compare them with the fixture fail: read each tool's answer, fix the parser in `packages/slack/src/slack-mcp.ts` and this stand-in to match, then record the stand-in again with `node scripts/record-source-mcp.ts slack`.
+4. Propose what changed for approval: fixtures need the maintainer's.
+
+## Re-recording from Linear's own server
+
+`fixtures/linear-mcp/` is recorded from this stand-in until it's recorded from Linear's server. To re-record:
+
+1. Add Linear's server to your Codex, at `https://mcp.linear.app/mcp`, and sign in to it as [Linear's instructions](https://linear.app/docs/mcp) say, as a member of our test workspace, never anyone's real one. Oriel never does this for you.
+2. `node scripts/record-source-mcp.ts linear --through codex --server <its name in your Codex>`. It reads only, through Codex's `mcpServer/tool/call`, with no model, with only the server's read tools, on the first team it lists. People become numbered placeholders and the workspace's address `https://linear.app/oriel-test`.
+3. `pnpm --filter @oriel/linear check`. A test that fails names the tool whose arguments or answer differ from what's assumed above; fix the parser in `packages/linear/src/linear-mcp.ts`, and this stand-in to match.
 4. Propose what changed for approval: fixtures need the maintainer's.

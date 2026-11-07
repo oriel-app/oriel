@@ -6,6 +6,7 @@ import {
   type Credential,
   object,
   type Opened,
+  OptionsUnfit,
   type OpenVia,
   SourceRefused,
   string,
@@ -78,6 +79,7 @@ export async function openJira(connection: ToOpen, via: OpenVia): Promise<Opened
   if (!account) throw new Error("the connection has no account Oriel can read");
   const site = connection.identity;
   const project = jiraProject(connection.options);
+  if (!project) throw new OptionsUnfit("Pick a Jira project to read");
   const credential = basicAuth(account.email, account.token);
   const send = via.fetch ? { fetch: via.fetch } : {};
   const transport = readTransport({ site, credential, ...send });

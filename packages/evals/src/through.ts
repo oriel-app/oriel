@@ -115,9 +115,9 @@ const linear = async (_edited: number, plain: FixtureConnection) => plain;
 
 // Sheets through packages/sheets-mcp, which Oriel never imports: its
 // answers on the fixture, as it serves it, recorded by
-// scripts/record-source-mcp.ts. Its tools give each cell as it shows and
-// nothing else, so rows hidden by hand are items, and no note or comment
-// is in an item's text; its previews are the fixture's own.
+// scripts/record-source-mcp.ts. Its tools give each cell as it shows, the
+// rows hidden by hand, each cell's note and the comments, so its items read
+// as the direct read's do; its previews are the fixture's own.
 export function sheetsThrough(): ThroughServer {
   const known = sources.sheets.servers?.[0];
   if (!known) throw new Error("Sheets declares no source server");

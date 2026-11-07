@@ -7,6 +7,7 @@ import {
   type Instant,
   type Opened,
   type OpenVia,
+  OptionsUnfit,
   ServerUnreadable,
   SourceRefused,
   type ThroughServer,
@@ -53,12 +54,10 @@ export async function openThrough(
   const teams = await reads.teams();
   const named = linearTeam(connection.options);
   const team = named ? teams.find((each) => each.key === named) : teams[0];
-  if (!team)
-    throw new Error(
-      named
-        ? `${server.known.name} lists no team ${named}`
-        : `${server.known.name} lists no Linear team`,
-    );
+  // A team picked that it no longer lists doesn't fit its options: it
+  // waits for another (decision 0051).
+  if (!team && named) throw new OptionsUnfit(`${server.known.name} lists no team ${named}`);
+  if (!team) throw new Error(`${server.known.name} lists no Linear team`);
   const source = linearSource({ reads, team, prefix: connection.prefix });
   return {
     source,

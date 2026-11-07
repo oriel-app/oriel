@@ -307,3 +307,53 @@ test("the read side refuses a post before anything is sent", async () => {
   );
   assert.equal(calls, 0);
 });
+
+const [channelsPick] = slackServer.picks ?? [];
+
+test("the channel picker lists the person's channels by ID, through read tools, up to 20 picked", async () => {
+  assert.equal(channelsPick?.name, "channels");
+  assert.equal(channelsPick?.many, true);
+  assert.equal(channelsPick?.most, 20);
+  assert.equal(channelsPick?.unpicked, "your first 20 channels");
+  const made: string[] = [];
+  const replay = replayCalls(synced.calls);
+  const read: ToolCaller = (call) => {
+    made.push(call.tool);
+    return replay(call);
+  };
+  assert.deepEqual(await channelsPick?.list(read, "", connection), {
+    choices: [{ value: weather, name: "#weather-disruptions", count: null, updatedAt: null }],
+    more: false,
+  });
+  assert.deepEqual(made, [t.channels]);
+  assert.equal((await channelsPick?.list(read, "WEATHER", connection))?.choices.length, 1);
+  assert.equal((await channelsPick?.list(read, "random", connection))?.choices.length, 0);
+});
+
+test("the channel picker reads every page once, and stops on one the server repeats or can't give", async () => {
+  let calls = 0;
+  const paged: ToolCaller = async (call) => {
+    calls += 1;
+    const at = Number(call.args.cursor ?? 0);
+    const page = {
+      channels: [{ id: `C${at}`, name: `c-${at}`, is_archived: at === 1 }],
+      // The third page names the second's cursor again.
+      response_metadata: { next_cursor: String(at >= 2 ? 1 : at + 1) },
+    };
+    return { content: [{ type: "text", text: JSON.stringify(page) }] };
+  };
+  const listed = await channelsPick?.list(paged, "", connection);
+  assert.deepEqual(
+    listed?.choices.map((each) => each.value),
+    ["C0", "C2"],
+    "archived ones aren't offered",
+  );
+  assert.equal(calls, 3, "it stops at the cursor it had read before");
+  const broken: ToolCaller = async () => ({
+    content: [{ type: "text", text: JSON.stringify({ channels: [{ name: "no id" }] }) }],
+  });
+  await assert.rejects(
+    channelsPick?.list(broken, "", connection) ?? Promise.resolve(),
+    ServerUnreadable,
+  );
+});

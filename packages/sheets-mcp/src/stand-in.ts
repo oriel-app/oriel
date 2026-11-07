@@ -7,7 +7,12 @@
 // - Drive's `files.list`, for spreadsheets by the `q` the tools write, newest
 //   first, a page at a time.
 //   https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list
-// - The Sheets API's `spreadsheets.get`, for the title and the tabs.
+// - Drive's `comments.list`, oldest first, a page at a time, with no deleted
+//   comment unless asked; like Drive, it wants `fields`.
+//   https://developers.google.com/workspace/drive/api/reference/rest/v3/comments/list
+// - The Sheets API's `spreadsheets.get`, for the title and the tabs, and
+//   with `ranges`, each range's notes and the rows and columns hidden by
+//   hand in it, as `includeGridData` with those `fields` gives them.
 //   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get
 // - `values.get` and `values.batchGet`, as formatted text by rows, with no
 //   empty cells at a row's end and no empty rows at the end.
@@ -19,9 +24,23 @@
 //   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/append
 // Anything else is a `404`. Every request needs the access token, as
 // Google's do, and each is kept in `calls`, so a test can count them.
-import { type Bounds, formatRange, parseRange } from "./a1.ts";
+import {
+  type Bounds,
+  columnIndex,
+  columnLetters,
+  formatRange,
+  parseCell,
+  parseRange,
+} from "./a1.ts";
 import { driveOrigin, sheetsOrigin, spreadsheetType } from "./google.ts";
-import { type Fixture, type FixtureSpreadsheet, type FixtureTab, gridOf } from "./fixture.ts";
+import {
+  type Fixture,
+  type FixtureComment,
+  type FixtureReply,
+  type FixtureSpreadsheet,
+  type FixtureTab,
+  gridOf,
+} from "./fixture.ts";
 
 export const standInToken = "stand-in-access-token";
 
@@ -77,6 +96,25 @@ const trimmed = (row: readonly string[]) => {
 
 type Box = Required<Bounds>;
 
+// A comment or a reply as Drive's Comment and Reply have them: its author
+// by name only, and no content once deleted.
+// https://developers.google.com/workspace/drive/api/reference/rest/v3/comments
+const said = (each: FixtureReply) => ({
+  author: { kind: "drive#user", displayName: each.author },
+  createdTime: each.createdTime,
+  ...(each.deleted ? {} : { content: each.content }),
+  deleted: each.deleted ?? false,
+});
+const commentOf = (comment: FixtureComment) => ({
+  kind: "drive#comment",
+  ...said(comment),
+  resolved: comment.resolved ?? false,
+  ...(comment.quoted
+    ? { quotedFileContent: { mimeType: "text/plain", value: comment.quoted } }
+    : {}),
+  replies: (comment.replies ?? []).map((reply) => ({ kind: "drive#reply", ...said(reply) })),
+});
+
 export function standIn(fixture: Fixture, options: StandInOptions = {}) {
   const token = options.token ?? standInToken;
   const calls: StandInCall[] = [];
@@ -116,6 +154,52 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
     };
   }
 
+  // A box's notes and the rows and columns in it hidden by hand, as
+  // GridData has them: a value or a dimension's metadata a place each,
+  // with what's empty or false left out.
+  function gridData(tab: FixtureTab, box: Box) {
+    const notes = new Map<string, string>();
+    for (const [cell, note] of Object.entries(tab.notes ?? {})) {
+      const at = parseCell(cell);
+      if (at) notes.set(`${at.row},${at.column}`, note);
+    }
+    const hiddenRows = new Set((tab.hiddenRows ?? []).map((n) => n - 1));
+    const hiddenColumns = new Set((tab.hiddenColumns ?? []).map((c) => columnIndex(c)));
+    const span = (from: number, to: number) =>
+      Array.from({ length: to - from }, (_, i) => from + i);
+    return {
+      ...(box.startRow ? { startRow: box.startRow } : {}),
+      ...(box.startColumn ? { startColumn: box.startColumn } : {}),
+      rowData: span(box.startRow, box.endRow).map((r) => ({
+        values: span(box.startColumn, box.endColumn).map((c) => {
+          const note = notes.get(`${r},${c}`);
+          return note === undefined ? {} : { note };
+        }),
+      })),
+      rowMetadata: span(box.startRow, box.endRow).map((r) =>
+        hiddenRows.has(r) ? { hiddenByUser: true } : {},
+      ),
+      columnMetadata: span(box.startColumn, box.endColumn).map((c) =>
+        hiddenColumns.has(c) ? { hiddenByUser: true } : {},
+      ),
+    };
+  }
+
+  // Rows inserted at `at`: the notes and hidden rows below move down with
+  // their rows, as Google's do.
+  function moveDown(tab: FixtureTab, at: number, count: number) {
+    if (tab.hiddenRows) tab.hiddenRows = tab.hiddenRows.map((n) => (n - 1 >= at ? n + count : n));
+    if (tab.notes)
+      tab.notes = Object.fromEntries(
+        Object.entries(tab.notes).map(([cell, note]) => {
+          const place = parseCell(cell);
+          return place && place.row >= at
+            ? [`${columnLetters(place.column)}${place.row + count + 1}`, note]
+            : [cell, note];
+        }),
+      );
+  }
+
   const cellText = (value: unknown): string | null =>
     value === null ? null : typeof value === "boolean" ? (value ? "TRUE" : "FALSE") : String(value);
 
@@ -151,7 +235,27 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
     if (options.now) s.modifiedTime = options.now();
   };
 
+  function comments(url: URL, id: string): Response {
+    const s = byId.get(decodeURIComponent(id));
+    if (!s) return refuse(404, `File not found: ${decodeURIComponent(id)}.`);
+    if (!url.searchParams.get("fields"))
+      return refuse(400, "The 'fields' parameter is required for this operation.");
+    const size = Math.min(Math.max(Number(url.searchParams.get("pageSize")) || 20, 1), 100);
+    const pageToken = url.searchParams.get("pageToken");
+    const at = pageToken === null ? 0 : Number(/^c([0-9]+)$/.exec(pageToken)?.[1] ?? Number.NaN);
+    if (!Number.isInteger(at)) return refuse(400, "Invalid Value");
+    const all = (s.comments ?? [])
+      .filter((c) => url.searchParams.get("includeDeleted") === "true" || !c.deleted)
+      .toSorted((a, b) => Date.parse(a.createdTime) - Date.parse(b.createdTime));
+    return Response.json({
+      ...(at + size < all.length ? { nextPageToken: `c${at + size}` } : {}),
+      comments: all.slice(at, at + size).map(commentOf),
+    });
+  }
+
   function drive(url: URL): Response {
+    const commented = /^\/drive\/v3\/files\/([^/]+)\/comments$/.exec(url.pathname);
+    if (commented) return comments(url, commented[1] ?? "");
     if (url.pathname !== "/drive/v3/files") return refuse(404, "Not Found");
     const name = nameIn(url.searchParams.get("q") ?? "");
     if (name === undefined) return refuse(400, "Invalid Value");
@@ -194,6 +298,29 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
         valueRanges.push(valueRange(found.tab, found.box));
       }
       return Response.json({ spreadsheetId: s.id, valueRanges });
+    }
+
+    if (rangePart === undefined && query.has("ranges")) {
+      if (method !== "GET") return refuse(404, "Not Found");
+      const found: { tab: FixtureTab; box: Box }[] = [];
+      for (const text of query.getAll("ranges")) {
+        const each = resolve(s, text);
+        if (!each) return refuse(400, `Unable to parse range: ${text}`);
+        found.push(each);
+      }
+      return Response.json({
+        sheets: s.tabs.flatMap((tab) => {
+          const boxes = found.filter((each) => each.tab === tab);
+          return boxes.length
+            ? [
+                {
+                  properties: { sheetId: tab.sheetId, title: tab.title },
+                  data: boxes.map(({ box }) => gridData(tab, box)),
+                },
+              ]
+            : [];
+        }),
+      });
     }
 
     if (rangePart === undefined) {
@@ -302,7 +429,10 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
     const from = table ? table.startColumn : box.startColumn;
     if (query.get("insertDataOption") === "INSERT_ROWS") {
       const grid = gridOf(tab);
-      if (at < tab.rows.length) tab.rows.splice(at, 0, ...values.map(() => []));
+      if (at < tab.rows.length) {
+        tab.rows.splice(at, 0, ...values.map(() => []));
+        moveDown(tab, at, values.length);
+      }
       tab.rowCount = grid.rows + values.length;
     }
     write(tab, at, from, values);

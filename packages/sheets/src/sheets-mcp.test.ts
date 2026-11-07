@@ -19,7 +19,13 @@ import { SheetsError } from "./google.ts";
 import { openSheets } from "./open-connection.ts";
 import { sheetsPreview, sheetsReview } from "./preview.ts";
 import { fakeId, fakePicks, fakeRows, fakeServer } from "./sheets-mcp-fake.ts";
-import { readValues, serverGoogle, sheetsMcpMain, sheetsServer } from "./sheets-mcp.ts";
+import {
+  readComments,
+  readValues,
+  serverGoogle,
+  sheetsMcpMain,
+  sheetsServer,
+} from "./sheets-mcp.ts";
 
 const backlog = "1q2w3e4r5t6y7u8i9o0pBacklogFixture";
 // As scripts/record-source-mcp.ts maps the shipped fixture's Backlog tab.
@@ -113,8 +119,17 @@ test("a sync through the recorded server lists the mapped tab's rows and the spr
   assert.equal(signIn?.facets.estimate, 2);
   // Its last change, from the listing, stands for the spreadsheet's.
   assert.equal(signIn?.updatedAt, "2026-11-03T16:42:10.512Z");
-  // No comment or note comes through the server: each cell as it shows.
   assert.match(texts.get(signIn?.id ?? "") ?? "", /^Key: BL-101\nTitle: Sign-in/);
+  // A cell's note is under its cell, and the comments are the spreadsheet's.
+  const csv = byTitle(records, "Export a report as CSV");
+  assert.match(
+    texts.get(csv?.id ?? "") ?? "",
+    /\nNote on Title: Excel export waits for the reporting rework\.\n/,
+  );
+  const docText = texts.get(doc?.id ?? "") ?? "";
+  assert.match(docText, /Ama, 2026-10-28T11:05:00\.000Z:\nOn: Search finds archived projects\n/);
+  assert.match(docText, /Priya replied, 2026-10-28T13:40:00\.000Z:\nYes, all of them\./);
+  assert.match(docText, /Jonas, 2026-10-15T09:20:00\.000Z \(resolved\):/);
 });
 
 test("a read through the recorded server gives a row's cells", async () => {
@@ -262,21 +277,170 @@ test("an unchanged spreadsheet costs its two reads, and isn't read again", async
   assert.equal(fakeId.length > 10, true);
 });
 
-test("serverGoogle gives no comments, notes, hidden rows or merges", async () => {
-  const google = serverGoogle(fakeServer(fakeRows()).read);
+test("a sync through the server skips a row hidden by hand, keeps a cell's note, and has the comments", async () => {
+  const server = fakeServer(fakeRows());
+  // BL-2's row, the third, is hidden; BL-3's title has a note.
+  server.hiddenRows.add(2);
+  server.notes.set("3,1", "Says = on purpose.");
+  server.comments = [
+    {
+      author: "Ana",
+      createdTime: "2026-11-02T09:00:00.000Z",
+      content: "Is BL-2 still wanted?",
+      resolved: true,
+      quoted: "Export as CSV",
+      replies: [{ author: "", createdTime: "2026-11-02T10:00:00.000Z", content: "Yes." }],
+    },
+  ];
+  const { records, texts } = await sync(server.read, fakePicks);
+  const rows = records.filter((record) => record.facets.kind !== "doc");
+  assert.deepEqual(
+    rows.map((record) => record.title),
+    ["Sign-in remembers the email", "=Not a formula, as text"],
+  );
+  const bl3 = byTitle(records, "=Not a formula, as text");
+  assert.match(texts.get(bl3?.id ?? "") ?? "", /\nNote on Title: Says = on purpose\./);
+  const doc = records.find((record) => record.facets.kind === "doc");
+  assert.match(
+    texts.get(doc?.id ?? "") ?? "",
+    /Ana, 2026-11-02T09:00:00\.000Z \(resolved\):\nOn: Export as CSV\nIs BL-2 still wanted\?\n(.|\n)*Someone replied/,
+  );
+  // As shown, with the grid; as entered, without.
+  const reads = server.calls.filter((call) => call.tool === "read_range");
+  assert.ok(reads.every((call) => call.args.includeGrid === true));
+  // A mapping that reads hidden rows has BL-2.
+  const hidden = {
+    spreadsheets: [
+      {
+        ...fakePicks.spreadsheets[0],
+        tabs: [{ ...fakePicks.spreadsheets[0]?.tabs[0], hidden: true }],
+      },
+    ],
+  };
+  const all = await sync(server.read, hidden);
+  assert.equal(all.records.filter((record) => record.facets.kind !== "doc").length, 3);
+});
+
+test("serverGoogle gives notes, hidden rows and columns, comments, and no merges", async () => {
+  const server = fakeServer(fakeRows());
+  server.hiddenRows.add(1);
+  server.hiddenColumns.add(4);
+  // A note on a cell past its row's last value is a cell too.
+  server.notes.set("3,5", "Past the row's end.");
+  const google = serverGoogle(server.read);
   assert.deepEqual(await google.comments(fakeId), []);
   const info = await google.tabs(fakeId);
   assert.ok(info !== "gone");
   const tab = info.tabs[0];
   assert.ok(tab);
-  const grid = await google.rows(fakeId, tab, 0, 3, true);
+  const grid = await google.rows(fakeId, tab, 0, 4, true);
   assert.ok(grid !== "gone");
   assert.deepEqual(grid.merges, []);
-  assert.equal(grid.hiddenRows.size + grid.hiddenColumns.size, 0);
+  assert.deepEqual([...grid.hiddenRows], [1]);
+  assert.deepEqual([...grid.hiddenColumns], [4]);
   assert.deepEqual(grid.rows[1]?.[1], {
     shown: "Sign-in remembers the email",
     number: null,
     note: null,
     entered: "Sign-in remembers the email",
   });
+  assert.deepEqual(grid.rows[3]?.[5], {
+    shown: "",
+    number: null,
+    note: "Past the row's end.",
+    entered: null,
+  });
+  // FORMULA reads ask for no grid.
+  assert.deepEqual(
+    server.calls.filter((call) => call.tool === "read_range").map((call) => call.args.includeGrid),
+    [true, undefined],
+  );
+});
+
+test("comments are read a page at a time, at most 200, and none when the sign-in can't read them", async () => {
+  const comment = (n: number) => ({
+    author: "Ana",
+    createdTime: "2026-11-02T09:00:00.000Z",
+    content: `Comment ${n}`,
+    resolved: false,
+    replies: [],
+  });
+  const pages: ToolCaller = async (call) => {
+    const at = Number(call.args.pageToken ?? 0);
+    return {
+      content: [],
+      structuredContent: {
+        comments: Array.from({ length: 100 }, (_, i) => comment(at + i)),
+        nextPageToken: String(at + 100),
+      },
+    };
+  };
+  const found = await serverGoogle(pages).comments(fakeId);
+  assert.equal(found.length, 200);
+  assert.equal(found[199]?.text, "Comment 199");
+  const unscoped: ToolCaller = async () => ({
+    content: [
+      {
+        type: "text",
+        text: "Google refused: this sign-in wasn't given the permission that takes.",
+      },
+    ],
+    isError: true,
+  });
+  assert.deepEqual(await serverGoogle(unscoped).comments(fakeId), []);
+});
+
+test("a grid or comments Oriel can't read stop the sync, naming the server", async () => {
+  const server = fakeServer(fakeRows());
+  const changed =
+    (
+      tool: string,
+      change: (body: Record<string, unknown>) => Record<string, unknown>,
+    ): ToolCaller =>
+    async (call) => {
+      const answer = await server.read(call);
+      return call.tool === tool
+        ? {
+            content: [],
+            structuredContent: change(answer.structuredContent as Record<string, unknown>),
+          }
+        : answer;
+    };
+  for (const read of [
+    // No grid where it was asked for.
+    changed("read_range", (body) => ({ ...body, hiddenRows: undefined })),
+    changed("read_range", (body) => ({ ...body, hiddenRows: [0] })),
+    changed("read_range", (body) => ({ ...body, hiddenRows: ["2"] })),
+    changed("read_range", (body) => ({ ...body, hiddenColumns: ["a1"] })),
+    changed("read_range", (body) => ({ ...body, notes: [{ cell: "Z", note: "x" }] })),
+    changed("read_range", (body) => ({ ...body, notes: [{ cell: "B2", note: 3 }] })),
+    // A note outside the rows it read.
+    changed("read_range", (body) => ({ ...body, notes: [{ cell: "B5000", note: "x" }] })),
+    changed("list_comments", () => ({ comments: "none" })),
+    changed("list_comments", () => ({ comments: [{ author: "A", content: "x" }] })),
+    changed("list_comments", () => ({
+      comments: [{ author: "A", createdTime: "t", content: "x", resolved: "no", replies: [] }],
+    })),
+    changed("list_comments", () => ({
+      comments: [
+        { author: "A", createdTime: "t", content: "x", resolved: false, replies: [{ author: 1 }] },
+      ],
+    })),
+  ]) {
+    const opened = await openSheets(connection(fakePicks), via(read));
+    const error = await listed(opened.source.sync(null)).catch((thrown: unknown) => thrown);
+    assert.ok(error instanceof ServerUnreadable, String(error));
+  }
+  assert.throws(() => readValues({ values: [], truncated: false }, true), ServerUnreadable);
+  assert.throws(() => readComments({ comments: [{}] }), ServerUnreadable);
+});
+
+test("Sheets through its server may call its read tools, and no write tool among them", () => {
+  assert.deepEqual(sheetsServer.reads, [
+    "list_spreadsheets",
+    "get_spreadsheet",
+    "read_range",
+    "list_comments",
+  ]);
+  assert.deepEqual(sheetsServer.writes, ["update_range", "append_rows"]);
 });

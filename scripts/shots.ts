@@ -4074,6 +4074,47 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
+  // What a person picks through each source server: Jira's project,
+  // Slack's channels and Linear's team, each listed through the server's
+  // read tools, in Settings and in the first run; with none picked, what
+  // each reads instead.
+  ...(
+    [
+      ["jira", "Atlassian's", { atlassian: "on" }, 'input[type="radio"][value="SYN"]'],
+      ["slack", "Slack's", { slack: "on" }, 'input[type="checkbox"]'],
+      ["linear", "Linear's", { linear: "on" }, 'input[type="radio"][value="OPS"]'],
+    ] as const
+  ).map(([kind, server, on, listed]) => ({
+    name: `settings-picks-${kind}`,
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, ...on, state: setupFinished }),
+    act: async (page: Page) => {
+      const row = page.locator(".connection-row", { hasText: `through ${server}` });
+      await row.first().getByRole("button", { name: "Pick" }).click();
+      await row.first().locator(listed).first().waitFor();
+      await row.first().scrollIntoViewIfNeeded();
+    },
+  })),
+  {
+    name: "setup-found-picks",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "on", slack: "on", linear: "on" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+      await page.locator(".found-picks").nth(2).waitFor();
+    },
+  },
+  {
+    name: "setup-found-picks-slack",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "on", slack: "on", linear: "on" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Continue with Claude Code" }).click();
+      const slack = page.getByRole("region", { name: "What Oriel reads of Slack" });
+      await slack.getByRole("button", { name: "Pick" }).click();
+      await slack.locator('input[type="checkbox"]').first().waitFor();
+    },
+  },
   // Oriel's own Sheets server, packages/sheets-mcp, found as a local
   // server, and Google Sheets on through it, answering from what its
   // fixture mode recorded (OA-279); then the window chat's draft of which

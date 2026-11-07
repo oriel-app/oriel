@@ -310,3 +310,43 @@ test("the recordings and the stand-in give the same index", async () => {
     JSON.stringify(records.toSorted((a, b) => a.id.localeCompare(b.id)));
   assert.equal(key(recorded), key(live));
 });
+
+const [teamPick] = linearServer.picks ?? [];
+
+test("the team picker lists the server's teams by key, through read tools", async () => {
+  assert.equal(teamPick?.name, "team");
+  const made: string[] = [];
+  const replay = replayCalls(synced.calls);
+  const read: ToolCaller = (call) => {
+    made.push(call.tool);
+    return replay(call);
+  };
+  assert.deepEqual(
+    (await teamPick?.list(read, "", connection))?.choices.map(({ value, name }) => [value, name]),
+    [
+      ["ENG", "Ferrowick"],
+      ["OPS", "Pier operations"],
+    ],
+  );
+  assert.deepEqual(made, [t.teams]);
+  assert.deepEqual(
+    (await teamPick?.list(read, "pier", connection))?.choices.map((each) => each.value),
+    ["OPS"],
+  );
+});
+
+test("a team picked bounds the sync: none of the first team's issues", async () => {
+  const ops = await openLinear(
+    { ...connection, options: { team: "OPS" } },
+    {
+      kept: false,
+      log: () => {},
+      now: () => world.frozen,
+      server: { ...standInServer(), read: standInCaller(linearStandIn(world)) },
+    },
+  );
+  assert.equal(ops.scope.team, "OPS");
+  const { records } = await listed(ops.source.sync(null));
+  assert.ok(records.length > 0);
+  assert.ok(records.every((record) => record.id.startsWith("linear:OPS-")));
+});

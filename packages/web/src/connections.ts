@@ -144,7 +144,7 @@ export type ConnectionsMsg =
       what: string;
       field: string;
     }
-  | { type: "choicesAsked"; connection: string; query: string }
+  | { type: "choicesAsked"; connection: string; query: string; field?: string }
   | { type: "undoClicked"; connection: string }
   | { type: "disconnectClicked"; connection: string }
   | { type: "disconnectAnswered"; connection: string; yes: boolean }
@@ -645,7 +645,7 @@ export function updateConnections(
       return withSetting(model, msg.connection, setting, [
         post(
           `/api/connections/${msg.connection}/pick`,
-          { query: msg.query },
+          { query: msg.query, ...(msg.field ? { field: msg.field } : {}) },
           { kind: "connectionChoices", connection: msg.connection },
         ),
       ]);

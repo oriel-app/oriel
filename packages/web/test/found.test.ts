@@ -133,3 +133,44 @@ test("how often sync runs is a setting, and the list loads again once it's kept"
     ["/api/connections"],
   );
 });
+
+test("a pick through a source server asks for its option's list by name, and sets it as any option", () => {
+  const slack = connectionView({
+    id: "01JBZ0000000000000000000S1",
+    kind: "slack",
+    through: "slack",
+    options: {},
+    picks: [
+      {
+        name: "channels",
+        label: "Channels",
+        many: true,
+        most: 20,
+        unpicked: "your first 20 channels",
+      },
+    ],
+  });
+  const model = listed({ connections: [slack] });
+  const [, asked] = updateConnections(model, {
+    type: "choicesAsked",
+    connection: slack.id,
+    query: "",
+    field: "channels",
+  });
+  assert.deepEqual(
+    asked.map((e) => (e.type === "http" ? [e.url, e.body] : null)),
+    [[`/api/connections/${slack.id}/pick`, { query: "", field: "channels" }]],
+  );
+  const [setting, set] = updateConnections(model, {
+    type: "configured",
+    connection: slack.id,
+    options: { channels: ["C0FW1WEATHR"] },
+    what: "its channels",
+    field: "channels",
+  });
+  assert.deepEqual(
+    set.map((e) => (e.type === "http" ? [e.url, e.body] : null)),
+    [[`/api/connections/${slack.id}/options`, { options: { channels: ["C0FW1WEATHR"] } }]],
+  );
+  assert.equal(setting.settings[slack.id]?.pending, true);
+});

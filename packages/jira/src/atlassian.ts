@@ -14,6 +14,7 @@
 // https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/
 import {
   answerText,
+  narrowed,
   type SourceServer,
   ServerUnreadable,
   type ToolAnswer,
@@ -77,6 +78,40 @@ export const atlassianServer: SourceServer = {
   writes: [t.create, t.edit, t.transition, t.comment, t.link, t.deleteIssue, t.deleteComment],
   instructions:
     "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
+  // The project a connection reads, from those the server lists on its site.
+  picks: [
+    {
+      name: "project",
+      label: "Project",
+      unpicked: "the first project it lists",
+      async list(read, query, connection) {
+        const named = URL.canParse(connection.identity)
+          ? new URL(connection.identity).origin
+          : null;
+        const site = siteOf(await read({ tool: t.resources, args: {} }), named);
+        if (!site) return { choices: [], more: false };
+        // Page by page, as REST's project search pages, at most 10 pages.
+        const projects: ReturnType<typeof projectChoicesOf> = [];
+        for (let page = 0; page < 10; page++) {
+          const answer = await read({
+            tool: t.projects,
+            args: {
+              cloudId: site.cloudId,
+              ...(projects.length ? { startAt: projects.length } : {}),
+            },
+          });
+          const listed = projectChoicesOf(answer);
+          projects.push(...listed);
+          const body = bodyOf(t.projects, answer).body;
+          if (!listed.length || !isObject(body) || body.isLast !== false) break;
+        }
+        return narrowed(
+          projects.map(({ key, ...each }) => ({ value: key, ...each })),
+          query,
+        );
+      },
+    },
+  ],
 };
 
 // A tool's answer Oriel can't read: core's, so every connector's sync
@@ -428,14 +463,32 @@ export function siteOf(
 }
 
 // The projects the server lists, by key, in its order.
-export function projectsOf(answer: ToolAnswer): string[] {
+export const projectsOf = (answer: ToolAnswer): string[] =>
+  projectChoicesOf(answer).map((each) => each.key);
+
+// The same, each with its name, its key where it has none, and, where the
+// server says, how many issues it holds and when one last changed.
+export function projectChoicesOf(
+  answer: ToolAnswer,
+): { key: string; name: string; count: number | null; updatedAt: string | null }[] {
   const response = bodyOf(t.projects, answer);
   if (response.status !== 200) return [];
   const listed = listOf(response.body, "values");
   if (!listed) throw new ServerUnreadable(`${t.projects} answered with no projects`);
-  return listed.flatMap((each) =>
-    isObject(each) && typeof each.key === "string" && /^[A-Z][A-Z0-9_]*$/.test(each.key)
-      ? [each.key]
-      : [],
-  );
+  return listed.flatMap((each) => {
+    if (!isObject(each) || typeof each.key !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(each.key))
+      return [];
+    const insight = isObject(each.insight) ? each.insight : {};
+    const count = insight.totalIssueCount;
+    const at = insight.lastIssueUpdateTime;
+    return [
+      {
+        key: each.key,
+        name: typeof each.name === "string" ? each.name : each.key,
+        count:
+          typeof count === "number" && Number.isSafeInteger(count) && count >= 0 ? count : null,
+        updatedAt: typeof at === "string" && !Number.isNaN(Date.parse(at)) ? at : null,
+      },
+    ];
+  });
 }

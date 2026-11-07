@@ -13,6 +13,7 @@
 // was. packages/standin-mcp/README.md lists what's assumed.
 import {
   answerText,
+  narrowed,
   ServerUnreadable,
   SourceRefused,
   type SourceServer,
@@ -50,6 +51,19 @@ export const linearServer: SourceServer = {
   reads: [t.teams, t.statuses, t.cycles, t.users, t.projects, t.project, t.issues, t.issue],
   writes: [t.saveIssue, t.saveProject],
   instructions: "https://linear.app/docs/mcp",
+  // The team a connection reads, by its key, from those the server lists.
+  picks: [
+    {
+      name: "team",
+      label: "Team",
+      unpicked: "the first team it lists",
+      list: async (read, query) =>
+        narrowed(
+          (await linearReads(read).teams()).map((team) => ({ value: team.key, name: team.name })),
+          query,
+        ),
+    },
+  ],
 };
 
 export type LinearTeam = { id: string; key: string; name: string };
