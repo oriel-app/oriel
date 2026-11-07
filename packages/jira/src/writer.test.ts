@@ -812,3 +812,132 @@ test("addComment posts plain text as rich text and reports the comment by ID; re
   );
   assert.equal(memory.calls.length, before);
 });
+
+// Through Atlassian's MCP server (OA-276): each mutation Jira's op specs
+// name becomes the server's write call, and its reads the server's read
+// tools, against the stand-in's SYN in memory.
+test("through Atlassian's server, each mutation is one write call, and a status a transition by name", async () => {
+  const { atlassianStandIn, standInCaller, standInCloudId, standInSite } =
+    await import("./atlassian-standin.ts");
+  const { atlassianTransport } = await import("./atlassian.ts");
+  const site = standInSite();
+  const tools = standInCaller(atlassianStandIn(site));
+  const written: { tool: string; args: Record<string, unknown> }[] = [];
+  const read: { tool: string }[] = [];
+  const writer = jiraWriter({
+    transport: atlassianTransport({
+      cloudId: standInCloudId,
+      read: async (call) => {
+        read.push({ tool: call.tool });
+        return tools(call);
+      },
+      write: async (call) => {
+        written.push({ tool: call.tool, args: { ...call.args } });
+        return tools(call);
+      },
+    }),
+    project: "SYN",
+    log: () => {},
+  });
+  const stable = (key: string) => site.issue(key)?.id ?? "";
+  const on = (key: string, op: string, args: unknown) =>
+    writer.apply(request(op, `jira:${key}` as ItemId<"jira">, args, stable(key)));
+  const cloudId = standInCloudId;
+  const last = () => written.at(-1);
+
+  const story = await writer.apply(
+    request("createStory", null, { summary: "Pay by link", points: 3, epic: "jira:SYN-1" }, null),
+  );
+  assert.deepEqual(last(), {
+    tool: "createJiraIssue",
+    args: {
+      cloudId,
+      projectKey: "SYN",
+      issueTypeName: "Story",
+      summary: "Pay by link",
+      parent: "SYN-1",
+      additional_fields: { [pointsField]: 3 },
+    },
+  });
+  assert.equal(story.after.points, 3);
+  await writer.apply(
+    request("createEpic", null, { summary: "Refunds", description: "Two lines" }, null),
+  );
+  assert.deepEqual(last(), {
+    tool: "createJiraIssue",
+    args: {
+      cloudId,
+      projectKey: "SYN",
+      issueTypeName: "Epic",
+      summary: "Refunds",
+      description: textToAdf("Two lines"),
+      contentFormat: "adf",
+    },
+  });
+  await on("SYN-7", "setSummary", { summary: "Renamed" });
+  assert.deepEqual(last(), {
+    tool: "editJiraIssue",
+    args: { cloudId, issueIdOrKey: "SYN-7", fields: { summary: "Renamed" } },
+  });
+  await on("SYN-7", "setDescription", { description: "New words" });
+  assert.deepEqual(last(), {
+    tool: "editJiraIssue",
+    args: {
+      cloudId,
+      issueIdOrKey: "SYN-7",
+      fields: { description: textToAdf("New words") },
+      contentFormat: "adf",
+    },
+  });
+  await on("SYN-7", "setEstimate", { points: 5 });
+  assert.deepEqual(last(), {
+    tool: "editJiraIssue",
+    args: { cloudId, issueIdOrKey: "SYN-7", fields: { [pointsField]: 5 } },
+  });
+  await on("SYN-7", "setAssignee", { accountId: "amara" });
+  assert.deepEqual(last(), {
+    tool: "editJiraIssue",
+    args: { cloudId, issueIdOrKey: "SYN-7", fields: { assignee: { accountId: "amara" } } },
+  });
+  const moved = await on("SYN-7", "setStatus", { status: "Done" });
+  assert.deepEqual(last()?.tool, "transitionJiraIssue");
+  assert.equal(moved.after.status, "Done");
+  assert.ok(read.some((each) => each.tool === "listJiraIssueTransitions"));
+  const way = (last()?.args.transition as { id: string } | undefined)?.id ?? "";
+  assert.match(way, /^[0-9]+$/, "the transition that leads to Done, by its ID");
+  await on("SYN-7", "addLink", { url: "https://example.com/spec", title: "Spec" });
+  assert.deepEqual(last(), {
+    tool: "createJiraIssueRemoteIssueLink",
+    args: { cloudId, issueIdOrKey: "SYN-7", url: "https://example.com/spec", title: "Spec" },
+  });
+  const comment = await on("SYN-7", "addComment", { body: "Shipped." });
+  assert.deepEqual(last(), {
+    tool: "addOrEditJiraIssueComment",
+    args: {
+      cloudId,
+      issueIdOrKey: "SYN-7",
+      commentBody: textToAdf("Shipped."),
+      contentFormat: "adf",
+    },
+  });
+  const commentId = Object.keys(comment.after)
+    .find((name) => name.startsWith("comment:"))
+    ?.slice("comment:".length);
+  await on("SYN-7", "removeComment", { commentId });
+  assert.deepEqual(last(), {
+    tool: "deleteJiraComment",
+    args: { cloudId, issueIdOrKey: "SYN-7", commentId },
+  });
+  await writer.apply(request("deleteItem", story.item.id, {}, story.item.stableId));
+  assert.deepEqual(last(), {
+    tool: "deleteJiraIssue",
+    args: { cloudId, issueIdOrKey: story.item.id.slice("jira:".length) },
+  });
+  // Atlassian's server has no tool that removes a link: refused, with
+  // nothing sent.
+  const before = written.length;
+  await assert.rejects(on("SYN-7", "removeLink", { linkId: "90001" }), SourceRefused);
+  assert.equal(written.length, before);
+  // No write went through a read tool, nor a read through a write one.
+  assert.ok(written.every((each) => !each.tool.startsWith("get") && !each.tool.startsWith("list")));
+});

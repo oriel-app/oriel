@@ -5,6 +5,7 @@
 // instead and each request may carry its revision in `_meta`.
 // https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
 import { createInterface } from "node:readline";
+import type { StandInTool } from "@oriel/jira/standin";
 
 export const modern = "2026-07-28";
 export const handshake = "2025-06-18";
@@ -15,31 +16,6 @@ export type Answer = { jsonrpc: "2.0"; id: Id | null } & (
   | { result: Record<string, unknown> }
   | { error: { code: number; message: string } }
 );
-
-// A tool as a stand-in serves it: as `tools/list` shows it, and its answer
-// to a call, which is the tool's result, failed or not.
-export type StandInTool = {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: { readOnlyHint: boolean; destructiveHint?: boolean };
-  call(args: Record<string, unknown>): Promise<ToolResult>;
-};
-
-export type ToolResult = {
-  content: { type: "text"; text: string }[];
-  isError?: true;
-};
-
-// Its JSON as a tool's text, as the server it stands in for answers.
-export const ok = (value: unknown): ToolResult => ({
-  content: [{ type: "text", text: JSON.stringify(value) }],
-});
-// One short sentence, as a tool that failed answers.
-export const failed = (words: string): ToolResult => ({
-  content: [{ type: "text", text: words }],
-  isError: true,
-});
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

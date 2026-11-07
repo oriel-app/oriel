@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/memory-site.ts",
+    "./standin": "./src/atlassian-standin.ts",
     "./writer": "./src/writer.ts"
   },
   "scripts": {

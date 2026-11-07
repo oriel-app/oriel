@@ -6,11 +6,36 @@
 // change only this process's copy. Never published, never bundled.
 //
 // Atlassian documents its tools' names, not their arguments or answers:
-// those here are the parser's (`packages/jira/src/atlassian.ts`), to be
-// checked against the real server's (README.md, "Re-recording").
-import { frozenAt, loadJiraFixture, textToAdf } from "@oriel/jira";
-import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
-import { failed, ok, type StandInTool, type ToolResult } from "./mcp.ts";
+// those here are the parser's (`atlassian.ts`), to be checked against the
+// real server's (packages/standin-mcp/README.md, "Re-recording"). Served
+// over stdio by packages/standin-mcp, and in memory to this package's tests:
+// `@oriel/jira/standin`.
+import { textToAdf } from "./adf.ts";
+import { frozenAt } from "./declared-fixture.ts";
+import { loadJiraFixture } from "./fixture.ts";
+import { memorySite, memorySiteOrigin } from "./memory-site.ts";
+
+// A tool as a stand-in serves it: as `tools/list` shows it, and its answer
+// to a call, failed or not.
+export type StandInTool = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations: { readOnlyHint: boolean; destructiveHint?: boolean };
+  call(args: Record<string, unknown>): Promise<ToolResult>;
+};
+
+export type ToolResult = { content: { type: "text"; text: string }[]; isError?: true };
+
+// Its JSON as a tool's text, as the server it stands in for answers.
+const ok = (value: unknown): ToolResult => ({
+  content: [{ type: "text", text: JSON.stringify(value) }],
+});
+// One short sentence, as a tool that failed answers.
+const failed = (words: string): ToolResult => ({
+  content: [{ type: "text", text: words }],
+  isError: true,
+});
 
 // What it reports in its handshake: the name Oriel's entry for the real one
 // gives, which Atlassian doesn't document.
@@ -30,12 +55,25 @@ const schema = (properties: Record<string, unknown>, required: string[]) => ({
   required: ["cloudId", ...required],
 });
 
+// SYN in memory, as the stand-in starts from.
+export const standInSite = () => {
+  const fixture = loadJiraFixture();
+  return memorySite(fixture, frozenAt(fixture));
+};
+
+// Its tools as a caller in this process: what the person's agent would
+// answer through it, for tests.
+export const standInCaller =
+  (tools: readonly StandInTool[] = atlassianStandIn()) =>
+  async (call: { tool: string; args: Readonly<Record<string, unknown>> }) => {
+    const tool = tools.find((each) => each.name === call.tool);
+    if (!tool) throw new Error(`the stand-in has no tool ${call.tool}`);
+    return tool.call({ ...call.args });
+  };
+
 // The tools it serves, and what each is. Each read is marked read-only, as
 // the real server's are; each write isn't.
-export function atlassianStandIn() {
-  const fixture = loadJiraFixture();
-  const site = memorySite(fixture, frozenAt(fixture));
-
+export function atlassianStandIn(site = standInSite()) {
   // A REST call to the site in memory, as the real tool makes it.
   const rest = async (method: string, path: string, body?: unknown) => {
     const response = await site.fetch(`${memorySiteOrigin}${path}`, {

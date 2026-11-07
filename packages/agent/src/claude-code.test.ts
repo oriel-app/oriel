@@ -890,6 +890,7 @@ test("the person's servers are the CLI's answer to mcp_status, as Oriel looks th
         url: "https://mcp.example.invalid/v1",
         command: null,
         tools: ["search_issues", "get_issue"],
+        transport: "http",
       },
       {
         name: "local",

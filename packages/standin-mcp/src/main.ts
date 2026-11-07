@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in MCP server, by the name of the one it stands in for:
 // `node packages/standin-mcp/src/main.ts atlassian`. For dev and tests only.
-import { atlassianInfo, atlassianStandIn } from "./atlassian.ts";
+import { atlassianInfo, atlassianStandIn } from "@oriel/jira/standin";
 import { serveLines, standInServer } from "./mcp.ts";
 
 const standIns = {

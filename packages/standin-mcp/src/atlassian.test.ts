@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { atlassianServer } from "@oriel/jira";
-import { atlassianInfo, atlassianStandIn, standInCloudId } from "./atlassian.ts";
+import { atlassianInfo, atlassianStandIn, standInCloudId } from "@oriel/jira/standin";
 import { standInServer } from "./mcp.ts";
 
 const call = async (
