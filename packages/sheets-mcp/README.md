@@ -44,41 +44,43 @@ export GOOGLE_CLIENT_SECRET=<your client secret, if it has one>
 node packages/sheets-mcp/src/main.ts login
 ```
 
-This opens your browser at Google's consent page. Leave both permissions ticked. The browser comes back to a one-time listener on `127.0.0.1`, on a port the system picks, and `login` keeps the refresh token in `~/.config/oriel-sheets-mcp/token.json` (or under `$XDG_CONFIG_HOME`). Only you may read that file (mode 0600) or its folder (0700).
+This opens your browser at Google's consent page. Leave both permissions ticked. The browser comes back to a one-time listener on `127.0.0.1`, on a port the system picks, and `login` keeps the refresh token in `~/.config/oriel-sheets-mcp/token.json` (or under `$XDG_CONFIG_HOME`), and the client it signed in with beside it, in `client.json`, so the server needs no environment of its own. Only you may read those files (mode 0600) or their folder (0700).
 
-The server never signs in by itself. With no sign-in, every tool says to run `login`. It keeps access tokens in memory only, and refreshes them when they expire.
+The server never signs in by itself. With no sign-in, or no client in its environment or kept by `login`, every tool says to run `login`. `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the server's environment still work, and win over the kept client. It keeps access tokens in memory only, and refreshes them when they expire.
 
-`node packages/sheets-mcp/src/main.ts logout` deletes the token file. To revoke the access at Google too, remove the app at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+`node packages/sheets-mcp/src/main.ts logout` deletes the token and the kept client. To revoke the access at Google too, remove the app at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
 
 No token, code, client ID or client secret is ever printed: not on stdout, not on stderr, not in a tool's answer.
 
 ## Add it to your client
 
-Use the absolute path to your checkout. The server reads its client from its own environment, so give it the same two variables.
+Use the absolute path to your checkout, after `login`, which keeps the client the server reads. It needs no environment.
 
 **Claude Code:**
 
 ```sh
-claude mcp add sheets --scope user \
-  -e GOOGLE_CLIENT_ID=<your client ID> \
-  -e GOOGLE_CLIENT_SECRET=<your client secret> \
-  -- node /path/to/oriel/packages/sheets-mcp/src/main.ts
+claude mcp add sheets --scope user -- node /path/to/oriel/packages/sheets-mcp/src/main.ts
 ```
 
 **Codex:**
 
 ```sh
-codex mcp add sheets \
-  --env GOOGLE_CLIENT_ID=<your client ID> \
-  --env GOOGLE_CLIENT_SECRET=<your client secret> \
-  -- node /path/to/oriel/packages/sheets-mcp/src/main.ts
+codex mcp add sheets -- node /path/to/oriel/packages/sheets-mcp/src/main.ts
 ```
+
+### In Oriel
+
+Oriel knows this server by exactly that command: `node`, then the absolute path to `src/main.ts` in the same checkout Oriel runs from. Started any other way, it isn't offered. Once your agent lists it, Settings and the first run offer Google Sheets through it, and Oriel reads and writes your spreadsheets through its tools (decision 0059). On Claude Code, Oriel starts it for each sync or write by that command and its arguments alone, never with an environment an entry gives it, so it reads the client `login` kept. On Codex, Codex starts it as your entry says.
+
+Through it, Oriel reads each cell as it shows: no comments, no notes, no rows or columns hidden by hand, no merges. It reads formulas only to leave them alone: a cell holding one, or text that starts with `=`, is never written over. It has no tool to delete a row, so a row a change set added through it can't be taken back there.
 
 Codex asks before each write. Read what a write sends before you approve it: a model that read a cell written to steer it could ask to write your data into someone else's spreadsheet, or, if it passes `USER_ENTERED`, a formula such as `=IMPORTDATA(…)` that sends cells to a web address.
 
 ## Fixture mode
 
 `--fixture <file.json>` serves the same tools from spreadsheets held in memory, with no network, no sign-in and no client. Writes change the copy in memory only. It's for tests, evals and trying a client.
+
+With `--shared` too, it reads the file afresh for every call and writes each write to it, so several processes, such as Oriel's sync and its replay, share one. It changes the file: run it on a copy.
 
 `fixture/backlog.json` is a small one: a _Product backlog_ spreadsheet with a header row and 20 rows on its _Backlog_ tab, a second tab of notes, and a view-only _Release checklist_.
 
@@ -97,6 +99,18 @@ codex exec -c 'mcp_servers.sheets.command="node"' \
 ```
 
 A fixture is `{ "spreadsheets": [...] }`. Each spreadsheet has an `id`, a `name`, a `modifiedTime` (RFC 3339), an optional `canEdit` (false for view-only), and `tabs`. Each tab has a `sheetId`, a `title`, optional `frozenRows`, `rowCount` and `columnCount`, and `rows` of strings. The fake computes no formulas: with `USER_ENTERED`, a cell keeps the text as entered.
+
+## Live: one run against Google (the maintainer's)
+
+Tests and dev only ever run fixture mode. A run against Google is the maintainer's, on our test account, never a person's data:
+
+1. Set up a client as above, in the test account's Cloud project, and sign in with the test account: `GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… node packages/sheets-mcp/src/main.ts login`.
+2. In that account's Drive, make a copy of the shipped fixture's _Product backlog_: a spreadsheet with a frozen header row `Key, Title, Status, Owner, Priority, Estimate, Sprint, Updated` on a tab called _Backlog_.
+3. Add the server to Claude Code and to Codex with no environment, as above, and check each lists its five tools: `claude mcp list`, `codex mcp list`.
+4. Start Oriel, open Settings → Sources, and turn Google Sheets on through sheets-mcp. Ask the window chat to draft how Oriel reads it, and apply the draft that maps _Backlog_.
+5. Check the window shows the backlog's rows, then approve one change set that sets one row's status, and check the cell changed in Google Sheets, and its Undo puts it back. Do it once on each agent.
+6. To record its answers for the tests from Codex, which runs no model, point `backlogPicks` in `scripts/record-source-mcp.ts` at the copy's ID for the run, then `node scripts/record-source-mcp.ts sheets --through codex --server sheets`. Read the files before committing them, and put `backlogPicks` back.
+7. `node packages/sheets-mcp/src/main.ts logout` when done.
 
 ## Develop
 
