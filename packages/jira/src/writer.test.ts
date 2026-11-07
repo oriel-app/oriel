@@ -941,3 +941,29 @@ test("through Atlassian's server, each mutation is one write call, and a status 
   // No write went through a read tool, nor a read through a write one.
   assert.ok(written.every((each) => !each.tool.startsWith("get") && !each.tool.startsWith("list")));
 });
+
+test("through Atlassian's server, a link can't be removed, so it says so before Revert is offered; through REST it can", async () => {
+  const { jiraWriterOf } = await import("./writer.ts");
+  const none = async () => ({ content: [] });
+  const through = jiraWriterOf(
+    {
+      site: "https://acme.atlassian.net",
+      project: "SYN",
+      through: { cloudId: "cloud", read: none, write: none },
+    },
+    () => {},
+  );
+  assert.deepEqual(through.unsendable, {
+    removeLink: "A link added to a Jira issue can't be taken back",
+  });
+  const rest = jiraWriterOf(
+    {
+      site: "https://acme.atlassian.net",
+      project: "SYN",
+      credential: basicAuth("a@example.com", "token"),
+      fetch: async () => new Response(null, { status: 500 }),
+    },
+    () => {},
+  );
+  assert.equal(rest.unsendable, undefined);
+});

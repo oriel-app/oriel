@@ -544,10 +544,14 @@ export function jiraWriterOf(writes: JiraWrites, log: Log): SourceWriter<"jira">
         })
       : null;
   if (!transport) throw new Error("a Jira connection writes with an account or a server");
-  return jiraWriter({
+  const writer = jiraWriter({
     transport,
     project: writes.project,
     ...(writes.boards ? { boards: writes.boards } : {}),
     log,
   });
+  // Atlassian's server has no tool to remove a link (atlassian.ts).
+  return through
+    ? { ...writer, unsendable: { removeLink: "A link added to a Jira issue can't be taken back" } }
+    : writer;
 }

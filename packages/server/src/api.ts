@@ -514,6 +514,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       changeSets.applying(set.id),
       changeSets.writable(set.id),
       changeSets.stalled(set.id),
+      changeSets.cannotUndo(set.id),
     );
   const changeSetReply = async (id: Ulid, extra: Record<string, unknown> = {}) =>
     json(200, { changeSet: await viewOf(await mustChangeSet(id)), ...extra });
@@ -531,6 +532,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       (id) => changeSets.applying(id as Ulid),
       (id) => changeSets.stalled(id as Ulid),
       (id) => changeSets.writable(id as Ulid),
+      (id) => changeSets.cannotUndo(id as Ulid),
     );
   };
 

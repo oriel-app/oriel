@@ -132,14 +132,11 @@ test("Slack on through its server syncs the person's channel with its read tools
   assert.ok(!JSON.stringify(data).includes("weather"));
 });
 
-test("an approved reply replays through the write tool, from another process", async (t) => {
-  const conversation = `slack:${weather}-${question}`;
-  const reply: Script = async () => ({
-    value: null,
-    writes: [["slack.reply", [conversation, "On it"]]],
-  });
-  const it = await world(t, { script: reply });
-  await it.turnOn();
+const conversation = `slack:${weather}-${question}`;
+
+// A thread whose agent replies to Amara, its change set approved: the
+// thread as it is then, and the set's ID.
+async function approvedReply(it: Awaited<ReturnType<typeof world>>) {
   const { id: workstreamId } = json<{ id: string }>(
     await it.post("/api/workstreams", { kind: "picked", name: "Rebooking", items: [conversation] }),
   );
@@ -158,6 +155,21 @@ test("an approved reply replays through the write tool, from another process", a
   });
   assert.equal(approved.status, 200);
   await it.app.settled();
+  const after = json<ThreadView>(await it.get(`/api/threads/${threadId}`));
+  const set = after.changeSets.find((each) => each.id === entry.changeSetId);
+  assert.equal(set?.status, "applied");
+  return { set, changeSetId: entry.changeSetId };
+}
+
+const reply: Script = async () => ({
+  value: null,
+  writes: [["slack.reply", [conversation, "On it"]]],
+});
+
+test("an approved reply replays through the write tool, from another process", async (t) => {
+  const it = await world(t, { script: reply });
+  await it.turnOn();
+  await approvedReply(it);
   const written = it.made.filter((each) => writes.includes(each.call.tool));
   assert.deepEqual(
     written.map((each) => each.call),
@@ -235,4 +247,27 @@ test("Slack off: nothing of it shows, and its server calls stop", async (t) => {
   const calls = it.made.length;
   await it.sync("slack");
   assert.equal(it.made.length, calls);
+});
+
+test("a reply through Slack's server offers no Revert, and says why; through its token it does", async (t) => {
+  // Slack's server has no tool to delete a message, so nothing offers to.
+  const through = await world(t, { script: reply });
+  await through.turnOn();
+  const { set, changeSetId } = await approvedReply(through);
+  assert.deepEqual(set?.nextSteps, []);
+  assert.equal(set?.cannotUndo, "A Slack reply can't be taken back");
+  const refused = await through.post(`/api/change-sets/${changeSetId}/revert`);
+  assert.equal(refused.status, 409);
+  assert.ok(
+    through.made.every((each) => each.call.tool !== "slack_delete_message"),
+    "nothing is sent",
+  );
+  // Through Slack's Web API, a reply is deleted by a revert, as before.
+  const rest = await world(t, { script: reply, token: true });
+  const { set: restSet } = await approvedReply(rest);
+  assert.deepEqual(
+    restSet?.nextSteps.map((step) => step.kind),
+    ["revert"],
+  );
+  assert.equal(restSet?.cannotUndo, undefined);
 });

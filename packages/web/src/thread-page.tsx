@@ -950,6 +950,8 @@ function ChangeSet(props: {
       {awaits && approvable && !look && diff && diff.lines.length > 0 && (
         <p class="change-set-foot">Nothing is written to {sourcesOf(diff)} until you approve.</p>
       )}
+      {/* Applied, with no Revert, since its source can't take one change back. */}
+      {set.cannotUndo && !shut && <p class="change-set-foot">{set.cannotUndo}.</p>}
       {/* Where the actions belong, which tells whether they're stuck. */}
       <div class="change-set-end" ref={foot} aria-hidden="true" />
       {problem && (

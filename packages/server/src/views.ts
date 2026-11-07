@@ -198,6 +198,7 @@ export function changeSetView(
   applying: boolean,
   writable: boolean,
   stalled: boolean,
+  cannotUndo: string | null = null,
 ): ChangeSetView {
   return {
     id: set.id,
@@ -222,6 +223,7 @@ export function changeSetView(
     ),
     revertOf: set.revertOf,
     reverts: all.filter((other) => other.revertOf === set.id).map((other) => other.id),
+    ...(cannotUndo !== null && { cannotUndo }),
     createdAt: set.createdAt,
   };
 }
@@ -733,6 +735,8 @@ export function views(deps: ViewDeps) {
       // Whether a change set can be approved here; by the thread's own
       // `writable` unless given.
       writable: (changeSetId: string) => boolean = () => deps.writable,
+      // Why one that applied can't be undone, where a writer can't send it.
+      cannotUndo: (changeSetId: string) => string | null = () => null,
     ): Promise<ThreadView | null> {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
@@ -784,6 +788,7 @@ export function views(deps: ViewDeps) {
             applying(set.id),
             writable(set.id),
             stalled(set.id),
+            cannotUndo(set.id),
           );
           const look = looks.get(set.id);
           return look === undefined ? view : { ...view, secondLook: look };
