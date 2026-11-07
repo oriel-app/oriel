@@ -58,7 +58,8 @@ test("it lists a team's issues by page, and refuses an argument it doesn't take"
     limit: 5,
     after: info.endCursor,
   });
-  const ids = (body: typeof first.body) => (body.issues as { identifier: string }[]).map((each) => each.identifier);
+  const ids = (body: typeof first.body) =>
+    (body.issues as { identifier: string }[]).map((each) => each.identifier);
   assert.deepEqual(ids(first.body), ["ENG-1", "ENG-2", "ENG-3", "ENG-4", "ENG-5"]);
   assert.deepEqual(ids(second.body), ["ENG-6", "ENG-7", "ENG-8", "ENG-9", "ENG-10"]);
   const unknown = await call(server, linearTools.issues, { teamId: "ENG" });

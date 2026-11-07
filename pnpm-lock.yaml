@@ -201,6 +201,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/linear':
+        specifier: workspace:*
+        version: link:../linear
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox

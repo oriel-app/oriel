@@ -163,7 +163,13 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
         ...(project ? { project: project.id } : {}),
       });
     });
-    return result(null, { kind: "issue", issue }, [...linearFields]);
+    // What a create sets, and no assignee: one would read as handing the
+    // work off.
+    return result(
+      null,
+      { kind: "issue", issue },
+      linearFields.filter((field) => field !== "assignee"),
+    );
   };
 
   // A set op on one issue or project: one save of the field it sets.
