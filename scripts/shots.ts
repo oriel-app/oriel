@@ -3706,8 +3706,9 @@ scenes.push(
       cli: { signedIn: true },
       refuses: "Claude Code stopped: Your current subscription does not include Claude Code.",
     }),
+    // Refused on Your AI, so the first run stays there.
     act: async (page) => {
-      await continueWithClaude(page);
+      await page.getByRole("button", { name: "Continue with Claude Code" }).click();
       await page.getByText("doesn't include Claude Code").waitFor();
     },
   },
