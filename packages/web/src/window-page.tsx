@@ -254,12 +254,6 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
           </button>
         </p>
       )}
-      {derived && (
-        <p class="derived-note">
-          <span class="derived-tag">Oriel rule</span>
-          marks a cluster Oriel made, which the source doesn't have. Each one shows its rule.
-        </p>
-      )}
       <div
         hidden={shown.clusters.length === 0 && filtered(model.filter)}
         class={stale ? "clusters stale" : "clusters"}
@@ -281,6 +275,14 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
           />
         ))}
       </div>
+      {/* Under the clusters, not over them: a grouping with Oriel's clusters
+          starts its list where every other grouping does. */
+      {derived && (
+        <p class="derived-note">
+          <span class="derived-tag">Oriel rule</span>
+          marks a cluster Oriel made, which the source doesn't have. Each one shows its rule.
+        </p>
+      )}
     </>
   );
 }

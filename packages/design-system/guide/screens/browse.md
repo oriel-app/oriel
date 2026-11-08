@@ -8,7 +8,7 @@ summary: Browse as a person opens it from the overview, by epic, on the fixture:
 
 ## What it shows
 
-Browse is the window's second view: every item in the window, in clusters under a grouping, to look through, pick from and make workstreams of (decision 0027). This is Browse as a person opens it from the overview's tabs: grouped by epic, on the synthetic fixture, with no filter set. The first cluster is open, three of its 14 items shown with **Show 11 more** under them; the rest are closed. The last cluster is Oriel's own, for items from sources that have no epics, so the line above the clusters says what its tag means.
+Browse is the window's second view: every item in the window, in clusters under a grouping, to look through, pick from and make workstreams of (decision 0027). This is Browse as a person opens it from the overview's tabs: grouped by epic, on the synthetic fixture, with no filter set. The first cluster is open, three of its 14 items shown with **Show 11 more** under them; the rest are closed. The last cluster is Oriel's own, for items from sources that have no epics, so the line under the clusters says what its tag means.
 
 ```html specimen id=screen title="Browse by epic, with the sidebar" screen height=900
 <div class="shell">
@@ -456,10 +456,6 @@ Browse is the window's second view: every item in the window, in clusters under 
             </select>
           </label>
         </form>
-        <p class="derived-note">
-          <span class="derived-tag">Oriel rule</span>
-          marks a cluster Oriel made, which the source doesn't have. Each one shows its rule.
-        </p>
         <div class="clusters" data-grouping="epic" data-anchored>
           <section class="cluster" data-open>
             <h2 class="cluster-head">
@@ -664,6 +660,10 @@ Browse is the window's second view: every item in the window, in clusters under 
             </h2>
           </section>
         </div>
+        <p class="derived-note">
+          <span class="derived-tag">Oriel rule</span>
+          marks a cluster Oriel made, which the source doesn't have. Each one shows its rule.
+        </p>
       </main>
     </div>
   </div>

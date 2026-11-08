@@ -247,10 +247,12 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
 }
 
 // A thread from nothing, before its first message: the composer, and the
-// workstream it starts in, where a thread's page names its workstream. "New
+// workstream it starts in, at the top of the rail where a thread's items
+// will be, or beside the title where the rail waits below the chat. "New
 // workstream" is the default, which sending makes, with the thread; or the
 // person picks one already open, and its items are the thread's. Either way,
-// what a change set here creates joins it.
+// what a change set here creates joins it. A new thread has no items of its
+// own, so the rail says nothing of them until a workstream is picked.
 export function NewThreadPage({
   model,
   workstreams,
@@ -263,30 +265,35 @@ export function NewThreadPage({
   const send = (msg: NewThreadMsg) => dispatch({ type: "newThread", msg });
   const open = startable(workstreams);
   const picked = open.find((workstream) => workstream.id === model.workstream) ?? null;
+  // One picker, shown in one place at a time: CSS hides the other, so only
+  // one is ever in the accessibility tree.
+  const picker = (at: "head" | "rail") => (
+    <label class="filter new-thread-workstream" data-at={at}>
+      <span class="visually-hidden">Workstream</span>
+      <select
+        value={picked?.id ?? ""}
+        data-set={picked ? "" : undefined}
+        disabled={model.sending}
+        onChange={(event) =>
+          send({ type: "workstreamPicked", workstream: event.currentTarget.value || null })
+        }
+      >
+        <option value="">New workstream</option>
+        {open.map((workstream) => (
+          <option key={workstream.id} value={workstream.id}>
+            {workstream.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   return (
     <div class="thread-layout">
       <main class="thread">
         <header class="thread-head">
-          <label class="filter crumb new-thread-workstream">
-            <span class="visually-hidden">Workstream</span>
-            <select
-              value={picked?.id ?? ""}
-              data-set={picked ? "" : undefined}
-              disabled={model.sending}
-              onChange={(event) =>
-                send({ type: "workstreamPicked", workstream: event.currentTarget.value || null })
-              }
-            >
-              <option value="">New workstream</option>
-              {open.map((workstream) => (
-                <option key={workstream.id} value={workstream.id}>
-                  {workstream.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <div class="thread-title-row">
             <h1 class="thread-title">New thread</h1>
+            {picker("head")}
           </div>
         </header>
         <ol class="chat" />
@@ -307,10 +314,13 @@ export function NewThreadPage({
         </Dock>
       </main>
       <aside class="rail" aria-label="This thread's items">
+        {picker("rail")}
         {/* Picked, what the workstream holds arrives (window.css). */}
-        <h2 key={picked?.id ?? ""} class={picked ? "rail-title arrive" : "rail-title"}>
-          {picked?.size ? plural(picked.size, "item") : "No items"}
-        </h2>
+        {picked && picked.size > 0 && (
+          <h2 key={picked.id} class="rail-title arrive">
+            {plural(picked.size, "item")}
+          </h2>
+        )}
       </aside>
     </div>
   );

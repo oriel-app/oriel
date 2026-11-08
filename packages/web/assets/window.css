@@ -47,11 +47,13 @@ html {
   --ins-soft: var(--done-soft);
   --handed-off: var(--done);
   --handed-off-soft: var(--done-soft);
-  /* The frame (decision 0056, amended): the sidebar, a band along the top
-     of the page column and one down its right are one material, and the
-     column is set into it, its top corners curved like a table's apron
-     running into its leg, in the frame's slight shadow. On a narrow screen
-     the bar is the frame, and the corners curve from its lower edge. */
+  /* The frame (decision 0056, amended): the sidebar and a band along the
+     top of the page column are one material, and the column is set into
+     it, its top-left corner curved like a table's apron running into its
+     leg, in the frame's slight shadow. The last panel on the right runs to
+     the window's edge, square. On a narrow screen the bar is the frame, and
+     the corner curves from its lower edge. `--frame-band` is also the room
+     between the column and the item panel beside it. */
   --sidebar-bg: var(--frame);
   --frame-band: 4px;
   --frame-curve: var(--frame-corner);
@@ -340,10 +342,14 @@ html[data-text-size] {
 
 /* On Browse the scrollbar's room is kept whether the page is long enough to
    need it or not, so switching groupings, which grow and shrink the page,
-   never moves it sideways. That room is the frame's. */
-html:has(.window-layout) {
-  scrollbar-gutter: stable;
-  background: var(--frame);
+   never moves it sideways. Only where a scrollbar takes room: an overlay
+   scrollbar keeps none, and a phone-width page keeps none. The room is the
+   page's own paper, under the band, so nothing marks it. */
+@media (min-width: 761px) {
+  html:has(.window-layout) {
+    scrollbar-gutter: stable;
+    background: linear-gradient(var(--frame) var(--frame-top), var(--bg) var(--frame-top)) fixed;
+  }
 }
 
 body {
@@ -443,6 +449,9 @@ a {
   /* The panel's width, and the room it takes beside the page. */
   --panel: 30rem;
   --beside: 0rem;
+  /* The column's top-right corner: square at the window's edge, curved
+     when the panel sits beside it. */
+  --frame-end-curve: 0px;
   /* The room the bead keeps clear of on its right. */
   --bead-beside: var(--beside);
   transition: grid-template-columns var(--duration-move) ease;
@@ -452,12 +461,12 @@ a {
   --sidebar: 3.25rem;
 }
 
-/* The page column, set into the frame: the band down its right, and its
-   first line far enough down to leave the bead room. */
+/* The page column, set into the frame, to the window's edge or the panel's
+   band, and its first line far enough down to leave the bead room. */
 .shell-main {
   --inset-top: var(--frame-room);
   min-width: 0;
-  margin-right: calc(var(--beside) + var(--frame-band));
+  margin-right: var(--beside);
   background: var(--bg);
   /* The page lays out by its own width, which the panel beside it narrows. */
   container: page / inline-size;
@@ -470,17 +479,15 @@ a {
 .frame {
   position: fixed;
   top: var(--frame-top);
-  right: calc(var(--beside) + var(--frame-band));
+  right: var(--beside);
   left: var(--sidebar);
   z-index: var(--layer-frame);
   height: calc(2 * var(--frame-curve) + var(--space-6));
-  border-radius: var(--frame-curve) var(--frame-curve) 0 0;
+  border-radius: var(--frame-curve) var(--frame-end-curve) 0 0;
   box-shadow:
     0 0 0 var(--frame-reach) var(--frame),
     var(--frame-shadow);
-  clip-path: inset(
-    calc(-1 * var(--frame-band)) calc(-1 * (var(--beside) + var(--frame-band))) var(--space-6) 0
-  );
+  clip-path: inset(calc(-1 * var(--frame-band)) calc(-1 * var(--beside)) var(--space-6) 0);
   pointer-events: none;
   transition: left var(--duration-move) ease;
 }
@@ -1840,7 +1847,7 @@ button.nav-more {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin: 0 0 var(--space-3);
+  margin: var(--space-3) 0 0;
   padding: var(--space-2) var(--space-3);
   border: var(--border-thin) dashed var(--derived-line);
   border-radius: var(--radius);
@@ -2787,10 +2794,32 @@ a.replies:hover {
   margin-left: auto;
 }
 
-/* A new thread's workstream, where a thread's page names it: Browse's
-   filter, as wide as a workstream's name needs. */
+/* A new thread's workstream: Browse's filter, at the top of the rail where
+   the rail sits beside the chat, as wide as the rail; beside the title,
+   across the head row, where the rail waits below the chat. */
+.new-thread-workstream {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--head-row);
+}
+
 .new-thread-workstream select {
-  max-width: min(24rem, 100%);
+  width: 100%;
+  max-width: none;
+}
+
+.thread-title-row > .new-thread-workstream {
+  flex: 0 1 14rem;
+  margin-left: auto;
+}
+
+.thread-title-row > .new-thread-workstream[data-at="head"] {
+  display: none;
+}
+
+.rail > .new-thread-workstream {
+  margin-bottom: var(--space-2);
 }
 
 .chat {
@@ -4406,6 +4435,14 @@ a.replies:hover {
     min-height: 0;
   }
 
+  .thread-title-row > .new-thread-workstream[data-at="head"] {
+    display: flex;
+  }
+
+  .rail > .new-thread-workstream[data-at="rail"] {
+    display: none;
+  }
+
   .rail .members.compact {
     display: flex;
     flex-wrap: wrap;
@@ -4859,7 +4896,7 @@ a.replies:hover {
 .bead-wrap {
   position: fixed;
   top: var(--frame-top);
-  right: calc(var(--frame-band) + var(--bead-beside));
+  right: var(--bead-beside);
   left: var(--sidebar);
   z-index: var(--layer-toast);
   height: 0;
@@ -5250,7 +5287,7 @@ a.replies:hover {
 .item-panel {
   position: fixed;
   top: var(--frame-top);
-  right: var(--frame-band);
+  right: 0;
   bottom: 0;
   z-index: var(--layer-panel);
   display: flex;
@@ -5261,7 +5298,7 @@ a.replies:hover {
   --panel-side: var(--space-6);
   padding: var(--panel-top) var(--panel-side) var(--space-8);
   overflow-y: auto;
-  border-radius: var(--frame-curve) var(--frame-curve) 0 0;
+  border-radius: var(--frame-curve) 0 0 0;
   background: var(--bg);
   box-shadow: var(--frame-shadow), var(--shadow);
   overflow-wrap: anywhere;
@@ -5328,6 +5365,7 @@ a.replies:hover {
 @media (min-width: 1100px) {
   .shell[data-panel] {
     --beside: var(--panel);
+    --frame-end-curve: var(--frame-curve);
   }
 
   .item-panel {
@@ -5339,7 +5377,7 @@ a.replies:hover {
 @media (max-width: 760px) {
   .item-panel {
     --panel-top: var(--inset-top);
-    --panel-side: var(--space-4);
+    --panel-side: var(--space-3);
     top: 0;
     left: 0;
     width: auto;
