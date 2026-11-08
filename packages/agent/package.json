@@ -9,7 +9,8 @@
     "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
   },
   "dependencies": {
-    "@oriel/core": "workspace:*"
+    "@oriel/core": "workspace:*",
+    "effect": "4.1.1"
   },
   "devDependencies": {
     "@oriel/bindings": "workspace:*",

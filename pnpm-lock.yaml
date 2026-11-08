@@ -29,6 +29,9 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+      effect:
+        specifier: 4.1.1
+        version: 4.1.1
     devDependencies:
       '@oriel/bindings':
         specifier: workspace:*
@@ -664,6 +667,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  effect@4.1.1:
+    resolution: {integrity: sha512-XYu65BrcmNqu5i7PPvP4dqL+R5ma37zIsfuSPjcn78mog+6e5PkilNg7Xo+pBpjXJYlWEIpH4j91tMrfW05CMw==}
+
   oxfmt@0.74.0:
     resolution: {integrity: sha512-G4OP7FgwGYZR5ttRpCOOfJdyRsSyvtn34vSXnjDq6Oqed5Dufg5mB44mank+51nAdHOKuTJ0lj0mksY7L+N61A==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -897,6 +903,8 @@ snapshots:
 
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
+
+  effect@4.1.1: {}
 
   oxfmt@0.74.0:
     dependencies:
