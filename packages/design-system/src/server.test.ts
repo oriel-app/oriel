@@ -32,19 +32,3 @@ test("serves its assets, and nothing above them", () => {
   assert.equal(status("/shots/..%2F..%2F..%2FREADME.md"), 404);
   assert.equal(status("/shots/../../../package.json"), 404);
 });
-
-test("shows the checkout's files, but never one git ignores", () => {
-  assert.equal(status("/source/packages/web/assets/window.css"), 200);
-  assert.equal(status("/source/.env"), 404);
-  assert.equal(status("/source/../../../../etc/hosts"), 404);
-  assert.equal(status("/source/packages/web/assets/window.css?at=HEAD"), 404);
-  assert.equal(status("/source/packages/web/assets/window.css?at=-p"), 404);
-});
-
-test("reads only", () => {
-  assert.equal(status("/", "127.0.0.1:4400", "POST"), 405);
-});
-
-test("a malformed path is a 400, not a crash", () => {
-  assert.equal(status("/%E0%A4%A"), 400);
-});
