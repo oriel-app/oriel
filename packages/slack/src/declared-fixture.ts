@@ -9,32 +9,41 @@ import {
   parseItemId,
   type SourceFixture,
 } from "@oriel/core";
+import { memoryApi, readMethods } from "./api.ts";
 import { fixtureApi, loadSlackFixture, type SlackFixture } from "./fixture.ts";
 import type { SlackContext } from "./namespace.ts";
-import { openSlack, type SlackWrites } from "./open-connection.ts";
+import { openMemory, type SlackWrites } from "./open-connection.ts";
 import { slackPreview } from "./preview.ts";
 import type { SlackScope } from "./references.ts";
 import { slackSource } from "./source.ts";
 
 export const slackDeclaredFixture: SourceFixture<SlackContext, SlackScope, SlackWrites> = {
   load: () => loaded(loadSlackFixture()),
+  // Recorded window cases had it on through its own connection.
+  windowCase: true,
   // The channel the user picked there.
   connection: () => {
     const fixture = loadSlackFixture();
     return { identity: fixture.team.url, options: { channels: fixture.picked } };
   },
-  // Opened as Slack is, through the fixture's Web API in memory, where
-  // change sets post. A test may give its own, to act in it as others do.
+  // Opened through the fixture's Web API in memory, where change sets post,
+  // with no token. A test may give its own, to act in it as others do.
   open: (connection, via) =>
-    openSlack(connection, {
-      ...via,
-      fetch: via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
-    }),
-  preview: (connection, via) =>
-    slackPreview(connection, {
-      ...via,
-      fetch: via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
-    }),
+    openMemory(
+      connection,
+      via,
+      via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
+    ),
+  memory: (connection, via) => openMemory(connection, via, via.fetch),
+  // Its public channels, for the agent to draft which it reads (decision 0051).
+  preview: (_connection, via) =>
+    slackPreview(
+      memoryApi(
+        via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
+        readMethods,
+        "the read side",
+      ),
+    ),
 };
 
 // What people posted in the fixture's picked channels: not replies, joins or

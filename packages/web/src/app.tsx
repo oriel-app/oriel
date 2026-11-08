@@ -257,11 +257,7 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
             model={model.window}
             workstreams={model.workstreams}
             connect={
-              <ConnectNotices
-                connections={model.connections}
-                connectors={model.connectors}
-                dispatch={dispatch}
-              />
+              <ConnectNotices connections={model.connections} connectors={model.connectors} />
             }
             dispatch={dispatch}
           />

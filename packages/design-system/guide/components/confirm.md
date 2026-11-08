@@ -92,11 +92,10 @@ The app opens it with `showModal()`, centred over a `--scrim` backdrop. A specim
 Disconnecting a connection asks a question of the same kind, but not in the dialog: a `.cli-box[data-tone="warn"]` with `role="alertdialog"` opens in the connection's row, in place of its Disconnect button.
 
 ```html specimen id=disconnect title="Disconnect, asked in the row (Settings › Connections)"
-<div class="cli-box" data-tone="warn" role="alertdialog" aria-label="Disconnect Jira?">
+<div class="cli-box" data-tone="warn" role="alertdialog" aria-label="Disconnect Launch notes?">
   <p>
-    <strong>Disconnect Jira?</strong> Its 28 items leave the window, with what Oriel keeps to sign
-    in to it. Workstreams keep them as items Oriel no longer has, and threads keep what was said.
-    Nothing changes in Jira.
+    <strong>Disconnect Launch notes?</strong> Its 28 items leave the window. Workstreams keep them
+    as items Oriel no longer has, and threads keep what was said. Nothing changes in the folder.
   </p>
   <div class="cli-actions">
     <button type="button" class="button danger">Disconnect</button>

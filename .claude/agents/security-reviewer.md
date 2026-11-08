@@ -10,7 +10,7 @@ You need the diff, from the diff file you were given. If you got only paths, say
 
 Read first:
 
-- SPEC.md §1, §4, §5, §7 and §9, and decisions 0003, 0006 and 0036.
+- SPEC.md §1, §4, §5, §7 and §9, and decisions 0003, 0006, 0036 and 0059.
 - Every `.claude/rules/*.md`, whichever paths changed.
 - The changed code and its callers.
 
@@ -21,8 +21,8 @@ Oriel runs on the user's own machine: on localhost with `pnpm dev` and, for pilo
 What an attacker wants:
 
 - **Credentials:**
-  - the maintainer's Jira and Slack credentials, which can write, and the Anthropic key;
-  - a pilot PM's own tokens, typed in when they connect a source and kept in the OS secret store on the desktop app (decision 0042);
+  - the Anthropic key, in `.env` under `pnpm dev` and in the OS secret store on the desktop app (decision 0042), and the test site's and test workspace's tokens in `.env`, which can write and which only `pnpm seed:jira` and `pnpm seed:slack` read;
+  - the sign-in of each of the user's source servers, which their agent keeps and Oriel must never read, store or relay (decision 0059);
   - the desktop app's launch secret, which is the only access control on its server;
   - the sign-in of the user's command-line agent, which Oriel must never read, store or relay;
   - a live review link, and the key in its fragment;
@@ -43,7 +43,7 @@ Who controls what:
 - Link unfurlers in Slack and Teams, and email scanners, fetch every review link they see.
 - Anyone holding a review link can send requests to it, even after it is revoked. The relay's operator, or whoever breaks into it, holds every ciphertext and every sealed decision, and whoever controls the decrypting page's host can read the keys and seal any decision.
 - Whoever controls the network or the release host can offer an update.
-- The person connecting a source types its site URL.
+- Whoever runs a source server, or edits what it serves, controls its tool results and what it says about itself: its name, its tools' descriptions and their schemas (decision 0059).
 - A PR's code runs on the maintainer's machine, where `.env` is readable by any process, when someone checks out the branch or runs `pnpm check`.
 
 ## Look for
@@ -59,8 +59,7 @@ Who controls what:
 - **Browser and the desktop shell:**
   - a request served without the launch secret on the desktop app, other than the review link page's own routes with their token, which are listed in decision 0036;
   - a route the harness uses to reach `run` that skips the launch secret without a per-turn capability of its own;
-  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a secret outside the names and shapes the shell takes (decisions 0042 and 0049), a connection's ID taken from the page rather than the server's own, or a secret written as plaintext;
-  - an OAuth loopback listener that listens beyond 127.0.0.1, takes more than its one redirect, or takes a code without its PKCE verifier and `state` (decision 0050);
+  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, a secret under any name but `anthropic-key` (decision 0042), or a secret written as plaintext;
   - the secret in argv, an environment, a URL, a log or a non-constant-time compare;
   - the webview navigating away from the server's origin, or any bridge from the page to the shell;
   - a preload, Node integration or an unsandboxed renderer; a permission granted beyond writing text to the clipboard from the server's origin; a fuse turned back on (run-as-Node, `NODE_OPTIONS`, inspector arguments, `file://` privileges); a launch argument the shell lets through beyond its own switches (`refusedArguments` in `packages/desktop/shell/rules.ts`), or a way into a debugger from the shipped app, such as the probe build's main process in it; or an Electron zip or types file whose hash isn't the pinned one;
@@ -86,6 +85,15 @@ Who controls what:
   - the first run (decision 0038) running anything but a vendor's installer from its fixed URL and the CLI's own sign-in, status and update commands, or running a binary before its signature and Team ID are checked;
   - a sign-in code, the sign-in link's query or the account's email in a log, telemetry or Oriel's store, or anything written to the CLI's stdin during its sign-in.
   - Codex, a preview (decision 0048), whose accepted exceptions are the person's own Codex config loading, a read-only sandbox that can still read files, and a tool list the harness can't verify: anything that widens them, such as a request of Codex's other than a `run` call answered with anything but a decline, a lock-down flag, thread setting or start check dropped, or an item other than a message, its reasoning, a `run` call, a declined file change or Codex compacting its context let through without stopping the turn.
+- **Source servers** (decision 0059):
+  - a source server loaded into the agent's turns, or into anything but sync and a change set's replay;
+  - sync with any tool but its one server's read tools, allowed by name, or with more than that one server loaded; on Claude Code, a sync that goes on when `system/init` reports anything else;
+  - replay calling anything but exactly the captured mutations' write calls with exactly their arguments, or sync and replay in the same process;
+  - a kind turned on by the agent, an outside tool or a review link, rather than by the person's click (or the maintainer's `--on` under `pnpm dev`);
+  - Oriel changing the person's agent configuration (adding, removing, signing in or out of a server), or reading a server's definition, environment or sign-in from the agent's files;
+  - which kind a server serves decided by a model call or by the server's own description, rather than by its address, name and tools' names;
+  - a parser that lets a result it can't read into the index, rather than stopping that sync;
+  - a connection secret kept again, or one an older Oriel stored read rather than deleted at start.
 - **Updates and the relay:**
   - an update applied without checking the manifest's Ed25519 signature, the archive's hash and its code signature, or one that isn't newer than the running version;
   - the update signing key anywhere online, CI included;
@@ -121,7 +129,7 @@ Skip denial of service by the maintainer against their own instance, and issues 
   - approval bypass;
   - sandbox escape;
   - a leaked credential;
-  - an unapproved Jira write;
+  - an unapproved write to a source;
   - code execution on the maintainer's machine.
 - **Medium:** exposure of item content, or harm that needs one extra condition the attacker can plausibly arrange.
 - **Low:** limited impact, or harm that needs an unlikely condition.

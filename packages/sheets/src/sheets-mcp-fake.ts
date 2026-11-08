@@ -3,7 +3,9 @@
 // in the shapes the server gives, as `fixtures/sheets-mcp/` records them.
 // Every call is kept, so a test can say which were made.
 import type { ToolAnswer, ToolCall, ToolCaller } from "@oriel/core";
-import { columnLetters, parseRange, quoteTab } from "./a1.ts";
+import { columnIndex, columnLetters, parseRange, quoteTab } from "./a1.ts";
+import { type FixtureCell, shown, valueOf } from "./fixture.ts";
+import type { StandIn } from "./stand-in.ts";
 
 export const fakeId = "1FakeSheetsMcpBacklog00";
 
@@ -179,3 +181,114 @@ export const fakeRows = (): string[][] => [
   ["BL-2", "Export as CSV", "To do", "3", "5"],
   ["BL-3", "=Not a formula, as text", "In progress", "", "5"],
 ];
+
+// packages/sheets-mcp's read tools over the Sheets fixture's stand-in for
+// Google, for the spreadsheets `ids` names, as the server answers them for
+// its account: for tests of a connection through it to the fixture's
+// spreadsheets, where a test changes them as a person would (OA-280).
+// Nothing here signs in: the server's sign-in is its own. Every call is
+// kept.
+export function fixtureServer(
+  standIn: StandIn,
+  ids: readonly string[],
+): { read: ToolCaller; calls: ToolCall[] } {
+  const calls: ToolCall[] = [];
+  const entered = (cell: FixtureCell | undefined): string | number | boolean => {
+    if (typeof cell === "object" && cell?.formula !== undefined) return cell.formula;
+    if (typeof cell === "object" && cell?.spilled) return "";
+    return valueOf(cell) ?? "";
+  };
+  const read: ToolCaller = async (call) => {
+    calls.push(call);
+    const { tool, args } = call;
+    if (tool === "list_spreadsheets") {
+      const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
+      return answer({
+        spreadsheets: ids
+          .map((id) => standIn.spreadsheet(id))
+          .filter((each) => each.title.toLowerCase().includes(query))
+          .map((each) => ({
+            id: each.id,
+            name: each.title,
+            modifiedTime: each.modifiedTime,
+            url: "",
+          })),
+      });
+    }
+    const id = String(args.spreadsheetId ?? "");
+    if (!ids.includes(id))
+      return failed("Google found no spreadsheet with that ID that this account can open.");
+    const spreadsheet = standIn.spreadsheet(id);
+    if (tool === "get_spreadsheet")
+      return answer({
+        id,
+        title: spreadsheet.title,
+        url: "",
+        tabs: spreadsheet.tabs.map((tab, index) => ({
+          sheetId: tab.sheetId,
+          title: tab.title,
+          index,
+          rowCount: tab.grid?.rows ?? tab.rows.length,
+          columnCount: tab.grid?.columns ?? Math.max(1, ...tab.rows.map((row) => row.length)),
+          frozenRowCount: tab.frozenRows ?? 0,
+        })),
+      });
+    if (tool === "read_range") {
+      const range = parseRange(String(args.range));
+      const tab = spreadsheet.tabs.find((each) => each.title === range?.tab);
+      if (!range || !tab) return failed("`range` names no tab of that spreadsheet.");
+      const start = range.bounds?.startRow ?? 0;
+      const end = Math.min(range.bounds?.endRow ?? tab.rows.length, tab.rows.length);
+      const formula = args.valueRenderOption === "FORMULA";
+      const values = tab.rows
+        .slice(start, end)
+        .map((row) => row.map((cell) => (formula ? entered(cell) : shown(cell))));
+      // As Google leaves them out: empty cells at a row's end, and empty
+      // rows at the end.
+      for (const row of values) while (row.length && row.at(-1) === "") row.pop();
+      while (values.length && values.at(-1)?.length === 0) values.pop();
+      if (args.includeGrid !== true) return answer({ range: args.range, values, truncated: false });
+      const inside = (row: number) => row >= start && row < end;
+      return answer({
+        range: args.range,
+        values,
+        truncated: false,
+        hiddenRows: (tab.hiddenRows ?? []).filter((row) => inside(row - 1)),
+        hiddenColumns: (tab.hiddenColumns ?? []).filter((letters) => columnIndex(letters) !== null),
+        notes: tab.rows.flatMap((row, r) =>
+          inside(r)
+            ? row.flatMap((cell, c) =>
+                typeof cell === "object" && cell?.note !== undefined
+                  ? [{ cell: `${columnLetters(c)}${r + 1}`, note: cell.note }]
+                  : [],
+              )
+            : [],
+        ),
+      });
+    }
+    if (tool === "list_comments")
+      return answer({
+        comments: spreadsheet.comments
+          .filter((each) => !each.deleted)
+          .map((each) => ({
+            author: each.author,
+            createdTime: each.createdTime,
+            content: each.content,
+            // Resolved by its last reply that resolved or reopened it.
+            resolved: (each.replies ?? []).reduce(
+              (was, reply) =>
+                reply.action === "resolve" ? true : reply.action === "reopen" ? false : was,
+              false,
+            ),
+            ...(each.quoted === undefined ? {} : { quoted: each.quoted }),
+            replies: (each.replies ?? []).map((reply) => ({
+              author: reply.author,
+              createdTime: reply.createdTime,
+              content: reply.content,
+            })),
+          })),
+      });
+    throw new Error(`the fake has no read tool ${tool}`);
+  };
+  return { read, calls };
+}

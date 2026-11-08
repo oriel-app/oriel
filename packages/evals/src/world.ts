@@ -165,7 +165,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   // as a person turns it on.
   const off = new Set(input.off ?? []);
   const ownConnection = (declaration: SourceDeclaration) =>
-    declaration.connect !== undefined || declaration.live !== undefined;
+    declaration.connect !== undefined || declaration.fixture.windowCase === true;
   const plain = (kind: string, declaration: SourceDeclaration) =>
     !off.has(kind) &&
     !declaration.standIn &&
@@ -326,10 +326,10 @@ async function waitingIn(
   connected: readonly string[],
   servers: readonly string[],
 ): Promise<Waiting | null> {
-  const plainVia = { kept: true, log: () => {}, now: () => now };
+  const plainVia = { log: () => {}, now: () => now };
   const viaOf = (kind: string): OpenVia => {
     const through = servers.includes(kind) ? throughPreviews[kind] : undefined;
-    return through ? { ...plainVia, kept: false, server: through() } : plainVia;
+    return through ? { ...plainVia, server: through() } : plainVia;
   };
   const waiting = await Promise.all(
     Object.entries(unfit).map(async ([kind, options]) => {
@@ -341,7 +341,6 @@ async function waitingIn(
         id,
         number: 1,
         prefix: kind,
-        secret: null,
         options,
       };
       // A new connection with no options yet waits, as the server has it;
@@ -368,7 +367,6 @@ async function waitingIn(
       id: waitingConnectionId(kind),
       number: 1,
       prefix: kind,
-      secret: null,
     };
     return [waitingOne(declaration, connection, readsNow, viaOf(kind))];
   });

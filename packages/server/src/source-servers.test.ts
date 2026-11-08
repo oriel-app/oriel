@@ -17,7 +17,7 @@ async function world(
 ) {
   const agent = fakeAgent(options.found ?? (() => []));
   const it = await testApp(t, {
-    ...(options.connect === false ? {} : { connect: {} }),
+    ...(options.connect === false ? {} : { jira: false }),
     ...(options.slack ? { slack: { mode: "fixture" } } : {}),
     discover: agent.discover,
     knownServers: testKnown,

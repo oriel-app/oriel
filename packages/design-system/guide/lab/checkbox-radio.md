@@ -3,24 +3,24 @@ title: Checkbox and radio
 status: proposed
 order: 20
 summary: Oriel's checkboxes and radios are the browser's, tinted with accent-color. A drawn version with appearance none, beside them in every state, and why accent-color is enough for now.
-classes: checkbox, radio, pick, anchor-pick, choice, choices, choice-rows, choice-row
+classes: checkbox, radio, pick, anchor-pick, choice, choices
 ---
 
 # Checkbox and radio
 
 ## What it is
 
-Oriel has two checkboxes and three kinds of radio, all native `<input>`s:
+Oriel has two checkboxes and two kinds of radio, all native `<input>`s:
 
 - **Browse's pick** (`.pick`): a checkbox on each item row, and one on a cluster's heading for its anchor, the epic itself. It waits, invisible, until the row is pointed at or something is picked.
 - **Settings' choices** (`.choice`): a few radios under a setting's name, such as "Times".
-- **The connect steps' rows** (`.choice-row`): one radio per row, such as a Jira project, with the picked row tinted.
+- **A pick through a source server** (`.choice` too, in `.choices`): one radio per option, such as a Jira project, under Change.
 
-Today the first two are tinted with `accent-color: var(--accent)`, and the browser draws the rest. The third has no rule at all, so its radio is the browser's default blue.
+Today all of them are tinted with `accent-color: var(--accent)`, and the browser draws the rest.
 
 The proposal draws both controls with Oriel's tokens: `appearance: none` on the real `<input>`, then a border, a fill and a mark. The input stays an input, so its name, its state, its keys and its label all stay the browser's. Picked is the accent, "your choice made", as the [switch](/lab/switch) says.
 
-**The short answer:** `accent-color` is enough for Oriel today. Add it to the connect steps' radios, which lack it, and keep the browser's drawing. Draw them only if the text-size setting or a cross-engine look starts to matter. See [Adopt now or wait](#adopt-now-or-wait).
+**The short answer:** `accent-color` is enough for Oriel today. Keep the browser's drawing. Draw them only if the text-size setting or a cross-engine look starts to matter. See [Adopt now or wait](#adopt-now-or-wait).
 
 ## Today
 
@@ -142,52 +142,6 @@ Oriel's own markup and CSS. `data-picking` is what the app sets on Browse once s
     >
   </div>
 </fieldset>
-```
-
-```html specimen id=today-rows title="Connect steps: rows to pick one from (no accent-color: the browser's blue)" side=today
-<ul class="choice-rows" role="radiogroup" aria-label="Projects">
-  <li data-picked>
-    <label class="choice-row">
-      <input type="radio" name="today-project" value="SYN" checked />
-      <span class="choice-text"
-        ><span class="choice-name">Ferrowick</span
-        ><span class="choice-detail">SYN · 29 issues · changed Nov 3</span></span
-      >
-    </label>
-  </li>
-  <li>
-    <label class="choice-row">
-      <input type="radio" name="today-project" value="OPS" />
-      <span class="choice-text"
-        ><span class="choice-name">Ferrowick operations</span
-        ><span class="choice-detail">OPS · 112 issues · changed Oct 28</span></span
-      >
-    </label>
-  </li>
-</ul>
-```
-
-```html specimen id=proposed-rows title="Connect steps, drawn: .radio, now the accent" side=proposed
-<ul class="choice-rows" role="radiogroup" aria-label="Projects">
-  <li data-picked>
-    <label class="choice-row">
-      <input type="radio" class="radio" name="proposed-project" value="SYN" checked />
-      <span class="choice-text"
-        ><span class="choice-name">Ferrowick</span
-        ><span class="choice-detail">SYN · 29 issues · changed Nov 3</span></span
-      >
-    </label>
-  </li>
-  <li>
-    <label class="choice-row">
-      <input type="radio" class="radio" name="proposed-project" value="OPS" />
-      <span class="choice-text"
-        ><span class="choice-name">Ferrowick operations</span
-        ><span class="choice-detail">OPS · 112 issues · changed Oct 28</span></span
-      >
-    </label>
-  </li>
-</ul>
 ```
 
 ## Proposed
@@ -324,7 +278,7 @@ Each pair is today's (left) and drawn (right). Hover and focus are forced with `
 
 ```html specimen id=today-invalid title="Wrong today: no style; the browser shows nothing until submit" side=today state=error
 <fieldset class="settings-field">
-  <legend class="settings-field-name">Which Jira project?</legend>
+  <legend class="settings-field-name">Jira project</legend>
   <div class="choices">
     <label class="choice"
       ><input type="radio" name="today-need" value="SYN" required aria-invalid="true" />Ferrowick
@@ -341,7 +295,7 @@ Each pair is today's (left) and drawn (right). Hover and focus are forced with `
 
 ```html specimen id=proposed-invalid title="Wrong, drawn: the edge in --danger (:user-invalid or aria-invalid)" side=proposed state=error
 <fieldset class="settings-field">
-  <legend class="settings-field-name">Which Jira project?</legend>
+  <legend class="settings-field-name">Jira project</legend>
   <div class="choices">
     <label class="choice"
       ><input
@@ -384,7 +338,6 @@ Nothing changes, which is the reason to keep the real `<input>`:
 - **Radio:** Tab reaches the picked one in a group (or the first, with none picked), the arrow keys move and pick within the `name` group, and Space picks.
 - **Names:** Browse's picks are named by `aria-label` ("Pick Pay with a phone wallet on the website"), since the row's title is a link beside it. Settings' radios are named by their `<label>` text, inside a `<fieldset>` whose `<legend>` names the group. Keep both.
 - **Roles and states** come from the element: checkbox or radio, checked, mixed (for `indeterminate`), disabled, invalid. `appearance: none` changes none of them; the check confirms each still has a name in both themes.
-- The connect steps' list adds `role="radiogroup"` on the `<ul>` and its `aria-label` ("Projects"). That's right, and unchanged.
 
 ## Support and fallback
 
@@ -402,9 +355,8 @@ Nothing here needs `@supports`: an engine that ignored `appearance: none` would 
 
 ## Adopt now or wait
 
-**Wait, and adopt one line now.**
+**Wait.**
 
-- **Now:** add `accent-color: var(--accent)` to the connect steps' radios, which have none and show the browser's blue (`.choice-row` in `window.css` needs a `.choice-row input` beside it). That's the only visible inconsistency today.
 - **Wait** on drawing. `accent-color` already does the one thing that matters, the accent when picked, in every engine, for free. The drawn version wins on following the text size and on one look across engines, but Oriel's controls run in one engine (the desktop app), and none of them is on the shared review page. Revisit if a text-size complaint lands, or if a form with required choices arrives and needs a red edge.
 - **Don't** make the anchor's pick part-picked. See States.
 
@@ -414,7 +366,5 @@ If drawing is adopted:
 
 1. Paste `assets/proposals/choice.css` into window.css after `.pick input`, and delete the two `accent-color` lines it replaces, in `.pick input` and `.choice input` in `window.css`.
 2. Add `class="checkbox"` to the two pick inputs, which `Cluster` and `Item` in `packages/web/src/window-page.tsx` draw.
-3. Add `class="radio"` to the radios of `Choices` in `packages/web/src/settings-page.tsx`, `PickOption` in `packages/web/src/connections-page.tsx` and `PickStep` in `packages/web/src/connect-steps.tsx`.
-4. Rerun `pnpm shots` for Browse with picks, Settings › General and the first run's project step, in Graphite and Broadsheet, light and dark, at Large text.
-
-Until then, add `.choice-row input { margin: 0; accent-color: var(--accent); }` next to `.choice-row` in `window.css`.
+3. Add `class="radio"` to the radios of `Choices` in `packages/web/src/settings-page.tsx` and `PickOption` in `packages/web/src/connections-page.tsx`.
+4. Rerun `pnpm shots` for Browse with picks, Settings › General and a pick through a source server in Settings › Connections, in Graphite and Broadsheet, light and dark, at Large text.

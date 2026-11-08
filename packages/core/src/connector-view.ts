@@ -1,6 +1,6 @@
 // How a connector shows in the window, as its declaration says and the server
 // sends it, so the page keeps no list of sources (decision 0049).
-import type { ConnectOffer, ConnectStep, OptionField } from "./connect.ts";
+import type { ConnectOffer, ConnectStep, OptionField, ReviewStep } from "./connect.ts";
 import type { SourceKind } from "./ids.ts";
 import type { IndexRecord } from "./source.ts";
 
@@ -27,9 +27,14 @@ export type ConnectorView = {
   columns: readonly BrowseColumn[];
   // Whether it writes, so a connection of it may be read-only.
   writable: boolean;
-  // How a person makes a connection of it in the window, and how the window
-  // offers it; null where only a flag makes one.
-  connect: { steps: readonly ConnectStep[]; offer: ConnectOffer } | null;
+  // How the window offers it; null where it doesn't.
+  offer: ConnectOffer | null;
+  // How a person makes a connection of it in the window, as the folder's;
+  // null where only a flag or a source server makes one (decision 0059).
+  connect: { steps: readonly ConnectStep[] } | null;
+  // The words of the review step that drafts its options, which Settings
+  // draws with its mapping (decision 0051); null where it has none.
+  review: ReviewStep | null;
   // Its options, as Settings draws them.
   options: readonly OptionField[];
   // A stand-in's (decision 0059): the kinds it stands in for, and how the
@@ -58,7 +63,7 @@ export type DetailsOf = (record: IndexRecord) => ItemDetails | null;
 // which is its message's.
 export type Presentation = Omit<
   ConnectorView,
-  "kind" | "writable" | "connect" | "options" | "standIn"
+  "kind" | "writable" | "offer" | "connect" | "review" | "options" | "standIn"
 > & {
   details: DetailsOf;
   linked?: (link: URL) => string | null;

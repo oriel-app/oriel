@@ -12,7 +12,9 @@ import {
   type ToolCaller,
   type ToOpen,
 } from "@oriel/core";
+import { sheetsPicks } from "./mapping.ts";
 import { openSheets } from "./open-connection.ts";
+import { sheetsReview } from "./preview.ts";
 import { fakeId, fakePicks, fakeRows, fakeServer } from "./sheets-mcp-fake.ts";
 import {
   readComments,
@@ -52,7 +54,6 @@ const connection = (options: Record<string, unknown>): ToOpen => ({
   prefix: "sheets",
   identity: "",
   options,
-  secret: null,
 });
 
 const refuse: ToolCaller = async () => {
@@ -60,7 +61,6 @@ const refuse: ToolCaller = async () => {
 };
 
 const via = (read: ToolCaller): OpenVia => ({
-  kept: false,
   log: () => {},
   now: () => "2026-11-07T00:00:00.000Z" as never,
   server: {
@@ -240,4 +240,19 @@ test("Sheets through its server may call its read tools, and no write tool among
     assert.ok(sheetsServer.writes.includes(write), write);
     assert.ok(!sheetsServer.reads.includes(write), write);
   }
+});
+
+test("spreadsheets picked again keep how their tabs read; one picked anew reads none yet, so it waits", () => {
+  const [pick] = sheetsServer.picks ?? [];
+  assert.ok(pick?.picked && pick.into);
+  assert.deepEqual(pick.picked(backlogPicks), [backlog]);
+  const both = pick.into(backlogPicks, [backlog, "1RaidLogFixture000000000", backlog]);
+  const kept = sheetsPicks(backlogPicks);
+  assert.ok(kept.ok);
+  assert.deepEqual(both, [
+    ...kept.value.spreadsheets,
+    { id: "1RaidLogFixture000000000", tabs: [] },
+  ]);
+  assert.equal(sheetsReview.waits({ spreadsheets: [{ id: backlog, tabs: [] }] }), true);
+  assert.deepEqual(pick.into(backlogPicks, []), []);
 });

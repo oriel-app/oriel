@@ -3,10 +3,12 @@
 // `pnpm dev`, read-only (decision 0019). It identifies its real path. While a
 // kind opens one connection, another folder takes the place of the one
 // connected: one connected before comes back under its ID and number, and
-// any other is a new connection, with the next.
+// any other is a new connection, with the next. The folder is the one
+// connector the window still connects itself (decision 0059): it's on the
+// person's disk, and nothing is hosted.
 import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
-import { type ConnectOf, object, refine, string } from "@oriel/core";
+import { type ConnectOf, type ConnectOffer, object, refine, string } from "@oriel/core";
 import { folderProblem } from "./open-connection.ts";
 import { resolveFolder } from "./walk.ts";
 
@@ -20,6 +22,24 @@ const given = object({
 
 // A folder has nothing to set: it reads every file under it.
 export const folderOptions = object({});
+
+// How the window offers it.
+export const folderOffer: ConnectOffer = {
+  firstRun: 2,
+  mark: "F",
+  title: "A folder",
+  about: "Notes saved as files on this Mac, and its folders. Oriel only reads them.",
+  counts: "file",
+  empty: "This folder has no notes Oriel reads.",
+  yours: "your notes",
+  changes: "your files",
+  ready: "Your notes are ready.",
+  catchUp: "The folder can catch up later.",
+};
+
+// What a connection reads: its name, the last part of its path.
+export const folderReads = ({ identity }: { identity: string }): string =>
+  basename(identity) || identity;
 
 // The window's words for it, OA-191's and the sidebar's.
 export const folderConnect = {
@@ -37,20 +57,7 @@ export const folderConnect = {
       note: "Oriel reads its .md files and never changes them.",
     },
   ],
-  offer: {
-    firstRun: 2,
-    mark: "F",
-    title: "A folder",
-    about: "Notes saved as files on this Mac, and its folders. Oriel only reads them.",
-    counts: "file",
-    empty: "This folder has no notes Oriel reads.",
-    yours: "your notes",
-    changes: "your files",
-    ready: "Your notes are ready.",
-    catchUp: "The folder can catch up later.",
-  },
   given,
-  replaces: true,
   async identify(picked) {
     const typed = picked.path.trim();
     const path = typed === "~" || typed.startsWith("~/") ? join(homedir(), typed.slice(1)) : typed;
@@ -68,10 +75,6 @@ export const folderConnect = {
       };
     }
   },
-  // Never asked: another folder replaces the one connected.
-  taken: () => ({ problem: "Oriel reads one folder for now." }),
-  // Its name, the last part of its path.
-  reads: ({ identity }) => basename(identity) || identity,
   make: async () => ({ options: {} }),
   failed: { open: "Oriel couldn't connect the folder.", sync: folderProblem() },
-} satisfies ConnectOf<{ path: string }, never>;
+} satisfies ConnectOf<{ path: string }>;

@@ -8,7 +8,7 @@ summary: The first run's step after Your AI (decision 0059): the source servers 
 
 ## What it shows
 
-Straight after Your AI, Oriel asks the AI the person picked for its MCP servers, and shows the ones it knows (decision 0059). Here Claude Code lists one server Oriel knows, which would turn Jira on, so its row offers **Turn on Jira**. Nothing turns on unless the person clicks. Once a kind is on, what it reads is picked under the rows, in `.found-picks`, with the [picker Settings uses](/components/connection-row#picked-through-a-source-server); until then it reads its server's first. **Continue** goes on to Your work, which starts on Oriel's own tracker if no tracker is on, with today's connect rows after it until OA-280.
+Straight after Your AI, Oriel asks the AI the person picked for its MCP servers, and shows the ones it knows (decision 0059). Here Claude Code lists one server Oriel knows, which would turn Jira on, so its row offers **Turn on Jira**. Nothing turns on unless the person clicks. Once a kind is on, what it reads is picked under the rows, in `.found-picks`, with the [picker Settings uses](/components/connection-row#picked-through-a-source-server); until then it reads its server's first. **Continue** goes on to Your work, which starts on Oriel's own tracker if no tracker is on, then each source on through its server and a folder; a source with no server on names the server that would turn it on (OA-280). Then the overview, where the person asks one question and approves one change.
 
 With none found, the step says so and names, for each kind, the server that would turn it on and a link to its vendor's own instructions. Oriel never adds or signs in to a server itself, and the word "token" never appears.
 

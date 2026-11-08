@@ -44,7 +44,7 @@ const request = (op: string, target: ItemId<"slack"> | null, args: unknown) =>
 function setup(channels: readonly string[] = [weather]) {
   const workspace = fixtureApi(fixture);
   const writer = slackWriter({
-    api: writeApi({ credential: { headers: async () => ({}) }, fetch: workspace.fetch }),
+    api: writeApi(workspace.fetch),
     channels,
     log: () => {},
   });
@@ -158,64 +158,6 @@ test("a reply it posted is deleted; one someone else posted isn't", async () => 
   assert.deepEqual(deleted.before[`reply:${ts}`], "On it.");
   assert.equal(deleted.after[`reply:${ts}`], null);
   assert.equal(deleted.after.replies, 2);
-});
-
-test("every call of a write keeps within its limit, and a stalled post itself sent nothing", async () => {
-  const workspace = fixtureApi(fixture);
-  const asked: number[] = [];
-  const writer = slackWriter({
-    api: writeApi({
-      credential: { headers: async () => ({}) },
-      // Slack asks for the post to wait ten minutes.
-      fetch: async (input, init) =>
-        String(input).endsWith("/chat.postMessage")
-          ? new Response("", { status: 429, headers: { "Retry-After": "600" } })
-          : workspace.fetch(input, init),
-      timeout: (ms) => {
-        asked.push(ms);
-        return new AbortController().signal;
-      },
-    }),
-    channels: [weather],
-    log: () => {},
-  });
-  await assert.rejects(
-    writer.apply(request("postMessage", null, { channel: weather, text: "Hi", author: amara }), {
-      left: () => 20_000,
-    }),
-    refused,
-  );
-  // Who the token is for, then the post: each had 20 s.
-  assert.ok(asked.length > 1 && asked.every((ms) => ms === 20_000));
-});
-
-test("a write whose credentials fail never goes out, and the failure names no secret", async () => {
-  const workspace = fixtureApi(fixture);
-  // Who the token is for is signed; the post itself can't be.
-  let signed = 0;
-  const writer = slackWriter({
-    api: writeApi({
-      credential: {
-        headers: async () => {
-          signed += 1;
-          if (signed > 1) throw new Error("token xoxp-abc123 has expired");
-          return {};
-        },
-      },
-      fetch: workspace.fetch,
-    }),
-    channels: [weather],
-    log: () => {},
-  });
-  await assert.rejects(
-    writer.apply(request("postMessage", null, { channel: weather, text: "Hi", author: amara })),
-    (error) => refused(error) && !String(error).includes("abc123"),
-  );
-  assert.equal(signed, 2);
-  assert.deepEqual(
-    workspace.calls.filter((c) => c.method === "chat.postMessage"),
-    [],
-  );
 });
 
 test("through Slack's server, a post and a reply are each one write call, escaped, read back by the read tools", async () => {

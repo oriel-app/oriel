@@ -26,7 +26,7 @@
 // under <name>, through its app server's `mcpServer/tool/call`, with no
 // model and only that server's read tools: point it at our test site or
 // workspace, never a person's data. People are replaced with numbered
-// placeholders, as `pnpm record:jira` does. Nothing is written.
+// placeholders (packages/jira/src/recorded.ts). Nothing is written.
 // Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through codex --server <name>] [--channels <a,b>]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -59,7 +59,7 @@ import { callsDir as sheetsCalls } from "../packages/sheets/src/calls.ts";
 import { openSheets } from "../packages/sheets/src/open-connection.ts";
 import { sheetsPreview } from "../packages/sheets/src/preview.ts";
 import { sheetsMcpMain, sheetsServer } from "../packages/sheets/src/sheets-mcp.ts";
-import { recordedReads, scrub as scrubJira } from "./record-jira.ts";
+import { recordedReads, scrub as scrubJira } from "../packages/jira/src/recorded.ts";
 import { stdioCalls } from "./stdio-mcp.ts";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -320,11 +320,9 @@ export async function recordCalls(
       {
         id: "01JRECORDING00000000000000" as never,
         number: 1,
-        secret: null,
         ...kind.connection(channels),
       },
       {
-        kept: false,
         log: () => {},
         now: () => "2026-11-07T00:00:00.000Z" as never,
         server: {
@@ -359,11 +357,9 @@ export async function recordCalls(
     {
       id: "01JRECORDING00000000000000" as never,
       number: 1,
-      secret: null,
       ...kind.connection(channels),
     },
     {
-      kept: false,
       log: () => {},
       now: () => "2026-11-07T00:00:00.000Z" as never,
       server: {
@@ -451,7 +447,6 @@ async function recordSheetsWorld() {
   const server = await stdioCalls("node", [sheetsMcpMain, "--fixture", file]);
   const calls: RecordedCall[] = [];
   const via = (read: ToolCaller): OpenVia => ({
-    kept: false,
     log: () => {},
     now: () => "2026-11-07T00:00:00.000Z" as never,
     server: {
@@ -476,7 +471,6 @@ async function recordSheetsWorld() {
     prefix: "sheets",
     identity: "",
     options,
-    secret: null,
   });
   try {
     const read = recordingCalls(server.call, calls);

@@ -1,6 +1,6 @@
 # 0049 Connectors are declared once, and a person can make several connections of each
 
-Accepted 2026-11-03. Amends 0019, 0022, 0024, 0036, 0038, 0041 and 0042. Changes SPEC §2, §5 and §7, and the security reviewer's checklist. Amended by 0059: a connection becomes the source server that serves a kind, and the connect steps that ask for secrets go.
+Accepted 2026-11-03. Amends 0019, 0022, 0024, 0036, 0038, 0041 and 0042. Changes SPEC §2, §5 and §7, and the security reviewer's checklist. Amended by 0059: a connection becomes the source server that serves a kind, and the connect steps that ask for secrets go. Superseded in part by 0059 (OA-280): the `fields` and `browser` connect steps, a connector's `secret` and `env`, a connection's secret and `.env` live connections go; connection rows and the folder's connect stay.
 
 Adds: none
 

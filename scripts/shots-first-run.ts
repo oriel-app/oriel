@@ -3,13 +3,14 @@
 // folder to an approved change set, on three paths. Nothing here is the
 // person's: each server gets its own throwaway home, with a stub Claude Code
 // in it or none, a stub of Anthropic's installer, a stand-in signature check
-// and test turn, and SYN as a Jira site in memory that takes any Jira Cloud
-// address. The stubs print the vendors' lines; nothing reaches the network.
+// and test turn, and stand-ins of the source servers the person's agent may
+// list (decision 0059). The stubs print the vendors' lines; nothing reaches
+// the network.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BrowserContext, Page } from "playwright-core";
+import type { Page } from "playwright-core";
 import {
   type CheckOptions,
   locateClaudeCode,
@@ -17,10 +18,7 @@ import {
   parseVersion,
   supportedVersion,
 } from "../packages/agent/src/index.ts";
-import { instant } from "../packages/core/src/ids.ts";
-import { memorySite } from "../packages/jira/src/memory-site.ts";
 import type { AppOptions } from "../packages/server/src/app.ts";
-import { legacySecret, memorySecrets } from "../packages/server/src/connection.ts";
 import { models } from "../packages/server/src/model.ts";
 import type { Serving } from "../packages/server/src/serve.ts";
 import { askTiny, testKnown } from "../packages/server/src/servers/testing.ts";
@@ -35,16 +33,12 @@ import {
 } from "../packages/linear/src/linear-standin.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
 import { type SetupState, memorySetup, setupFile } from "../packages/server/src/setup/state.ts";
-import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { loadSheetsFixture } from "../packages/sheets/src/fixture.ts";
-import { scope, tokenEndpoint } from "../packages/sheets/src/oauth.ts";
-import { fixtureGoogle, standInToken } from "../packages/sheets/src/stand-in.ts";
+import { fixtureGoogle } from "../packages/sheets/src/stand-in.ts";
+import { fixtureServer } from "../packages/sheets/src/sheets-mcp-fake.ts";
 import { loadCalls as loadSheetsCalls } from "../packages/sheets/src/calls.ts";
 import { sheetsMcpMain, sheetsServer } from "../packages/sheets/src/sheets-mcp.ts";
 import { replayCalls } from "../packages/core/src/recorded-calls.ts";
-
-// The Jira account SYN in memory takes, as the onboarding types it.
-export const jiraAccount = { email: "pm@example.com", token: "shots-only-value" };
 
 // How each stub behaves, read from its home when it runs.
 type Login = "works" | "waits" | "fails";
@@ -110,28 +104,15 @@ export type FirstRunOptions = {
   stillLooking?: true;
   // The first run so far.
   state?: Partial<SetupState>;
-  // Jira already connected, and a folder.
-  jira?: true;
+  // A folder connected.
   folder?: string;
-  // Jira's search: held, so the first sync never ends, or failing on its
-  // second page.
-  search?: "held" | "fails";
   // A data folder on disk, as the desktop app has, in place of memory.
   data?: string;
-  // Google Sheets offered too, as the Sheets fixture's stand-in for Google
-  // answers, with a made-up client of Oriel's (decision 0051).
-  sheets?: true;
-  // That many more tabs in the tracker, made here, each a small table of
-  // its own, as a tracker with a tab a week has (OA-232).
-  sheetsTabs?: number;
   // A database to start on, without a data folder.
   db?: string;
   // The person's Claude Code lists the tiny test tracker server (decision
   // 0059), which Oriel knows by its test-only entry, for Jira's kind.
   found?: true;
-  // And the person turned Jira on through it, so the stand-in steps aside
-  // and the first run offers Jira's connect step too, until OA-280.
-  trackerOn?: true;
   // The person's Claude Code lists Atlassian's MCP server (OA-276), as the
   // stand-in of it answers SYN in memory: found, or Jira on through it.
   atlassian?: "found" | "on";
@@ -144,6 +125,11 @@ export type FirstRunOptions = {
   // And packages/sheets-mcp (OA-279), as its fixture mode answered, from
   // its recorded calls: found, or Google Sheets on through it.
   sheetsMcp?: "found" | "on";
+  // sheets-mcp reading the Sheets fixture's spreadsheets instead, through
+  // a fake of its read tools over the fixture's stand-in for Google, with
+  // that many more tabs in the tracker, each a small table of its own, as
+  // a tracker with a tab a week has (OA-232).
+  sheetsTabs?: number;
 };
 
 // sheets-mcp as the person's agent lists it: a local server, started by the
@@ -306,36 +292,8 @@ export async function firstRunServer(
   // Not awaited when it's held, so the page sees it still looking.
   void chooser.look(settings.get());
 
-  const syn = loadJiraFixture();
-  const site = memorySite(syn, instant(new Date()), {
-    account: jiraAccount,
-    projects: [
-      {
-        key: "MOB",
-        name: "Mobile app",
-        issues: 64,
-        updated: instant(new Date("2025-06-30T10:00:00Z")),
-      },
-      {
-        key: "DES",
-        name: "Design requests",
-        issues: 31,
-        updated: instant(new Date("2025-03-12T10:00:00Z")),
-      },
-    ],
-  });
-  let searches = 0;
-  const held = options.search === "held" ? site.hold("search") : null;
-  if (held) holds.push(() => held.release());
-  const fetchJira: typeof fetch = async (input, init) => {
-    const url = String(input instanceof Request ? input.url : input);
-    // The second page of Jira's first sync doesn't come back.
-    if (options.search === "fails" && url.includes("/search/jql") && ++searches > 1)
-      throw new TypeError("fetch failed");
-    return site.fetch(input, init);
-  };
-  // Google: the Sheets fixture's stand-in, and a token endpoint granting
-  // its token for any code.
+  // The Sheets fixture, with the tracker's tabs added, as a fake of
+  // sheets-mcp's read tools reads it, when asked for.
   const sheetsFixture = loadSheetsFixture();
   const tracker = sheetsFixture.spreadsheets.find((s) => s.slug === "tracker");
   for (let n = 1; n <= (options.sheetsTabs ?? 0); n++)
@@ -347,53 +305,24 @@ export async function firstRunServer(
         ["Mon", "Stand-up moved"],
       ],
     });
-  const google = fixtureGoogle(sheetsFixture);
-  const fetchSheets: typeof fetch = async (input, init) =>
-    String(input instanceof Request ? input.url : input) === tokenEndpoint
-      ? Response.json({
-          access_token: standInToken,
-          expires_in: 3599,
-          refresh_token: "shots-only-refresh",
-          scope,
-        })
-      : google.fetch(input, init);
-  // Jira connected before, as the secret store kept it until connections,
-  // which the start moves into one.
-  const secrets = memorySecrets(
-    new Map(
-      options.jira
-        ? [
-            [
-              "jira",
-              JSON.stringify({
-                site: "https://oriel.atlassian.net",
-                ...jiraAccount,
-                project: "SYN",
-              }),
-            ],
-          ]
-        : [],
-    ),
-  );
   // SYN in memory, as one stand-in of Atlassian's server answers every
   // process: sync's and replay's.
   const atlassianTools = standInCaller(atlassianStandIn());
   const slackTools = slackCaller(slackStandIn());
   const linearTools = linearCaller(linearStandIn());
-  const sheetsTools = replayCalls(
-    ["preview.json", "sync.json"].flatMap((name) => loadSheetsCalls(name).calls),
-  );
+  const sheetsTools =
+    options.sheetsTabs === undefined
+      ? replayCalls(["preview.json", "sync.json"].flatMap((name) => loadSheetsCalls(name).calls))
+      : fixtureServer(
+          fixtureGoogle(sheetsFixture),
+          sheetsFixture.spreadsheets.map((each) => each.id),
+        ).read;
   const standing = options.atlassian || options.slack || options.linear || options.sheetsMcp;
   const state = options.data ? setupFile(join(options.data, "setup.json")) : memorySetup();
   if (options.state) state.set({ ...state.get(), ...options.state });
 
   const serving = await start(0, {
     db: options.data ? join(options.data, "oriel.db") : (options.db ?? ":memory:"),
-    secrets,
-    sources: {
-      jira: { mode: "window", fetch: fetchJira },
-      ...(options.sheets ? { sheets: { mode: "window" as const, fetch: fetchSheets } } : {}),
-    },
     // The person's agent, as a fake that asks the tiny server itself.
     discover: async () => ({
       agent: { id: "claude-code", name: "Claude Code" },
@@ -404,7 +333,7 @@ export async function firstRunServer(
             ...(options.linear ? [linearFound] : []),
             ...(options.sheetsMcp ? [sheetsMcpFound] : []),
           ]
-        : options.found || options.trackerOn
+        : options.found
           ? [await askTiny()]
           : [],
     }),
@@ -435,9 +364,6 @@ export async function firstRunServer(
           }),
         }
       : { knownServers: testKnown }),
-    ...(options.sheets ? { clients: { sheets: sheetsClient } } : {}),
-    anywhere: true,
-    legacyJira: legacySecret(secrets),
     models: chooser,
     settings,
     agent,
@@ -484,10 +410,6 @@ export async function firstRunServer(
     await postTo(serving, "/api/servers/dismiss", {});
     await serving.app.settled();
   }
-  if (options.trackerOn) {
-    await postTo(serving, "/api/servers/look", {});
-    await postTo(serving, "/api/actions/source.on", { kind: "jira", server: "work-tracker" });
-  }
   if (options.folder) {
     const url = new URL("/api/connections", serving.url);
     const reply = await serving.app.api(
@@ -525,37 +447,6 @@ export async function postTo(serving: Serving, path: string, body: unknown): Pro
     url,
   );
   if (!reply || reply.status !== 200) throw new Error(`${path} didn't work`);
-}
-
-// A made-up client of Oriel's for Google, which only the stand-in sees.
-const sheetsClient = {
-  GOOGLE_CLIENT_ID: "shots-only.apps.googleusercontent.com",
-  GOOGLE_CLIENT_SECRET: "shots-only-value",
-};
-
-// Google's page, as a browser context shows it: signed in at once, with the
-// fixture's tracker and RAID log picked, straight back to Oriel's loopback
-// redirect. Nothing reaches Google.
-export async function googleSignsIn(context: BrowserContext): Promise<void> {
-  const picked = loadSheetsFixture()
-    .spreadsheets.filter((s) => s.slug === "tracker" || s.slug === "raid")
-    .map((s) => s.id);
-  await context.route("https://accounts.google.com/**", async (route) => {
-    const asked = new URL(route.request().url());
-    const back = new URL(asked.searchParams.get("redirect_uri") ?? "");
-    back.searchParams.set("state", asked.searchParams.get("state") ?? "");
-    back.searchParams.set("code", "4/shots-only-code");
-    back.searchParams.set("scope", scope);
-    back.searchParams.set("picked_file_ids", picked.join(","));
-    await route.fulfill({ status: 302, headers: { location: back.href } });
-  });
-}
-
-// The details Jira takes, typed into the first run's form.
-export async function fillJira(page: Page, token: string): Promise<void> {
-  await page.locator('input[name="site"]').fill("oriel.atlassian.net");
-  await page.locator('input[name="email"]').fill(jiraAccount.email);
-  await page.locator('input[name="token"]').fill(token);
 }
 
 // "token" in what a screen shows: its text, and what fields and tooltips say.
@@ -601,7 +492,7 @@ export async function timedPath(
   await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
   await count("found");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("heading", { name: /Connect where your work lives|Welcome back/ }).waitFor();
+  await page.getByRole("heading", { name: /See your work in one place|Welcome back/ }).waitFor();
   await page.locator(".provider-row", { hasText: "Epics and stories" }).waitFor();
   await count("your work");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -615,49 +506,4 @@ export async function timedPath(
   await page.locator('.change-set[data-status="applied"]').waitFor();
   await count("approved");
   return { ms: performance.now() - opened, tokens };
-}
-
-// Google Sheets' path (decision 0051), as fast as a script clicks: the first
-// run's first screen on a fresh data folder, Claude Code ready, Sheets'
-// Connect, the consent line, Google's page, signed in and picked at once,
-// "Reading the headers", the draft in the row, Apply, the first sync, and
-// the overview. The rest of the budget's path, a question and an approved
-// change, is the window's, as on Jira's. Returns how long it took, how long
-// the draft's turn kept the review waiting, and "token" on each screen.
-export async function timedSheets(
-  page: Page,
-  url: string,
-): Promise<{ ms: number; draftMs: number; tokens: [string, number][] }> {
-  const tokens: [string, number][] = [];
-  const count = async (screen: string) => tokens.push([screen, await tokensOn(page)]);
-  const opened = performance.now();
-  await page.goto(url);
-  await page.waitForURL(/\/setup$/);
-  await page.locator(".provider-row#provider-claude-code").waitFor();
-  await page.getByRole("button", { name: "Continue with Claude Code" }).click();
-  await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("heading", { name: "Connect where your work lives" }).waitFor();
-  await count("your work");
-  const row = page.locator(".provider-row", { hasText: "Google Sheets" });
-  await row.getByRole("button", { name: "Connect" }).click();
-  await page.getByRole("heading", { name: "Connect Google Sheets" }).waitFor();
-  await count("Google Sheets");
-  const popup = page.waitForEvent("popup");
-  await page.getByRole("link", { name: "Continue to Google" }).click();
-  const google = await popup;
-  await google.waitForLoadState();
-  await google.close();
-  // Back in Oriel: the headers read, then the draft, in the row.
-  const asked = performance.now();
-  await row.locator(".connect-review").waitFor();
-  await row.getByText("Oriel's draft.").waitFor();
-  const draftMs = performance.now() - asked;
-  await count("review");
-  await row.getByRole("button", { name: "Apply" }).click();
-  await row.locator(".provider-status[data-connected]").waitFor();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.waitForURL((at) => at.pathname === "/");
-  await count("overview");
-  return { ms: performance.now() - opened, draftMs, tokens };
 }

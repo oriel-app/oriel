@@ -9,7 +9,7 @@ import {
   sheetsPanel,
   sheetsPresentation,
 } from "./attrs.ts";
-import { sheetsConnect } from "./connecting.ts";
+import { sheetsOffer, sheetsReads } from "./connecting.ts";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
 import { sheetsOptions } from "./mapping.ts";
 import { type SheetsContext, sheetsNamespace } from "./namespace.ts";
@@ -63,11 +63,10 @@ export const sheetsDeclaration = {
   // naming columns by letter, and Oriel's own guess (decision 0051).
   preview: sheetsPreview,
   review: sheetsReview,
-  // Signing in on Google's page, picking spreadsheets there, then the
-  // mapping's review (decisions 0050 and 0051).
-  connect: sheetsConnect,
-  // Or through Oriel's own Sheets server, in the person's agent (decision
-  // 0059), which wins while both are on.
+  offer: sheetsOffer,
+  reads: sheetsReads,
+  // Through Oriel's own Sheets server, in the person's agent (decision
+  // 0059), where a person picks the spreadsheets.
   servers: [sheetsServer],
   fixture: sheetsDeclaredFixture,
 } satisfies SourceDeclaration<SheetsContext, never, SheetsWrites>;

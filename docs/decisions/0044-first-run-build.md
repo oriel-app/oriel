@@ -1,6 +1,6 @@
 # 0044 What building the first run settled: the Claude Code Oriel checks, and a cluster the window chat can make a workstream of
 
-Accepted 2026-11-03 (OA-191). Amends 0030, 0037 and 0038. Amended by 0059: the first run's source step is what 0059 says.
+Accepted 2026-11-03 (OA-191). Amends 0030, 0037 and 0038. Amended by 0059: the first run's source step is what 0059 says. Superseded in part by 0059 (OA-280): Jira's connect form and its project list go.
 
 Adds: none
 

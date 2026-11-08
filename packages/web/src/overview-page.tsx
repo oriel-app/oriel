@@ -35,7 +35,6 @@ import type {
   PersonRowView,
   WorkstreamRowView,
 } from "./view.ts";
-import { ConnectCards } from "./connect-steps.tsx";
 import { openConnections, standingIn } from "./connections.ts";
 import { FoundCard } from "./found.tsx";
 import { StatusBar } from "./window-page.tsx";
@@ -95,7 +94,6 @@ export function OverviewPage(props: {
         dispatch={dispatch}
       />
       <FoundCard connections={connections} connectors={connectors} dispatch={dispatch} />
-      <ConnectCards connections={connections} connectors={connectors} dispatch={dispatch} />
       <NoticedStrip
         view={model.noticed}
         busy={model.noticing}
@@ -179,7 +177,7 @@ function FirstRunLine(props: {
     })),
     ...openConnections(props.connections).flatMap((connection) => {
       const connector = props.connectors[connection.kind];
-      const offer = connector?.connect?.offer;
+      const offer = connector?.offer;
       return offer ? [{ offer, writable: connector.writable }] : [];
     }),
   ];

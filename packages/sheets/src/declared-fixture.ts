@@ -33,7 +33,7 @@ import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
 import { openSheets, type SheetsWrites } from "./open-connection.ts";
 import { sheetsPreview } from "./preview.ts";
 import { sheetsSource } from "./source.ts";
-import { fixtureGoogle, standInToken } from "./stand-in.ts";
+import { fixtureGoogle } from "./stand-in.ts";
 import { type Grid, tableOf } from "./table.ts";
 
 const states = (todo: string[], inProgress: string[], done: string[]): States => ({
@@ -95,27 +95,26 @@ export function fixturePicks(fixture: SheetsFixture): SheetsPicks {
   };
 }
 
-// The fixture's secret: the stand-in's token, which doesn't run out.
-const fixtureSecret = JSON.stringify({ access: standInToken, expiresAt: Number.MAX_SAFE_INTEGER });
-
 export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, SheetsWrites> = {
   load: () => loaded(loadSheetsFixture()),
+  // Recorded window cases had it on through its own connection.
+  windowCase: true,
   // The fixture's account, with its spreadsheets picked and mapped.
   connection: () => {
     const fixture = loadSheetsFixture();
     return { identity: fixture.user.permissionId, options: fixturePicks(fixture) };
   },
-  // Opened as Sheets is, through the stand-in for Google's APIs, as the
-  // spreadsheets first are, with a token that doesn't run out. A test may
-  // give its own stand-in, to edit the spreadsheets as a person would.
+  // Opened through the stand-in for Google's APIs in memory, as the
+  // spreadsheets first are, with no sign-in. A test may give its own
+  // stand-in, to edit the spreadsheets as a person would.
   open: (connection, via) =>
-    openSheets(
-      { ...connection, secret: fixtureSecret },
-      { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
-    ),
+    openSheets(connection, {
+      ...via,
+      fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch,
+    }),
   preview: (connection, via, ask) =>
     sheetsPreview(
-      { ...connection, secret: fixtureSecret },
+      connection,
       { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
       ask,
     ),
@@ -203,7 +202,6 @@ function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
       const source = sheetsSource({
         google: googleReads({
           fetch: standIn.fetch,
-          credential: { headers: async () => ({ Authorization: `Bearer ${standInToken}` }) },
           wait: async () => {},
           random: () => 0,
         }),

@@ -14,7 +14,7 @@ import type { FoundServerView, SourceServersView } from "./view.ts";
 
 const nameOf = (connectors: Connectors, kind: string) => connectors[kind]?.name ?? kind;
 const markOf = (connectors: Connectors, kind: string) =>
-  connectors[kind]?.connect?.offer.mark ??
+  connectors[kind]?.offer?.mark ??
   connectors[kind]?.standIn?.offer.mark ??
   nameOf(connectors, kind).charAt(0);
 

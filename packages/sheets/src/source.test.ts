@@ -19,7 +19,7 @@ import { loadSheetsFixture, type SheetsFixture } from "./fixture.ts";
 import { googleReads } from "./google.ts";
 import type { SheetsPicks, TabMapping } from "./mapping.ts";
 import { maxRows, sheetsSource } from "./source.ts";
-import { fixtureGoogle, type StandInOptions, standInToken } from "./stand-in.ts";
+import { fixtureGoogle, type StandInOptions } from "./stand-in.ts";
 
 const fixture = loadSheetsFixture();
 const idOf = (slug: string) => {
@@ -39,7 +39,6 @@ function connect(
   const waits: number[] = [];
   const google = googleReads({
     fetch: standIn.fetch,
-    credential: { headers: async () => ({ Authorization: `Bearer ${standInToken}` }) },
     wait: async () => {},
     random: () => 0.5,
     waiting: (ms) => waits.push(ms),
@@ -182,7 +181,6 @@ test("a spreadsheet that doesn't answer holds what the index had, and the sync g
   const source = sheetsSource({
     google: googleReads({
       fetch: failing,
-      credential: { headers: async () => ({ Authorization: `Bearer ${standInToken}` }) },
       wait: async () => {},
       random: () => 0,
     }),

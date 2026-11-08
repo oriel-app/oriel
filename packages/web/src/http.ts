@@ -85,21 +85,19 @@ export type Tag =
   | { kind: "itemStamp"; id: string }
   // Every connection, as the server lists them.
   | { kind: "connections" }
-  // A connector's steps: a pick step's list, the folder picker, and
-  // the connection made, by the connector's kind.
-  | { kind: "connectChoices"; of: string }
+  // A connector's steps: the folder picker, and the connection made, by the
+  // connector's kind.
   | { kind: "connectPicked"; of: string }
-  | { kind: "connected"; of: string; review?: number }
-  // A browser step's sign-in begun; a connection's onboarding turn started;
-  // its review step read, and its draft or Oriel's guess applied.
-  | { kind: "browserBegun"; of: string }
+  | { kind: "connected"; of: string }
+  // A connection's onboarding turn started; its review step read, and its
+  // draft or Oriel's guess applied.
   | { kind: "onboarded"; of: string; connection: string }
   | { kind: "reviewed"; of: string; connection: string; tab?: string }
   | { kind: "orielAsked"; connection: string }
   | { kind: "reviewApplied"; of: string; connection: string; beside?: string }
   | { kind: "reviewRedrawn"; connection: string }
-  // In Settings, by a connection's ID: its options set, or that undone; its
-  // pick step's list again; and it disconnected.
+  // In Settings, by a connection's ID: its options set, or that undone; the
+  // list one of its picks lists; and it disconnected.
   | { kind: "configured"; connection: string }
   | { kind: "configureUndone"; connection: string }
   | { kind: "connectionChoices"; connection: string }

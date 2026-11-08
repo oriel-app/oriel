@@ -21,6 +21,8 @@ import { fileURLToPath } from "node:url";
 import {
   answerJson,
   answerText,
+  narrowed,
+  type PickChoice,
   ServerUnreadable,
   SourceRefused,
   type SourceServer,
@@ -36,7 +38,9 @@ import {
   SheetsError,
   type TabInfo,
 } from "./google.ts";
+import { sheetsPicks } from "./mapping.ts";
 import type { CellValue } from "./requests.ts";
+import { maxSpreadsheets } from "./source.ts";
 import type { Cell, Entered, Grid } from "./table.ts";
 
 // Its tools Oriel calls, by what each does.
@@ -69,6 +73,33 @@ export const sheetsServer: SourceServer = {
   writes: [t.update, t.append],
   instructions: "https://github.com/oriel-app/oriel/blob/main/packages/sheets-mcp/README.md",
   keepsOptions: true,
+  // The spreadsheets a connection reads, from those the server lists, most
+  // lately changed first, by ID, so a renamed one stays picked. One kept
+  // keeps how its tabs read; one picked anew reads none of its tabs yet, so
+  // the connection waits for how to read them (decision 0051).
+  picks: [
+    {
+      name: "spreadsheets",
+      label: "Spreadsheets",
+      many: true,
+      most: maxSpreadsheets,
+      unpicked: "no spreadsheet yet",
+      list: async (read, query) => narrowed(await listedSpreadsheets(read, query), query),
+      picked: (options) => picksIn(options).map((pick) => pick.id),
+      into: (options, values) => {
+        const had = picksIn(options);
+        return [...new Set(values)].map(
+          (id) => had.find((pick) => pick.id === id) ?? { id, tabs: [] },
+        );
+      },
+    },
+  ],
+};
+
+// The spreadsheets a connection's options pick, or none.
+const picksIn = (options: Readonly<Record<string, unknown>>) => {
+  const read = sheetsPicks(options);
+  return read.ok ? read.value.spreadsheets : [];
 };
 
 type Json = Record<string, unknown>;
@@ -412,6 +443,37 @@ export function serverGoogle(read: ToolCaller): Google {
 }
 
 // The person's most recently changed spreadsheets, by ID, at most `most`.
+// The spreadsheets the server lists, whose names `query` narrows, a page
+// of 100 at a time, at most 10 pages: each by its ID, its name and when it
+// last changed. Its names are source content, which a picker draws as text.
+async function listedSpreadsheets(
+  read: ToolCaller,
+  query: string,
+): Promise<(Pick<PickChoice, "value" | "name"> & Partial<PickChoice>)[]> {
+  const listed: { value: string; name: string; updatedAt: string | null }[] = [];
+  const tokens = new Set<string>();
+  let pageToken = "";
+  for (let page = 0; page < 10; page++) {
+    const got = await readOf(read, t.list, {
+      pageSize: 100,
+      ...(query.trim() ? { query: query.trim() } : {}),
+      ...(pageToken ? { pageToken } : {}),
+    });
+    if (got === "gone" || !Array.isArray(got.spreadsheets))
+      throw new ServerUnreadable(`${t.list} gave no spreadsheets`);
+    for (const each of got.spreadsheets as unknown[]) {
+      if (!isObject(each)) continue;
+      const id = text(each.id);
+      if (id === null || !/^[A-Za-z0-9_-]{10,100}$/.test(id)) continue;
+      listed.push({ value: id, name: text(each.name) ?? id, updatedAt: text(each.modifiedTime) });
+    }
+    pageToken = text(got.nextPageToken) ?? "";
+    if (!pageToken || tokens.has(pageToken)) break;
+    tokens.add(pageToken);
+  }
+  return listed;
+}
+
 export async function recentSpreadsheets(read: ToolCaller, most: number): Promise<string[]> {
   const got = await readOf(read, t.list, { pageSize: most });
   if (got === "gone" || !Array.isArray(got.spreadsheets))

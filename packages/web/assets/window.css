@@ -1566,35 +1566,14 @@ button.nav-more {
   min-width: 0;
 }
 
-/* Connecting Jira: asked for first, until it is. */
-
-.connect-card {
-  display: grid;
-  gap: var(--space-3);
-  max-width: 40rem;
-  margin: var(--space-2) 0 var(--space-6);
-  padding: var(--space-6);
-  border: var(--border-thin) solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-
-.connect-card h2 {
-  margin: 0;
-  font-size: var(--text-xl);
-}
+/* What the window says of a connection, and a review step's line. */
 
 .connect-note {
   margin: 0;
   color: var(--text-muted);
 }
 
-.connect-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--space-3) var(--space-4);
-}
-
+/* The first run's API key field. */
 .connect-field {
   display: grid;
   align-content: start;
@@ -1611,11 +1590,6 @@ button.nav-more {
   color: var(--text);
   font: inherit;
   font-size: var(--text-md);
-}
-
-.connect-hint {
-  color: var(--text-faint);
-  font-size: var(--text-xs);
 }
 
 /* What Oriel found in the person's agent (decision 0059): the overview's
@@ -6855,8 +6829,8 @@ button.overview-title:hover {
   align-self: flex-start;
 }
 
-/* A name, or what a connector's steps ask for, isn't a path. */
-.settings :is(.connection-options, .connect-details, .connect-pick) .input {
+/* A name, or what a person finds in a pick's list, isn't a path. */
+.settings .connection-options .input {
   font-family: inherit;
 }
 
@@ -7100,17 +7074,6 @@ button.overview-title:hover {
   font-family: var(--font-mono);
 }
 
-.setup-reading {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.setup-progress {
-  width: 100%;
-  height: 0.375rem;
-  accent-color: var(--accent);
-}
-
 /* A link-shaped action, for a way on that isn't the step's own. */
 .link-action {
   padding: 0;
@@ -7324,25 +7287,11 @@ button.overview-title:hover {
   }
 }
 
-/* Connecting Jira, the same in the first run and the window. */
-.connect-details,
-.connect-pick {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.connect-details .connect-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-
+/* The first run's API key, a connector's steps, and a review step. */
 .connect-label {
   font-weight: var(--weight-strong);
 }
 
-.connect-details .input,
-.connect-pick .input,
 .setup-form .input {
   min-height: 2.25rem;
   padding: 0 var(--space-3);
@@ -7362,25 +7311,6 @@ button.overview-title:hover {
   font-size: var(--text-sm);
 }
 
-.connect-help {
-  padding: var(--space-3) var(--space-4);
-  border: var(--border-thin) solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunk);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-prose);
-}
-
-.connect-help p {
-  margin: 0 0 var(--space-2);
-}
-
-.connect-help ol {
-  margin: 0;
-  padding-left: var(--space-6);
-}
-
 .connect-actions {
   display: flex;
   flex-wrap: wrap;
@@ -7396,46 +7326,6 @@ button.overview-title:hover {
 .connect-none {
   margin: 0;
   color: var(--text-muted);
-}
-
-/* Rows to pick one from, as a project. */
-.choice-rows {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  border: var(--list-frame);
-  border-radius: var(--radius-lg);
-  background: var(--list-bg);
-  list-style: none;
-}
-
-.choice-rows > li + li {
-  border-top: var(--border-thin) solid var(--line);
-}
-
-.choice-rows > li[data-picked] {
-  background: var(--accent-soft);
-}
-
-.choice-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  cursor: pointer;
-}
-
-.choice-text {
-  display: grid;
-}
-
-.choice-name {
-  font-weight: var(--weight-strong);
-}
-
-.choice-detail {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
 }
 
 /* The first run's one-time line on the overview. */

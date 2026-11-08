@@ -22,7 +22,7 @@ import { maxRows } from "./grid.ts";
 import type { SheetsPicks } from "./mapping.ts";
 import { fakeId, fakePicks, fakeRows, fakeServer } from "./sheets-mcp-fake.ts";
 import { sheetsSource } from "./source.ts";
-import { fixtureGoogle, type StandInCall, standInToken } from "./stand-in.ts";
+import { fixtureGoogle, type StandInCall } from "./stand-in.ts";
 import { sheetsWriter } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
@@ -39,7 +39,6 @@ const idOf = (slug: string) => {
   return found.id;
 };
 const tracker = idOf("tracker");
-const credential = { headers: async () => ({ Authorization: `Bearer ${standInToken}` }) };
 
 // A row by its spreadsheet, tab and key cell.
 const row = (spreadsheet: string, sheetId: number, key: string) => {
@@ -70,10 +69,9 @@ function setup(picks: SheetsPicks = fixturePicks(fixture), spreadsheets = fixtur
   const standIn = fixtureGoogle(spreadsheets);
   const writer = sheetsWriter(
     {
-      credential,
       picks,
       prefix: "sheets",
-      fetch: standIn.fetch,
+      memory: standIn.fetch,
       wait: async () => {},
     },
     () => {},
@@ -87,7 +85,6 @@ function setup(picks: SheetsPicks = fixturePicks(fixture), spreadsheets = fixtur
     const source = sheetsSource({
       google: googleReads({
         fetch: standIn.fetch,
-        credential,
         wait: async () => {},
         random: () => 0,
       }),
@@ -294,15 +291,13 @@ test("Google refusing the write changed nothing, and says so", async () => {
 });
 
 // A writer whose requests are counted, so a test can stop the write at one
-// before it goes out: by its time running out, its sign-in failing, or its
-// sign-in taking the rest of its time.
+// before it goes out, by its time running out.
 // Google can turn the first post away too, as a 429 does, unprocessed.
 function stoppable(options: { busy?: boolean } = {}) {
   const standIn = fixtureGoogle(fixture);
   let made = 0;
-  type How = "time" | "sign-in" | "slow sign-in";
+  type How = "time";
   let stop: { at: number; how: How } | null = null;
-  let out = false;
   // Whether the write stops here, once.
   const stops = (how: How) => {
     if (stop?.how !== how || made !== stop.at) return false;
@@ -312,16 +307,9 @@ function stoppable(options: { busy?: boolean } = {}) {
   let busy = options.busy ?? false;
   const writer = sheetsWriter(
     {
-      credential: {
-        headers: async () => {
-          if (stops("sign-in")) throw new Error("Google Sheets needs signing in again");
-          if (stops("slow sign-in")) out = true;
-          return { Authorization: `Bearer ${standInToken}` };
-        },
-      },
       picks: fixturePicks(fixture),
       prefix: "sheets",
-      fetch: async (input, init) => {
+      memory: async (input, init) => {
         made += 1;
         if (busy && init?.method === "POST") {
           busy = false;
@@ -333,13 +321,7 @@ function stoppable(options: { busy?: boolean } = {}) {
     },
     () => {},
   );
-  const limit = {
-    left: () => {
-      if (!out && !stops("time")) return 60_000;
-      out = false;
-      return 0;
-    },
-  };
+  const limit = { left: () => (stops("time") ? 0 : 60_000) };
   const writes = () => standIn.calls.filter((c) => c.method === "POST");
   const keyed = (key: string) =>
     (standIn.spreadsheet(tracker).tabs.find((t) => t.sheetId === 1100)?.rows ?? []).filter(
@@ -361,11 +343,11 @@ async function postOf(op: string, target: Parameters<typeof request>[1], args: u
   return standIn.calls.findIndex((c) => c.method === "POST");
 }
 
-test("a write whose time or sign-in runs out before it goes out sent nothing, and sent again it goes once", async () => {
+test("a write whose time runs out before it goes out sent nothing, and sent again it goes once", async () => {
   const post = await postOf("addRow", null, night);
-  for (const how of ["time", "sign-in", "slow sign-in"] as const) {
+  {
     const { writer, limit, writes, keyed, stopAt } = stoppable();
-    stopAt(post, how);
+    stopAt(post, "time");
     await assert.rejects(writer.apply(request("addRow", null, night), limit), refused(false));
     assert.deepEqual(writes(), []);
     await writer.apply(request("addRow", null, night), limit);
@@ -379,16 +361,16 @@ test("a write whose time or sign-in runs out before it goes out sent nothing, an
   ] as const) {
     const at = await postOf(op, target, args);
     const { writer, limit, writes, stopAt } = stoppable();
-    stopAt(at, "sign-in");
+    stopAt(at, "time");
     await assert.rejects(writer.apply(request(op, target, args), limit), refused(false));
     assert.deepEqual(writes(), []);
   }
 });
 
-test("a post Google turned away, whose retry can't sign in, changed nothing", async () => {
+test("a post Google turned away, whose retry runs out of time, changed nothing", async () => {
   const post = await postOf("addRow", null, night);
   const { writer, limit, writes, keyed, stopAt } = stoppable({ busy: true });
-  stopAt(post + 1, "sign-in");
+  stopAt(post + 1, "time");
   await assert.rejects(writer.apply(request("addRow", null, night), limit), refused(true));
   assert.deepEqual(writes(), []);
   assert.deepEqual(keyed("FW-110"), []);

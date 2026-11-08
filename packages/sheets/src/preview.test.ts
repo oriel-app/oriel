@@ -10,7 +10,7 @@ const idOf = (slug: string) => fixture.spreadsheets.find((s) => s.slug === slug)
 const tracker = idOf("tracker");
 const raid = idOf("raid");
 const now = instant(new Date(Date.UTC(2026, 10, 3, 9)));
-const via = { kept: true, log: () => {}, now: () => now };
+const via = { log: () => {}, now: () => now };
 
 // A connection just picked: the tracker and the RAID log, no tab mapped.
 const picked = { spreadsheets: [tracker, raid].map((id) => ({ id, tabs: [] })) };
@@ -20,7 +20,6 @@ const connection = {
   prefix: "sheets",
   identity: fixture.user.permissionId,
   options: picked,
-  secret: null,
 };
 const preview = () => sheetsDeclaredFixture.preview?.(connection, via) ?? Promise.resolve([]);
 // The mapping a person would approve for the tracker's first tab, by

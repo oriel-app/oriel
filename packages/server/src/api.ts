@@ -132,18 +132,9 @@ export type ApiDeps = {
   // Asks the agent picked in Settings for its MCP servers again, as Sync
   // does (decision 0059), once that look ends.
   lookForServers(): Promise<void>;
-  // A connector's pick step's list, from what its steps before it gave,
-  // before anything is connected: a read, which keeps nothing.
-  pick(
-    kind: string,
-    given: unknown,
-    query: string,
-  ): Promise<
-    { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
-  >;
-  // A pick step's list again for a connection it made, by its ID, from its
-  // own account, or, through its source server, the list of the option
-  // `field` names (decision 0059): a read, which keeps nothing.
+  // The list a connection picks from through its source server, of the
+  // option `field` names, its first when none is named (decision 0059): a
+  // read, which keeps nothing.
   choices(
     id: string,
     query: string,
@@ -154,9 +145,6 @@ export type ApiDeps = {
   // A connector's folder step, or null when it has none or the window
   // doesn't connect it now: the field it fills and what the picker asks.
   folderStep(kind: string): { field: string; prompt: string } | null;
-  // A connector's browser step begun: the address the page opens in the
-  // person's browser, and the ID its connect names to finish it.
-  begin(kind: string): Promise<{ url: string; attempt: string } | { problem: string }>;
   // A waiting connection's review step (decision 0051).
   // A connection's review step (decision 0051), and in Settings, with the
   // table the person edits by hand (OA-232).
@@ -289,7 +277,6 @@ const setupProgress = object({
 const typedText = (max: number) => refine(string, (text) => text.length <= max, `at most ${max}`);
 // What the person gave a connector's steps, which its own validator checks.
 const connectBody = object({ kind: unknown, given: unknown });
-const pickBody = object({ kind: string, given: unknown, query: optional(typedText(100)) });
 const pickerBody = object({ kind: string, given: optional(unknown) });
 // The window makes a workstream from a cluster or from picked items; a workstream from
 // nothing comes only with its thread.
@@ -784,10 +771,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       run: async () => json(200, deps.connections()),
     },
     {
-      // Connects what the person gave across a connector's steps: checked
-      // with its source before anything is kept, then synced into the index
-      // at once. Nothing secret is sent back. A refusal names the fields
-      // it's about.
+      // Connects what the person gave across a connector's steps, as a
+      // folder's path: checked before anything is kept, then synced into the
+      // index at once. A refusal names the fields it's about.
       method: "POST",
       path: at("/connections"),
       async run(_, request) {
@@ -797,32 +783,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         return "problem" in connected
           ? json(400, { error: connected.problem, fields: connected.fields ?? [] })
           : json(200, connected);
-      },
-    },
-    {
-      // A pick step's list, such as the projects Jira's details typed can
-      // see, so the person picks one from the source's own list. A read:
-      // nothing is kept, and nothing typed is sent back.
-      method: "POST",
-      path: at("/connections/pick"),
-      async run(_, request) {
-        const { kind, given, query } = await readJson(request, smallBody, pickBody);
-        const listed = await deps.pick(kind, given, query ?? "");
-        return "problem" in listed
-          ? json(400, { error: listed.problem, fields: listed.fields ?? [] })
-          : json(200, listed);
-      },
-    },
-    {
-      // A browser step's sign-in, begun: the address of the source's own
-      // page, which the window opens in the person's browser, and the ID
-      // the connect names once they finish there. Nothing it gives is sent.
-      method: "POST",
-      path: at("/connections/browser"),
-      async run(_, request) {
-        const { kind } = await readJson(request, smallBody, object({ kind: typedText(32) }));
-        const begun = await deps.begin(kind);
-        return "problem" in begun ? json(400, { error: begun.problem }) : json(200, begun);
       },
     },
     {
@@ -900,9 +860,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A connection's pick step's list again, from its own account, or
-      // through its source server, for Settings to pick from. A read: nothing is kept, and its secret stays
-      // on the server.
+      // The list a connection picks from through its source server, for
+      // Settings to pick from (decision 0059). A read: nothing is kept.
       method: "POST",
       path: at("/connections/:id/pick"),
       async run([id = ""], request) {
@@ -970,7 +929,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Disconnects a connection: its secret, its options and its items go,
+      // Disconnects a connection: its options and its items go,
       // and workstreams that held them keep them as items the index no
       // longer has. The window asks first.
       method: "POST",

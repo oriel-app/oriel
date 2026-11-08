@@ -1,12 +1,13 @@
 // Settings' Connections (decision 0049): one row per connection, drawn the
 // same way for every connector: its name, its connector and what it reads,
-// its state (synced, syncing, a problem, signed out), what its last sync left
+// its state (synced, syncing, a problem, not open), what its last sync left
 // out, and what a person sets on it: its name in the window, its connector's
-// own options, whether it may propose changes, and how often it syncs. Each
-// applies at once, with an Undo, and the next sync reads with it. A mapping
-// shows in its connector's review step, which the person edits and applies
-// (OA-232).
-// Disconnect asks first. Then Add a connection, which lists every connector
+// own options, whether it may propose changes, and how often it syncs; or,
+// through a source server, what the person picks through it (decision 0059).
+// Each applies at once, with an Undo, and the next sync reads with it. A
+// mapping shows in its connector's review step, which the person edits and
+// applies (OA-232), through a source server too. Disconnect asks first. Then
+// Add a connection, which lists each connector the window connects itself,
 // and draws its steps.
 import { Fragment } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -15,7 +16,8 @@ import { SourceServers } from "./found.tsx";
 import {
   type ConnectionsModel,
   type ConnectionsMsg,
-  formOf,
+  pickSaid,
+  settableOf,
   settingOf,
   turnedOff,
 } from "./connections.ts";
@@ -23,7 +25,13 @@ import type { Connectors } from "./connectors.ts";
 import { type Dispatch, Folded, plural, useStamp } from "./parts.tsx";
 import { Switch } from "./provider-row.tsx";
 import { Choices } from "./settings-page.tsx";
-import type { ConnectionView, ConnectorView, OptionField, ReviewOutline } from "./view.ts";
+import type {
+  ConnectionPick,
+  ConnectionView,
+  ConnectorView,
+  OptionField,
+  ReviewOutline,
+} from "./view.ts";
 
 // How often a connection syncs while Oriel is open, by minutes.
 const everyNames: { value: string; label: string }[] = [
@@ -88,12 +96,9 @@ function ConnectionRow(props: {
   const open = connection.state === "open";
   const waiting = connection.state === "waiting";
   // One waiting for options that fit its source is set as an open one is;
-  // one through a source server, by what the person picks through it.
-  const settable =
-    (open || waiting) &&
-    !connection.flagged &&
-    !connection.own &&
-    (connection.through === null || connection.picks.length > 0);
+  // one through a source server, by what the person picks through it, and
+  // its mapping, if its connector reads one (decision 0059).
+  const { settable, mappings } = settableOf(connection, connector);
   // The last change says what it set, and its own problem, beside the
   // option it changed; any other problem says itself here.
   const besideChange = setting.said !== null && settable;
@@ -106,7 +111,7 @@ function ConnectionRow(props: {
       data-status={open && problem === null ? "ready" : undefined}
     >
       <span class="provider-icon" aria-hidden="true">
-        {connector?.connect?.offer.mark ?? connectorName.charAt(0)}
+        {connector?.offer?.mark ?? connectorName.charAt(0)}
       </span>
       <div class="provider-main">
         <span class="provider-name">{connection.name}</span>
@@ -119,7 +124,7 @@ function ConnectionRow(props: {
             {waiting
               ? "Waiting for options that fit"
               : !open
-                ? "Signed out"
+                ? "Not open"
                 : syncing
                   ? "Syncing…"
                   : problem !== null
@@ -135,10 +140,10 @@ function ConnectionRow(props: {
             {problem}
           </p>
         )}
-        {connection.state === "signed-out" && (
+        {connection.state === "shut" && (
           <p class="settings-field-about">
-            {connectorName} turned Oriel away when it started. Connect it again below, or disconnect
-            it.
+            Oriel couldn't read {connectorName} when it started. Its items stay here, and it opens
+            again once Oriel can read it.
           </p>
         )}
         {connection.report.length > 0 && (
@@ -162,6 +167,21 @@ function ConnectionRow(props: {
         {settable && connection.through !== null && (
           <ServerPicks connection={connection} connections={connections} send={send} />
         )}
+        {connector &&
+          mappings.map((field) => (
+            <Fragment key={field.name}>
+              <MappingOption
+                field={field}
+                connection={connection}
+                connector={connector}
+                connections={connections}
+                send={send}
+              />
+              {setting.said?.field === mappingPlace(field.name) && (
+                <Said connection={connection} connections={connections} send={send} />
+              )}
+            </Fragment>
+          ))}
         {connection.flagged && (
           <p class="settings-field-about">
             A flag of pnpm dev makes this connection at every start, so it's set there.
@@ -268,9 +288,8 @@ export function Disconnect(props: {
     >
       <p>
         <strong>Disconnect {connection.name}?</strong> Its {plural(connection.items, "item")} leave
-        the window, with what Oriel keeps to sign in to it. Workstreams keep them as items Oriel no
-        longer has, and threads keep what was said. Nothing changes in{" "}
-        {connector?.inSentence ?? connection.name}.
+        the window. Workstreams keep them as items Oriel no longer has, and threads keep what was
+        said. Nothing changes in {connector?.inSentence ?? connection.name}.
       </p>
       <div class="cli-actions">
         <button
@@ -354,14 +373,6 @@ function Options(props: {
               connections={connections}
               send={send}
             />
-          ) : field.kind === "pick" ? (
-            <PickOption
-              field={field}
-              connection={connection}
-              connections={connections}
-              send={send}
-              onPick={(value) => set({ [field.name]: value }, `its ${field.label.toLowerCase()}`)}
-            />
           ) : field.kind === "list" ? (
             <ListOption
               field={field}
@@ -378,7 +389,7 @@ function Options(props: {
               }
             />
           )}
-          {beside(field.name)}
+          {beside(field.kind === "mapping" ? mappingPlace(field.name) : field.name)}
         </Fragment>
       ))}
       <Choices
@@ -403,6 +414,11 @@ function Options(props: {
 // opens the review step's editor on that table alone; the tables it doesn't
 // read fold into one line. A change is the person's own, applied with an
 // Undo, and says before then what it does to the items the connection has.
+// Where a mapping's last change is said: its own place, apart from a pick
+// that keeps the same option, for an option that is both picked through
+// its server and mapped.
+const mappingPlace = (name: string) => `${name}:mapping`;
+
 function MappingOption(props: {
   field: Extract<OptionField, { kind: "mapping" }>;
   connection: ConnectionView;
@@ -419,10 +435,8 @@ function MappingOption(props: {
   useEffect(() => {
     send({ type: "reviewAsked", kind: connection.kind, connection: connection.id });
   }, [connection.id, options]);
-  const step = connector.connect?.steps.find((each) => each.kind === "review");
-  // One just made shows it in its connect steps, below, until it applies.
-  if (step?.kind !== "review" || formOf(connections, connection.kind).made === connection.id)
-    return null;
+  const step = connector.review;
+  if (step === null) return null;
   const reviewStep = (
     <ReviewStep
       connector={connector}
@@ -433,7 +447,7 @@ function MappingOption(props: {
       pending={setting.pending}
       problem={review === null ? setting.unread : null}
       send={send}
-      beside={field.name}
+      beside={mappingPlace(field.name)}
     />
   );
   const outline = review?.outline ?? null;
@@ -599,7 +613,7 @@ export function ServerPicks(props: {
       {connection.picks.map((pick) => (
         <Fragment key={pick.name}>
           <PickOption
-            field={props.of ? { ...pick, label: `${props.of} ${pick.label.toLowerCase()}` } : pick}
+            pick={props.of ? { ...pick, label: `${props.of} ${pick.label.toLowerCase()}` } : pick}
             connection={connection}
             connections={connections}
             send={send}
@@ -622,38 +636,31 @@ export function ServerPicks(props: {
   );
 }
 
-// One of a connection's options picked from the list its source gives, for
-// its own account, or through its source server: what it is now, and
-// Change, which lists. One of several is ticked, then used together, up to
-// `most`; with none picked, it says what the connection reads instead.
+// What a person picks on a connection through its source server, from the
+// list the server gives: what's picked now, as the server reads it from the
+// connection's options, and Change, which lists. One of several is ticked,
+// then used together, up to `most`; with none picked, it says what the
+// connection reads instead.
 function PickOption(props: {
-  field: { name: string; label: string; many?: boolean; most?: number | null; unpicked?: string };
+  pick: ConnectionPick;
   connection: ConnectionView;
   connections: ConnectionsModel;
   send(msg: ConnectionsMsg): void;
   onPick(value: string | string[]): void;
 }) {
-  const { field, connection, connections, send } = props;
+  const { pick: field, connection, connections, send } = props;
   const setting = settingOf(connections, connection.id);
   const [listing, list] = useState(false);
-  const now = connection.options[field.name];
-  const current = typeof now === "string" ? now : "";
-  const picked = Array.isArray(now) ? now.filter((each) => typeof each === "string") : [];
+  const { picked, many } = field;
+  const { current, none, said } = pickSaid(field);
   // Those ticked, while listing several.
   const [ticked, tick] = useState<string[]>(picked);
   const most = field.most ?? Number.POSITIVE_INFINITY;
-  const many = field.many === true;
-  const none = many ? picked.length === 0 : current === "";
   return (
     <fieldset class="settings-field">
       <legend class="settings-field-name">{field.label}</legend>
       <span class="settings-field-about">
-        {none && field.unpicked
-          ? `Reading ${field.unpicked}; pick yours.`
-          : many
-            ? `${picked.length} picked.`
-            : current}{" "}
-        {/* Again, while no list came, as when the source didn't give one. */}
+        {said} {/* Again, while no list came, as when the source didn't give one. */}
         {(!listing || setting.choices === null) && (
           <button
             type="button"
@@ -756,8 +763,9 @@ function PickOption(props: {
   );
 }
 
-// Every connector, and whether the window may connect it now, or why not;
-// one picked shows its steps beneath it.
+// Every connector the window connects itself, what's on this Mac, and whether it
+// may connect it now, or why not; one picked shows its steps beneath it. The
+// rest come through source servers, above (decision 0059).
 function AddConnection(props: {
   connections: ConnectionsModel;
   connectors: Connectors;
@@ -775,14 +783,13 @@ function AddConnection(props: {
       <ul class="provider-rows">
         {Object.values(connectors)
           // A kind turned off doesn't show at all (decision 0059).
+          .filter((connector) => connector.connect !== null)
           .filter((connector) => !turnedOff(connections).includes(connector.kind))
           .map((connector) => {
-            const offer = connector.connect?.offer;
+            const { offer } = connector;
             const connectable = view.connectable.includes(connector.kind);
             const why = view.refused[connector.kind];
-            // One just made stays open on its review step, until it applies.
-            const form = formOf(connections, connector.kind);
-            const open = (connectable || form.made !== null) && form.open;
+            const open = connectable && (connections.forms[connector.kind]?.open ?? false);
             return (
               <li key={connector.kind} class="provider-row">
                 <span class="provider-icon" aria-hidden="true">

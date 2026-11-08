@@ -43,9 +43,8 @@ async function setup(options: Record<string, unknown> = {}) {
       prefix: "sheets",
       identity: declared.identity,
       options: { ...declared.options, ...options },
-      secret: null,
     },
-    { fetch: standIn.fetch, kept: false, log: () => {}, now: () => t0 },
+    { fetch: standIn.fetch, log: () => {}, now: () => t0 },
   );
   const records: SheetsRecord[] = [];
   for await (const page of opened.source.sync(null))

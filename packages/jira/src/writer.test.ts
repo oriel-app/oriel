@@ -10,7 +10,6 @@ import {
 } from "@oriel/core";
 import { loadJiraFixture } from "./fixture.ts";
 import { textToAdf } from "./adf.ts";
-import { jiraBoards } from "./boards.ts";
 import {
   discovery,
   fakeJira,
@@ -25,14 +24,8 @@ import {
   status,
 } from "./fake-jira.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
-import {
-  basicAuth,
-  type JiraRequest,
-  type JiraResponse,
-  readTransport,
-  type Transport,
-} from "./transport.ts";
-import { jiraWriter, restTransport } from "./writer.ts";
+import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
+import { jiraWriter, memoryTransport } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
 // production. These tests cover the REST mapping, not the approval gate.
@@ -335,94 +328,6 @@ test("anything that fails before the write goes out sent nothing", async () => {
   assert.deepEqual(jira.writes(), []);
 });
 
-// A fetch that answers from a fake site's transport, so a real transport,
-// with its timeouts and retries, can be put in front of it.
-const fetchOver =
-  (transport: Transport, answer = (_req: JiraRequest): Response | null => null): typeof fetch =>
-  async (input, init) => {
-    const url = new URL(String(input));
-    const req: JiraRequest = {
-      method: (init?.method ?? "GET") as JiraRequest["method"],
-      path: `${url.pathname}${url.search}`,
-      ...(init?.body ? { body: JSON.parse(String(init.body)) as unknown } : {}),
-    };
-    const given = answer(req);
-    if (given) return given;
-    const { status, body } = await transport(req);
-    return new Response(body === null ? null : JSON.stringify(body), { status });
-  };
-
-test("every request of a write keeps within its limit, the shared boards' too, and a stalled write itself sent nothing", async () => {
-  const jira = fakeSite();
-  const asked: number[] = [];
-  const credential = basicAuth("a@example.com", "t");
-  const timeout = (ms: number) => {
-    asked.push(ms);
-    return new AbortController().signal;
-  };
-  // Jira asks for the estimate to wait ten minutes.
-  const fetch = fetchOver(jira.transport, (req) =>
-    req.method === "PUT"
-      ? new Response("", { status: 429, headers: { "Retry-After": "600" } })
-      : null,
-  );
-  // As the server builds them: the boards over the source's own transport.
-  const boards = jiraBoards({
-    transport: readTransport({ site, credential, fetch, timeout }),
-    projects: ["SYN"],
-    log: () => {},
-  });
-  const w = jiraWriter({
-    transport: restTransport({ site, credential, fetch, timeout }),
-    project: "SYN",
-    boards,
-    log: () => {},
-  });
-  await assert.rejects(
-    w.apply(request("setEstimate", "jira:SYN-12", { points: 5 }), { left: () => 20_000 }),
-    unsent,
-  );
-  // The board's discovery, the read before, and the write: each had 20 s.
-  assert.ok(jira.calls.some((call) => call.path.startsWith("/rest/agile/1.0/board")));
-  assert.ok(asked.length > 2 && asked.every((ms) => ms === 20_000));
-  // A read for no write keeps its own timeout.
-  await w.current("jira:SYN-12", ["summary"]);
-  assert.equal(asked.at(-1), 30_000);
-});
-
-test("a write whose credentials fail never goes out, and the failure names no secret", async () => {
-  const jira = fakeSite();
-  // The read before the write is signed; the write itself can't be.
-  let signed = 0;
-  const credential = {
-    headers: async () => {
-      signed += 1;
-      if (signed > 1) throw new Error("token abc123 has expired");
-      return { Authorization: "Basic x" };
-    },
-  };
-  const fetch = async (url: string | URL | Request, init?: RequestInit) => {
-    const path = new URL(String(url)).pathname + new URL(String(url)).search;
-    const answer = await jira.transport({
-      method: (init?.method ?? "GET") as JiraRequest["method"],
-      path,
-      ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
-    });
-    return new Response(JSON.stringify(answer.body), { status: answer.status });
-  };
-  const signedWriter = jiraWriter({
-    transport: restTransport({ site, credential, fetch }),
-    project: "SYN",
-    log: () => {},
-  });
-  await assert.rejects(
-    signedWriter.apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
-    (error) => unsent(error) && !String(error).includes("abc123"),
-  );
-  assert.equal(signed, 2);
-  assert.deepEqual(jira.writes(), []);
-});
-
 // SYN-12 under a workflow: To Do may go to In Progress, In Progress to Done,
 // and Done nowhere. Moves land in `at`, and every request is kept.
 function workflowSite(start = "To Do") {
@@ -484,8 +389,7 @@ test("an item already in the status isn't moved, so a retry of a move that lande
 
 test("addComment posts plain text as rich text and reports the comment by ID; removeComment undoes it, and only Oriel's own", async () => {
   const memory = memorySite(loadJiraFixture(), instant(new Date(Date.UTC(2026, 9, 29, 9))));
-  const credential = { headers: async () => ({}) };
-  const transport = restTransport({ site: memorySiteOrigin, credential, fetch: memory.fetch });
+  const transport = memoryTransport(memorySiteOrigin, memory.fetch);
   const w = jiraWriter({ transport, project: "SYN", log: () => {} });
   const body = "The date moved to 14 August: the operator's crew rota slipped.";
   const added = await w.apply(request("addComment", "jira:SYN-45", { body }));

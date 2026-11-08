@@ -16,7 +16,7 @@ const plan: Script = async () => ({
 type Acted = { changeSet: ChangeSetView; revert?: string };
 
 test("what a change set creates shows with its title at once, and goes when a revert deletes it", async (t) => {
-  const app = await testApp(t, { live: true, plan: () => [{ run: "plan" }], scripts: { plan } });
+  const app = await testApp(t, { memory: true, plan: () => [{ run: "plan" }], scripts: { plan } });
   const { site } = app;
   assert.ok(site);
   const { id: threadId, workstreamId } = json<{ id: string; workstreamId: string }>(

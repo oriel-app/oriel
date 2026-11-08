@@ -136,7 +136,7 @@ Three tiers, with the yearly discount.</textarea>
 ## Where the app uses it
 
 - The item panel of a stand-in's issue, on any page (`ItemPanel` in `packages/web/src/item-panel.tsx`).
-- **The first run.** While the stand-in is on, it takes the place of what it stands in for (`standingIn` in `packages/web/src/connections.ts`). The Your work step has no Jira row and no field asking for a token. The stand-in shows as a row that is ready already (`YourWork` in `packages/web/src/setup-page.tsx`), so Continue goes straight on. The overview offers no Jira card (`ConnectCards` in `packages/web/src/connect-steps.tsx`), and while the window holds nothing yet, its one question to start from is a plan (`questionsFrom` in `packages/web/src/window-chat.ts`).
+- **The first run.** While the stand-in is on, it takes the place of what it stands in for (`standingIn` in `packages/web/src/connections.ts`). The Your work step has no Jira row. The stand-in shows as a row that is ready already (`YourWork` in `packages/web/src/setup-page.tsx`), so Continue goes straight on. While the window holds nothing yet, its one question to start from is a plan (`questionsFrom` in `packages/web/src/window-chat.ts`).
 
 ```html specimen id=first-run title="The first run's Your work, with the stand-in on" width=640
 <ul class="provider-rows setup-rows">

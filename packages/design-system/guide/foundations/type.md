@@ -64,7 +64,7 @@ There's nothing above `--text-xl`. Oriel has no hero text, and a page's title is
 
 - `--weight-regular` (400): the body, a chip's name, a key.
 - `--weight-medium` (500): a button's label, a state chip, the current page in the sidebar.
-- `--weight-strong` (600): a name that leads a row, a section head, a count's number, the bold lead of a sentence ("**Disconnect Jira?**").
+- `--weight-strong` (600): a name that leads a row, a section head, a count's number, the bold lead of a sentence ("**Disconnect Launch notes?**").
 
 Three weights are enough. Don't use bold for a whole sentence: lead with a few strong words and let the rest be regular.
 

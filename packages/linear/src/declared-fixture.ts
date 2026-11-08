@@ -73,9 +73,8 @@ export const linearDeclaredFixture: SourceFixture<
           prefix: "linear",
           identity: "",
           options: { team },
-          secret: null,
         },
-        { kept: false, log: () => {}, now: () => world.frozen },
+        { log: () => {}, now: () => world.frozen },
       );
       const { records, texts } = await listed(open.source.sync(null));
       return { open, records, texts };

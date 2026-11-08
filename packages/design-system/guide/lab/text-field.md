@@ -2,7 +2,7 @@
 title: Text field
 status: proposed
 order: 40
-classes: text-field, text-field-label, text-field-hint, text-field-problem, text-field-input, search-field, search-field-input, connect-details, connect-fields, connect-field, connect-label, connect-hint, connect-problem, input, settings, provider-path-label, held-message, held-by, held-field, name-field, reason, link-field, sidebar-search-field, filter-search, icon, visually-hidden
+classes: text-field, text-field-label, text-field-hint, text-field-problem, text-field-input, search-field, search-field-input, setup-form, connect-field, connect-label, connect-problem, cli-note, input, settings, provider-path-label, held-message, held-by, held-field, name-field, reason, link-field, sidebar-search-field, filter-search, icon, visually-hidden
 summary: One Field (label, hint and problem tied with aria-describedby) for Oriel's nine field styles, textareas that grow with field-sizing, :user-invalid beside aria-invalid, and one SearchField.
 ---
 
@@ -10,7 +10,7 @@ summary: One Field (label, hint and problem tied with aria-describedby) for Orie
 
 ## What it is
 
-A place to type one value: a name, an address, a key, a path, a reason. Oriel has about nine field styles and no field class. Each page sets its own border, height and padding, the label and hint are four different pairs of classes, and no problem is tied to its field for a screen reader.
+A place to type one value: a name, a key, a path, a reason. Oriel has about nine field styles and no field class. Each page sets its own border, height and padding, the label and hint are four different pairs of classes, and no problem is tied to its field for a screen reader.
 
 The proposal is two pieces:
 
@@ -23,61 +23,43 @@ The [chat input](/components/chat-input) isn't a text field: it asks, and has it
 
 Oriel's markup and CSS. Compare the heights, the labels, and where a problem sits.
 
-```html specimen id=today-connect title="The connect steps: .connect-field, .input, .connect-problem (FieldsStep, in connect-steps.tsx)" side=today
-<form class="connect-details" aria-label="Your Jira account">
-  <div class="connect-fields">
-    <label class="connect-field">
-      <span class="connect-label">Your Jira address</span>
-      <input
-        class="input"
-        type="text"
-        value="yourteam"
-        placeholder="yourteam.atlassian.net"
-        aria-invalid="true"
-      />
-      <span class="connect-hint">The start of the address in your browser when Jira is open.</span>
-    </label>
-    <label class="connect-field">
-      <span class="connect-label">The email you sign in to Jira with</span>
-      <input class="input" type="email" placeholder="you@company.com" />
-    </label>
-  </div>
-  <p class="connect-problem" role="alert">Type your Jira address, like yourteam.atlassian.net.</p>
+```html specimen id=today-connect title="The first run's key: .connect-field, .input, .connect-problem (ApiKey, in setup-page.tsx)" side=today
+<form class="setup-form">
+  <label class="connect-field">
+    <span class="connect-label">API key</span>
+    <input
+      class="input"
+      type="password"
+      value="not-a-real-key"
+      placeholder="Paste it here"
+      aria-invalid="true"
+    />
+  </label>
+  <p class="connect-problem" role="alert">Anthropic doesn't accept that key.</p>
+  <p class="cli-note">Get a key from Anthropic: make an account there, and click Create Key.</p>
 </form>
 ```
 
-```html specimen id=proposed-connect title="The connect steps as Fields: the problem under its field, and tied to it" side=proposed
-<form class="connect-details" aria-label="Your Jira account">
-  <div class="connect-fields">
-    <div class="text-field">
-      <label class="text-field-label" for="jira-site">Your Jira address</label>
-      <input
-        id="jira-site"
-        class="text-field-input"
-        data-size="lg"
-        type="text"
-        value="yourteam"
-        placeholder="yourteam.atlassian.net"
-        aria-invalid="true"
-        aria-describedby="jira-site-hint jira-site-problem"
-      />
-      <span class="text-field-hint" id="jira-site-hint"
-        >The start of the address in your browser when Jira is open.</span
-      >
-      <p class="text-field-problem" id="jira-site-problem" role="alert">
-        Type your Jira address, like yourteam.atlassian.net.
-      </p>
-    </div>
-    <div class="text-field">
-      <label class="text-field-label" for="jira-email">The email you sign in to Jira with</label>
-      <input
-        id="jira-email"
-        class="text-field-input"
-        data-size="lg"
-        type="email"
-        placeholder="you@company.com"
-      />
-    </div>
+```html specimen id=proposed-connect title="The first run's key as a Field: the problem under its field, and tied to it" side=proposed
+<form class="setup-form">
+  <div class="text-field">
+    <label class="text-field-label" for="first-key">API key</label>
+    <input
+      id="first-key"
+      class="text-field-input"
+      data-size="lg"
+      type="password"
+      value="not-a-real-key"
+      placeholder="Paste it here"
+      aria-invalid="true"
+      aria-describedby="first-key-hint first-key-problem"
+    />
+    <span class="text-field-hint" id="first-key-hint"
+      >Get a key from Anthropic: make an account there, and click Create Key.</span
+    >
+    <p class="text-field-problem" id="first-key-problem" role="alert">
+      Anthropic doesn't accept that key.
+    </p>
   </div>
 </form>
 ```
@@ -233,26 +215,26 @@ The sidebar's input is also a `combobox` over its results (`ThreadSearch` in `pa
 
 ```html specimen id=anatomy title="Anatomy: label, control, hint, problem" side=proposed
 <div class="text-field">
-  <label class="text-field-label" for="anat-token">API token</label>
+  <label class="text-field-label" for="anat-key">API key</label>
   <input
-    id="anat-token"
+    id="anat-key"
     class="text-field-input"
     type="password"
     placeholder="Paste it here"
     autocomplete="off"
-    aria-describedby="anat-token-hint"
+    aria-describedby="anat-key-hint"
   />
-  <span class="text-field-hint" id="anat-token-hint"
-    >Atlassian shows it only once. Oriel keeps it encrypted on this Mac.</span
+  <span class="text-field-hint" id="anat-key-hint"
+    >Anthropic shows it only once. Oriel keeps it encrypted on this Mac.</span
   >
 </div>
 ```
 
-- **`.text-field`**: a grid, `--space-1` between its parts. It sets `accent-color: var(--accent)`, inherited, so a checkbox or radio inside a field (a "Show key" box, a choice under a field) wears the accent without a rule of its own. Today the connect steps' radio rows (`PickStep` in `packages/web/src/connect-steps.tsx`) have none.
+- **`.text-field`**: a grid, `--space-1` between its parts. It sets `accent-color: var(--accent)`, inherited, so a checkbox or radio inside a field (a "Show key" box, a choice under a field) wears the accent without a rule of its own.
 - **`.text-field-label`**: a `<label for>`, in `--text`, medium weight. Not a `<label>` around everything: the hint and the problem would join the field's name.
-- **`.text-field-input`**: 1.875rem high at least, `--line-strong`, `--radius`, `--surface`, `--text-md`. `data-size="lg"` is 2.25rem, for the first run and the connect steps; `data-mono` is for a path, a key or a command.
+- **`.text-field-input`**: 1.875rem high at least, `--line-strong`, `--radius`, `--surface`, `--text-md`. `data-size="lg"` is 2.25rem, for the first run; `data-mono` is for a path, a key or a command.
 - **`.text-field-hint`**: `--text-faint`, `--text-sm`. Say what to type, or where to find it.
-- **`.text-field-problem`**: `--danger`, `--text-sm`, `role="alert"`, directly under its field. A problem about the whole form (Jira refused the address and the token together) stays one line under the form, and marks each field it names with `aria-invalid`.
+- **`.text-field-problem`**: `--danger`, `--text-sm`, `role="alert"`, directly under its field. A problem about the whole form stays one line under the form, and marks each field it names with `aria-invalid`.
 - **Placeholder**: `--text-faint` at full opacity (Firefox fades placeholders by default). It's an example of the value ("you@company.com"), never the label.
 
 ### Growing textareas
@@ -286,12 +268,12 @@ Forced with `ws-` classes, which carry each sheet's own `:hover` and `:focus-vis
 
 ```html specimen id=today-focus title="Today: focus on .input, .held-field and the review page's field" side=today state=focus
 <div class="ws-stack">
-  <div class="connect-details">
+  <form class="setup-form">
     <label class="connect-field">
-      <span class="connect-label">Your Jira address</span>
-      <input class="input ws-focus-visible" placeholder="yourteam.atlassian.net" />
+      <span class="connect-label">API key</span>
+      <input class="input ws-focus-visible" type="password" placeholder="Paste it here" />
     </label>
-  </div>
+  </form>
   <textarea class="held-field ws-focus-visible" rows="2" aria-label="Edit Amara Okafor's reason">
 Keep it in To do.</textarea>
 </div>
@@ -300,12 +282,13 @@ Keep it in To do.</textarea>
 ```html specimen id=proposed-focus title="Proposed: the field focus, the same on every field" side=proposed state=focus
 <div class="ws-stack">
   <div class="text-field">
-    <label class="text-field-label" for="focus-site">Your Jira address</label>
+    <label class="text-field-label" for="focus-key">API key</label>
     <input
-      id="focus-site"
+      id="focus-key"
       class="text-field-input ws-focus-visible"
       data-size="lg"
-      placeholder="yourteam.atlassian.net"
+      type="password"
+      placeholder="Paste it here"
     />
   </div>
   <textarea
@@ -345,47 +328,45 @@ Keep it in To do.</textarea>
 ```
 
 ```html specimen id=today-invalid title="Today: aria-invalid, the problem under the form" side=today state=error
-<div class="connect-details">
+<form class="setup-form">
   <label class="connect-field">
-    <span class="connect-label">API token</span>
+    <span class="connect-label">API key</span>
     <input class="input" type="password" value="abc" aria-invalid="true" />
   </label>
   <p class="connect-problem" role="alert">
-    Jira didn't accept these two together. Check the email is the one you sign in to Jira with. If
-    it is, make a new one (step 2) and paste it here.
+    Anthropic doesn't accept that key. Copy it again from Anthropic's page, and paste it here.
   </p>
-</div>
+</form>
 ```
 
 ```html specimen id=proposed-invalid title="Proposed: aria-invalid, the problem tied to the field" side=proposed state=error
 <div class="text-field">
-  <label class="text-field-label" for="inv-token">API token</label>
+  <label class="text-field-label" for="inv-key">API key</label>
   <input
-    id="inv-token"
+    id="inv-key"
     class="text-field-input"
     data-size="lg"
     type="password"
     value="abc"
     aria-invalid="true"
-    aria-describedby="inv-token-problem"
+    aria-describedby="inv-key-problem"
   />
-  <p class="text-field-problem" id="inv-token-problem" role="alert">
-    Jira didn't accept these two together. Check the email is the one you sign in to Jira with. If
-    it is, make a new one (step 2) and paste it here.
+  <p class="text-field-problem" id="inv-key-problem" role="alert">
+    Anthropic doesn't accept that key. Copy it again from Anthropic's page, and paste it here.
   </p>
 </div>
 ```
 
-```html specimen id=user-invalid title="Proposed: :user-invalid, real. Type amara, then leave the field" side=proposed state=error
+```html specimen id=user-invalid title="Proposed: :user-invalid, real. Type a name, delete it, then leave the field" side=proposed state=error
 <div class="text-field">
-  <label class="text-field-label" for="ui-email">The email you sign in to Jira with</label>
+  <label class="text-field-label" for="ui-name">Your name</label>
   <input
-    id="ui-email"
+    id="ui-name"
     class="text-field-input"
     data-size="lg"
-    type="email"
+    type="text"
     required
-    placeholder="you@company.com"
+    placeholder="Amara Okafor"
   />
 </div>
 ```
@@ -429,7 +410,7 @@ Keep it in To do.</textarea>
 ## Keyboard and ARIA
 
 - A field is a native `<input>` or `<textarea>`: Tab in and out, typing, selection, undo and paste are the browser's. Nothing is scripted.
-- **Enter** submits a form with one text input (the connect steps' "Next", the review page's approve). In a textarea it's a new line.
+- **Enter** submits a form with one text input (a folder's typed path, the review page's approve). In a textarea it's a new line.
 - **Escape** clears a `type="search"` field in Chrome and Safari. The sidebar's search uses `type="text"` with `role="combobox"`, and its Escape is its own (`ThreadSearch` in `packages/web/src/sidebar.tsx`).
 - **Name:** the `<label for>`. A field with no visible label (the searches, a held message's edit) has a visually hidden one or an `aria-label`. Never only a placeholder.
 - **Description:** `aria-describedby` lists the hint and the problem, in that order, by id. A screen reader reads them after the name and the value. Today no problem is tied to its field.
@@ -453,21 +434,21 @@ This sheet reaches the review link page, which may open in Safari or Firefox. Ev
 
 What was tried:
 
-- **Chrome 156, headless:** the empty textarea is two lines high, and typing ten lines makes it eight lines high, then it scrolls. `:user-invalid` doesn't match an empty required email field on arrival; after typing "amara" and pressing Tab it matches, and the border is `--danger`. `CSS.supports("field-sizing: content")` is true.
+- **Chrome 156, headless:** the empty textarea is two lines high, and typing ten lines makes it eight lines high, then it scrolls. `:user-invalid` doesn't match an empty required field on arrival; after typing a name, deleting it and pressing Tab it matches, and the border is `--danger`. `CSS.supports("field-sizing: content")` is true.
 - **Firefox 142, headless** (before Firefox had `field-sizing`): the textareas keep their `rows` and the resize handle; borders, radius, focus and placeholder match Chrome's.
 
 ## Adopt now or wait
 
 **Adopt now.** Every feature here works in the desktop app and either works or falls back in Safari and Firefox, including on the review page. The wins: one field style instead of nine, problems a screen reader can find, a held message's edit and a draft's option that grow as the person types, and one search frame instead of two copies.
 
-Adopt `:user-invalid` with care: only fields with real constraints (`type="email"`, `required`) ever match it. Oriel's own checks (Jira refused the token) still come back as `aria-invalid`.
+Adopt `:user-invalid` with care: only fields with real constraints (`type="email"`, `required`) ever match it. Oriel's own checks (Anthropic refused the key) still come back as `aria-invalid`.
 
 ## How to migrate
 
 1. Add `field.css`'s rules to `window.css`, beside `.input[aria-invalid]` in `window.css`.
-2. **Connect steps**, `FieldsStep` in `packages/web/src/connect-steps.tsx`: each `<label class="connect-field">` becomes a `.text-field` with a `<label for>`, the input `class="text-field-input" data-size="lg"`, and `aria-describedby` naming the hint and, when its name is in `form.fields`, the problem. The first run's key is the same shape (`ApiKey` in `packages/web/src/setup-page.tsx`). Then delete `.connect-field input`, `.connect-hint`, `.connect-details .input` and `.connect-problem` in `window.css`, the last of them both times it's written.
+2. **The first run's key**, `ApiKey` in `packages/web/src/setup-page.tsx`: its `<label class="connect-field">` becomes a `.text-field` with a `<label for>`, the input `class="text-field-input" data-size="lg"`, and `aria-describedby` naming the hint and, while it shows, the problem. Then delete `.connect-field input`, `.setup-form .input` and `.connect-problem` in `window.css`, the last of them both times it's written.
 3. **Settings and connections**: `class="text-field-input" data-mono` on the path and key inputs (`CliPath` and `ApiKey` in `packages/web/src/settings-page.tsx`), plain on the name (`Options` in `packages/web/src/connections-page.tsx`). Delete `.settings .input` in `window.css`, and the `.input` half of `.settings :is(.input, .select)` beside it.
 4. **Textareas**: `class="text-field-input"` on the held message's edit (`HeldMessage` in `packages/web/src/thread-page.tsx`) and a draft's option (`DraftCard` in `packages/web/src/thread-page.tsx`), with `rows={2}`; delete `DraftCard`'s line count and `.held-field` in `window.css`. The review page's reason and name (`ReviewChange` in `packages/web/src/other-pages.tsx`) keep `.name-field` for their place in the row; delete `.name-field input` and `.name-field textarea` in `window.css`.
 5. **The review link** (`ChangeSet` in `packages/web/src/thread-page.tsx`): `class="text-field-input" data-mono readonly`. Keep `.link-field`'s `--text-xs` if the link must stay that small.
 6. **SearchField**: `class="search-field"` on the sidebar's `<label>` (`ThreadSearch` in `packages/web/src/sidebar.tsx`) and Browse's (`Filters` in `packages/web/src/window-page.tsx`), `class="search-field-input"` on their inputs. Delete `.sidebar-search-field` and `.filter-search` in `window.css`, with their `:focus-within`, `input` and placeholder rules. Keep the sidebar's folded rule, `.shell[data-folded] :is(.sidebar-search-field, .search-results)` in `window.css`, and point it at `.search-field`.
-7. Shots to retake: the first run's key step, Connect Jira, Settings › Providers, a thread with a held message and a draft, the review link page, the sidebar and Browse, in each theme.
+7. Shots to retake: the first run's key step, Settings › Providers, a thread with a held message and a draft, the review link page, the sidebar and Browse, in each theme.

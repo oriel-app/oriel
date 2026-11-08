@@ -32,7 +32,6 @@ The rows sit in one framed list, `.provider-rows`, which takes the theme's list 
 
 - Not for items, threads or workstreams. Those are [list rows](/components/list-row).
 - Not in the sidebar. A source there is a `.nav-link` row with its count and Sync on hover; see [Sidebar](/components/sidebar). It reads the same connection, but it's a way into Browse, not a place to set it up.
-- Not for picking one of several in a connect step. That's `.choice-rows` (see [Connect steps](/patterns/connect-steps)), which shares the frame but not the row.
 - Not as a card for a message or a warning. A row's warning or failure is a `.cli-box` inside its main column, never a row of its own.
 
 ## Anatomy and variants
@@ -188,7 +187,7 @@ The path and key fields themselves are on [Text field](/components/text-field#se
 
 ### Picked through a source server
 
-A connection through a source server (decision 0059) has no options of its own but what the person picks through the server: Jira's project, Linear's team, Slack's channels. Each is the same picker Settings re-picks a connection's project with (`PickOption` in `packages/web/src/connections-page.tsx`), drawn by `ServerPicks`: what it reads now and **Change**, or, with nothing picked yet, what it reads instead ("Reading your first 20 channels; pick yours.") and **Pick**. Its list comes through the server's read tools. One option is a radio list that applies on a click; several are ticks, up to the most the source reads, applied with **Use these N**. A long list scrolls under Find (`.connection-options .choices` in `window.css`). The first run draws the same under what Oriel found, each named by its source ("Jira project"), in `.found-picks`.
+A connection through a source server (decision 0059) has no options of its own but what the person picks through the server: Jira's project, Linear's team, Slack's channels. Each is drawn by `PickOption` in `packages/web/src/connections-page.tsx`, from `ServerPicks`: what the server reads as picked now (one value, or how many) and **Change**, or, with nothing picked yet, what it reads instead ("Reading your first 20 channels; pick yours.") and **Pick**. Its list comes through the server's read tools. One option is a radio list that applies on a click; several are ticks, up to the most the source reads, applied with **Use these N**. A long list scrolls under Find (`.connection-options .choices` in `window.css`). The first run draws the same under what Oriel found, each named by its source ("Jira project"), in `.found-picks`. A connector that reads a mapping, as Google Sheets through sheets-mcp, also draws its mapping beside its picks, in its review step (see [Connect steps](/patterns/connect-steps#settings)): the person picks spreadsheets, then applies or edits how each tab reads.
 
 ```html specimen id=server-picks title="Slack's channels, picked through its server"
 <div class="connection-options">
@@ -541,22 +540,23 @@ This specimen is also the Settings frame a screen draws: `main.page` with its `.
 
 The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.settings-page` (`Connections` in `packages/web/src/connections-page.tsx`, `SettingsPage` in `packages/web/src/settings-page.tsx`). Neither `connection-rows` nor `settings-page` has a rule in window.css, so the specimens leave them off.
 
-```html specimen id=connection-states title="Connection states: signed out, what a sync left out, syncing after a problem, a problem"
+```html specimen id=connection-states title="Connection states: not open, what a sync left out, syncing after a problem, a problem"
 <ul class="provider-rows">
-  <li class="provider-row connection-row" id="connection-jira-out">
-    <span class="provider-icon" aria-hidden="true">J</span>
+  <li class="provider-row connection-row" id="connection-folder-shut">
+    <span class="provider-icon" aria-hidden="true">F</span>
     <div class="provider-main">
-      <span class="provider-name">Jira</span>
-      <span class="provider-about">SYN on oriel.atlassian.net</span>
+      <span class="provider-name">Folder</span>
+      <span class="provider-about">~/Documents/Old notes</span>
       <span class="provider-status">
         <span class="provider-mark" aria-hidden="true"></span>
-        <span class="provider-state">Signed out</span>
+        <span class="provider-state">Not open</span>
       </span>
       <p class="settings-field-about">
-        Jira turned Oriel away when it started. Connect it again below, or disconnect it.
+        Oriel couldn't read Folder when it started. Its items stay here, and it opens again once
+        Oriel can read it.
       </p>
       <span class="cli-actions">
-        <button type="button" class="quiet-action">Disconnect Jira</button>
+        <button type="button" class="quiet-action">Disconnect Folder</button>
       </span>
     </div>
     <div class="provider-side"></div>
@@ -617,21 +617,21 @@ The third row is the drift below: a connection with a standing problem syncs aga
 
 ```html specimen id=disconnect title="Disconnect asks first, in the row"
 <ul class="provider-rows">
-  <li class="provider-row connection-row" id="connection-jira-ask" data-status="ready">
-    <span class="provider-icon" aria-hidden="true">J</span>
+  <li class="provider-row connection-row" id="connection-folder-ask" data-status="ready">
+    <span class="provider-icon" aria-hidden="true">F</span>
     <div class="provider-main">
-      <span class="provider-name">Jira</span>
-      <span class="provider-about">SYN on oriel.atlassian.net</span>
+      <span class="provider-name">Folder</span>
+      <span class="provider-about">~/Documents/Launch notes</span>
       <span class="provider-status">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Synced 3 min ago</span>
-        <span>· 120 items</span>
+        <span>· 38 items</span>
       </span>
-      <div class="cli-box" data-tone="warn" role="alertdialog" aria-label="Disconnect Jira?">
+      <div class="cli-box" data-tone="warn" role="alertdialog" aria-label="Disconnect Folder?">
         <p>
-          <strong>Disconnect Jira?</strong> Its 120 items leave the window, with what Oriel keeps to
-          sign in to it. Workstreams keep them as items Oriel no longer has, and threads keep what
-          was said. Nothing changes in Jira.
+          <strong>Disconnect Folder?</strong> Its 38 items leave the window. Workstreams keep them
+          as items Oriel no longer has, and threads keep what was said. Nothing changes in the
+          folder.
         </p>
         <div class="cli-actions">
           <button type="button" class="button danger">Disconnect</button>
@@ -673,20 +673,12 @@ Jira on through Atlassian's MCP server in the person's agent (OA-276) has a row 
 
 ### Add a connection
 
-Every connector, one row each: its name and what it reads, then either Connect at the side or a line saying why it can't connect now. Picking one draws its [connect steps](/patterns/connect-steps) in the row's main column. These rows set no `data-status`, so they have no status line.
+Each connector the window connects itself, one row each, which since decision 0059 is only the folder; the rest come through [source servers](/components/source-servers). Its name and what it reads, then either Connect at the side or a line saying why it can't connect now. Picking one draws its [connect steps](/patterns/connect-steps) in the row's main column. These rows set no `data-status`, so they have no status line.
 
 ```html specimen id=add-connection title="Add a connection"
 <section class="settings-section" aria-labelledby="settings-add-connection">
   <h2 id="settings-add-connection" class="settings-title">Add a connection</h2>
   <ul class="provider-rows">
-    <li class="provider-row">
-      <span class="provider-icon" aria-hidden="true">J</span>
-      <div class="provider-main">
-        <span class="provider-name">Jira</span>
-        <span class="provider-about">Epics, stories and their details</span>
-        <span class="settings-field-about">Jira is already connected to this window.</span>
-      </div>
-    </li>
     <li class="provider-row">
       <span class="provider-icon" aria-hidden="true">F</span>
       <div class="provider-main">
@@ -697,22 +689,15 @@ Every connector, one row each: its name and what it reads, then either Connect a
       </div>
       <div class="provider-side"><button type="button" class="button">Connect</button></div>
     </li>
-    <li class="provider-row">
-      <span class="provider-icon" aria-hidden="true">S</span>
-      <div class="provider-main">
-        <span class="provider-name">Slack</span>
-        <span class="settings-field-about">Slack can't be connected from this window.</span>
-      </div>
-    </li>
   </ul>
 </section>
 ```
 
 ### The first run's source rows
 
-The first run's Your work and Reading your work steps draw each source with `SourceRow` in `packages/web/src/setup-page.tsx`, a local copy of the same shell. Its green line is set on the line itself, with `data-connected`, because it doesn't own the row (`connected` in `packages/web/src/setup-page.tsx`).
+The first run's Your work step draws each source with `SourceRow` in `packages/web/src/setup-page.tsx`, a local copy of the same shell. Its green line is set on the line itself, with `data-connected`, because it doesn't own the row (`connected` in `packages/web/src/setup-page.tsx`).
 
-```html specimen id=source-rows title="First run: connected, waiting, and not available"
+```html specimen id=source-rows title="First run: on through its server, waiting, and no server yet"
 <ul class="provider-rows">
   <li class="provider-row">
     <span class="provider-icon" aria-hidden="true">J</span>
@@ -744,8 +729,13 @@ The first run's Your work and Reading your work steps draw each source with `Sou
       <span class="provider-name">Google Sheets</span>
       <span class="provider-about">Trackers, RAID logs and plans you pick</span>
       <span class="cli-line"
-        >Google Sheets can't be connected from this copy of Oriel yet: it doesn't have Oriel's
-        Google sign-in.</span
+        >Add sheets-mcp to Claude Code to see it here.
+        <a
+          href="https://github.com/oriel-app/oriel/blob/main/packages/sheets-mcp/README.md"
+          target="_blank"
+          rel="noreferrer"
+          >How to add it</a
+        ></span
       >
     </div>
   </li>
@@ -905,15 +895,15 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 - **What it runs**: "Runs threads on {model}, titles on {title}", or "Not in use".
 - **A running step**: what's happening, with "…" and the time: "Downloading from Anthropic… 0:41".
 - **A failure**: one sentence, never more than Oriel knows, then the way on: Try again, Show details, Copy details.
-- **Disconnect** names the connection: "Disconnect Jira". The question says what leaves and what stays: "Nothing changes in Jira."
+- **Disconnect** names the connection: "Disconnect Launch notes". The question says what leaves and what stays: "Nothing changes in the folder."
 - **A change**: "Set its name." with Undo; while it applies, "Setting its name…".
 
 ## Where the app uses it
 
 - `ProviderRow`, its status line and its switch: `ProviderRow` in `packages/web/src/provider-row.tsx`. Settings › Providers lists them and draws the plain row: `Providers` in `packages/web/src/settings-page.tsx`.
 - Claude Code and Codex: `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`; the waiting line, `Waiting` in `packages/web/src/cli-row.tsx`; the failure box, `Failed` in `packages/web/src/cli-row.tsx`. Placed in Settings by `Providers` in `packages/web/src/settings-page.tsx`, and in the first run by `YourAi` in `packages/web/src/setup-page.tsx`.
-- Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; picked through a source server, `ServerPicks` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
-- First run: `SourceRow` and `connected` in `packages/web/src/setup-page.tsx`; Reading's Done line, `Reading` in `packages/web/src/setup-page.tsx`.
+- Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; picked through a source server, `ServerPicks` in `packages/web/src/connections-page.tsx`, and its mapping beside them, `MappingOption` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
+- First run: `SourceRow`, `connected` and `ready` in `packages/web/src/setup-page.tsx`.
 - The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path and key: `CliPath` and `ApiKey` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-key-actions` and `.provider-key-note` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
 - Settings frame, its sections and body: `SettingsPage` in `packages/web/src/settings-page.tsx`; a section head with its action, `Providers` in `packages/web/src/settings-page.tsx`.
 - CSS: `.provider-rows`, `.provider-row`, `.provider-main`, `.provider-name`, `.provider-badge`, `.provider-preview`, `.provider-status`, `.provider-uses`, `.switch` and `.settings-field` in `window.css`; the status line's colours, `.provider-row[data-status="ready"] .provider-mark` and `.provider-row:is([data-status="checking"], [data-off]) .provider-mark` in `window.css`; connections, `.connection-options`, `.connection-row .provider-side`, `.connection-report` and `.connection-said` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`. The rest of the shell is in the first-run block: `.provider-icon`, `.provider-about`, `.provider-side`, `.provider-row[data-picked]` and `.provider-status[data-connected] .provider-mark` in `window.css`; the CLI pieces, `.cli-picked`, `.cli-line`, `.cli-waiting`, `.cli-note`, `.cli-size`, `.cli-box`, `.cli-actions`, `.cli-log`, `.cli-progress`, `.cli-bar` and `.spinner` in `window.css`. The Settings frame: `.settings`, `.settings-sections`, `.settings-body`, `.settings-section`, `.settings-head`, `.settings-title` and `.settings-lede` in `window.css`.
@@ -929,6 +919,6 @@ Status **drifting**. One shape, four authors, and a status line written seven ti
 - **Connection states don't map to tones.** A connection is "ready" when it's open with no problem, so "Syncing…" and "Not synced yet" are green like "Synced". With a standing problem, its next "Syncing…" is drawn in danger red. "Waiting for options that fit" is red too, though nothing is wrong. Nothing uses the faint "checking" tone here.
 - **Dead classes**: `connection-rows`, `settings-page` and `provider-detail` have no CSS (`setup-rows` has one rule now, keeping a first-run row's side action at the top); `[data-locked]` has none either. They're hooks only.
 - **The unpicked pick mark** says "Picked" to a screen reader (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`), the same as the picked one.
-- `.cli-box` is also the Disconnect question and the first run's source failure, well beyond the CLI rows.
+- `.cli-box` is also the Disconnect question, well beyond the CLI rows.
 
 Until `ProviderRow` becomes the one row (rfc:R2 in the drift report, with a `StatusLine` that carries its own tone, cms:A5), **copy `ProviderRow`'s markup** (`ProviderRow` in `packages/web/src/provider-row.tsx`): `li.provider-row[data-status]` with the icon, the main column and the side, and the status line inside the main column. Set the tone on the row: `data-status="ready"` for green, `data-status="checking"` or `data-off` for faint, nothing for danger. Don't add a fourth copy: render `ProviderRow` with a `status` and a `side`, as `cli-row.tsx` does. Don't use `data-connected` for anything new. See [the drift report](/drift).

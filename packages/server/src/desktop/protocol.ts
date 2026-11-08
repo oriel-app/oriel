@@ -23,17 +23,11 @@ export const launchCookie = "oriel-launch";
 // 32 bytes, as 64 lowercase hex characters.
 export const isLaunchSecret = (line: string): boolean => /^[0-9a-f]{64}$/.test(line);
 
-// The secrets the server keeps, by name (decision 0049): the API key the
-// agent can run on, and each connection's, `connection.` and the ULID the
-// server made for it. A ULID's 26 characters are upper case, so one secret
-// has one name, and none has a `/` or `.` to leave the shell's folder.
-// `jira`, the Jira connection kept before connections, is read and deleted
-// once, at the first start after them, and leaves the list in the next
-// release. The shell takes no other name.
-export const isSecretName = (text: string): boolean =>
-  text === "anthropic-key" ||
-  text === "jira" ||
-  /^connection\.[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(text);
+// The secrets the server keeps, by name: the API key the agent can run on
+// (OA-188). No connection keeps one since decision 0059: a source is read
+// through the person's own agent, which holds its sign-in. The shell takes
+// no other name.
+export const isSecretName = (text: string): boolean => text === "anthropic-key";
 const name = refine(string, isSecretName, "a secret the server keeps");
 const secret = refine(string, (text) => Buffer.byteLength(text) <= 16_384, "at most 16 KiB");
 // Where a click on a notification takes the window: a path on the server's

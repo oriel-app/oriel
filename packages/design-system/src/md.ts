@@ -183,7 +183,7 @@ const fileName = String.raw`(?:packages|scripts|docs)\/[\w./-]+|window\.css|SPEC
 // lines.
 export const sourceRef = new RegExp(`^(${fileName})(?::(\\d+)(?:-(\\d+))?)?$`);
 
-// A name cited in a file: `.connect-actions` in `window.css`, `FieldsStep`
+// A name cited in a file: `.connect-actions` in `window.css`, `FolderStep`
 // in `packages/web/src/connect-steps.tsx`, or a list of them, `.a`, `.b`
 // and `.c` in `window.css`. A count before "in" says how many times the
 // name is there: `.connect-actions` twice in `window.css`.

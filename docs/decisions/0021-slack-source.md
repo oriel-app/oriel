@@ -1,6 +1,6 @@
 # 0021 Slack, a real source, read-only first
 
-Accepted 2026-10-31. Amended 2026-11-01 (OA-28): Slack is writable through approved change sets, posting as the person Oriel reads Slack as.
+Accepted 2026-10-31. Amended 2026-11-01 (OA-28): Slack is writable through approved change sets, posting as the person Oriel reads Slack as. Superseded in part by 0059 (OA-280): Slack's token in `.env`, its live tests and the live job they waited for go; `pnpm seed:slack` still seeds the test workspace.
 
 Adds: none
 

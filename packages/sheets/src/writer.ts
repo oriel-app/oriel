@@ -83,7 +83,7 @@ export function sheetsWriter(
   const { picks, prefix } = writes;
   const server = "server" in writes ? writes.server : null;
   const toServer = server && serverWrites(server.write);
-  const send = ("fetch" in writes ? writes.fetch : undefined) ?? fetch;
+  const memory = "memory" in writes ? writes.memory : null;
   const wait = writes.wait ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
   // Which tab each row was last found in, across writes.
   const where = new Map<string, { spreadsheet: string; sheetId: number }>();
@@ -94,11 +94,10 @@ export function sheetsWriter(
       ? serverGoogle(server.read)
       : googleReads({
           fetch: (input, init) =>
-            send(input, {
+            memoryOf()(input, {
               ...init,
               signal: AbortSignal.timeout(requestMs(requestTimeoutMs, limit, source)),
             }),
-          credential: credentialOf(),
           wait: async (ms) => {
             if (limit && ms > limit.left())
               throw new WriteStalled(
@@ -109,14 +108,15 @@ export function sheetsWriter(
           random: Math.random,
         });
 
-  // The one request that writes, as JSON. It is sent once its time and its
-  // sign-in are in hand: a failure before then sent nothing this time, and
-  // any time before was a `429`, turned away unprocessed, which goes again
-  // while the write has time. Any other refusal changed nothing, since
-  // Google applies a batch whole or not at all.
-  function credentialOf() {
-    if (!("credential" in writes)) throw new Error("Sheets through its server has no sign-in");
-    return writes.credential;
+  // The one request that writes, as JSON, to the fixture's stand-in in
+  // memory. It is sent once its time is in hand: a failure before then sent
+  // nothing this time, and any time before was a `429`, turned away
+  // unprocessed, which goes again while the write has time. Any other
+  // refusal changed nothing, since Google applies a batch whole or not at
+  // all. Through sheets-mcp, the server's write tools send it.
+  function memoryOf() {
+    if (!memory) throw new Error("Sheets writes through its server");
+    return memory;
   }
 
   const post = async (
@@ -127,19 +127,16 @@ export function sheetsWriter(
   ): Promise<void> => {
     for (let attempt = 0; ; attempt++) {
       let ms: number;
-      let headers: Record<string, string>;
       try {
-        headers = await credentialOf().headers();
-        // Only now: the sign-in may have taken some of the write's time.
         ms = requestMs(requestTimeoutMs, limit, source);
       } catch (error) {
         const said = error instanceof Error ? error.message : String(error);
         throw new SourceRefused(said, { sent: attempt > 0, cause: error });
       }
       sent();
-      const response = await send(new URL(path, sheetsOrigin), {
+      const response = await memoryOf()(new URL(path, sheetsOrigin), {
         method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(ms),
       });

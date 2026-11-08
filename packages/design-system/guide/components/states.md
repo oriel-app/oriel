@@ -49,7 +49,7 @@ Most error text comes from the server: `errorOf` in `packages/web/src/http.ts` s
 | `.no-matches`          | Browse, filtered to nothing         | "Nothing in the window matches these filters." + Clear filters (`Body` in `packages/web/src/window-page.tsx`)                           | muted, `--space-6` margins |
 | `.overview-quiet`      | an overview section                 | "Nobody has work in progress." (`People` in `packages/web/src/overview-page.tsx`)                                                       | muted, `--text-md`         |
 | `.panel-empty`         | a block in the item panel           | the source's own: "No comments." (`jiraPanel` in `packages/jira/src/panel.ts`)                                                          | faint, `--text-sm`         |
-| `.connect-none`        | a connector's pick step             | the connector's own: "No project matches that." (`jiraConnect` in `packages/jira/src/connecting.ts`)                                    | muted                      |
+| `.connect-none`        | a review step with no guess         | "Oriel couldn't guess: no column has a different value in every row." (`ReviewStep` in `packages/web/src/connect-steps.tsx`)            | muted                      |
 
 And one borrowed class: Settings › Connections says "Nothing is connected yet." in a `.settings-field-about` (`Connections` in `packages/web/src/connections-page.tsx`).
 
@@ -96,8 +96,11 @@ And one borrowed class: Settings › Connections says "Nothing is connected yet.
     <p class="panel-empty">No comments.</p>
   </div>
   <div>
-    <p class="ws-note">A connector's pick step (.connect-none):</p>
-    <p class="connect-none">No project matches that.</p>
+    <p class="ws-note">A review step with no guess (.connect-none):</p>
+    <p class="connect-none">
+      Oriel couldn't guess: no column has a different value in every row. Add one, such as an ID, in
+      the sheet, then try again.
+    </p>
   </div>
 </div>
 ```
@@ -186,7 +189,7 @@ Inline lines, under or beside what failed, in `--danger` at `--text-sm` unless n
 | -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----- |
 | `.chat-input-notice`       | every chat input                   | the server's (`ChatInput` in `packages/web/src/chat-input.tsx`)                                                                | alert |
 | `.notice[data-tone=error]` | a workstream's page                | "Nothing that was dropped names an item. Drop an item, or a link to one." (`nothingToAdd` in `packages/web/src/workstream.ts`) | alert |
-| `.connect-problem`         | a connect step, the first run      | "Type your Jira address, like yourteam.atlassian.net." (`notASite` in `packages/jira/src/connecting.ts`)                       | alert |
+| `.connect-problem`         | a connect step, the first run      | "Type the folder's full path, starting with / or ~." (`folderConnect` in `packages/folder/src/connecting.ts`)                  | alert |
 | `.connection-problem`      | a connection in Settings           | the server's (`ConnectionRow` in `packages/web/src/connections-page.tsx`)                                                      | alert |
 | `.source-problem`          | a source in the sidebar            | the server's (`Sources` in `packages/web/src/sidebar.tsx`)                                                                     | alert |
 | `.selection-notice`        | Browse's picked-items bar          | the server's (`Selection` in `packages/web/src/window-page.tsx`)                                                               | alert |
@@ -206,14 +209,13 @@ Boxes and bands:
 | `.settings-problem`              | the top of Settings         | the server's (`SettingsPage` in `packages/web/src/settings-page.tsx`)                                                                                                 | danger on `--danger-soft`                            |
 | `.setup-problem`                 | the first run               | the server's (`SetupPage` in `packages/web/src/setup-page.tsx`)                                                                                                       | the same as `.settings-problem`                      |
 | `.change-set-problem`            | a change set's foot         | "Type your name first." on a review link (`updateReview` in `packages/web/src/review.ts`)                                                                             | danger on `--danger-soft`, a band                    |
-| `.cli-box[data-tone=danger]`     | a CLI step, a first sync    | "Stopped after {read} of {n} {noun}: {problem}" (`Failed` in `packages/web/src/setup-page.tsx`)                                                                       | a bordered `--danger-soft` box                       |
 | `.bead-wrap[data-tone=problem]`  | a close from a list         | the server's, in the bead, with Dismiss (`closingProblem` in `packages/web/src/close-thread.tsx`)                                                                     | the bead's failure; see [The bead](/components/bead) |
 
 ```html specimen id=error-lines title="Inline error lines"
 <div class="ws-stack">
   <div>
     <p class="ws-note">A connect step (.connect-problem):</p>
-    <p class="connect-problem" role="alert">Type your Jira address, like yourteam.atlassian.net.</p>
+    <p class="connect-problem" role="alert">Type the folder's full path, starting with / or ~.</p>
   </div>
   <div>
     <p class="ws-note">A workstream's page (.notice data-tone=error):</p>
@@ -319,7 +321,7 @@ The lines themselves have no states; their actions have their buttons' states. F
 ## Where the app uses it
 
 - Empty: `.rail-empty`, `.sidebar .rail-empty`, `.search-results .rail-empty:empty`, `.rail-note`, `.window-chat-empty`, `.no-items`, `.no-matches`, `.overview-quiet`, `.panel-empty` and `.connect-none` in `window.css`.
-- Loading: `.loading`, `.more-items`, `.working`, `.working-dot` and `.spinner` in `window.css`. `Waiting` in `packages/web/src/cli-row.tsx`, copied into `BrowserStep` and `ReviewStep` in `packages/web/src/connect-steps.tsx`, and `YourWork` in `packages/web/src/setup-page.tsx`.
+- Loading: `.loading`, `.more-items`, `.working`, `.working-dot` and `.spinner` in `window.css`. `Waiting` in `packages/web/src/cli-row.tsx`, copied into `ReviewStep` in `packages/web/src/connect-steps.tsx`, and `YourWork` in `packages/web/src/setup-page.tsx`.
 - Error: `.failed`, `.notice`, `.source-problem`, `.selection-notice`, `.chat-input-notice`, `.run-error`, `.line-error`, `.apply-errors`, `.change-set-problem`, `.panel-problem`, `.overview-problem`, `.settings-problem`, `.setup-problem` and `.cli-box` in `window.css`; `.connect-problem` in `window.css`; `.connection-problem` twice in `window.css`.
 
 ## Drift

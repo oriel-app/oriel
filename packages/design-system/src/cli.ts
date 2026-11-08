@@ -8,7 +8,7 @@
 // the checkout today, in one file or in all of them.
 //
 //   pnpm -s ds where .connect-actions
-//   pnpm -s ds where FieldsStep packages/web/src/connect-steps.tsx
+//   pnpm -s ds where FolderStep packages/web/src/connect-steps.tsx
 import { pages } from "./guide.ts";
 import { refPath } from "./md.ts";
 import { plainText } from "./render.ts";

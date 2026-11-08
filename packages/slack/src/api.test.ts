@@ -1,7 +1,7 @@
-// The Web API transport, against a fetch that answers from memory.
+// The in-memory Web API transport, against a fetch that answers from memory.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bearer, type ReadMethod, webApi } from "./api.ts";
+import { memoryApi, type ReadMethod, readMethods } from "./api.ts";
 
 type Sent = { url: string; headers: Record<string, string>; body: string };
 
@@ -25,17 +25,7 @@ const json = (body: unknown, init: ResponseInit = {}) =>
 
 test("only read methods go out, whatever a cast says", async () => {
   const { send, sent } = fakeFetch([json({ ok: true })]);
-  const api = webApi({ credential: bearer("xoxp-test"), fetch: send });
+  const api = memoryApi(send, readMethods, "the read side");
   await assert.rejects(api("chat.postMessage" as ReadMethod, { channel: "C0A", text: "hi" }));
-  assert.equal(sent.length, 0);
-});
-
-test("a credential that fails sends nothing, and its message stays out of the error", async () => {
-  const { send, sent } = fakeFetch([]);
-  const api = webApi({
-    credential: { headers: () => Promise.reject(new Error("xoxp-secret expired")) },
-    fetch: send,
-  });
-  await assert.rejects(api("auth.test", {}), (error: Error) => !error.message.includes("xoxp"));
   assert.equal(sent.length, 0);
 });

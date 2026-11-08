@@ -1,4 +1,4 @@
-// Syncing Jira against a live site: a sync that didn't finish marks nothing
+// Syncing Jira against SYN in memory: a sync that didn't finish marks nothing
 // gone, and what a revert deleted doesn't come back while Jira's search lags.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -13,7 +13,7 @@ const keys = (app: Awaited<ReturnType<typeof testApp>>) =>
   );
 
 test("a Sync that fails partway marks nothing gone, and the next one does", async (t) => {
-  const app = await testApp(t, { live: true });
+  const app = await testApp(t, { memory: true });
   const { site } = app;
   assert.ok(site);
   site.remove("SYN-21");
@@ -36,7 +36,7 @@ const plan: Script = async () => ({
 });
 
 test("what a revert deleted stays gone while Jira's search lags, however long", async (t) => {
-  const app = await testApp(t, { live: true, plan: () => [{ run: "plan" }], scripts: { plan } });
+  const app = await testApp(t, { memory: true, plan: () => [{ run: "plan" }], scripts: { plan } });
   const { site } = app;
   assert.ok(site);
   const { id: threadId, workstreamId } = json<{ id: string; workstreamId: string }>(

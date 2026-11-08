@@ -3,7 +3,7 @@ title: First-run column
 status: drifting
 group: Layout
 order: 76
-classes: setup-page, setup-brand, setup, setup-steps, setup-step, setup-step-mark, setup-title, setup-lede, setup-note, setup-rows, setup-card, setup-form, setup-terminal, setup-command, setup-reading, setup-foot, setup-links, mark
+classes: setup-page, setup-brand, setup, setup-steps, setup-step, setup-step-mark, setup-title, setup-lede, setup-note, setup-rows, setup-card, setup-form, setup-terminal, setup-command, setup-foot, setup-links, mark
 summary: The first run's own page, with no sidebar: the brand, the two steps, a title and lede, the step's rows or card, and a foot with the ways out on the left and the one way on at the right.
 ---
 
@@ -11,25 +11,25 @@ summary: The first run's own page, with no sidebar: the brand, the two steps, a 
 
 ## What it is
 
-The first run (decision 0038) is a page of its own, before the window exists: "Your AI, then Your work, then reading it, then the overview. Each step has a way to set it up later" (`SetupPage` in `packages/web/src/setup-page.tsx`). It has no sidebar and no bar. The page is `.setup-page`, the brand sits at its top left (`.setup-brand`), and everything else is one centred column, `main.setup`: 40rem at most, `--space-4` between its parts.
+The first run (decisions 0038 and 0059) is a page of its own, before the window exists: Your AI, then Your work, which shows what Oriel found in the person's agent and what it reads, then the overview, where the person asks a question and approves a change. Each step has a way to set it up later (`SetupPage` in `packages/web/src/setup-page.tsx`). It has no sidebar and no bar. The page is `.setup-page`, the brand sits at its top left (`.setup-brand`), and everything else is one centred column, `main.setup`: 40rem at most, `--space-4` between its parts.
 
 Each screen in the column is built the same way, top to bottom:
 
-1. **The steps** (`.setup-steps`): Your AI, then Your work, each a numbered mark. Not on the Reading screen.
+1. **The steps** (`.setup-steps`): Your AI, then Your work, each a numbered mark.
 2. **A title** (`h1.setup-title`), in the heading face, and **a lede** (`.setup-lede`) that says what this step is for and what Oriel won't do.
-3. **The step's body**: [provider or source rows](/components/connection-row) (`ul.provider-rows.setup-rows`), or a card (`.setup-card`) holding a key, a connector's step, or the Terminal steps.
+3. **The step's body**: [provider or source rows](/components/connection-row) (`ul.provider-rows.setup-rows`), or a card (`.setup-card`) holding a key or the Terminal steps.
 4. **Notes** (`.setup-note`), small and muted, for the why and the other ways in.
 5. **The foot** (`.setup-foot`): ways out on the left, as link-shaped actions (`.setup-links`), and the one way on at the right, a bigger primary [button](/components/button#setup-next) (`.setup-next`).
 
 ## When to use it
 
-- Only for the first run's screens: Your AI, Pay Anthropic per question, the Terminal steps, Your work, a connector's step and Reading your work.
+- Only for the first run's screens: Your AI, Pay Anthropic per question, the Terminal steps, what Oriel found, and Your work.
 - A new first-run screen copies this column: steps, title, lede, body, foot. Its one way on is `.setup-next`; every other way is a `.link-action` in the foot's links.
 
 ## When not to
 
 - Not inside the window. Once the first run is done, the same choices live in Settings, in the [Settings frame](/components/connection-row), with the sidebar beside them.
-- Not a wizard with more steps. The steps mark only Your AI and Your work; the key, the Terminal steps and a connector's step are part of one of the two, and Reading has no mark.
+- Not a wizard with more steps. The steps mark only Your AI and Your work; the key, the Terminal steps and what Oriel found are part of one of the two.
 - Not `.setup-card` as a general card. It's the first run's frame for a form or a list of steps, and it follows `--list-frame`.
 
 ## Anatomy and variants
@@ -119,7 +119,7 @@ When installing or signing in from Oriel keeps failing, the person can do it in 
 </main>
 ```
 
-`.setup-card` is a grid with `--space-3` between its parts and `--space-4` padding, framed by `--list-frame` on `--list-bg`, so Broadsheet draws it open on the page. The API key screen and a connector's fields step put their form in one too (see [Connect steps](/patterns/connect-steps)); there, the screen is a `form.setup-form`, a grid with `--space-4` between its parts.
+`.setup-card` is a grid with `--space-3` between its parts and `--space-4` padding, framed by `--list-frame` on `--list-bg`, so Broadsheet draws it open on the page. The API key screen puts its form in one too (see [Forms](/patterns/forms)); there, the screen is a `form.setup-form`, a grid with `--space-4` between its parts.
 
 ### The foot
 
@@ -140,33 +140,11 @@ When installing or signing in from Oriel keeps failing, the person can do it in 
 
 The foot is a wrapping row, the links' column at the start and the button at the end. The links are a grid of `--text-sm` lines in `--text-faint`, each way out an accent `.link-action`. On a narrow page the button wraps under the links.
 
-### Reading your work
+### Your work
 
-While the first sync runs, a source's row carries a progress line (`.setup-reading`): what it's reading and how far, over a `progress.setup-progress` bar in the accent (see [Meter](/components/meter)).
+Your work lists what Oriel reads, as [source rows](/components/connection-row#source-rows): the stand-in tracker while no tracker is on, each source on through its server, and a folder, chosen in its row. A source with no server on names the server that would turn it on, with a link to its own instructions. Nothing asks for a site, an email, a sign-in or a key to a source (decision 0059). Continue ends the first run on the overview; there's no reading screen, since a source server's first sync reads as its kind turns on.
 
-```html specimen id=reading title="Reading Synthetic: 48 of 120 issues"
-<ul class="provider-rows setup-rows">
-  <li class="provider-row">
-    <span class="provider-icon" aria-hidden="true">J</span>
-    <div class="provider-main">
-      <span class="provider-name">Jira</span>
-      <span class="provider-about">Epics, stories and their details</span>
-      <span class="setup-reading"
-        ><span id="reading-jira" class="cli-line" role="status"
-          >Reading Synthetic: 48 of 120 issues</span
-        ><progress
-          class="setup-progress"
-          max="120"
-          value="48"
-          aria-labelledby="reading-jira"
-        ></progress
-      ></span>
-    </div>
-  </li>
-</ul>
-```
-
-`.setup-rows` keeps a row's side action at the top beside its name, where a review step or a failure under it would otherwise push it halfway down (`.setup-rows .provider-side` in `window.css`).
+`.setup-rows` keeps a row's side action at the top beside its name, where a line or a failure under it would otherwise push it halfway down (`.setup-rows .provider-side` in `window.css`).
 
 ## States
 
@@ -205,7 +183,7 @@ While the first sync runs, a source's row carries a progress line (`.setup-readi
 ```
 
 - **Busy:** before Oriel knows what's on this Mac, `main.setup` is `aria-busy` and the lede says "Looking for Claude Code on this Mac…". While a choice is being saved or tested, the way on is disabled and says so: "Checking that Claude Code answers…", "Checking it with Anthropic…".
-- **Disabled:** Continue waits until there's something to continue with: an AI that's ready, a key typed, a source read. The ways out stay live, except Set up later while a choice is saving.
+- **Disabled:** Continue waits until there's something to continue with: an AI that's ready, a key typed, something Oriel reads. The ways out stay live, except Set up later while a choice is saving.
 - **Error:** what failed for the page shows under the column as `.setup-problem` (see [Empty, loading and error](/components/states)); a row's own failure is in its row.
 - **Done:** a step's mark turns to ✓.
 - **Hover and focus:** the [button](/components/button)'s and the link action's own.
@@ -217,11 +195,11 @@ While the first sync runs, a source's row carries a progress line (`.setup-readi
 - `main.setup` is `aria-busy` until the first look at this Mac comes back.
 - The foot's order is the reading order: the ways out, then the way on, so Tab reaches Continue last.
 - The command to paste is a `<code>` with a Copy button beside it.
-- A reading line is `role="status"`, so its count is read out as it moves.
+- A waiting line is `role="status"`, so it's read out as it changes.
 
 ## Content
 
-- **Titles** say the step as a task: "Set up the AI Oriel uses", "Connect where your work lives", "Pay Anthropic per question", "Install Claude Code yourself", "Reading your work"; "Welcome back" when the first run resumes.
+- **Titles** say the step as a task: "Set up the AI Oriel uses", "See what Oriel found", "See your work in one place", "Pay Anthropic per question", "Install Claude Code yourself"; "Welcome back" when the first run resumes.
 - **The lede** says what the step is for, then what Oriel won't do without the person: "Nothing changes in {where} until you approve it."
 - **Steps** are two nouns: "Your AI", "Your work".
 - **The way on** names what it continues with: "Continue with Claude Code", "Save and continue", "Check again", "Continue".
@@ -231,15 +209,15 @@ While the first sync runs, a source's row carries a progress line (`.setup-readi
 ## Where the app uses it
 
 - The page, the brand, the column and the problem line: `SetupPage` in `packages/web/src/setup-page.tsx`. The steps: `Steps` in `packages/web/src/setup-page.tsx`. The foot: `Foot` and `link` in `packages/web/src/setup-page.tsx`.
-- The screens: `YourAi`, `ApiKey`, `OtherWays`, `YourWork`, `Connect` and `Reading` in `packages/web/src/setup-page.tsx`; the reading line, `ReadingLine` in `packages/web/src/setup-page.tsx`.
+- The screens: `YourAi`, `ApiKey`, `OtherWays`, `Found` and `YourWork` in `packages/web/src/setup-page.tsx`.
 - The brand's mark: `Mark` in `packages/web/src/parts.tsx`.
-- CSS: `.setup-page`, `.setup-brand`, `.setup`, `.setup-steps`, `.setup-step`, `.setup-step-mark`, `.setup-step[aria-current]`, `.setup-step[data-done] .setup-step-mark`, `.setup-title`, `.setup-lede`, `.setup-note`, `.setup-foot`, `.setup-links`, `.setup-form`, `.setup-terminal`, `.setup-command`, `.setup-reading` and `.setup-rows .provider-side` in `window.css`; the card, `.setup-card` in `window.css`.
+- CSS: `.setup-page`, `.setup-brand`, `.setup`, `.setup-steps`, `.setup-step`, `.setup-step-mark`, `.setup-step[aria-current]`, `.setup-step[data-done] .setup-step-mark`, `.setup-title`, `.setup-lede`, `.setup-note`, `.setup-foot`, `.setup-links`, `.setup-form`, `.setup-terminal`, `.setup-command` and `.setup-rows .provider-side` in `window.css`; the card, `.setup-card` in `window.css`.
 
 ## Drift
 
 Status **drifting**.
 
-- **Back is two buttons.** In the first run it's a `.link-action` in the foot or in the step's actions; Settings' Add a connection says Back as a `.quiet-action` (see [Connect steps](/patterns/connect-steps#drift)).
+- **Back is two buttons.** In the first run it's a `.link-action` in the foot; elsewhere a way back or out is a `.quiet-action`, as Cancel in Settings' Add a connection (see [Connect steps](/patterns/connect-steps#drift)).
 - **"Nothing changes in your files."** The lede joins every offered source's `changes` with "or", so with a folder offered it reads "Nothing changes in Jira or your files or Google Sheets until you approve it", while the folder's own row says "Oriel only reads them" (`changesIn` in `packages/web/src/setup-page.tsx`).
 - **Copy says nothing.** The Terminal steps' Copy copies the line and shows no sign it did: its message, `lineCopied`, only copies (`OtherWays` in `packages/web/src/setup-page.tsx`).
 - The problem line sits under the foot, after the way on, not beside what failed.

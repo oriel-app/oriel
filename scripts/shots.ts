@@ -7,12 +7,13 @@
 // in memory, each to its own, so one scene's writes don't show in another's
 // diffs; one is read-only, as Oriel is without credentials. Before any
 // screenshot they get workstreams and threads, with runs, change sets, a search
-// and a marker, through the same JSON routes the window uses. Two start with
-// Jira unconnected, to connect it from the window to SYN in memory: one for
-// the form's shots, and one for the onboarding, timed from the first screen
-// to an approved change, which also counts the word "token" on each screen.
-// One more connects Jira to SYN with no issues, as a new project is. Another
-// reads the Slack fixture's picked channel. Three more hand a story to the
+// and a marker, through the same JSON routes the window uses. Others sync
+// Jira from a SYN site in memory, as from a source server: one goes offline,
+// one has no issues, as a new project has. The desktop app's first run gets
+// servers of its own, with stand-ins of the source servers a person's agent
+// lists (decision 0059), and the onboarding is timed on it, from the first
+// screen to an approved change, counting the word "token" on each screen,
+// where it never may be. Another reads the Slack fixture's picked channel. Three more hand a story to the
 // team: one change set moves it in Jira and posts in Slack's channel,
 // proposed on one, approved on the next, and reverted on the last (OA-28).
 // One more has 120 more stories in SYN's checkout epic, so Browse pages them.
@@ -58,27 +59,19 @@ import type { SourceMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
-import { tinyAgent } from "../packages/server/src/servers/testing.ts";
 import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
-import { memorySecrets } from "../packages/server/src/connection.ts";
 import { connectionsOf } from "../packages/server/src/connections.ts";
 import { indexStore, open as openDb } from "../packages/db/src/index.ts";
-import { fixtureApi, loadSlackFixture } from "../packages/slack/src/fixture.ts";
 import { replayNoticer } from "./noticed/replay.ts";
 import { annotation, onCi } from "./annotations.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { history as pastWeeks, weekAt, weeks } from "./history-world.ts";
 import {
-  fillJira as fillFirstRun,
   type FirstRunOptions,
   firstRunServer,
-  googleSignsIn,
-  timedSheets,
-  jiraAccount,
   keepUntilDone,
-  postTo,
   releaseAll,
   removeHomes,
   timedPath,
@@ -432,7 +425,6 @@ const notesDb = async (): Promise<string> => {
   const connections = connectionsOf({
     db: store,
     index: indexStore(store),
-    secrets: memorySecrets(),
     workspaceId,
     now: () => instant(new Date()),
     newId: () => notesId,
@@ -471,18 +463,17 @@ const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
 const readOnly = await start(0, { db: ":memory:", sources: { jira: { mode: "fixture" } } });
-// A server that syncs from a SYN site in memory as from a live one; this
-// one's site goes offline once it has started.
-const live = async () => {
-  const site = memorySite(loadJiraFixture(), instant(new Date()));
+// A server that syncs from a SYN site in memory as from a source server;
+// this one's site goes offline once it has started.
+const live = async (syn = loadJiraFixture()) => {
+  const site = memorySite(syn, instant(new Date()));
   const serving = await start(0, {
     db: ":memory:",
     sources: {
       jira: {
-        mode: "live",
+        mode: "memory",
         identity: memorySiteOrigin,
         options: { project: "SYN" },
-        secret: JSON.stringify({ email: "", token: "" }),
         fetch: site.fetch,
       },
     },
@@ -505,10 +496,9 @@ const paged = await (async () => {
     db: ":memory:",
     sources: {
       jira: {
-        mode: "live",
+        mode: "memory",
         identity: memorySiteOrigin,
         options: { project: "SYN" },
-        secret: JSON.stringify({ email: "", token: "" }),
         fetch: memorySite({ ...syn, issues: [...syn.issues, ...more] }, instant(new Date())).fetch,
       },
     },
@@ -531,10 +521,9 @@ const naming = await (async () => {
     db: ":memory:",
     sources: {
       jira: {
-        mode: "live",
+        mode: "memory",
         identity: memorySiteOrigin,
         options: { project: "SYN" },
-        secret: JSON.stringify({ email: "", token: "" }),
         fetch: memorySite({ ...syn, issues }, instant(new Date())).fetch,
       },
     },
@@ -552,45 +541,19 @@ const unpointed = await start(0, {
   db: ":memory:",
   sources: {
     jira: {
-      mode: "live",
+      mode: "memory",
       identity: memorySiteOrigin,
       options: { project: "SYN" },
-      secret: JSON.stringify({ email: "", token: "" }),
       fetch: memorySite(loadJiraFixture(), instant(new Date()), { estimates: false }).fetch,
     },
   },
   agent: (deps) => scripted(deps, planning),
 });
 
-// Jira not connected yet; the window connects it to SYN in memory, which
-// takes only this account.
-const account = { email: "pm@example.com", token: "shots-only-value" };
-// Jira is on through the test tracker server the person's agent lists
-// (decision 0059), so the stand-in steps aside and the overview offers
-// Jira's card, until OA-280.
-const unconnected = async (syn = loadJiraFixture()) => {
-  const on = await start(0, {
-    db: ":memory:",
-    sources: {
-      jira: { mode: "window", fetch: memorySite(syn, instant(new Date()), { account }).fetch },
-    },
-    agent: (deps) => scripted(deps, planning),
-    ...tinyAgent,
-  });
-  await postTo(on, "/api/servers/look", {});
-  await postTo(on, "/api/actions/source.on", { kind: "jira", server: "work-tracker" });
-  await postTo(on, "/api/servers/dismiss", {});
-  return on;
-};
-const connecting = await unconnected();
-// Jira connected to a project with no issues yet.
-const empty = await unconnected({ ...loadJiraFixture(), issues: [], edits: [] });
-const fillJira = async (page: Page, token: string) => {
-  await page.locator(".connect-card").waitFor();
-  await page.locator('input[name="site"]').fill("oriel.atlassian.net");
-  await page.locator('input[name="email"]').fill(account.email);
-  await page.locator('input[name="token"]').fill(token);
-};
+// Jira synced from a project with no issues yet.
+const empty = (await live({ ...loadJiraFixture(), issues: [], edits: [] })).serving;
+// A server of its own for adding the notes folder by hand.
+const adding = (await writing()).serving;
 const chatty = (await writing({ mode: "fixture" })).serving;
 // Noticed (decision 0052): SYN and its Slack with three epics as
 // workstreams. Its pass replays one Sonnet 5.5 wrote on this same
@@ -743,11 +706,6 @@ async function call<T>(on: Serving, method: string, path: string, body?: unknown
 }
 const post = <T>(path: string, body: unknown, on: Serving = server) =>
   call<T>(on, "POST", path, body);
-await post(
-  "/api/connections",
-  { kind: "jira", given: { site: "oriel.atlassian.net", project: "SYN", ...account } },
-  empty,
-);
 // Syncs a kind's connection, as the sidebar's Sync does.
 const syncKind = async (kind: string, on: Serving) => {
   const { connections } = await call<{ connections: { id: string; kind: string }[] }>(
@@ -771,10 +729,9 @@ const historied = await (async () => {
     db: ":memory:",
     sources: {
       jira: {
-        mode: "live",
+        mode: "memory",
         identity: memorySiteOrigin,
         options: { project: "SYN" },
-        secret: JSON.stringify({ email: "", token: "" }),
         fetch: site.fetch,
       },
     },
@@ -1627,62 +1584,6 @@ const approveIt = async (page: Page) => {
   await page.getByRole("button", { name: "Approve and apply" }).click();
 };
 
-// A Slack connection kept from an earlier start whose picked channel is
-// gone, so it waits for its options; the window chat drafts which channels
-// it reads (decision 0051). Made afresh for each shot, as applying moves it.
-const draftScript = `const [waiting] = await source.preview();
-source.configure({ connection: waiting.connection, options: { channels: ["weather-disruptions"] } });
-return waiting.why;`;
-const waitingSlack = async (): Promise<Serving> => {
-  const db = join(mkdtempSync(join(tmpdir(), "oriel-shots-drafts-")), "window.db");
-  const secrets = memorySecrets();
-  const first = await serve(0, { db, secrets, sources: { jira: { mode: "fixture" } } });
-  const { workspaceId } = first.app;
-  await first.close();
-  const store = openDb(db);
-  await connectionsOf({
-    db: store,
-    index: indexStore(store),
-    secrets,
-    workspaceId,
-    now: () => instant(new Date()),
-    newId: () => ulid(Date.now()),
-    log: () => {},
-  }).connect({
-    kind: "slack",
-    identity: loadSlackFixture().team.url,
-    options: { channels: ["weather-disruptions", "launch-room"] },
-    secret: "xoxp-shots-only",
-  });
-  store.close();
-  return start(0, {
-    db,
-    secrets,
-    sources: {
-      jira: { mode: "fixture" },
-      slack: { mode: "window", fetch: fixtureApi(loadSlackFixture()).fetch },
-    },
-    agent: (deps) =>
-      scripted(deps, (input) =>
-        /\bdraft\b/i.test(input.text)
-          ? [
-              { run: draftScript },
-              {
-                text: "Slack can't find #launch-room any more. I drafted it reading only #weather-disruptions; apply it below if that's right.",
-              },
-            ]
-          : planning(input),
-      ),
-  });
-};
-const drafted = async (page: Page) => {
-  await overviewShown(page);
-  await page.locator(".ask-input").fill("Slack stopped syncing. Draft which channels it reads.");
-  await page.getByRole("button", { name: "Ask", exact: true }).click();
-  await page.locator(".window-chat .draft-card").waitFor();
-  await page.locator(".window-chat .working").waitFor({ state: "detached" });
-};
-
 // The window chat's draft of a Sheets mapping through sheets-mcp (OA-279):
 // its Backlog tab, the first the preview reads.
 const sheetsMcpDraftScript = `const [waiting] = await source.preview();
@@ -1903,20 +1804,6 @@ const scenes: Scene[] = [
       await askChat(page, question, `.window-chat .answer-block[data-form="${form}"]`);
     },
   })),
-  // A waiting connection's draft (decision 0051): its preview read as a
-  // block, and the draft held under the answer, then applied.
-  { name: "draft-held", path: "/", make: waitingSlack, window: true, act: drafted },
-  {
-    name: "draft-applied",
-    path: "/",
-    make: waitingSlack,
-    window: true,
-    act: async (page) => {
-      await drafted(page);
-      await page.getByRole("button", { name: "Apply", exact: true }).click();
-      await page.locator('.window-chat .held-block[data-outcome="applied"]').waitFor();
-    },
-  },
   // The chart blocks (decision 0053): each form in the window chat, built
   // by Oriel from history() on SYN with eight weeks of change log.
   ...(
@@ -2048,34 +1935,7 @@ const scenes: Scene[] = [
       await page.locator(`${beadSays} button`, { hasText: "Undo" }).waitFor();
     },
   },
-  {
-    name: "jira-connect",
-    path: "/?grouping=epic",
-    on: connecting,
-    act: (page) => fillJira(page, account.token),
-  },
-  {
-    // Jira lists the projects the details can see, so nobody types a key.
-    name: "jira-projects",
-    path: "/?grouping=epic",
-    on: connecting,
-    act: async (page) => {
-      await fillJira(page, account.token);
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator(".connect-pick").waitFor();
-    },
-  },
-  {
-    name: "jira-refused",
-    path: "/?grouping=epic",
-    on: connecting,
-    refused: 400,
-    act: async (page) => {
-      await fillJira(page, "not-the-one");
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator(".connect-problem").waitFor();
-    },
-  },
+  // Jira synced from a project with no issues yet: said above Browse.
   {
     name: "jira-empty",
     path: "/?grouping=epic",
@@ -2957,7 +2817,7 @@ const scenes: Scene[] = [
     // which the sidebar's Add a source opens, under `pnpm dev`.
     name: "folder-add",
     path: "/?grouping=epic",
-    on: connecting,
+    on: adding,
     act: async (page) => {
       await openSources(page);
       await page.getByRole("link", { name: "Add a source" }).click();
@@ -3564,21 +3424,32 @@ const approvedPlan = async (page: Page) => {
   await page.getByRole("button", { name: "Approve and apply" }).click();
   await page.locator('.change-set[data-status="applied"]').waitFor();
 };
-const toJira = async (page: Page, token = jiraAccount.token) => {
-  await page
-    .locator(".provider-row", { hasText: "Jira" })
-    .getByRole("button", { name: "Connect" })
-    .click();
-  await fillFirstRun(page, token);
-};
-const toProjects = async (page: Page) => {
-  await toJira(page);
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await page.getByRole("heading", { name: "Which Jira project?" }).waitFor();
-};
-const useProject = async (page: Page) => {
-  await toProjects(page);
-  await page.getByRole("button", { name: /^Use / }).click();
+// Google Sheets on through sheets-mcp, and the window chat's draft of which
+// tab it reads, from the person's latest spreadsheets, held under the
+// answer.
+const sheetsMcpDrafting = () =>
+  firstRunServer(
+    start,
+    (deps) =>
+      scripted(deps, (input) =>
+        /\bdraft\b/i.test(input.text)
+          ? [
+              { run: sheetsMcpDraftScript },
+              {
+                text: "Your Product backlog's Backlog tab reads like a tracker. I drafted it with Key as each row's key and Status as its state; apply it below if that's right.",
+              },
+            ]
+          : planning(input),
+      ),
+    async () => notes,
+    { cli: { signedIn: true }, sheetsMcp: "on", state: setupFinished },
+  );
+const sheetsMcpDrafted = async (page: Page) => {
+  await overviewShown(page);
+  await page.locator(".ask-input").fill("Draft how Oriel reads my spreadsheets.");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await page.locator(".window-chat .draft-card").waitFor();
+  await page.locator(".window-chat .working").waitFor({ state: "detached" });
 };
 // Past Your AI, and what Oriel found in it (decision 0059), to Your work.
 const continueWithClaude = async (page: Page) => {
@@ -3586,52 +3457,20 @@ const continueWithClaude = async (page: Page) => {
   await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 };
-// Google Sheets connected from Settings, past Google's page, and the agent's
-// draft of its mapping applied there: the connection's row shows its mapping.
+// Google Sheets on through sheets-mcp, reading the Sheets fixture, and in
+// Settings the tracker and the RAID log picked through it (decision 0059);
+// then the agent's draft of how they read, applied there: the connection's
+// row shows its mapping.
 const sheetsMapped = async (page: Page) => {
-  await googleSignsIn(page.context());
-  const add = page.locator("#settings-add-connection ~ .provider-rows .provider-row", {
-    hasText: "Google Sheets",
-  });
-  await add.getByRole("button", { name: "Connect" }).click();
-  const popup = page.waitForEvent("popup");
-  await add.getByRole("link", { name: "Continue to Google" }).click();
-  await (await popup).close();
-  await add.getByText("Oriel's draft.").waitFor();
-  await add.getByRole("button", { name: "Apply" }).click();
+  const row = page.locator(".connection-row", { hasText: "through sheets-mcp" });
+  await row.getByRole("button", { name: "Pick" }).click();
+  for (const name of [/delivery tracker/, /RAID log/])
+    await row.getByRole("checkbox", { name }).check();
+  await row.getByRole("button", { name: "Use these 2" }).click();
+  await row.getByText("Oriel's draft.").waitFor();
+  await row.getByRole("button", { name: "Apply" }).click();
   await page.locator(".connection-mapping .mapping-tabs").waitFor();
 };
-// Google Sheets' row in the first run (decision 0051): its consent line, then,
-// past Google's page, its review in the row.
-const toSheets = async (page: Page) => {
-  await continueWithClaude(page);
-  await page
-    .locator(".provider-row", { hasText: "Google Sheets" })
-    .getByRole("button", { name: "Connect" })
-    .click();
-  await page.getByRole("link", { name: "Continue to Google" }).waitFor();
-};
-scenes.push(
-  {
-    name: "setup-sheets-consent",
-    path: "/setup",
-    make: firstRun({ cli: { signedIn: true }, sheets: true }),
-    act: toSheets,
-  },
-  {
-    name: "setup-sheets-review",
-    path: "/setup",
-    make: firstRun({ cli: { signedIn: true }, sheets: true }),
-    act: async (page) => {
-      await googleSignsIn(page.context());
-      await toSheets(page);
-      const popup = page.waitForEvent("popup");
-      await page.getByRole("link", { name: "Continue to Google" }).click();
-      await (await popup).close();
-      await page.getByText("Oriel's draft.").waitFor();
-    },
-  },
-);
 scenes.push(
   {
     name: "setup-checking",
@@ -3810,66 +3649,18 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true } }),
     act: async (page) => {
       await continueWithClaude(page);
-      await page.getByRole("heading", { name: "Connect where your work lives" }).waitFor();
+      await page.getByRole("heading", { name: "See your work in one place" }).waitFor();
     },
   },
-  {
-    name: "setup-jira",
-    path: "/setup",
-    make: firstRun({ state: aiDone, trackerOn: true }),
-    act: (page) => toJira(page),
-  },
-  {
-    name: "setup-jira-refused",
-    path: "/setup",
-    make: firstRun({ state: aiDone, trackerOn: true }),
-    refused: 400,
-    act: async (page) => {
-      await toJira(page, "not-the-one");
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator(".connect-problem").waitFor();
-    },
-  },
-  {
-    name: "setup-jira-project",
-    path: "/setup",
-    make: firstRun({ state: aiDone, trackerOn: true }),
-    act: (page) => toProjects(page),
-  },
+  // Jira on through Atlassian's server, and the notes folder chosen: both
+  // read, in Welcome back's rows.
   {
     name: "setup-work-connected",
     path: "/setup",
-    make: firstRun({ state: aiDone, trackerOn: true }),
+    make: firstRun({ state: aiDone, atlassian: "on" }),
     act: async (page) => {
-      await useProject(page);
       await page.getByRole("button", { name: "Choose a folder" }).click();
       await page.locator(".provider-status[data-connected]").nth(1).waitFor();
-    },
-  },
-  {
-    name: "setup-reading",
-    path: "/setup",
-    make: firstRun({ state: aiDone, search: "held", trackerOn: true }),
-    act: async (page) => {
-      await useProject(page);
-      await page.getByRole("button", { name: "Continue", exact: true }).click();
-      await page.getByRole("heading", { name: "Reading your work" }).waitFor();
-      await page.locator(".setup-progress").waitFor();
-    },
-  },
-  {
-    name: "setup-sync-failed",
-    path: "/setup",
-    make: firstRun({ state: aiDone, search: "fails", trackerOn: true }),
-    // Jira's connect answers why it stopped.
-    refused: 400,
-    act: async (page) => {
-      await page.getByRole("button", { name: "Choose a folder" }).click();
-      await page.locator(".provider-status[data-connected]").waitFor();
-      await useProject(page);
-      await page.getByRole("button", { name: "Try again" }).waitFor();
-      await page.getByRole("button", { name: "Continue", exact: true }).click();
-      await page.getByRole("button", { name: "Open with what's ready" }).waitFor();
     },
   },
   {
@@ -3951,13 +3742,23 @@ scenes.push(
   {
     name: "first-run-overview",
     path: "/",
-    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      folder: notes,
+      state: setupFinished,
+    }),
     act: (page) => page.locator(".ask-question", { hasText: /^Make / }).waitFor(),
   },
   {
     name: "first-run-answer",
     path: "/",
-    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      folder: notes,
+      state: setupFinished,
+    }),
     window: true,
     act: async (page) => {
       await page.locator(".ask-question", { hasText: /^Make / }).click();
@@ -3974,13 +3775,13 @@ scenes.push(
   {
     name: "first-run-no-ai",
     path: "/",
-    make: firstRun({ jira: true, state: setupFinished }),
+    make: firstRun({ atlassian: "on", state: setupFinished }),
     act: (page) => page.getByRole("link", { name: "Set up", exact: true }).waitFor(),
   },
   {
     name: "first-run-settings",
     path: "/settings",
-    make: firstRun({ cli: { signedIn: true }, codex: true, jira: true, state: setupFinished }),
+    make: firstRun({ cli: { signedIn: true }, codex: true, atlassian: "on", state: setupFinished }),
     act: (page) =>
       page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
   },
@@ -3992,7 +3793,7 @@ scenes.push(
       cli: { signedIn: true },
       codex: "ready",
       apiKeys: true,
-      jira: true,
+      atlassian: "on",
       state: setupFinished,
     }),
     act: (page) =>
@@ -4143,29 +3944,19 @@ scenes.push(
     name: "sheets-mcp-draft",
     path: "/",
     window: true,
-    make: () =>
-      firstRunServer(
-        start,
-        (deps) =>
-          scripted(deps, (input) =>
-            /\bdraft\b/i.test(input.text)
-              ? [
-                  { run: sheetsMcpDraftScript },
-                  {
-                    text: "Your Product backlog's Backlog tab reads like a tracker. I drafted it with Key as each row's key and Status as its state; apply it below if that's right.",
-                  },
-                ]
-              : planning(input),
-          ),
-        async () => notes,
-        { cli: { signedIn: true }, sheetsMcp: "on", state: setupFinished },
-      ),
+    make: sheetsMcpDrafting,
+    act: sheetsMcpDrafted,
+  },
+  // The draft applied there, under the answer (decision 0051).
+  {
+    name: "draft-applied",
+    path: "/",
+    window: true,
+    make: sheetsMcpDrafting,
     act: async (page) => {
-      await overviewShown(page);
-      await page.locator(".ask-input").fill("Draft how Oriel reads my spreadsheets.");
-      await page.getByRole("button", { name: "Ask", exact: true }).click();
-      await page.locator(".window-chat .draft-card").waitFor();
-      await page.locator(".window-chat .working").waitFor({ state: "detached" });
+      await sheetsMcpDrafted(page);
+      await page.getByRole("button", { name: "Apply", exact: true }).click();
+      await page.locator('.window-chat .held-block[data-outcome="applied"]').waitFor();
     },
   },
   {
@@ -4255,31 +4046,37 @@ scenes.push(
   {
     name: "settings-connections",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      folder: notes,
+      state: setupFinished,
+    }),
     act: (page) => page.locator(".connection-row .connection-options").first().waitFor(),
-  },
-  {
-    name: "settings-connections-project",
-    path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
-    act: async (page) => {
-      await page.getByRole("button", { name: "Change" }).click();
-      await page.locator('.connection-options input[type="radio"][value="SYN"]').waitFor();
-    },
   },
   {
     name: "settings-connections-disconnect",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      folder: notes,
+      state: setupFinished,
+    }),
     act: async (page) => {
-      await page.getByRole("button", { name: "Disconnect Jira" }).click();
-      await page.getByRole("alertdialog", { name: "Disconnect Jira?" }).waitFor();
+      await page.getByRole("button", { name: "Disconnect Folder" }).click();
+      await page.getByRole("alertdialog", { name: "Disconnect Folder?" }).waitFor();
     },
   },
   {
     name: "settings-connections-add",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      folder: notes,
+      state: setupFinished,
+    }),
     act: async (page) => {
       await page
         .locator("#settings-add-connection ~ .provider-rows .provider-row", { hasText: "Folder" })
@@ -4296,13 +4093,23 @@ scenes.push(
   {
     name: "settings-connections-mapping",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      sheetsMcp: "on",
+      sheetsTabs: 40,
+      state: setupFinished,
+    }),
     act: sheetsMapped,
   },
   {
     name: "settings-connections-mapping-folded",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      sheetsMcp: "on",
+      sheetsTabs: 40,
+      state: setupFinished,
+    }),
     act: async (page) => {
       await sheetsMapped(page);
       await page.getByRole("button", { name: /tabs Oriel isn't reading/ }).click();
@@ -4312,7 +4119,12 @@ scenes.push(
   {
     name: "settings-connections-mapping-edit",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      sheetsMcp: "on",
+      sheetsTabs: 40,
+      state: setupFinished,
+    }),
     act: async (page) => {
       await sheetsMapped(page);
       const mapping = page.locator(".connection-mapping");
@@ -4325,7 +4137,12 @@ scenes.push(
   {
     name: "settings-connections-mapping-ask",
     path: "/settings/connections",
-    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    make: firstRun({
+      cli: { signedIn: true },
+      sheetsMcp: "on",
+      sheetsTabs: 40,
+      state: setupFinished,
+    }),
     act: async (page) => {
       await sheetsMapped(page);
       await page
@@ -4454,117 +4271,15 @@ try {
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 
-// The onboarding budget (SPEC §4), as fast as a script clicks: connect
-// Jira, see the epics, ask one question, approve one change. The clock
-// starts when Jira connects; the word "token" is counted on each screen,
-// in its text and in what it shows in fields and tooltips.
+// The onboarding budget (SPEC §4; decisions 0038 and 0059), as fast as a
+// script clicks: from the first run's first screen on a fresh data folder,
+// the AI set up, what Oriel found, your work on the stand-in tracker, one
+// question asked and one change approved, on each path a person may start
+// on. Claude Code ready, under five minutes; signed out, plus one; missing,
+// with Anthropic's installer, plus three. The word "token" is counted on
+// each screen, in its text and in what its fields and tooltips say, and
+// never shows.
 async function onboarding(): Promise<void> {
-  const on = await unconnected();
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const page = await context.newPage();
-  const tokens: [string, number][] = [];
-  const count = async (screen: string) => {
-    const text = await page.evaluate<string>(`[
-      document.body.innerText,
-      ...[...document.querySelectorAll("[placeholder], [title], [aria-label]")].flatMap((el) =>
-        ["placeholder", "title", "aria-label"].map((name) => el.getAttribute(name) ?? ""),
-      ),
-    ].join("\\n")`);
-    tokens.push([screen, (text.match(/\btokens?\b/gi) ?? []).length]);
-  };
-  try {
-    const opened = performance.now();
-    await page.goto(on.url);
-    await fillJira(page, account.token);
-    await count("connect");
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
-    await page.locator(".connect-pick").waitFor();
-    await count("project");
-    await page.getByRole("button", { name: /^Use / }).click();
-    await page.locator(".connect-card").waitFor({ state: "detached" });
-    const connected = performance.now();
-    await page
-      .getByRole("navigation", { name: "Window" })
-      .getByRole("link", { name: "Browse", exact: true })
-      .click();
-    await shown(page, "epic");
-    await count("epics");
-    const checkoutEpic = page.locator(".cluster", { hasText: "Checkout" }).first();
-    await checkoutEpic.getByRole("button", { name: "Make workstream" }).click();
-    await page.locator(".workstream-page .members").waitFor();
-    await count("workstream");
-    await page.getByLabel("Ask about this workstream").fill("Plan gift cards in this epic");
-    await page.getByRole("button", { name: "Ask" }).click();
-    await page.getByRole("button", { name: "Approve and apply" }).waitFor();
-    await count("thread");
-    await page.getByRole("button", { name: "Approve and apply" }).click();
-    await page.locator('.change-set[data-status="applied"]').waitFor();
-    await count("approved");
-    const done = performance.now();
-    const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
-    console.log(
-      `onboarding: ${seconds(connected - opened)} to connect, then ${seconds(done - connected)} from connect to an approved change`,
-    );
-    console.log(
-      `onboarding: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
-    );
-    const total = tokens.reduce((sum, [, n]) => sum + n, 0);
-    if (total > 1)
-      problems.push(`onboarding: "token" appears ${total} times, over the budget of 1`);
-  } finally {
-    await context.close();
-  }
-  await firstRunPaths();
-  await sheetsPath();
-}
-
-// Google Sheets' path through the first run (decision 0051), measured, not
-// guessed: with no token to type but one more turn, the draft's, timed apart.
-async function sheetsPath(): Promise<void> {
-  const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
-  const serving = await firstRunServer(
-    start,
-    (deps) => scripted(deps, planning),
-    async () => notes,
-    { cli: { signedIn: true }, data, sheets: true },
-  );
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  await googleSignsIn(context);
-  const page = await context.newPage();
-  try {
-    const { ms, draftMs, tokens } = await timedSheets(page, serving.url);
-    console.log(
-      `first run, Google Sheets: ${(ms / 60_000).toFixed(2)} min from the first screen to the overview with its rows read, ${(draftMs / 1000).toFixed(1)}s of it the draft's turn`,
-    );
-    console.log(
-      `first run, Google Sheets: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
-    );
-    if (ms > 5 * 60_000)
-      problems.push(
-        `first run, Google Sheets: ${(ms / 60_000).toFixed(2)} min, over the budget of 5`,
-      );
-    const total = tokens.reduce((sum, [, n]) => sum + n, 0);
-    if (total > 1)
-      problems.push(
-        `first run, Google Sheets: "token" appears ${total} times, over the budget of 1`,
-      );
-  } catch (error) {
-    problems.push(
-      `first run, Google Sheets: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
-    );
-    await page.screenshot({ path: fileURLToPath(new URL("first-run-sheets-stopped.png", out)) });
-  } finally {
-    await context.close();
-    keepUntilDone(data);
-  }
-}
-
-// The desktop app's onboarding budget (decisions 0038 and 0059): from the
-// first run's first screen on a fresh data folder to an approved change set,
-// on the stand-in tracker, on each path a person may start on. Claude Code ready, under five
-// minutes; signed out, plus one; missing, with Anthropic's installer, plus
-// three. "Token" shows at most once on each path.
-async function firstRunPaths(): Promise<void> {
   const budgets = { ready: 5, "signed-out": 6, missing: 8 } as const;
   for (const path of ["ready", "signed-out", "missing"] as const) {
     const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
