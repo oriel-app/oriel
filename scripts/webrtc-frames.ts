@@ -277,6 +277,8 @@ const proxyPort = await listen(proxy);
 // Plain ES5-ish source, stringified into each document. It never writes the
 // closing script tag literally, so it can go into a srcdoc.
 
+/* oxlint-disable typescript/no-explicit-any -- probe() and main() run in a
+   browser frame, stringified; the scripts' tsconfig has no DOM types. */
 function probe(win: any, c: any, say: (o: any) => void) {
   let PC: any;
   try {
@@ -413,6 +415,7 @@ function main(c: any) {
     w.document.body.appendChild(g);
   }
 }
+/* oxlint-enable typescript/no-explicit-any */
 
 // The functions as the browser sees them: type annotations erased by Node's
 // strip-types leave plain JavaScript in Function#toString.
@@ -565,7 +568,9 @@ allowedPorts.add(appPort);
 
 // ---- Engines ----
 
-type Outcome = { reports: any[]; permissions: string[]; features?: string[] | null };
+// What a probe says over postMessage.
+type Report = { ch?: string; ok?: boolean; err?: string; mark?: string; where?: string };
+type Outcome = { reports: Report[]; permissions: string[]; features?: string[] | null };
 type Engine = {
   name: string;
   load(run: Run): Promise<Outcome>;
@@ -614,13 +619,13 @@ function scan(text: string) {
 // them off the terminal.
 process.env["DEBUG"] = "pw:browser";
 const write = process.stderr.write.bind(process.stderr);
-process.stderr.write = ((chunk: string | Uint8Array, ...rest: any[]) => {
+process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
   const text = String(chunk);
   if (text.includes("pw:browser")) {
     scan(text);
     return true;
   }
-  return write(chunk, ...rest);
+  return write(chunk, ...(rest as [BufferEncoding, () => void]));
 }) as typeof process.stderr.write;
 const { chromium } = await import("playwright-core");
 
@@ -671,7 +676,7 @@ async function chrome(switches: string[], proxied: boolean, policyPref: boolean)
       if (process.env["DEBUG"]) page.on("console", (m) => console.log("console:", m.text()));
       await page.goto(`http://127.0.0.1:${hostPort}/host?run=${run.id}`).catch(() => {});
       await page.waitForTimeout(settle);
-      const reports = (await page.evaluate("window.reports").catch(() => [])) as any[];
+      const reports = (await page.evaluate("window.reports").catch(() => [])) as Report[];
       const features = (await page.evaluate("window.features").catch(() => null)) as
         | string[]
         | null;
@@ -754,7 +759,15 @@ async function electron(
     (resolve) => (ready = resolve),
   );
   createInterface({ input: child.stdout }).on("line", (line) => {
-    let message: any;
+    let message: {
+      ready?: boolean;
+      electron: string;
+      chrome: string;
+      done?: number;
+      host: Report[];
+      view: Report[];
+      permissions: string[];
+    };
     try {
       message = JSON.parse(line);
     } catch {
@@ -882,17 +895,15 @@ async function measure(
       return [channel, looked ? (cell === "·" ? "DNS" : `DNS+${cell}`) : cell];
     }),
   ) as Record<Channel, Cell>;
-  const reports = (outcome.reports ?? []).filter((r: any) => r && r.mark === run.mark);
-  const api = reports
-    .filter((r: any) => r.ch === "api")
-    .map((r: any) => (r.ok ? "yes" : (r.err ?? "gone")));
+  const reports = (outcome.reports ?? []).filter((r) => r && r.mark === run.mark);
+  const api = reports.filter((r) => r.ch === "api").map((r) => (r.ok ? "yes" : (r.err ?? "gone")));
   const pick = (ch: string) => {
-    const r = reports.find((x: any) => x.ch === ch);
+    const r = reports.find((x) => x.ch === ch);
     return r ? (r.ok ? "ok" : `fail${r.err ? `: ${r.err}` : ""}`) : "none";
   };
   const errors = reports
-    .filter((r: any) => r.err && r.ch !== "own-fetch" && r.ch !== "bridge")
-    .map((r: any) => `${r.ch}: ${r.err}`);
+    .filter((r) => r.err && r.ch !== "own-fetch" && r.ch !== "bridge")
+    .map((r) => `${r.ch}: ${r.err}`);
   const row: Row = {
     engine: engine.name,
     config,
