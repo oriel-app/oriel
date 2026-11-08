@@ -14,7 +14,6 @@ const statusNames: Record<ProviderStatus, string> = {
   missing: "Not found",
   unsupported: "Needs an update",
   "signed-out": "Not signed in",
-  "no-key": "No key",
   untrusted: "Not run",
   checking: "Checking",
 };
@@ -23,7 +22,8 @@ const statusNames: Record<ProviderStatus, string> = {
 export const providerAbout: Record<ProviderKind, string> = {
   "claude-code": "For Claude Pro and Max · Anthropic's assistant for your Mac",
   codex: "For ChatGPT plans · OpenAI's assistant for your Mac",
-  api: "Anthropic bills each question",
+  // `pnpm dev --agent api` only (decision 0059).
+  api: "Anthropic bills each question · from .env, for development",
 };
 
 const marks: Record<ProviderKind, string> = { "claude-code": "C", codex: "O", api: "A" };

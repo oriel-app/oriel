@@ -1582,25 +1582,6 @@ button.nav-more {
   color: var(--text-muted);
 }
 
-/* The first run's API key field. */
-.connect-field {
-  display: grid;
-  align-content: start;
-  gap: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.connect-field input {
-  padding: 0.4375rem var(--space-2);
-  border: var(--border-thin) solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--text-md);
-}
-
 /* What Oriel found in the person's agent (decision 0059): the overview's
    card when it changes, the first run's step, and Settings' list of what a
    server it didn't find would turn on. */
@@ -6677,18 +6658,6 @@ html:has(.settings-page) {
   margin-top: var(--space-1);
 }
 
-.provider-key-actions {
-  display: flex;
-  gap: var(--space-2);
-  margin-left: calc(-1 * var(--space-2));
-}
-
-.provider-key-note {
-  flex: 1 0 100%;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
 .provider-path-label {
   display: grid;
   flex: 1 1 16rem;
@@ -7126,11 +7095,6 @@ html:has(.settings-page) {
   font-size: var(--text-md);
 }
 
-.setup-form {
-  display: grid;
-  gap: var(--space-4);
-}
-
 .setup-terminal {
   margin: 0;
   padding-left: var(--space-8);
@@ -7363,20 +7327,7 @@ html:has(.settings-page) {
   }
 }
 
-/* The first run's API key, a connector's steps, and a review step. */
-.connect-label {
-  font-weight: var(--weight-strong);
-}
-
-.setup-form .input {
-  min-height: 2.25rem;
-  padding: 0 var(--space-3);
-  border: var(--border-thin) solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
-  font-size: var(--text-md);
-}
-
+/* A connector's steps, a review step, and a source that failed in Your work. */
 .input[aria-invalid] {
   border-color: var(--danger);
 }

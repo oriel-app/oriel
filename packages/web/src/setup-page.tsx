@@ -27,7 +27,7 @@ export function SetupPage(props: { model: Model; dispatch: Dispatch }) {
   const { setup } = model;
   const send = (msg: SetupMsg) => dispatch({ type: "setup", msg });
   const show = (screen: SetupScreen) => send({ type: "screenShown", screen });
-  const step = ["ai", "key", "other-ways"].includes(setup.screen) ? 1 : 2;
+  const step = ["ai", "other-ways"].includes(setup.screen) ? 1 : 2;
   return (
     <div class="setup-page">
       <header class="setup-brand">
@@ -41,8 +41,6 @@ export function SetupPage(props: { model: Model; dispatch: Dispatch }) {
           <p class="setup-lede">{setup.problem ?? "Looking for Claude Code on this Mac…"}</p>
         ) : setup.screen === "ai" ? (
           <YourAi model={model} send={send} show={show} />
-        ) : setup.screen === "key" ? (
-          <ApiKey model={model} send={send} show={show} />
         ) : setup.screen === "other-ways" ? (
           <OtherWays model={model} send={send} show={show} dispatch={dispatch} />
         ) : setup.screen === "found" ? (
@@ -127,7 +125,6 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
             model={setup}
             send={send}
             picked={ai === "claude-code"}
-            onKey={() => show("key")}
             onOtherWays={() => show("other-ways")}
           />
         )}
@@ -138,7 +135,6 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
             model={setup}
             send={send}
             picked={ai === "codex"}
-            onKey={() => show("key")}
           />
         )}
       </ul>
@@ -151,28 +147,19 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
       )}
       {codex && missing && ai !== "codex" ? (
         <p class="setup-note">
-          With a ChatGPT plan, sign in to Codex above and Oriel runs on it, as a preview. Or{" "}
-          {link("pay Anthropic per question", () => show("key"))}: nothing to install.
+          With a ChatGPT plan, sign in to Codex above and Oriel runs on it, as a preview.
         </p>
       ) : (
         !codex &&
         missing && (
           <p class="setup-note">
             Only have ChatGPT? Oriel runs on Codex, OpenAI's assistant, as a preview once it's on
-            this Mac. The shortest way in is to{" "}
-            {link("pay Anthropic per question", () => show("key"))}: nothing to install.
+            this Mac.
           </p>
         )
       )}
       <Foot
-        links={
-          <>
-            <span>
-              No Claude plan? {link("Pay Anthropic per question instead", () => show("key"))}
-            </span>
-            {link("Set up later", () => send({ type: "skipClicked", step: "ai" }), setup.sending)}
-          </>
-        }
+        links={link("Set up later", () => send({ type: "skipClicked", step: "ai" }), setup.sending)}
       >
         <button
           type="button"
@@ -190,66 +177,6 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
         </button>
       </Foot>
     </>
-  );
-}
-
-function ApiKey(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupScreen): void }) {
-  const { model, send, show } = props;
-  const { setup } = model;
-  return (
-    <form
-      class="setup-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        send({ type: "keySaved" });
-      }}
-    >
-      <h1 class="setup-title">Pay Anthropic per question</h1>
-      <p class="setup-lede">
-        Without a Claude plan, Oriel can use a key from Anthropic. Anthropic bills you for each
-        question Oriel asks, and you can set a monthly limit there.
-      </p>
-      <div class="setup-card">
-        <label class="connect-field">
-          <span class="connect-label">API key</span>
-          <input
-            class="input"
-            type="password"
-            name="key"
-            value={setup.key}
-            placeholder="Paste it here"
-            spellcheck={false}
-            autoComplete="off"
-            aria-invalid={setup.keyProblem ? true : undefined}
-            onInput={(event) => send({ type: "keyTyped", text: event.currentTarget.value })}
-          />
-        </label>
-        {setup.keyProblem && (
-          <p class="connect-problem" role="alert">
-            {setup.keyProblem}
-          </p>
-        )}
-        <p class="cli-note">
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
-            Get a key from Anthropic
-          </a>
-          : make an account there (it's separate from claude.ai), add a card, click{" "}
-          <strong>Create Key</strong>, and copy it.
-        </p>
-        <p class="cli-small">
-          Oriel keeps it encrypted on this Mac and sends it only to Anthropic.
-        </p>
-      </div>
-      <Foot links={link("Back", () => show("ai"))}>
-        <button
-          type="submit"
-          class="button primary setup-next"
-          disabled={setup.sending || setup.key.trim() === ""}
-        >
-          {setup.sending ? "Checking it with Anthropic…" : "Save and continue"}
-        </button>
-      </Foot>
-    </form>
   );
 }
 
@@ -310,29 +237,19 @@ function OtherWays(props: {
           </>
         )}
       </ol>
-      <p class="setup-note">
-        Rather not?{" "}
-        {log.length > 0 && (
-          <>
-            Send{" "}
-            {link("what Oriel tried", () =>
-              send({
-                type: "detailsCopied",
-                text: log.join("\n"),
-                what: install ? "install" : "sign-in",
-              }),
-            )}{" "}
-            to whoever helps you with your Mac, or{" "}
-          </>
-        )}
-        {link(
-          log.length > 0
-            ? "pay Anthropic per question instead"
-            : "Pay Anthropic per question instead",
-          () => show("key"),
-        )}
-        .
-      </p>
+      {log.length > 0 && (
+        <p class="setup-note">
+          Rather not? Send{" "}
+          {link("what Oriel tried", () =>
+            send({
+              type: "detailsCopied",
+              text: log.join("\n"),
+              what: install ? "install" : "sign-in",
+            }),
+          )}{" "}
+          to whoever helps you with your Mac.
+        </p>
+      )}
       <Foot links={link("Back", () => show("ai"))}>
         <button
           type="button"
@@ -461,7 +378,12 @@ function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): 
         Oriel reads your work through the MCP servers already in {agent}. It never adds or signs in
         to one; turn on what you want Oriel to read.
       </p>
-      {servers === null || (servers.looking && servers.found.length === 0) ? (
+      {servers?.noAgent && !servers.looking ? (
+        <p class="setup-lede">
+          No AI is on, so Oriel can't look for your servers yet. Set up your AI in Settings, under
+          Providers.
+        </p>
+      ) : servers === null || (servers.looking && servers.found.length === 0) ? (
         <p class="cli-line cli-waiting" role="status">
           <span class="spinner" aria-hidden="true" />
           Looking in {agent}…
@@ -504,7 +426,7 @@ function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): 
           {problem}
         </p>
       ))}
-      {servers && servers.missing.length > 0 && (
+      {servers && !servers.noAgent && servers.missing.length > 0 && (
         <ul class="found-missing" aria-label={`Not found in ${agent}`}>
           {servers.missing.map((each) => (
             <li key={each.kind}>
@@ -541,9 +463,12 @@ const sources = (model: Model): Source[] =>
   );
 
 // Your work: the stand-in tracker while no tracker is on, each source on
-// through its server, and the folder, which the window connects itself. A
-// source with no server on says which would turn it on, and links to its
-// vendor's own instructions; one found but off turns on here too.
+// through its server, and the folder, which the window connects itself.
+// Then every other source Oriel knows a server for, as "See what Oriel
+// found" lists them, so skipping Your AI misses none: one found but off
+// turns on here, a tracker's in place of the stand-in too; one with no
+// server says which would turn it on, and links to its vendor's own
+// instructions; and with no AI on, each says to set one up first.
 function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg): void }) {
   const { model, dispatch, send } = props;
   const { setup } = model;
@@ -553,6 +478,42 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
   const all = sources(model);
   // A stand-in on is the person's work already (decision 0059).
   const standing = standingIn(model.connectors, model.connections);
+  // Every other kind with a server found, off or turned on here, or none
+  // found, in the order "See what Oriel found" lists them.
+  const shown = new Set([
+    ...standing.map((each) => each.kind),
+    ...all.map((source) => source.connector.kind),
+  ]);
+  const others = [
+    ...(servers?.found ?? []).map((each) => each.kind),
+    ...(servers?.missing ?? []).map((each) => each.kind),
+  ].filter((kind, at, kinds) => !shown.has(kind) && kinds.indexOf(kind) === at);
+  // How a source with no server on gets one: an AI first, if none is on;
+  // else the server to add to it.
+  const unserved = (missing: { server: string; instructions: string }) =>
+    servers?.noAgent ? (
+      <span class="cli-line">
+        No AI is on to read it.{" "}
+        {link("Set up your AI", () => send({ type: "screenShown", screen: "ai" }))}
+      </span>
+    ) : (
+      <span class="cli-line">
+        Add {missing.server} to {agent} to see it here.{" "}
+        <a href={missing.instructions} target="_blank" rel="noreferrer">
+          How to add it
+        </a>
+      </span>
+    );
+  const turnOn = (kind: string, name: string, server: string) => (
+    <button
+      type="button"
+      class="button"
+      disabled={model.connections.switches[kind] !== undefined}
+      onClick={() => sendConnections({ type: "kindSwitched", kind, on: true, server })}
+    >
+      {model.connections.switches[kind] ? "Turning on…" : `Turn on ${name}`}
+    </button>
+  );
   const anything = standing.length > 0 || all.some((source) => source.state === "read");
   const ai = setup.view?.firstRun?.steps.ai;
   return (
@@ -601,46 +562,25 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
                     Oriel waits for how to read it. Review that in Settings, under Connections.
                   </span>
                 ) : !chooses && missing ? (
-                  <span class="cli-line">
-                    Add {missing.server} to {agent} to see it here.{" "}
-                    <a href={missing.instructions} target="_blank" rel="noreferrer">
-                      How to add it
-                    </a>
-                  </span>
+                  unserved(missing)
                 ) : null
               }
               side={
-                chooses ? (
-                  state !== "reading" && (
-                    <button
-                      type="button"
-                      class="button"
-                      onClick={() =>
-                        sendConnections({ type: "chooseClicked", kind: connector.kind })
-                      }
-                    >
-                      {open ? chooses.another : chooses.choose}
-                    </button>
-                  )
-                ) : found && !open && !waits ? (
-                  <button
-                    type="button"
-                    class="button"
-                    disabled={model.connections.switches[connector.kind] !== undefined}
-                    onClick={() =>
-                      sendConnections({
-                        type: "kindSwitched",
-                        kind: connector.kind,
-                        on: true,
-                        server: found.server,
-                      })
-                    }
-                  >
-                    {model.connections.switches[connector.kind]
-                      ? "Turning on…"
-                      : `Turn on ${connector.name}`}
-                  </button>
-                ) : null
+                chooses
+                  ? state !== "reading" && (
+                      <button
+                        type="button"
+                        class="button"
+                        onClick={() =>
+                          sendConnections({ type: "chooseClicked", kind: connector.kind })
+                        }
+                      >
+                        {open ? chooses.another : chooses.choose}
+                      </button>
+                    )
+                  : found && !open && !waits
+                    ? turnOn(connector.kind, connector.name, found.server)
+                    : null
               }
             >
               {state === "failed" && (
@@ -649,6 +589,31 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
                 </p>
               )}
             </SourceRow>
+          );
+        })}
+        {others.map((kind) => {
+          const connector = model.connectors[kind];
+          const name = connector?.name ?? kind;
+          const found = servers?.found.find((each) => each.kind === kind);
+          const missing = servers?.missing.find((each) => each.kind === kind);
+          const open = openOf(model.connections, kind);
+          return (
+            <SourceRow
+              key={kind}
+              mark={connector?.offer?.mark ?? name.charAt(0)}
+              name={name}
+              about={`Through ${found?.known ?? missing?.server ?? "its MCP server"}`}
+              state={
+                open
+                  ? // Its count alone: a kind with no first-run offer declares no
+                    // words for what it reads.
+                    connected(plural(open.items, "item"))
+                  : missing
+                    ? unserved(missing)
+                    : null
+              }
+              side={found && !found.on ? turnOn(kind, name, found.server) : null}
+            />
           );
         })}
       </ul>

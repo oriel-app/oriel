@@ -126,7 +126,7 @@ Safari and Firefox have `::details-content` but not `interpolate-size`, so there
 
 ### @scope
 
-`@scope (.chat-input) to (.chip) { … }` limits rules to a subtree, and stops at an inner one. Oriel gets the same from class prefixes: `.chat-input-field`, `.settings-field-name`, `.connect-label`. The workshop's check already refuses a proposal whose class collides with one of window.css's. `@scope` would allow shorter names, at the cost of a second way to scope. Oriel's CSS reader keeps a scoped rule's `@scope` prelude, so its theme check would still judge the declarations.
+`@scope (.chat-input) to (.chip) { … }` limits rules to a subtree, and stops at an inner one. Oriel gets the same from class prefixes: `.chat-input-field`, `.settings-field-name`, `.provider-path-label`. The workshop's check already refuses a proposal whose class collides with one of window.css's. `@scope` would allow shorter names, at the cost of a second way to scope. Oriel's CSS reader keeps a scoped rule's `@scope` prelude, so its theme check would still judge the declarations.
 
 **Verdict: not needed.** Revisit if the prefixes get long enough to hurt.
 

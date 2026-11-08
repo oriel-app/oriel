@@ -24,23 +24,25 @@
 // of connections' secrets before decision 0059, in the gitignored
 // `secrets/` folder, is deleted at the start (`retire`).
 //
-// The agent runs on the model key in `.env` when there is one. Without one, it
-// runs on the person's own Claude Code, found on the PATH or at
+// The agent runs on the person's own Claude Code, found on the PATH or at
 // `--claude-code <path>`, signed in however they signed it in (decision
-// 0037). Settings, kept in `.oriel/settings.json`, can pick another, a model,
-// or a path to the CLI (decision 0041). With neither, each turn says how to
-// set one up. `--agent scripted` runs the scripted agent instead, which needs
-// no model.
+// 0037), else on their Codex, as the desktop app does. Settings, kept in
+// `.oriel/settings.json`, can pick another, a model, or a path to the CLI
+// (decision 0041). With none, each turn says how to set one up. `--agent
+// scripted` runs the scripted agent instead, which needs no model. `--agent
+// api` runs on the model key in `.env`, and is the only way that key runs
+// anything (decision 0059): an API key has no MCP servers, so no source
+// turns on through it.
 //
 // `--desktop --data <dir>` is the server as the desktop app's shell starts
 // it, and takes no other flag: see desktop/PROTOCOL.md. In the app it runs
 // on the shell's own Node, as Electron's utility process, and the channel
 // is messages on its parent port (decision 0047); elsewhere, stdin and
 // stdout. Every source turns on through the person's own agent's servers,
-// and the folder is connected in the window. The agent runs on the person's own Claude Code,
-// found on the PATH the shell gives, or on an API key set in Settings and
-// kept in the OS secret store, and never on `.env`'s key, which is `pnpm dev`'s
-// (decision 0036).
+// and the folder is connected in the window. The agent runs on the person's
+// own Claude Code or Codex, found on the PATH the shell gives, and never on
+// an API key (decisions 0036 and 0059). A key an older app kept in the OS
+// secret store is deleted as the shell opens it (shell/secrets.ts).
 // Settings are kept in the data folder. Nothing but the channel to the shell
 // goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -52,7 +54,6 @@ import { isAbsolute, join } from "node:path";
 import { anthropicKey } from "@oriel/agent";
 import type { Log } from "@oriel/core";
 import { declarationOf, sourceKinds } from "@oriel/sources";
-import { keyStore } from "./api-key.ts";
 import { oldSecretFiles } from "./connection.ts";
 import { devModes, inWindow } from "./modes.ts";
 import { models as findModels } from "./model.ts";
@@ -117,8 +118,8 @@ if ("problem" in dev) {
 }
 const { modes, on, database: named } = dev;
 
-if (values.agent !== "auto" && values.agent !== "scripted") {
-  console.error("--agent must be auto or scripted");
+if (values.agent !== "auto" && values.agent !== "scripted" && values.agent !== "api") {
+  console.error("--agent must be auto, scripted or api");
   process.exit(2);
 }
 
@@ -151,11 +152,10 @@ if (pipes && values.data) {
     signals: process,
     firstPort,
     firstDoorPort,
-    async model(secrets) {
+    async model() {
       const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
       const data = values.data ?? "";
       const settings = settingsFile(join(data, "settings.json"), log);
-      const store = keyStore(secrets, log);
       // The CLI is found on the PATH the shell gave, and where Anthropic's
       // installer puts it (decision 0038). A Claude Code from that installer
       // runs only once Anthropic's signature on it checks out.
@@ -166,17 +166,15 @@ if (pipes && values.data) {
           ? installerTrust({ home, verify: (path) => anthropicSigned(path) })
           : async () => null;
       const counts = usageFile(join(data, "usage.json"), log);
-      const models = findModels({ key: null, kept: store, env, trust, desktop: true, counts });
+      const models = findModels({ key: null, env, trust, desktop: true, counts });
       const state = setupFile(join(data, "setup.json"));
       const fresh = !state.existed && !existsSync(join(data, "oriel.db"));
-      // Not awaited here: the key comes from the shell, which answers once
-      // the server listens. Requests wait for it instead.
+      // Not awaited here: requests wait for it instead.
       const first = models.look(settings.get());
       looked = first.then(() => models.describe(settings.get()));
       return {
         models,
         settings,
-        keys: { store },
         looked: first,
         setup: { state, fresh, home, env, trust },
       };
@@ -195,15 +193,23 @@ if (pipes && values.data) {
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const envPath = join(root, ".env");
-// Read only for the model key (`anthropicKey`): no connection comes from it.
-const envFile = existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
+// Read only for the model key (`anthropicKey`), and only under `--agent
+// api`: no connection comes from it.
+const envFile =
+  values.agent === "api" && existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
+const key = anthropicKey(envFile);
+if (values.agent === "api" && key === null) {
+  console.error("--agent api runs on ANTHROPIC_API_KEY in .env, and .env has none");
+  process.exit(2);
+}
 
 const dir = join(root, ".oriel", ...(fresh ? ["fresh", fresh] : []));
 mkdirSync(dir, { recursive: true });
 const log: Log = (message, fields) => console.log(JSON.stringify({ message, ...fields }));
 // The person's settings, in the data folder. The scripted agent when asked
 // for; otherwise the provider and model Settings pick among those found:
-// `.env`'s key, the person's Claude Code, their Codex as a preview, or none.
+// the person's Claude Code, their Codex as a preview, or none; or `.env`'s
+// key, first, under `--agent api`.
 const settings = settingsFile(join(dir, "settings.json"), log);
 const claudeCodePath = values["claude-code"];
 // Stand-in source servers, in dev only: the desktop app's start above never
@@ -213,7 +219,7 @@ const models =
   values.agent === "scripted"
     ? null
     : findModels({
-        key: anthropicKey(envFile),
+        key,
         ...(claudeCodePath ? { claudeCodePath } : {}),
         counts: usageFile(join(dir, "usage.json"), log),
         ...(standIns ? { dev: standIns.dev } : {}),

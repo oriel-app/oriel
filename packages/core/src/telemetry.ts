@@ -301,6 +301,7 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       failed?: string;
       cli?: "claude-code" | "codex";
     }
+  // `api`, the API key, in events stored before decision 0059 retired it.
   | { name: "first-run.ai-chosen"; ai: "claude-code" | "codex" | "api" }
   | { name: "first-run.step-skipped"; step: "ai" | "work" }
   // Show details' log was copied, for someone helping the person.

@@ -909,7 +909,6 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "settings":
     case "settingsChanged":
     case "settingsLooked":
-    case "settingsKey":
     case "settingsUsage": {
       const [settings, effects] = settingsReplied(model.settings, msg);
       return [{ ...model, settings }, effects];
@@ -917,8 +916,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "setup":
     case "setupCli":
     case "setupAi":
-    case "setupProgress":
-    case "setupKey": {
+    case "setupProgress": {
       const [setup, effects] = setupReplied(model.setup, msg);
       // What Claude Code, Codex or the AI chosen changed shows in Settings
       // too, and in the ask bar: once asked, and once a command has finished.

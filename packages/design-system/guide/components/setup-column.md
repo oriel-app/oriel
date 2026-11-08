@@ -3,7 +3,7 @@ title: First-run column
 status: drifting
 group: Layout
 order: 76
-classes: setup-page, setup-brand, setup, setup-steps, setup-step, setup-step-mark, setup-title, setup-lede, setup-note, setup-rows, setup-card, setup-form, setup-terminal, setup-command, setup-foot, setup-links, mark
+classes: setup-page, setup-brand, setup, setup-steps, setup-step, setup-step-mark, setup-title, setup-lede, setup-note, setup-rows, setup-card, setup-terminal, setup-command, setup-foot, setup-links, mark
 summary: The first run's own page, with no sidebar: the brand, the two steps, a title and lede, the step's rows or card, and a foot with the ways out on the left and the one way on at the right.
 ---
 
@@ -17,20 +17,20 @@ Each screen in the column is built the same way, top to bottom:
 
 1. **The steps** (`.setup-steps`): Your AI, then Your work, each a numbered mark.
 2. **A title** (`h1.setup-title`), in the heading face, and **a lede** (`.setup-lede`) that says what this step is for and what Oriel won't do.
-3. **The step's body**: [provider or source rows](/components/connection-row) (`ul.provider-rows.setup-rows`), or a card (`.setup-card`) holding a key or the Terminal steps.
+3. **The step's body**: [provider or source rows](/components/connection-row) (`ul.provider-rows.setup-rows`), or a card (`.setup-card`) holding the Terminal steps.
 4. **Notes** (`.setup-note`), small and muted, for the why and the other ways in.
 5. **The foot** (`.setup-foot`): ways out on the left, as link-shaped actions (`.setup-links`), and the one way on at the right, a bigger primary [button](/components/button#setup-next) (`.setup-next`).
 
 ## When to use it
 
-- Only for the first run's screens: Your AI, Pay Anthropic per question, the Terminal steps, what Oriel found, and Your work.
+- Only for the first run's screens: Your AI, the Terminal steps, what Oriel found, and Your work.
 - A new first-run screen copies this column: steps, title, lede, body, foot. Its one way on is `.setup-next`; every other way is a `.link-action` in the foot's links.
 
 ## When not to
 
 - Not inside the window. Once the first run is done, the same choices live in Settings, in the [Settings frame](/components/connection-row), with the sidebar beside them.
-- Not a wizard with more steps. The steps mark only Your AI and Your work; the key, the Terminal steps and what Oriel found are part of one of the two.
-- Not `.setup-card` as a general card. It's the first run's frame for a form or a list of steps, and it follows `--list-frame`.
+- Not a wizard with more steps. The steps mark only Your AI and Your work; the Terminal steps and what Oriel found are part of one of the two.
+- Not `.setup-card` as a general card. It's the first run's frame for a list of steps, and it follows `--list-frame`.
 
 ## Anatomy and variants
 
@@ -113,24 +113,20 @@ When installing or signing in from Oriel keeps failing, the person can do it in 
     <li>When it says <strong>Installation complete</strong>, come back here and check again.</li>
   </ol>
   <p class="setup-note">
-    Rather not?
-    <button type="button" class="link-action">Pay Anthropic per question instead</button>.
+    Rather not? Send <button type="button" class="link-action">what Oriel tried</button> to whoever
+    helps you with your Mac.
   </p>
 </main>
 ```
 
-`.setup-card` is a grid with `--space-3` between its parts and `--space-4` padding, framed by `--list-frame` on `--list-bg`, so Broadsheet draws it open on the page. The API key screen puts its form in one too (see [Forms](/patterns/forms)); there, the screen is a `form.setup-form`, a grid with `--space-4` between its parts.
+`.setup-card` is a grid with `--space-3` between its parts and `--space-4` padding, framed by `--list-frame` on `--list-bg`, so Broadsheet draws it open on the page.
 
 ### The foot
 
-```html specimen id=foot title="Your AI's foot: two ways out, one way on"
+```html specimen id=foot title="Your AI's foot: a way out, one way on"
 <main class="setup">
   <footer class="setup-foot">
     <div class="setup-links">
-      <span
-        >No Claude plan?
-        <button type="button" class="link-action">Pay Anthropic per question instead</button></span
-      >
       <button type="button" class="link-action">Set up later</button>
     </div>
     <button type="button" class="button primary setup-next">Continue with Claude Code</button>
@@ -182,8 +178,8 @@ Your work lists what Oriel reads, as [source rows](/components/connection-row#so
 </main>
 ```
 
-- **Busy:** before Oriel knows what's on this Mac, `main.setup` is `aria-busy` and the lede says "Looking for Claude Code on this Mac…". While a choice is being saved or tested, the way on is disabled and says so: "Checking that Claude Code answers…", "Checking it with Anthropic…".
-- **Disabled:** Continue waits until there's something to continue with: an AI that's ready, a key typed, something Oriel reads. The ways out stay live, except Set up later while a choice is saving.
+- **Busy:** before Oriel knows what's on this Mac, `main.setup` is `aria-busy` and the lede says "Looking for Claude Code on this Mac…". While a choice is being saved or tested, the way on is disabled and says so: "Checking that Claude Code answers…".
+- **Disabled:** Continue waits until there's something to continue with: an AI that's ready, something Oriel reads. The ways out stay live, except Set up later while a choice is saving.
 - **Error:** what failed for the page shows under the column as `.setup-problem` (see [Empty, loading and error](/components/states)); a row's own failure is in its row.
 - **Done:** a step's mark turns to ✓.
 - **Hover and focus:** the [button](/components/button)'s and the link action's own.
@@ -199,19 +195,19 @@ Your work lists what Oriel reads, as [source rows](/components/connection-row#so
 
 ## Content
 
-- **Titles** say the step as a task: "Set up the AI Oriel uses", "See what Oriel found", "See your work in one place", "Pay Anthropic per question", "Install Claude Code yourself"; "Welcome back" when the first run resumes.
+- **Titles** say the step as a task: "Set up the AI Oriel uses", "See what Oriel found", "See your work in one place", "Install Claude Code yourself", "Sign in to Claude Code yourself"; "Welcome back" when the first run resumes.
 - **The lede** says what the step is for, then what Oriel won't do without the person: "Nothing changes in {where} until you approve it."
 - **Steps** are two nouns: "Your AI", "Your work".
-- **The way on** names what it continues with: "Continue with Claude Code", "Save and continue", "Check again", "Continue".
-- **Ways out** are sentences in sentence case: "Set up later", "Skip for now", "Back", "Pay Anthropic per question instead".
+- **The way on** names what it continues with: "Continue with Claude Code", "Check again", "Continue".
+- **Ways out** are sentences in sentence case: "Set up later", "Skip for now", "Back".
 - Plans before product names: "on the Claude plan you already pay for", then Claude Code as the way to it ([Voice](/content/voice)).
 
 ## Where the app uses it
 
 - The page, the brand, the column and the problem line: `SetupPage` in `packages/web/src/setup-page.tsx`. The steps: `Steps` in `packages/web/src/setup-page.tsx`. The foot: `Foot` and `link` in `packages/web/src/setup-page.tsx`.
-- The screens: `YourAi`, `ApiKey`, `OtherWays`, `Found` and `YourWork` in `packages/web/src/setup-page.tsx`.
+- The screens: `YourAi`, `OtherWays`, `Found` and `YourWork` in `packages/web/src/setup-page.tsx`.
 - The brand's mark: `Mark` in `packages/web/src/parts.tsx`.
-- CSS: `.setup-page`, `.setup-brand`, `.setup`, `.setup-steps`, `.setup-step`, `.setup-step-mark`, `.setup-step[aria-current]`, `.setup-step[data-done] .setup-step-mark`, `.setup-title`, `.setup-lede`, `.setup-note`, `.setup-foot`, `.setup-links`, `.setup-form`, `.setup-terminal`, `.setup-command` and `.setup-rows .provider-side` in `window.css`; the card, `.setup-card` in `window.css`.
+- CSS: `.setup-page`, `.setup-brand`, `.setup`, `.setup-steps`, `.setup-step`, `.setup-step-mark`, `.setup-step[aria-current]`, `.setup-step[data-done] .setup-step-mark`, `.setup-title`, `.setup-lede`, `.setup-note`, `.setup-foot`, `.setup-links`, `.setup-terminal`, `.setup-command` and `.setup-rows .provider-side` in `window.css`; the card, `.setup-card` in `window.css`.
 
 ## Drift
 

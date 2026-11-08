@@ -4,8 +4,7 @@
 // Oriel works (decision 0045), and where a thread's page goes after an
 // approval.
 // They live in one JSON file in the data folder, `.oriel/` under `pnpm dev`,
-// and apply as soon as they change. The file holds no key or credential: a
-// provider's row says only whether one is set.
+// and apply as soon as they change. The file holds no key or credential.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
 import {
@@ -21,14 +20,12 @@ import {
   type Validator,
 } from "@oriel/core";
 import { defaultTheme } from "@oriel/web/themes";
-import { type KeyStore, keepKey, KeyRefused } from "./api-key.ts";
 import type { Models } from "./model.ts";
 import {
   type AfterApprove,
   afterApproves,
   type ModelPick,
   type ProviderKind,
-  providerKinds,
   type SendKey,
   sendKeys,
   type SettingsChange,
@@ -74,11 +71,14 @@ export type Settings = {
   sourceSync: number | null;
 };
 
-// One instance of each kind, on, in the order Settings lists them.
+// One instance of each kind, on, in the order Settings lists them. An API
+// key is no provider Settings lists (decision 0059): an `api` instance an
+// older file kept is dropped as it's read, and `.env`'s key runs only under
+// `pnpm dev --agent api` (model.ts).
+const settingsKinds = ["claude-code", "codex"] as const;
 const defaultProviders: readonly ProviderSetting[] = [
   { id: "claude-code", kind: "claude-code", name: "Claude Code", on: true },
   { id: "codex", kind: "codex", name: "Codex", on: true },
-  { id: "api", kind: "api", name: "API key", on: true },
 ];
 
 export const defaultSettings: Settings = {
@@ -124,7 +124,7 @@ export function cliPath(kind: ProviderKind, path: string): boolean {
 
 const providerValue = object({
   id: idValue,
-  kind: oneOf(providerKinds),
+  kind: oneOf(settingsKinds),
   name: nameValue,
   on: boolean,
   path: string,
@@ -276,8 +276,6 @@ export type SettingsService = {
   change(change: SettingsChange): Promise<SettingsView>;
   // Looks for every provider again, as Check again asks.
   look(): Promise<SettingsView>;
-  // Keeps an API key, once Anthropic takes it, or removes it with null.
-  key(key: string | null): Promise<SettingsView>;
   // What the page's <html> carries, so its first paint is right.
   page(): { theme: string; textSize: TextSize };
   // How much of each Claude Code instance's plan Oriel has used (decision
@@ -291,9 +289,6 @@ export function settingsService(deps: {
   themes: readonly string[];
   // Whether a change may set where a CLI is (decision 0041).
   cliPaths: boolean;
-  // Where the page may keep an API key: the desktop app's secret store. The
-  // check stands in for Anthropic in tests.
-  keys?: { store: KeyStore; check?: Parameters<typeof keepKey>[2] };
   // Whether this server can notify: only the desktop app's shell shows them.
   notifies?: boolean;
   // Whether this server's app asks before quitting: only the desktop app's.
@@ -320,7 +315,6 @@ export function settingsService(deps: {
       titleModel: pick(choice?.title),
       scripted: models === null,
       cliPaths: deps.cliPaths,
-      apiKeys: deps.keys !== undefined && models !== null,
       theme: themes.includes(settings.theme) ? settings.theme : defaultTheme,
       themes: [...themes],
       textSize: settings.textSize,
@@ -361,23 +355,11 @@ export function settingsService(deps: {
       return view();
     },
     async look() {
+      const runs = () => models?.choose(store.get()).model?.provider.id ?? null;
+      const before = runs();
       await models?.look(store.get());
-      return view();
-    },
-    async key(key) {
-      const { keys } = deps;
-      if (!keys || !models)
-        throw new SettingsRefused(
-          "Set ANTHROPIC_API_KEY in .env. Only the desktop app keeps a key from this page.",
-        );
-      try {
-        if (key === null) await keys.store.delete();
-        else await keepKey(keys.store, key, keys.check);
-      } catch (error) {
-        if (error instanceof KeyRefused) throw new SettingsRefused(error.message);
-        throw new SettingsRefused("Oriel couldn't remove the key from the OS secret store.");
-      }
-      await models.look(store.get());
+      // A CLI signed out or in since: Sources ask the agent that runs now.
+      if (runs() !== before) deps.agentChanged?.();
       return view();
     },
     usage: async () => (await models?.usage(store.get())) ?? [],

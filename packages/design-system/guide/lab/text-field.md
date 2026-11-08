@@ -2,15 +2,15 @@
 title: Text field
 status: proposed
 order: 40
-classes: text-field, text-field-label, text-field-hint, text-field-problem, text-field-input, search-field, search-field-input, setup-form, connect-field, connect-label, connect-problem, cli-note, input, settings, provider-path-label, held-message, held-by, held-field, name-field, reason, link-field, sidebar-search-field, filter-search, icon, visually-hidden
-summary: One Field (label, hint and problem tied with aria-describedby) for Oriel's nine field styles, textareas that grow with field-sizing, :user-invalid beside aria-invalid, and one SearchField.
+classes: text-field, text-field-label, text-field-hint, text-field-problem, text-field-input, search-field, search-field-input, path-form, path-label, path-note, connect-problem, input, settings, provider-path-label, held-message, held-by, held-field, name-field, reason, link-field, sidebar-search-field, filter-search, icon, visually-hidden
+summary: One Field (label, hint and problem tied with aria-describedby) for Oriel's eight field styles, textareas that grow with field-sizing, :user-invalid beside aria-invalid, and one SearchField.
 ---
 
 # Text field
 
 ## What it is
 
-A place to type one value: a name, a key, a path, a reason. Oriel has about nine field styles and no field class. Each page sets its own border, height and padding, the label and hint are four different pairs of classes, and no problem is tied to its field for a screen reader.
+A place to type one value: a name, a path, a reason. Oriel has about eight field styles and no field class. Each page sets its own border, height and padding, the label and hint are four different pairs of classes, and no problem is tied to its field for a screen reader.
 
 The proposal is two pieces:
 
@@ -23,42 +23,43 @@ The [chat input](/components/chat-input) isn't a text field: it asks, and has it
 
 Oriel's markup and CSS. Compare the heights, the labels, and where a problem sits.
 
-```html specimen id=today-connect title="The first run's key: .connect-field, .input, .connect-problem (ApiKey, in setup-page.tsx)" side=today
-<form class="setup-form">
-  <label class="connect-field">
-    <span class="connect-label">API key</span>
-    <input
-      class="input"
-      type="password"
-      value="not-a-real-key"
-      placeholder="Paste it here"
-      aria-invalid="true"
-    />
+```html specimen id=today-connect title="A folder step: .path-label, .path-note, .connect-problem (FolderStep, in connect-steps.tsx)" side=today
+<form class="path-form">
+  <label class="path-label">
+    A folder of markdown files, by its path
+    <input value="notes" placeholder="~/notes" spellcheck="false" autocomplete="off" />
   </label>
-  <p class="connect-problem" role="alert">Anthropic doesn't accept that key.</p>
-  <p class="cli-note">Get a key from Anthropic: make an account there, and click Create Key.</p>
+  <span class="path-actions">
+    <button type="submit" class="button primary">Add</button>
+    <button type="button" class="quiet-action">Cancel</button>
+  </span>
+  <span class="path-note">Oriel reads its .md files and never changes them.</span>
+  <p class="connect-problem" role="alert">Type the folder's full path, starting with / or ~.</p>
 </form>
 ```
 
-```html specimen id=proposed-connect title="The first run's key as a Field: the problem under its field, and tied to it" side=proposed
-<form class="setup-form">
+```html specimen id=proposed-connect title="A folder step as a Field: the field marked, the problem under it, and tied to it" side=proposed
+<form class="path-form">
   <div class="text-field">
-    <label class="text-field-label" for="first-key">API key</label>
-    <input
-      id="first-key"
-      class="text-field-input"
-      data-size="lg"
-      type="password"
-      value="not-a-real-key"
-      placeholder="Paste it here"
-      aria-invalid="true"
-      aria-describedby="first-key-hint first-key-problem"
-    />
-    <span class="text-field-hint" id="first-key-hint"
-      >Get a key from Anthropic: make an account there, and click Create Key.</span
+    <label class="text-field-label" for="folder-path"
+      >A folder of markdown files, by its path</label
     >
-    <p class="text-field-problem" id="first-key-problem" role="alert">
-      Anthropic doesn't accept that key.
+    <input
+      id="folder-path"
+      class="text-field-input"
+      data-mono
+      value="notes"
+      placeholder="~/notes"
+      spellcheck="false"
+      autocomplete="off"
+      aria-invalid="true"
+      aria-describedby="folder-path-hint folder-path-problem"
+    />
+    <span class="text-field-hint" id="folder-path-hint"
+      >Oriel reads its .md files and never changes them.</span
+    >
+    <p class="text-field-problem" id="folder-path-problem" role="alert">
+      Type the folder's full path, starting with / or ~.
     </p>
   </div>
 </form>
@@ -215,24 +216,26 @@ The sidebar's input is also a `combobox` over its results (`ThreadSearch` in `pa
 
 ```html specimen id=anatomy title="Anatomy: label, control, hint, problem" side=proposed
 <div class="text-field">
-  <label class="text-field-label" for="anat-key">API key</label>
+  <label class="text-field-label" for="anat-path">Path to Claude Code</label>
   <input
-    id="anat-key"
+    id="anat-path"
     class="text-field-input"
-    type="password"
-    placeholder="Paste it here"
+    data-mono
+    type="text"
+    placeholder="/opt/homebrew/bin/claude"
+    spellcheck="false"
     autocomplete="off"
-    aria-describedby="anat-key-hint"
+    aria-describedby="anat-path-hint"
   />
-  <span class="text-field-hint" id="anat-key-hint"
-    >Anthropic shows it only once. Oriel keeps it encrypted on this Mac.</span
+  <span class="text-field-hint" id="anat-path-hint"
+    >Only if Claude Code isn't on the PATH Oriel started with.</span
   >
 </div>
 ```
 
-- **`.text-field`**: a grid, `--space-1` between its parts. It sets `accent-color: var(--accent)`, inherited, so a checkbox or radio inside a field (a "Show key" box, a choice under a field) wears the accent without a rule of its own.
+- **`.text-field`**: a grid, `--space-1` between its parts. It sets `accent-color: var(--accent)`, inherited, so a checkbox or radio inside a field (a choice under a field) wears the accent without a rule of its own.
 - **`.text-field-label`**: a `<label for>`, in `--text`, medium weight. Not a `<label>` around everything: the hint and the problem would join the field's name.
-- **`.text-field-input`**: 1.875rem high at least, `--line-strong`, `--radius`, `--surface`, `--text-md`. `data-size="lg"` is 2.25rem, for the first run; `data-mono` is for a path, a key or a command.
+- **`.text-field-input`**: 1.875rem high at least, `--line-strong`, `--radius`, `--surface`, `--text-md`. `data-size="lg"` is 2.25rem, for a field that stands alone on a first-run screen; `data-mono` is for a path or a command.
 - **`.text-field-hint`**: `--text-faint`, `--text-sm`. Say what to type, or where to find it.
 - **`.text-field-problem`**: `--danger`, `--text-sm`, `role="alert"`, directly under its field. A problem about the whole form stays one line under the form, and marks each field it names with `aria-invalid`.
 - **Placeholder**: `--text-faint` at full opacity (Firefox fades placeholders by default). It's an example of the value ("you@company.com"), never the label.
@@ -266,14 +269,12 @@ Gift cards can go ahead on their own.</textarea>
 
 Forced with `ws-` classes, which carry each sheet's own `:hover` and `:focus-visible` rules. Click into any field to see the real focus.
 
-```html specimen id=today-focus title="Today: focus on .input, .held-field and the review page's field" side=today state=focus
+```html specimen id=today-focus title="Today: focus on a folder's path and .held-field" side=today state=focus
 <div class="ws-stack">
-  <form class="setup-form">
-    <label class="connect-field">
-      <span class="connect-label">API key</span>
-      <input class="input ws-focus-visible" type="password" placeholder="Paste it here" />
-    </label>
-  </form>
+  <label class="path-label">
+    A folder of markdown files, by its path
+    <input class="ws-focus-visible" placeholder="~/notes" />
+  </label>
   <textarea class="held-field ws-focus-visible" rows="2" aria-label="Edit Amara Okafor's reason">
 Keep it in To do.</textarea>
 </div>
@@ -282,13 +283,12 @@ Keep it in To do.</textarea>
 ```html specimen id=proposed-focus title="Proposed: the field focus, the same on every field" side=proposed state=focus
 <div class="ws-stack">
   <div class="text-field">
-    <label class="text-field-label" for="focus-key">API key</label>
+    <label class="text-field-label" for="focus-path">A folder of markdown files, by its path</label>
     <input
-      id="focus-key"
+      id="focus-path"
       class="text-field-input ws-focus-visible"
-      data-size="lg"
-      type="password"
-      placeholder="Paste it here"
+      data-mono
+      placeholder="~/notes"
     />
   </div>
   <textarea
@@ -327,32 +327,29 @@ Keep it in To do.</textarea>
 </label>
 ```
 
-```html specimen id=today-invalid title="Today: aria-invalid, the problem under the form" side=today state=error
-<form class="setup-form">
-  <label class="connect-field">
-    <span class="connect-label">API key</span>
-    <input class="input" type="password" value="abc" aria-invalid="true" />
+```html specimen id=today-invalid title="Today: the problem under the form, the field unmarked" side=today state=error
+<form class="path-form">
+  <label class="path-label">
+    A folder of markdown files, by its path
+    <input value="notes" />
   </label>
-  <p class="connect-problem" role="alert">
-    Anthropic doesn't accept that key. Copy it again from Anthropic's page, and paste it here.
-  </p>
+  <p class="connect-problem" role="alert">Type the folder's full path, starting with / or ~.</p>
 </form>
 ```
 
 ```html specimen id=proposed-invalid title="Proposed: aria-invalid, the problem tied to the field" side=proposed state=error
 <div class="text-field">
-  <label class="text-field-label" for="inv-key">API key</label>
+  <label class="text-field-label" for="inv-path">A folder of markdown files, by its path</label>
   <input
-    id="inv-key"
+    id="inv-path"
     class="text-field-input"
-    data-size="lg"
-    type="password"
-    value="abc"
+    data-mono
+    value="notes"
     aria-invalid="true"
-    aria-describedby="inv-key-problem"
+    aria-describedby="inv-path-problem"
   />
-  <p class="text-field-problem" id="inv-key-problem" role="alert">
-    Anthropic doesn't accept that key. Copy it again from Anthropic's page, and paste it here.
+  <p class="text-field-problem" id="inv-path-problem" role="alert">
+    Type the folder's full path, starting with / or ~.
   </p>
 </div>
 ```
@@ -439,16 +436,16 @@ What was tried:
 
 ## Adopt now or wait
 
-**Adopt now.** Every feature here works in the desktop app and either works or falls back in Safari and Firefox, including on the review page. The wins: one field style instead of nine, problems a screen reader can find, a held message's edit and a draft's option that grow as the person types, and one search frame instead of two copies.
+**Adopt now.** Every feature here works in the desktop app and either works or falls back in Safari and Firefox, including on the review page. The wins: one field style instead of eight, problems a screen reader can find, a held message's edit and a draft's option that grow as the person types, and one search frame instead of two copies.
 
-Adopt `:user-invalid` with care: only fields with real constraints (`type="email"`, `required`) ever match it. Oriel's own checks (Anthropic refused the key) still come back as `aria-invalid`.
+Adopt `:user-invalid` with care: only fields with real constraints (`type="email"`, `required`) ever match it. Oriel's own checks (a folder's path that isn't a full path) still come back as `aria-invalid`.
 
 ## How to migrate
 
 1. Add `field.css`'s rules to `window.css`, beside `.input[aria-invalid]` in `window.css`.
-2. **The first run's key**, `ApiKey` in `packages/web/src/setup-page.tsx`: its `<label class="connect-field">` becomes a `.text-field` with a `<label for>`, the input `class="text-field-input" data-size="lg"`, and `aria-describedby` naming the hint and, while it shows, the problem. Then delete `.connect-field input`, `.setup-form .input` and `.connect-problem` in `window.css`, the last of them both times it's written.
-3. **Settings and connections**: `class="text-field-input" data-mono` on the path and key inputs (`CliPath` and `ApiKey` in `packages/web/src/settings-page.tsx`), plain on the name (`Options` in `packages/web/src/connections-page.tsx`). Delete `.settings .input` in `window.css`, and the `.input` half of `.settings :is(.input, .select)` beside it.
+2. **A folder step**, `FolderStep` in `packages/web/src/connect-steps.tsx`: its `<label class="path-label">` becomes a `.text-field` with a `<label for>`, the input `class="text-field-input" data-mono`, its note a `.text-field-hint`, `aria-invalid` while the server's problem shows, and `aria-describedby` naming the hint and, while it shows, the problem. Then delete `.path-label`, `.path-label input` and `.path-note` in `window.css`.
+3. **Settings and connections**: `class="text-field-input" data-mono` on the path input (`CliPath` in `packages/web/src/settings-page.tsx`), plain on the name (`Options` in `packages/web/src/connections-page.tsx`). Delete `.settings .input` in `window.css`, and the `.input` half of `.settings :is(.input, .select)` beside it.
 4. **Textareas**: `class="text-field-input"` on the held message's edit (`HeldMessage` in `packages/web/src/thread-page.tsx`) and a draft's option (`DraftCard` in `packages/web/src/thread-page.tsx`), with `rows={2}`; delete `DraftCard`'s line count and `.held-field` in `window.css`. The review page's reason and name (`ReviewChange` in `packages/web/src/other-pages.tsx`) keep `.name-field` for their place in the row; delete `.name-field input` and `.name-field textarea` in `window.css`.
 5. **The review link** (`ChangeSet` in `packages/web/src/thread-page.tsx`): `class="text-field-input" data-mono readonly`. Keep `.link-field`'s `--text-xs` if the link must stay that small.
 6. **SearchField**: `class="search-field"` on the sidebar's `<label>` (`ThreadSearch` in `packages/web/src/sidebar.tsx`) and Browse's (`Filters` in `packages/web/src/window-page.tsx`), `class="search-field-input"` on their inputs. Delete `.sidebar-search-field` and `.filter-search` in `window.css`, with their `:focus-within`, `input` and placeholder rules. Keep the sidebar's folded rule, `.shell[data-folded] :is(.sidebar-search-field, .search-results)` in `window.css`, and point it at `.search-field`.
-7. Shots to retake: the first run's key step, Settings › Providers, a thread with a held message and a draft, the review link page, the sidebar and Browse, in each theme.
+7. Shots to retake: a folder step, Settings › Providers, a thread with a held message and a draft, the review link page, the sidebar and Browse, in each theme.

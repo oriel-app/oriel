@@ -83,22 +83,16 @@ The proposed version, in modern CSS, is in the [switch lab](/lab/switch).
     </button>
   </li>
   <li class="provider-row" data-status="ready" data-off>
-    <span class="provider-icon" aria-hidden="true">A</span>
+    <span class="provider-icon" aria-hidden="true">O</span>
     <div class="provider-main">
-      <span class="provider-name">API key</span>
-      <span class="provider-about">Anthropic bills each question</span>
+      <span class="provider-name">Codex<span class="provider-badge">Preview</span></span>
+      <span class="provider-about">For ChatGPT plans · OpenAI's assistant for your Mac</span>
       <span class="provider-status"
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Ready</span></span
       >
     </div>
-    <button
-      type="button"
-      role="switch"
-      class="switch"
-      aria-checked="false"
-      aria-label="Use API key"
-    >
+    <button type="button" role="switch" class="switch" aria-checked="false" aria-label="Use Codex">
       <span class="switch-knob" aria-hidden="true"></span>
     </button>
   </li>

@@ -19,10 +19,13 @@ export type Parsed =
   | { id: number; refused: string }
   | { id: null; refused: string };
 
-// The secrets the server keeps, by name: the API key the agent can run on
-// (OA-188), with no `/` or `.` to leave `Secrets/`. No connection keeps one
-// since decision 0059: a source is read through the person's own agent,
-// which holds its sign-in. Any other name is refused.
+// The secrets the server may keep, by name, with no `/` or `.` to leave
+// `Secrets/`. The server keeps none since decision 0059: a source is read
+// through the person's own agent, which holds its sign-in, and no AI runs
+// on an API key. `anthropic-key`, the key's old name, is deleted as the
+// store opens (secrets.ts), and stays the one name the store takes only so
+// its machinery stays whole for whatever keeps a secret next. Any other
+// name is refused.
 export const isSecretName = (name: string): boolean => name === "anthropic-key";
 const maxSecret = 16_384;
 

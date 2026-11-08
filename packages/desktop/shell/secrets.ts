@@ -55,16 +55,19 @@ export function memorySecrets(): SecretStore {
   };
 }
 
-// The names an older Oriel kept a connection's secret under, before
-// decision 0059: Jira's saved connection, `jira`, and each connection's,
-// `connection.<ULID>`. Nothing reads them any more.
+// The names an older Oriel kept a secret under, before decision 0059: Jira's
+// saved connection, `jira`, each connection's, `connection.<ULID>`, and the
+// API key Settings took, `anthropic-key`, which no AI runs on now. Nothing
+// reads them any more.
 const retired = (name: string) =>
-  name === "jira" || /^connection\.[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(name);
+  name === "jira" ||
+  name === "anthropic-key" ||
+  /^connection\.[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(name);
 
 export function secretStore(dir: string, crypt: Crypt): SecretStore {
   const file = (name: string) => join(dir, named(name));
-  // Each secret an older Oriel kept for a connection is deleted as the
-  // store opens, needing no key, and nothing else in the folder is touched.
+  // Each secret an older Oriel kept is deleted as the store opens, needing
+  // no key, and nothing else in the folder is touched.
   let kept: Dirent[] = [];
   try {
     kept = readdirSync(dir, { withFileTypes: true });

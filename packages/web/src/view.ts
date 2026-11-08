@@ -230,6 +230,9 @@ export type SourceServersView = {
   agent: string | null;
   looking: boolean;
   problem: string | null;
+  // The last look found no AI to ask: none is picked and runs, so no
+  // source server is read until one does.
+  noAgent: boolean;
   found: FoundServerView[];
   kinds: {
     kind: string;
@@ -1045,7 +1048,9 @@ export type PersonRowView = {
 
 // Settings (OA-181), as the person picks them and the server keeps them.
 // A provider instance is one way to reach a model: the person's own Claude
-// Code or Codex, on their subscription, or an API key. A provider can have
+// Code or Codex, on their subscription. There is no API-key way in (decision
+// 0059): `api` is `.env`'s key, under `pnpm dev --agent api` only, and never
+// a provider Settings keeps. A provider can have
 // a second account as another instance of the same kind, with its own ID and
 // name. The default model and the Title model are each one provider
 // instance and one of its models.
@@ -1060,10 +1065,10 @@ export type SendKey = (typeof sendKeys)[number];
 export type ModelPick = { provider: string; model: string };
 
 // What Oriel found when it last looked, by instance:
-// - ready: installed, signed in, a supported version; or a key is set;
+// - ready: installed, signed in, a supported version; or `--agent api`'s key
+//   is set;
 // - missing, unsupported, signed-out: the CLI isn't there, is a version
 //   Oriel can't drive, or has no account;
-// - no-key: no API key is set;
 // - untrusted: from the vendor's installer, but its code signature isn't the
 //   vendor's, so Oriel won't run it (decision 0038);
 // - checking: Oriel is looking now.
@@ -1072,7 +1077,6 @@ export type ProviderStatus =
   | "missing"
   | "unsupported"
   | "signed-out"
-  | "no-key"
   | "untrusted"
   | "checking";
 
@@ -1100,9 +1104,7 @@ export type ModelOptionView = ModelPick & { label: string };
 // what runs now, null when nothing can. `scripted`: the server runs the
 // scripted agent, as `--agent scripted` asked, so no provider is used.
 // `cliPaths`: a CLI's path can be set here, which only the desktop app,
-// behind its launch secret, allows. `apiKeys`: an API key can be set here,
-// which only the desktop app, keeping it in the OS secret store, allows; the
-// page is told only whether one is set, never the key.
+// behind its launch secret, allows.
 export type SettingsView = {
   providers: ProviderView[];
   models: ModelOptionView[];
@@ -1110,7 +1112,6 @@ export type SettingsView = {
   titleModel: ModelPick | null;
   scripted: boolean;
   cliPaths: boolean;
-  apiKeys: boolean;
   theme: string;
   themes: string[];
   textSize: TextSize;

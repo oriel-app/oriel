@@ -2,9 +2,7 @@
 // model, the theme, the text size, which key sends a question, and where a
 // thread's page goes after an approval. Each change shows at once and goes to the server, which keeps it; there's no
 // Save. The look, theme and text size, is on the page's <html>, which the
-// server writes for the first paint and a change sets in place. An API key,
-// on the desktop app, goes to the OS secret store once Anthropic takes it;
-// the page forgets it once it's sent, and the server never sends it back.
+// server writes for the first paint and a change sets in place.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import { defaultTimeFormat } from "./time.ts";
 import type {
@@ -27,9 +25,6 @@ export type SettingsModel = {
   looking: boolean;
   // A path typed into a provider's row, by instance, until it's saved.
   paths: Readonly<Record<string, string>>;
-  // An API key typed and not yet sent, and whether one sent is being checked.
-  key: string;
-  keying: boolean;
   // Why the last change or load didn't work, until one does.
   problem: string | null;
   // How much of each CLI instance's plan Oriel has used; null
@@ -41,10 +36,7 @@ export type SettingsMsg =
   | { type: "changed"; change: SettingsChange }
   | { type: "lookClicked" }
   | { type: "pathTyped"; provider: string; text: string }
-  | { type: "pathSaved"; provider: string }
-  | { type: "keyTyped"; text: string }
-  | { type: "keySaved" }
-  | { type: "keyRemoved" };
+  | { type: "pathSaved"; provider: string };
 
 export const loadSettings: Effect = get("/api/settings", { kind: "settings" });
 export const loadUsage: Effect = post("/api/settings/usage", {}, { kind: "settingsUsage" });
@@ -55,8 +47,6 @@ export function initSettings(): SettingsModel {
     pending: 0,
     looking: false,
     paths: {},
-    key: "",
-    keying: false,
     problem: null,
     usage: null,
   };
@@ -161,17 +151,6 @@ export function updateSettings(model: SettingsModel, msg: SettingsMsg): [Setting
       const path = typed.trim() === "" ? null : typed.trim();
       return updateSettings(model, { type: "changed", change: { provider: msg.provider, path } });
     }
-    case "keyTyped":
-      return [{ ...model, key: msg.text }, []];
-    case "keySaved":
-    case "keyRemoved": {
-      const key = msg.type === "keySaved" ? model.key.trim() : null;
-      if (model.keying || key === "") return [model, []];
-      return [
-        { ...model, key: "", keying: true, problem: null },
-        [post("/api/settings/key", { key }, { kind: "settingsKey" })],
-      ];
-    }
   }
 }
 
@@ -182,25 +161,19 @@ export function settingsReplied(model: SettingsModel, msg: Replied): [SettingsMo
   // Usage that didn't load leaves the rows as they were.
   if (kind === "settingsUsage")
     return [msg.ok ? { ...model, usage: (msg.body as { usage: UsageView[] }).usage } : model, []];
-  if (
-    kind !== "settings" &&
-    kind !== "settingsChanged" &&
-    kind !== "settingsLooked" &&
-    kind !== "settingsKey"
-  )
+  if (kind !== "settings" && kind !== "settingsChanged" && kind !== "settingsLooked")
     return [model, []];
   const pending = kind === "settingsChanged" ? Math.max(0, model.pending - 1) : model.pending;
   const looking = kind === "settingsLooked" ? false : model.looking;
-  const keying = kind === "settingsKey" ? false : model.keying;
   if (!msg.ok) {
     const problem = errorOf(msg.body);
     return [
-      { ...model, pending, looking, keying, problem },
+      { ...model, pending, looking, problem },
       kind === "settingsChanged" ? [loadSettings] : [],
     ];
   }
   // An answer to an earlier change, with a later one still on its way.
-  if (pending > 0) return [{ ...model, pending, looking, keying }, []];
+  if (pending > 0) return [{ ...model, pending, looking }, []];
   const view = msg.body as SettingsView;
   // A path the server now holds is saved; one typed since stays.
   const saved = (id: string, text: string) =>
@@ -212,5 +185,5 @@ export function settingsReplied(model: SettingsModel, msg: Replied): [SettingsMo
   const problem = kind === "settings" ? model.problem : null;
   // Checking again may have found a CLI to ask about the plan.
   const usage = kind === "settingsLooked" ? [loadUsage] : [];
-  return [{ ...model, view, pending, looking, keying, paths, problem }, [showLook(view), ...usage]];
+  return [{ ...model, view, pending, looking, paths, problem }, [showLook(view), ...usage]];
 }

@@ -183,7 +183,6 @@ export const exemptRoutes: Record<string, string> = {
   // Decision 0041: no agent or outside tool may pick which CLI runs.
   "/settings": "the person's own settings, which no agent may change",
   "/settings/look": "the person's own settings, which no agent may change",
-  "/settings/key": "the person's own API key, which no agent may set or see",
   "/settings/usage": "a read of the person's own plan, which starts their CLI and keeps nothing",
   // Decision 0038: what runs on the person's machine, and their sign-in.
   "/setup/cli": "the person's own CLI, which no agent may install or sign in",

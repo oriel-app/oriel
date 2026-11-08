@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { models, type ModelsOptions } from "./model.ts";
-import { defaultSettings } from "./settings.ts";
+import { defaultSettings, settingsFile } from "./settings.ts";
 
 const cli = { path: "/usr/local/bin/claude", version: "2.1.314" };
 const found = async () => ({ ok: true as const, cli });
@@ -29,6 +29,30 @@ test("the providers' rows and the model's description never carry the key", asyn
   assert.doesNotMatch(JSON.stringify(rows), /sk-ant-secret-value/);
   assert.doesNotMatch(JSON.stringify(chooser.options(defaultSettings)), /sk-ant-secret-value/);
   assert.doesNotMatch(chooser.describe(defaultSettings), /sk-ant-secret-value/);
+});
+
+// QA, 2026-11-08 (after #237): with `.env`'s key and an older settings file
+// listing the key first, the key ran threads, and it has no MCP servers.
+test("with no key asked for, an older file's API key runs nothing, and Claude Code runs", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "oriel-order-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, "settings.json");
+  writeFileSync(
+    path,
+    JSON.stringify({
+      providers: [
+        { id: "api", kind: "api", name: "API key", on: true },
+        { id: "claude-code", kind: "claude-code", name: "Claude Code", on: true },
+      ],
+      model: { provider: "api", model: "claude-opus-5-5" },
+    }),
+  );
+  const settings = settingsFile(path, quiet).get();
+  assert.ok(settings.providers.every((p) => p.kind !== "api"));
+  const chooser = titled({ key: null, check: found });
+  await chooser.look(settings);
+  assert.equal(chooser.choose(settings).model?.provider.kind, "claude-code");
+  assert.ok(chooser.providers(settings).every((row) => row.kind !== "api"));
 });
 
 test("a CLI the trust check refuses is never run: not by a look, a turn or a title (0038)", async (t) => {

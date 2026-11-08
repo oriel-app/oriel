@@ -21,7 +21,6 @@ import {
   maxItems,
   messageText,
   maxNameChars,
-  nullable,
   number,
   object,
   type OrielReads,
@@ -261,7 +260,7 @@ const setupCommand = object({
   cli: optional(union(literal("claude-code"), literal("codex"))),
 });
 const setupAi = object({
-  ai: union(literal("claude-code"), literal("codex"), literal("api")),
+  ai: union(literal("claude-code"), literal("codex")),
   anyway: optional(literal(true)),
 });
 const setupProgress = object({
@@ -631,21 +630,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // An API key for the desktop app's secret store, or null to remove
-      // it. The reply says only whether one is set.
-      method: "POST",
-      path: at("/settings/key"),
-      async run(_, request) {
-        const { key } = await readJson(request, smallBody, object({ key: nullable(string) }));
-        try {
-          return json(200, await deps.settings.key(key));
-        } catch (error) {
-          if (error instanceof SettingsRefused) throw new Refused(409, error.message);
-          throw error;
-        }
-      },
-    },
-    {
       // The outside tools the person connected, and where the MCP door
       // listens, or why it's closed (decision 0058). No token is in it.
       method: "GET",
@@ -729,7 +713,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     },
     {
       // The AI the first run continues with: a CLI once its test turn
-      // answers, or the API key Settings kept.
+      // answers.
       method: "POST",
       path: at("/setup/ai"),
       async run(_, request) {

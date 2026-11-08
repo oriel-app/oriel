@@ -10,15 +10,12 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { instant } from "@oriel/core";
 import { open } from "@oriel/db";
-import type { SettingsView, ThreadView } from "@oriel/web/view";
+import type { ThreadView } from "@oriel/web/view";
 import { scriptedAgent } from "../scripted-agent.ts";
 import type { Serving } from "../serve.ts";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "@oriel/jira";
 import { estimate, fakeSandbox, t0, testApp } from "../testing.ts";
-import { keyStore } from "../api-key.ts";
-import { models } from "../model.ts";
-import { memorySettings } from "../settings.ts";
 import { keptPort } from "./port.ts";
 import type { ServerLine } from "./protocol.ts";
 import { type DesktopOptions, runDesktop, takeStdout } from "./run.ts";
@@ -216,60 +213,6 @@ async function reviewLink(serving: Serving): Promise<string> {
   assert.ok(set);
   return (await call<{ url: string }>(`/api/change-sets/${set.id}/review-link`, {})).url;
 }
-
-test("the API key is kept in the shell's store from Settings, and the next launch runs on it", async (t) => {
-  const data = folder(t);
-  const secrets = new Map<string, string>();
-  const key = "sk-ant-desktop-test-value";
-  // As main.ts builds it: the first look isn't awaited, since the shell
-  // answers only once the server listens; requests wait for it instead.
-  const model: DesktopOptions["model"] = async (store) => {
-    const keys = keyStore(store, () => {});
-    const settings = memorySettings();
-    const chooser = models({
-      key: null,
-      kept: keys,
-      env: { PATH: "" },
-      check: async () => ({ ok: false, problem: { kind: "missing", message: "No Claude Code." } }),
-    });
-    const looked = chooser.look(settings.get());
-    return { models: chooser, settings, keys: { store: keys, check: async () => "ok" }, looked };
-  };
-  const api = (serving: Serving, path: string, body?: unknown) => send(serving.url, path, body);
-  const apiRow = async (serving: Serving) => {
-    const view = (await (await api(serving, "/api/settings")).json()) as SettingsView;
-    return view.providers.find((p) => p.kind === "api")?.status;
-  };
-
-  const first = start(data, 0, { secrets, model });
-  t.after(() => void first.input.end());
-  const one = await first.running;
-  assert.equal(await apiRow(one.serving), "no-key");
-  const saved = await api(one.serving, "/api/settings/key", { key });
-  assert.equal(saved.status, 200);
-  assert.doesNotMatch(await saved.text(), new RegExp(key));
-  assert.equal(secrets.get("anthropic-key"), key);
-  assert.ok(
-    first.out.some(
-      (line) => "id" in line && line.kind === "secret.set" && line.name === "anthropic-key",
-    ),
-  );
-  first.input.end();
-  assert.equal(await one.exited, 0);
-
-  // The key is the shell's, not the data folder's.
-  const second = start(folder(t), 0, { secrets, model });
-  t.after(() => void second.input.end());
-  const two = await second.running;
-  assert.equal(await apiRow(two.serving), "ready");
-  assert.equal((await api(two.serving, "/api/settings/key", { key: null })).status, 200);
-  assert.equal(secrets.has("anthropic-key"), false);
-  assert.equal(await apiRow(two.serving), "no-key");
-  // No log line carries the key.
-  assert.doesNotMatch(JSON.stringify([first.logged, second.logged]), new RegExp(key));
-  second.input.end();
-  assert.equal(await two.exited, 0);
-});
 
 test("desktop mode's stdout carries only the channel: everything else written there goes to stderr", () => {
   const written: string[] = [];
