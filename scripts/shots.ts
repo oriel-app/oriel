@@ -860,6 +860,19 @@ const partlyReviewed = await (async () => {
   return post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, refusing.serving);
 })();
 
+// Asked to mark the built ones done where In Progress is final: SYN-23 can't
+// move, and the diff says so before anything is approved.
+const finalMoves = await writing();
+const moveRefused = await (async () => {
+  const { serving, site } = finalMoves;
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  site.makeFinal("In Progress");
+  return ask("Mark the built ones done", serving, workstreamId);
+})();
+// Another set that went out with no answer, dismissed while Jira is offline.
+const dismissing = await writing();
+const dismissedThread = await stopAt(dismissing, "loseAnswers");
+
 // Approving, with SYN-99's write held in flight until the shots are taken:
 // the change set says it is being applied, and offers nothing else.
 const inFlight = await (async () => {
@@ -3361,6 +3374,26 @@ const scenes: Scene[] = [
     path: `/threads/${unheard}`,
     on: unanswered.serving,
     act: (page) => page.locator(".may-have-landed").waitFor(),
+  },
+  {
+    name: "thread-move-refused",
+    path: `/threads/${moveRefused}`,
+    on: finalMoves.serving,
+    act: (page) => page.locator(".diff-line[data-stopped] .line-error").waitFor(),
+  },
+  {
+    // Dismissed while its source can't be read: it ends, and says so once.
+    name: "thread-dismissed",
+    path: `/threads/${dismissedThread}`,
+    on: dismissing.serving,
+    act: async (page) => {
+      const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
+      const ended = page.locator(".diff-line[data-dismissed]").first();
+      await dismiss.or(ended).first().waitFor();
+      dismissing.site.outage("offline");
+      if (await dismiss.isVisible()) await dismiss.click();
+      await ended.waitFor();
+    },
   },
   {
     name: "thread-applying",

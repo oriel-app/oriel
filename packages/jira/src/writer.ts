@@ -486,11 +486,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   // The IDs and plain text of every comment on an issue.
   const commentsOn = async (key: string) =>
     (
-      await call(
-        transport,
-        { method: "GET", path: `${api}/issue/${key}/comment` },
-        commentList,
-      )
+      await call(transport, { method: "GET", path: `${api}/issue/${key}/comment` }, commentList)
     ).comments.map((each) => ({ id: each.id, text: adfToText(each.body) }));
 
   // A comment's ID is read from Jira's answer where it gives one, as REST
