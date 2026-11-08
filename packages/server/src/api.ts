@@ -226,6 +226,9 @@ const droppedBody = object({
 });
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
+// A thread from nothing, and what its new workstream is called, if the user
+// named it. How long a name may be is the dispatcher's to check.
+const newThreadBody = object({ text: textValue, workstreamName: optional(string) });
 const tokenBody = object({ token: string });
 // A reason goes with a rejection only. How long a holder's may be is the
 // dispatcher's to check.
@@ -1254,8 +1257,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/threads"),
       async run(_, request) {
-        const { text } = await readJson(request, messageBody, messageBodyValue);
-        const { workstream } = await deps.dispatch("workstream.create", { kind: "thread" }, user);
+        const { text, workstreamName } = await readJson(request, messageBody, newThreadBody);
+        const made = checked("workstream.create", {
+          kind: "thread",
+          ...(workstreamName === undefined ? {} : { name: workstreamName }),
+        });
+        const { workstream } = await deps.dispatch("workstream.create", made, user);
         const { thread } = await deps.dispatch("thread.open", { workstream }, user);
         await deps.dispatch("thread.say", { thread, text }, user);
         return json(201, { id: thread, workstreamId: workstream });

@@ -3404,6 +3404,8 @@ const scenes: Scene[] = [
           `The picker's options should differ, with one default: ${options.join(" | ")}`,
         );
       await picker.selectOption({ label: picked.name });
+      // Only a new workstream is named here.
+      await page.getByRole("textbox", { name: "Workstream title" }).waitFor({ state: "detached" });
       await page
         .getByRole("textbox", { name: "Message" })
         .fill("Which stories here still need estimates?");
@@ -3423,6 +3425,38 @@ const scenes: Scene[] = [
           `The new thread went to ${thread.workstream.id}, with ${all.workstreams.length} workstreams, not ${picked.id}`,
         );
       await page.locator(".thread-head .crumb").filter({ hasText: picked.name }).waitFor();
+    },
+  },
+  // The default picked: the new workstream's title, under the picker, or under
+  // the title line where the rail waits below the chat.
+  {
+    name: "new-thread-title",
+    path: "/threads/new",
+    act: async (page) => {
+      await page.getByRole("textbox", { name: "Workstream title" }).fill("Gift card kiosk");
+      await page.getByRole("textbox", { name: "Message" }).fill("Plan the kiosk's first epic");
+    },
+  },
+  // Named: the new workstream is made with the name the person typed, which
+  // the sidebar shows.
+  {
+    name: "new-thread-named",
+    path: "/threads/new",
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      const title = page.getByRole("textbox", { name: "Workstream title" });
+      const given = await title.inputValue();
+      if (given !== "New workstream")
+        throw new Error(`The workstream title should start as New workstream, not ${given}`);
+      await title.fill("Gift card kiosk");
+      await page.getByRole("textbox", { name: "Message" }).fill("Plan the kiosk's first epic");
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.waitForURL(/\/threads\/(?!new)[^/?#]+$/);
+      await page.locator(".thread-head .crumb").filter({ hasText: "Gift card kiosk" }).waitFor();
+      await page
+        .locator(".sidebar-workstreams")
+        .getByText("Gift card kiosk", { exact: true })
+        .waitFor({ state: "attached" });
     },
   },
   {

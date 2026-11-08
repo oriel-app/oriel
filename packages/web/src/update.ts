@@ -439,7 +439,7 @@ function pickedFrom(window: WindowView | null, id: string): Picked | null {
 }
 
 // The server's cap on a workstream's name, in characters.
-const maxNameChars = 120;
+export const maxNameChars = 120;
 
 // A new workstream's name for one item, as picking it alone names one.
 export const oneItemName = (title: string): string => cut(title, maxNameChars);

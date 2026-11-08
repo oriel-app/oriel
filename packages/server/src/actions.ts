@@ -351,15 +351,26 @@ async function members(
 
 // What a new workstream is called, where it came from and what it holds: a copy
 // of a cluster's members, its anchor included; picked items; or nothing.
-// `size` is how many items it starts with.
+// `size` is how many items it starts with. `named`: the user gave a thread's
+// workstream its name, so it's theirs, as after a rename.
 async function newWorkstream(
   input: ActionInput<"workstream.create">,
   actor: Actor,
   deps: ActionDeps,
-): Promise<{ name: string; origin: WorkstreamOrigin; list: WorkstreamMember[]; size: number }> {
+): Promise<{
+  name: string;
+  origin: WorkstreamOrigin;
+  list: WorkstreamMember[];
+  size: number;
+  named?: true;
+}> {
   if (input.kind === "thread") {
     userOnly(actor, "starts a thread from nothing");
-    return { name: blankWorkstreamName, origin: { kind: "thread" }, list: [], size: 0 };
+    const given = input.name?.trim() ?? blankWorkstreamName;
+    const blank = { origin: { kind: "thread" } as const, list: [], size: 0 };
+    return given === blankWorkstreamName
+      ? { name: blankWorkstreamName, ...blank }
+      : { name: given, ...blank, named: true };
   }
   if (input.kind === "window") {
     userOnly(actor, "asks the window chat's first question");
@@ -503,7 +514,7 @@ const handlers = {
   },
 
   "workstream.create": async (input, actor, deps) => {
-    const { name, origin, list, size } = await newWorkstream(input, actor, deps);
+    const { name, origin, list, size, named } = await newWorkstream(input, actor, deps);
     const id = deps.newId();
     deps.workstreams.create(
       { id, workspaceId: deps.workspaceId, name, origin },
@@ -511,6 +522,8 @@ const handlers = {
       deps.now(),
       actor,
     );
+    // So a change set's first epic doesn't name it over the user.
+    if (named) deps.workstreams.rename(id, name, "user");
     return {
       output: { workstream: id },
       // One made for a thread from nothing, or the window chat, is that

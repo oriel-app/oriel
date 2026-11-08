@@ -2814,12 +2814,24 @@ a.replies:hover {
   margin-left: auto;
 }
 
-.thread-title-row > .new-thread-workstream[data-at="head"] {
+.thread-title-row > .new-thread-workstream[data-at="head"],
+.new-workstream-name[data-at="head"] {
   display: none;
 }
 
 .rail > .new-thread-workstream {
   margin-bottom: var(--space-2);
+}
+
+/* What the new workstream will be called, under the picker while it's the
+   default; under the title line where the rail waits below the chat. */
+.rail > .new-workstream-name {
+  margin-bottom: var(--space-3);
+}
+
+.thread-head > .new-workstream-name {
+  max-width: 20rem;
+  margin-top: var(--space-2);
 }
 
 .chat {
@@ -4441,7 +4453,11 @@ a.replies:hover {
       display: flex;
     }
 
-    .rail > .new-thread-workstream[data-at="rail"] {
+    .new-workstream-name[data-at="head"] {
+      display: grid;
+    }
+
+    .rail > :is(.new-thread-workstream, .new-workstream-name)[data-at="rail"] {
       display: none;
     }
 
