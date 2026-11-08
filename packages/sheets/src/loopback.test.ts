@@ -41,30 +41,36 @@ async function listening() {
   return { listener, timer, port: Number(url.port), url };
 }
 
+// What a refused request must leave out: its code, and its state.
+const echoes = (text: string) => /4\/abc|someone-elses|this-sign-ins-state/.test(text);
+
 test("a redirect with the wrong state is refused, and ends the sign-in", async () => {
   const { listener, port } = await listening();
   const answer = await send(port, get(port, "/?code=4/abc&state=someone-elses"));
   assert.equal(status(answer), "400");
-  assert.doesNotMatch(answer, /someone-elses|4\/abc/);
-  assert.deepEqual(await listener.redirect, {
-    status: "refused",
-    problem: "a redirect whose state isn't this sign-in's",
-  });
+  assert.ok(!echoes(answer));
+  const redirect = await listener.redirect;
+  assert.equal(redirect.status, "refused");
+  assert.ok(!echoes(JSON.stringify(redirect)));
   assert.equal(await send(port, get(port, `/?code=4/abc&state=${state}`)), "error ECONNREFUSED");
 });
 
 test("a request naming another host, or not a GET, is refused", async () => {
-  const rebound = await listening();
   const query = `/?code=4/abc&state=${state}`;
-  const answer = await send(rebound.port, get(rebound.port, query, `evil.example:${rebound.port}`));
-  assert.equal(status(answer), "400");
-  assert.deepEqual(await rebound.listener.redirect, {
-    status: "refused",
-    problem: "a request for another host",
-  });
-
+  const rebound = await listening();
+  const host = `evil.example:${rebound.port}`;
   const posted = await listening();
   const post = `POST ${query} HTTP/1.1\r\nHost: 127.0.0.1:${posted.port}\r\nContent-Length: 0\r\n\r\n`;
-  assert.equal(status(await send(posted.port, post)), "400");
-  assert.equal((await posted.listener.redirect).status, "refused");
+  for (const [{ listener, port }, request] of [
+    [rebound, get(rebound.port, query, host)],
+    [posted, post],
+  ] as const) {
+    const answer = await send(port, request);
+    assert.equal(status(answer), "400");
+    assert.ok(!echoes(answer));
+    const redirect = await listener.redirect;
+    assert.equal(redirect.status, "refused");
+    assert.ok(!echoes(JSON.stringify(redirect)));
+    assert.equal(await send(port, get(port, query)), "error ECONNREFUSED");
+  }
 });

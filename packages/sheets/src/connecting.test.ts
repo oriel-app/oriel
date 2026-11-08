@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type ConnectVia, ulid } from "@oriel/core";
+import { type ConnectVia, instant, ulid } from "@oriel/core";
 import { sheetsConnect } from "./connecting.ts";
 import { loadSheetsFixture } from "./fixture.ts";
 import { scope, tokenEndpoint } from "./oauth.ts";
+import { openSheets } from "./open-connection.ts";
 import { driveOrigin, fixtureGoogle, standInToken } from "./stand-in.ts";
 
 // Made-up values; none is a real client or token.
@@ -106,4 +107,31 @@ test("a kept connection opens unless Google refuses its refresh, when it is sign
     await sheetsConnect.vet(kept({ access: standInToken, expiresAt: 0 }), via(google().send)),
     false,
   );
+});
+
+const now = instant(new Date(Date.UTC(2026, 10, 3, 9)));
+
+test("an access token that ran out is refreshed with Oriel's client, kept, and read with", async () => {
+  const { send, asked } = google();
+  const keptAgain: string[] = [];
+  const ran = {
+    access: "an-old-token",
+    refresh: "fake-refresh-token",
+    expiresAt: Date.parse(now) - 1,
+  };
+  const opened = await openSheets(
+    { ...kept(ran), options: { spreadsheets: [{ id: picked[0] ?? "", tabs: [] }] } },
+    {
+      fetch: send,
+      kept: true,
+      log: () => {},
+      now: () => now,
+      client,
+      keep: async (secret) => void keptAgain.push(secret),
+    },
+  );
+  for await (const page of opened.source.sync(null)) assert.ok(page);
+  assert.equal(asked.filter((url) => url === tokenEndpoint).length, 1);
+  assert.equal(keptAgain.length, 1);
+  assert.equal(JSON.parse(keptAgain[0] ?? "{}").access, standInToken);
 });
