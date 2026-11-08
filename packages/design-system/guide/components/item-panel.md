@@ -566,13 +566,13 @@ else hide(button);</code></pre>
 </div>
 ```
 
-**Where it sits.** The panel is `position: fixed` on the right, `--panel` wide (30rem), on `--surface` with a left hairline. Three widths, by the screen (`@media (min-width: 1100px)` and `@media (max-width: 760px)` in `window.css`):
+**Where it sits.** The panel is `position: fixed` on the right, set into the [frame](/components/frame) as the page column's sibling: below the band at `--frame-top`, `--frame-band` from the right edge and from the column, `--panel` wide (30rem) less the band, with the column's curved top corners (`--frame-curve`), paper (`--bg`) and inner shade (`--frame-shadow`). Three widths, by the screen (`@media (min-width: 1100px)` and `@media (max-width: 760px)` in `window.css`):
 
 - **1100px and wider: beside.** `.shell[data-panel]` sets `--beside` to the panel's width and `.shell-main` takes it as a right margin, so the page narrows and nothing is covered. No shadow. A narrowed page can cross its own container queries: a thread's [right rail](/components/right-rail) moves under the chat.
-- **761 to 1099px: over the page's right side,** with `--shadow`.
-- **760px and narrower: the whole screen,** `100vw`, with no left edge.
+- **761 to 1099px: over the page's right side,** the same card, with `--shadow` too.
+- **760px and narrower: the whole screen,** from edge to edge and over the bar, square, with no shade: a sheet, not a card.
 
-**Motion.** It arrives with a short slide and fade and only moves: "nothing beside or inside it reflows" (`.shell` in `window.css`). The panel's `@starting-style` in `window.css` starts it from `opacity: 0` and `translateX(var(--slide-panel))` (0.375rem), and it moves in over `--duration-move` (180ms) on `--ease-out`. Its children fade in with `panel-fade` (`.item-panel > *` in `window.css`), again for each item it shows, while the panel itself stays put. Under reduced motion it keeps only the fade (`@media (prefers-reduced-motion: reduce)` in `window.css`). It has no closing animation: it leaves at once. See [Motion](/foundations/motion).
+**Motion.** It arrives at once, with a quick slide and fade, and only moves: "nothing beside or inside it reflows" (`.shell` in `window.css`). The panel's `@starting-style` in `window.css` starts it from `opacity: 0` and `translateX(var(--slide-panel))` (0.375rem), and it moves in over `--duration-quick` (120ms) on `--ease-out`. Its children fade in with `panel-fade` (`.item-panel > *` in `window.css`), again for each item it shows, while the panel itself stays put. Under reduced motion it keeps only the fade (`@media (prefers-reduced-motion: reduce)` in `window.css`). It has no closing animation: it leaves at once. See [Motion](/foundations/motion).
 
 ## States
 
@@ -758,7 +758,7 @@ else hide(button);</code></pre>
 - **Rest** is the read item. **Hover** on Previous, Next and Close is `--surface-hover` behind `--text` (`.panel-close:hover` and `.panel-step:hover:not(:disabled)` in `window.css`). **Focus-visible** is the global ring on every control. The title takes focus on open but draws no ring (`.panel-title:focus` in `window.css` sets `outline: none`), since the person didn't put it there.
 - **Disabled**: Previous on the first item and Next on the last, at 0.35 (`.panel-step:disabled` in `window.css`), lighter than a disabled `.button`'s 0.5. Add to workstream is disabled while its add is pending.
 - **Active** isn't styled.
-- **Loading**: the head says "Item" and "Reading…", `aria-busy="true"`, and nothing else shows. **Reading again** keeps the old read and says "Reading again…" in the read line.
+- **Loading**: opened from a page that shows the item (Browse's rows, a workstream's or a thread's members), the head says its key and title at once, and the read line its status and "Reading…" (`glimpseOf` in `packages/web/src/root.ts`); the rest arrives with the read. Opened from an address alone, the head says "Item" and "Reading…". Both set `aria-busy="true"`. **Reading again** keeps the old read and says "Reading again…" in the read line.
 - **Error**: the head says "Couldn't read this item", and a `.panel-problem` in `--danger` gives the server's sentence and Try again. A failed add is a `.panel-problem` in the actions.
 - **Stale** ("behind"): the index saw a change later than both the read and what it knew at the read (`behind` in `packages/web/src/panel.ts`). The read line adds the source's name and "has changed since." in `--derived`, with Read again. The panel doesn't re-read on its own.
 - **Empty**: a messages block with none says the source's own words (`.panel-empty`): "No comments." in Jira, "No replies yet." in Slack. A moved, deleted or unreadable item is a `.panel-note` in place of the body.
@@ -776,8 +776,8 @@ else hide(button);</code></pre>
 
 ## Content
 
-- The source line is "{source} · {key}", such as "Jira · SYN-23" or "Slack · Message", and "Item" before the first read.
-- The title is the source's title, as written. While reading: "Reading…". On failure: "Couldn't read this item".
+- The source line is "{source} · {key}", such as "Jira · SYN-23" or "Slack · Message"; before the first read, the key alone, or "Item" when the page didn't show it.
+- The title is the source's title, as written. While reading: the title the index has, else "Reading…". On failure: "Couldn't read this item".
 - Actions: **Open in {source}** ("Open in Jira") and **Add to workstream**. After adding: Added to “{name}”. with Undo, or Already in “{name}”., or In “{name}”. when the page already holds it. Names in curly quotes.
 - Read line: "Read {when}" in the person's time format; behind: "{source} has changed since." and **Read again**; re-reading: "Reading again…".
 - Notes: "This item moved to {key} {title}.", "This item isn't in {source} any more.", "Oriel can't read this item in {source} now.", "{source} sent this item in a shape Oriel can't show."

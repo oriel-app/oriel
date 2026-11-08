@@ -46,7 +46,6 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
       ></textarea>
       <div class="chat-input-foot">
         <span class="chat-input-reads">Reads 17 items · v3</span>
-        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
         <button type="submit" class="button" disabled>Send</button>
       </div>
     </form>
@@ -74,7 +73,6 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
       ></textarea>
       <div class="chat-input-foot">
         <span class="chat-input-reads">Reads 17 items · v3</span>
-        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
         <button type="submit" class="button" disabled>Send</button>
       </div>
     </form>
@@ -104,7 +102,6 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
       ></textarea>
       <div class="chat-input-foot">
         <span class="chat-input-reads">Reads 17 items · v3</span>
-        <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
         <button type="submit" class="button" disabled>Send</button>
       </div>
     </form>

@@ -37,7 +37,7 @@ function typedDraft(text: string): Model {
 test("a first message that fails says why and keeps the draft", () => {
   const [sending] = update(typedDraft("Plan kiosk wallets"), {
     type: "newThread",
-    msg: { type: "sendClicked" },
+    msg: { type: "sendClicked", workstream: null },
   });
   const [failed, none] = update(sending, {
     type: "replied",
@@ -50,13 +50,16 @@ test("a first message that fails says why and keeps the draft", () => {
   assert.equal(failed.newThread?.sending, false);
   assert.ok(failed.newThread?.notice);
   // It can be sent again.
-  assert.equal(update(failed, { type: "newThread", msg: { type: "sendClicked" } })[1].length, 1);
+  assert.equal(
+    update(failed, { type: "newThread", msg: { type: "sendClicked", workstream: null } })[1].length,
+    1,
+  );
 });
 
 test("a first message answered after New thread again leaves the newer draft as it is", () => {
   const [sending] = update(typedDraft("Plan kiosk wallets"), {
     type: "newThread",
-    msg: { type: "sendClicked" },
+    msg: { type: "sendClicked", workstream: null },
   });
   const [again] = update(sending, { type: "routed", route: { page: "new-thread" } });
   const [newer] = update(again, {

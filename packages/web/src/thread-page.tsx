@@ -40,6 +40,7 @@ import {
   foldable,
   folded,
   type NewThreadModel,
+  type NewThreadMsg,
   optionKey,
   optionText,
   removable,
@@ -63,6 +64,7 @@ import {
   type SecondLookView,
   type ThreadView,
   type WorkstreamRef,
+  type WorkstreamSummary,
   holding,
   toReview,
   waitingOn,
@@ -233,13 +235,45 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
   );
 }
 
-// A thread from nothing, before its first message: only the composer. There
-// is no workstream yet; sending makes it, with the thread.
-export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; dispatch: Dispatch }) {
+// A thread from nothing, before its first message: the composer, and the
+// workstream it starts in, where a thread's page names its workstream. "New
+// workstream" is the default, which sending makes, with the thread; or the
+// person picks one already open, and its items are the thread's. Either way,
+// what a change set here creates joins it.
+export function NewThreadPage({
+  model,
+  workstreams,
+  dispatch,
+}: {
+  model: NewThreadModel;
+  workstreams: readonly WorkstreamSummary[] | null;
+  dispatch: Dispatch;
+}) {
+  const send = (msg: NewThreadMsg) => dispatch({ type: "newThread", msg });
+  const open = startable(workstreams);
+  const picked = open.find((workstream) => workstream.id === model.workstream) ?? null;
   return (
     <div class="thread-layout">
       <main class="thread">
         <header class="thread-head">
+          <label class="filter crumb new-thread-workstream">
+            <span class="visually-hidden">Workstream</span>
+            <select
+              value={picked?.id ?? ""}
+              data-set={picked ? "" : undefined}
+              disabled={model.sending}
+              onChange={(event) =>
+                send({ type: "workstreamPicked", workstream: event.currentTarget.value || null })
+              }
+            >
+              <option value="">New workstream</option>
+              {open.map((workstream) => (
+                <option key={workstream.id} value={workstream.id}>
+                  {workstream.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div class="thread-title-row">
             <h1 class="thread-title">New thread</h1>
           </div>
@@ -253,22 +287,27 @@ export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; disp
             draft={model.draft}
             busy={model.sending}
             notice={model.notice}
-            placeholder={planPrompt}
-            onDraft={(text) => dispatch({ type: "newThread", msg: { type: "draftChanged", text } })}
-            onSubmit={() => dispatch({ type: "newThread", msg: { type: "sendClicked" } })}
+            placeholder={
+              picked && picked.size > 0 ? `Ask about ${plural(picked.size, "item")}…` : planPrompt
+            }
+            onDraft={(text) => send({ type: "draftChanged", text })}
+            onSubmit={() => send({ type: "sendClicked", workstream: picked?.id ?? null })}
           />
         </Dock>
       </main>
       <aside class="rail" aria-label="This thread's items">
-        <h2 class="rail-title">No items</h2>
-        <p class="rail-note">
-          No workstream yet: your first message makes one, with this thread. What a change set here
-          creates joins it.
-        </p>
+        <h2 class="rail-title">{picked?.size ? plural(picked.size, "item") : "No items"}</h2>
       </aside>
     </div>
   );
 }
+
+// The workstreams a new thread can start in: those still open, but the
+// window chat's, which only the window chat asks in.
+const startable = (workstreams: readonly WorkstreamSummary[] | null) =>
+  (workstreams ?? []).filter(
+    (workstream) => workstream.done === null && workstream.origin.kind !== "window",
+  );
 
 export function ChatEntryItem(props: {
   entry: Entry;

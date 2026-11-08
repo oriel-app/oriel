@@ -1,19 +1,13 @@
 // Where a person asks the agent (DRIFT D3): the thread's composer, the window
 // chat's, the overview's ask bar and a workstream's Ask box, one frame for
-// all of them. Its foot says what the agent will read, on the left, and the
-// send key from Settings beside the button. Send is a plain button until
-// there's something to send; only then is it the primary one.
+// all of them. Its foot says what the agent will read, on the left. The send
+// key is Settings' (Settings › Send says which); the box doesn't repeat it.
+// Send is a plain button until there's something to send; only then is it
+// the primary one.
 import type { ComponentChildren } from "preact";
 import { useContext } from "preact/hooks";
 import { SendKeyContext } from "./parts.tsx";
 import { sendable, sends } from "./settings.ts";
-import type { SendKey } from "./view.ts";
-
-// The send key, as the foot shows it beside the button.
-const keyHints: Record<SendKey, string> = {
-  enter: "⇧↵ new line",
-  "mod-enter": "⌘↵ sends",
-};
 
 export function ChatInput(props: {
   draft: string;
@@ -88,11 +82,6 @@ export function ChatInput(props: {
       <div class="chat-input-foot">
         {props.reads && <span class="chat-input-reads">{props.reads}</span>}
         {props.extra}
-        {!one && (
-          <span class="chat-input-key" aria-hidden="true">
-            {keyHints[sendKey]}
-          </span>
-        )}
         {props.running && props.onStop ? (
           <button type="button" class="button" onClick={props.onStop}>
             Stop

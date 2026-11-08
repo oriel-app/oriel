@@ -425,7 +425,6 @@ A workstream's page, opened from the sidebar, where it is the current row with i
         ></textarea>
         <div class="chat-input-foot">
           <span class="chat-input-reads">Reads 17 items · v3</span>
-          <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
           <button type="submit" class="button" disabled>Ask</button>
         </div>
       </form>

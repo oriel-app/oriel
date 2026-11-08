@@ -68,6 +68,7 @@ import type { Hold } from "./undos.ts";
 import {
   checkPanel,
   type CurrentWorkstream,
+  type Glimpse,
   openPanel,
   type PanelModel,
   type PanelMsg,
@@ -392,9 +393,32 @@ function withPanel(model: Model, effects: Effect[]): [Model, Effect[]] {
   const { item } = model.route;
   if (item === undefined) return [{ ...model, panel: null }, effects];
   if (model.panel?.id === item) return [model, effects];
-  const [panel, opened] = openPanel(item);
+  const [panel, opened] = openPanel(item, glimpseOf(model, item));
   const checked = checkAdd(model.panelAdds, item, model.workstreams);
   return [{ ...model, panel }, [...effects, ...opened, ...checked]];
+}
+
+// What the page on screen already shows of an item, from the index: a row
+// in Browse, or a member of the workstream or thread open. The panel shows it
+// while it reads the item from its source.
+// Only the page on screen's: Browse keeps its rows between visits, which may
+// be older than the page's.
+function glimpseOf(model: Model, id: string): Glimpse | null {
+  const { page } = model.route;
+  const rows =
+    page === "window"
+      ? (model.window?.window?.clusters ?? []).flatMap(({ row, list }) => [
+          ...(row.anchor ? [row.anchor] : []),
+          ...list,
+        ])
+      : (page === "workstream"
+          ? (model.workstream?.view?.members ?? [])
+          : page === "thread"
+            ? (model.thread?.view?.members ?? [])
+            : []
+        ).map((member) => member.row);
+  const row = rows.find((each) => each?.id === id);
+  return row ? { key: row.key, title: row.title, status: row.status?.name ?? null } : null;
 }
 
 // Sets up the page `route` names. The window keeps its state between visits,
@@ -1031,11 +1055,15 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [thread, effects] = threadReplied(model.thread, msg);
       return [{ ...model, thread }, [...effects, loadWorkstreams]];
     }
+    // The link's page loads no connectors of its own: they come with the
+    // change.
     case "reviewOpened":
     case "reviewDecided": {
       if (model.review === null) return [model, []];
       const [review, effects] = reviewReplied(model.review, msg);
-      return [{ ...model, review }, effects];
+      const opened = msg.tag.kind === "reviewOpened";
+      const connectors = opened ? connectorsReplied(model.connectors, msg) : model.connectors;
+      return [{ ...model, review, connectors }, effects];
     }
     default: {
       if (model.thread === null) return [model, []];

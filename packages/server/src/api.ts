@@ -1605,9 +1605,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         }
         deps.emit({ name: "review-link.opened", at: deps.now(), workspaceId, changeSetId });
         await changeSets.reviewLinkOpened(token);
+        // With how each connector shows, from its declarations alone, so the
+        // page names an item as the thread does: the page asks no other route.
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),
+          connectors: connectorViews,
         });
       },
     },

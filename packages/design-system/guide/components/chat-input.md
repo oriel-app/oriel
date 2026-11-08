@@ -3,7 +3,7 @@ title: Chat input
 status: stable
 group: Inputs
 order: 20
-classes: ask, chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-key, chat-input-notice, ask-starts-head, ask-questions, ask-question, chat-dock, workstream-ask
+classes: ask, chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-notice, ask-starts-head, ask-questions, ask-question, chat-dock, workstream-ask
 summary: Where a person asks the agent: one ChatInput for the overview's ask bar, the window chat, a thread's composer and a workstream's Ask box, with the same frame, focus, problem line and foot.
 ---
 
@@ -18,7 +18,7 @@ The field a person asks the agent in, with its button. It's where "point, don't 
 3. **A thread's composer**: in a dock at the foot of the thread.
 4. **A workstream's Ask box**: on the workstream's page. It starts a thread.
 
-Every one has the same frame, the same focus ring, the same problem line and the same foot: on the left, what the agent will read; on the right, the send key from Settings and the button.
+Every one has the same frame, the same focus ring, the same problem line and the same foot: on the left, what the agent will read; on the right, the button. The send key isn't shown: Settings › Send says which it is.
 
 ## When to use it
 
@@ -39,7 +39,7 @@ A frame holding the field, then its foot, then at most one line for a problem.
 
 - **Frame** (`.chat-input`): `--border-thin` in `--line-strong`, `--radius-lg`, on `--surface`. In a thread it floats, with `--shadow`.
 - **Field** (`.chat-input-field`): a `<textarea rows="2">` that grows to 12rem (`field-sizing: content`), or one `<input>` for the ask bar. The app keeps `ask-input` on the ask bar's input, with no rules, for shots to find it.
-- **Foot** (`.chat-input-foot`): what the agent will read (`.chat-input-reads`, with the epic mark), anything beside it (Back to the chat), the send key (`.chat-input-key`), and the button.
+- **Foot** (`.chat-input-foot`): what the agent will read (`.chat-input-reads`, with the epic mark), anything beside it (Back to the chat), and the button. No send key: it's in Settings › Send, and repeated on the box it only made it busy.
 - **Button:** "Ask" where a question starts something (the ask bar, a workstream), "Send" in a conversation. A plain `.button` until something is written, and only then `.button.primary`: the accent means it's the person's move, and an empty field isn't one.
 - **Stop:** a `.button` in Send's place while the agent runs.
 - **Notice** (`.chat-input-notice`): one `role="alert"` line in `--danger`, inside the frame.
@@ -84,7 +84,6 @@ A frame holding the field, then its foot, then at most one line for a problem.
     ></textarea>
     <div class="chat-input-foot">
       <span class="chat-input-reads">Reads 17 items · v3</span>
-      <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
       <button type="submit" class="button" disabled>Send</button>
     </div>
   </form>
@@ -101,7 +100,6 @@ A frame holding the field, then its foot, then at most one line for a problem.
   ></textarea>
   <div class="chat-input-foot">
     <span class="chat-input-reads">Reads 6 items · v2</span>
-    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
     <button type="submit" class="button" disabled>Ask</button>
   </div>
 </form>
@@ -117,7 +115,6 @@ Focus is forced in the first specimen (`.ws-focus-within` carries window.css's o
 Estimate SYN-23 and SYN-104 like SYN-92</textarea>
   <div class="chat-input-foot">
     <span class="chat-input-reads">Reads 17 items · v3</span>
-    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
     <button type="submit" class="button primary">Send</button>
   </div>
 </form>
@@ -136,7 +133,6 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
   ></textarea>
   <div class="chat-input-foot">
     <span class="chat-input-reads">Reads 17 items · v3</span>
-    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
     <button type="button" class="button">Stop</button>
   </div>
 </form>
@@ -152,7 +148,6 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
   ></textarea>
   <div class="chat-input-foot">
     <span class="chat-input-reads">Reads 17 items · v3</span>
-    <span class="chat-input-key" aria-hidden="true">⇧↵ new line</span>
     <button type="submit" class="button" disabled>Send</button>
   </div>
   <p class="chat-input-notice" role="alert">
@@ -185,15 +180,13 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
 - **Busy:** "Working…" shows in the conversation above, and Stop replaces Send where the agent can be stopped (a thread, the window chat). The ask bar and the Ask box have no Stop.
 - **Error:** one line, `.chat-input-notice`, everywhere. The window chat shows its own problem or its thread's, never both.
 - **Empty:** the window chat says what to ask about: "Ask about what changed, what needs you, or what should become a workstream."
-- **Narrow:** under 760px the send key isn't shown; there's seldom a keyboard to press it on.
 
 ## Keyboard and ARIA
 
 - **Growing shape:** Settings' send key decides. With "Enter", Enter sends and Shift+Enter makes a new line; with "⌘Enter", ⌘Enter (Ctrl+Enter) sends and Enter makes a new line. An IME composition never sends. The handler is `sends` in `packages/web/src/settings.ts`.
-- **One-line shape:** a form with one `<input>`, so Enter always submits (decision 0041). The foot shows no send key.
+- **One-line shape:** a form with one `<input>`, so Enter always submits (decision 0041).
 - The keyboard path skips the button's `disabled`, so the reducer guards an empty or busy send (`updateThread` in `packages/web/src/thread.ts`). Keep that guard in the reducer.
 - The field's accessible name is its `aria-label`: "Ask about your window", "Message", "Ask about this workstream". No chat input has a visible `<label>`; its placeholder and place say what it's for. Don't make the name the placeholder's exact words where the placeholder carries a count.
-- The send key is `aria-hidden`: it repeats what the key does, and a screen reader's user knows their keys.
 - The notice is `role="alert"`, so it's read out when it appears.
 - After a rejection, and after Edit on a held message, focus goes to the composer (`perform` in `packages/web/src/effects.ts`).
 

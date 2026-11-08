@@ -979,20 +979,29 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
 }
 
 // A thread from nothing, before its first message: a draft in the browser
-// only. Sending it makes the workstream and the thread, once; leaving first makes
-// nothing. `id` tells this draft's reply from one sent from an earlier draft.
+// only. Sending it starts the thread, once, in the workstream picked for it:
+// a new one by default (`workstream` null), which the send makes with the
+// thread, or one that exists. Leaving first makes nothing. `id` tells this
+// draft's reply from one sent from an earlier draft.
 export type NewThreadModel = {
   id: number;
   draft: string;
+  workstream: string | null;
   sending: boolean;
   notice: string | null;
 };
 
-export type NewThreadMsg = { type: "draftChanged"; text: string } | { type: "sendClicked" };
+export type NewThreadMsg =
+  | { type: "draftChanged"; text: string }
+  | { type: "workstreamPicked"; workstream: string | null }
+  // `workstream`: the one the picker shows, which may have gone, or been
+  // marked done, since it was picked.
+  | { type: "sendClicked"; workstream: string | null };
 
 export const initNewThread = (id: number): NewThreadModel => ({
   id,
   draft: "",
+  workstream: null,
   sending: false,
   notice: null,
 });
@@ -1004,12 +1013,20 @@ export function updateNewThread(
   switch (msg.type) {
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
+    case "workstreamPicked":
+      if (model.sending) return [model, []];
+      return [{ ...model, workstream: msg.workstream, notice: null }, []];
     case "sendClicked": {
       const text = model.draft.trim();
       if (text === "" || model.sending) return [model, []];
+      const tag = { kind: "threadStarted", draft: model.id } as const;
       return [
-        { ...model, sending: true, notice: null },
-        [post("/api/threads", { text }, { kind: "threadStarted", draft: model.id })],
+        { ...model, workstream: msg.workstream, sending: true, notice: null },
+        [
+          msg.workstream === null
+            ? post("/api/threads", { text }, tag)
+            : post(`/api/workstreams/${encodeURIComponent(msg.workstream)}/threads`, { text }, tag),
+        ],
       ];
     }
   }

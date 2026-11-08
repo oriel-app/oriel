@@ -73,6 +73,8 @@ export function ItemPanel(props: {
     return () => removeEventListener("keydown", pressed);
   }, [listed]);
   const shown = view?.id === model.id ? view : null;
+  // Until the first read arrives, what the page knew of it.
+  const glimpse = shown ? null : model.glimpse;
   const href = safeHref(shown?.url ?? null);
   const readAgain = () => dispatch({ type: "panel", msg: { type: "readAgainClicked" } });
   const leave = (event: MouseEvent) => {
@@ -120,7 +122,7 @@ export function ItemPanel(props: {
       <Fragment key={model.id}>
         <header class="panel-head">
           <p class="panel-source">
-            {shown ? `${shown.source} · ${keyLabel(shown, connectors)}` : "Item"}
+            {shown ? `${shown.source} · ${keyLabel(shown, connectors)}` : (glimpse?.key ?? "Item")}
           </p>
           <Tooltip text="Close (Esc)">
             <button
@@ -133,7 +135,9 @@ export function ItemPanel(props: {
             </button>
           </Tooltip>
           <h2 id="item-panel-title" class="panel-title" tabIndex={-1} ref={heading}>
-            {shown?.title ?? (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
+            {shown?.title ??
+              glimpse?.title ??
+              (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
           </h2>
           {shown && (href || props.workstream || editable(shown)) && (
             <div class="panel-actions">
@@ -184,6 +188,11 @@ export function ItemPanel(props: {
             <button type="button" class="quiet-action" onClick={readAgain}>
               Try again
             </button>
+          </p>
+        )}
+        {glimpse && model.status === "loading" && (
+          <p class="panel-read" role="status">
+            {glimpse.status && `${glimpse.status} · `}Reading…
           </p>
         )}
         {shown && (

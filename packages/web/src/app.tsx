@@ -115,7 +115,13 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   }, [drawer, folded, model.search.query]);
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
-    return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
+    return (
+      model.review && (
+        <ConnectorsContext.Provider value={model.connectors}>
+          <ReviewPage model={model.review} dispatch={dispatch} />
+        </ConnectorsContext.Provider>
+      )
+    );
   // So does the first run, until it has finished (decision 0038), in the
   // person's time format, as every page but a review link's.
   if (model.route.page === "setup")
@@ -282,7 +288,15 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
     case "thread":
       return model.thread && <ThreadPage model={model.thread} dispatch={dispatch} />;
     case "new-thread":
-      return model.newThread && <NewThreadPage model={model.newThread} dispatch={dispatch} />;
+      return (
+        model.newThread && (
+          <NewThreadPage
+            model={model.newThread}
+            workstreams={model.workstreams}
+            dispatch={dispatch}
+          />
+        )
+      );
     case "done": {
       const where = nav(model);
       return (

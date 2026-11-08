@@ -338,6 +338,14 @@ html[data-text-size] {
   font-size: var(--text-size);
 }
 
+/* On Browse the scrollbar's room is kept whether the page is long enough to
+   need it or not, so switching groupings, which grow and shrink the page,
+   never moves it sideways. That room is the frame's. */
+html:has(.window-layout) {
+  scrollbar-gutter: stable;
+  background: var(--frame);
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -2666,8 +2674,7 @@ a.replies:hover {
   font-size: var(--text-lg);
 }
 
-/* What the agent will read on the left; the send key and the button on
-   the right. */
+/* What the agent will read on the left; the button on the right. */
 .chat-input-foot {
   display: flex;
   flex-wrap: wrap;
@@ -2711,13 +2718,6 @@ a.replies:hover {
 
 .chat-input[data-off] .chat-input-field {
   opacity: 0.5;
-}
-
-/* On a narrow screen there's seldom a keyboard to press it on. */
-@media (max-width: 760px) {
-  .chat-input-key {
-    display: none;
-  }
 }
 
 .workstream-ask {
@@ -2786,6 +2786,12 @@ a.replies:hover {
 
 .thread-title-row .quiet-action {
   margin-left: auto;
+}
+
+/* A new thread's workstream, where a thread's page names it: Browse's
+   filter, as wide as a workstream's name needs. */
+.new-thread-workstream select {
+  max-width: min(24rem, 100%);
 }
 
 .chat {
@@ -5132,28 +5138,33 @@ a.replies:hover {
 /* The panel beside the page: one item in its source's own view. Screens with
    room for a phone-width page beside it, laptops included, narrow the page at
    once; narrower ones lay it over the page's right side, and a phone gives it
-   the whole screen. It arrives with a short slide and fade, and only moves:
-   nothing beside or inside it reflows. */
+   the whole screen. It arrives at once, with a quick slide and fade, showing
+   what the page knew of the item until its read arrives, and only moves:
+   nothing beside or inside it reflows. Beside the page it is the column's
+   sibling, set into the same frame: the band above and to its right, the
+   band's width between them, the same curved top corners, paper and shade. */
 
 .item-panel {
   position: fixed;
-  top: 0;
-  right: 0;
+  top: var(--frame-top);
+  right: var(--frame-band);
   bottom: 0;
   z-index: var(--layer-panel);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  width: min(var(--panel), 100vw);
-  padding: var(--inset-top) var(--space-4) var(--space-8);
+  width: min(calc(var(--panel) - var(--frame-band)), 100vw);
+  --panel-top: var(--space-4);
+  --panel-side: var(--space-6);
+  padding: var(--panel-top) var(--panel-side) var(--space-8);
   overflow-y: auto;
-  border-left: var(--border-thin) solid var(--line);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  border-radius: var(--frame-curve) var(--frame-curve) 0 0;
+  background: var(--bg);
+  box-shadow: var(--frame-shadow), var(--shadow);
   overflow-wrap: anywhere;
   transition:
-    opacity var(--duration-move) var(--ease-out),
-    transform var(--duration-move) var(--ease-out);
+    opacity var(--duration-quick) var(--ease-out),
+    transform var(--duration-quick) var(--ease-out);
 }
 
 @starting-style {
@@ -5165,7 +5176,7 @@ a.replies:hover {
 
 /* Its contents fade in with it, and again for each item it shows. */
 .item-panel > * {
-  animation: panel-fade var(--duration-move) var(--ease-out);
+  animation: panel-fade var(--duration-quick) var(--ease-out);
 }
 
 @keyframes panel-fade {
@@ -5180,14 +5191,20 @@ a.replies:hover {
   }
 
   .item-panel {
-    box-shadow: none;
+    box-shadow: var(--frame-shadow);
   }
 }
 
+/* A phone gives it the whole screen, over the bar, as a sheet. */
 @media (max-width: 760px) {
   .item-panel {
-    width: 100vw;
-    border-left: 0;
+    --panel-top: var(--inset-top);
+    --panel-side: var(--space-4);
+    top: 0;
+    left: 0;
+    width: auto;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
@@ -5304,8 +5321,8 @@ a.replies:hover {
    stays put while the item under it changes. */
 .panel-steps {
   position: absolute;
-  top: var(--inset-top);
-  right: calc(var(--space-4) + var(--head-row) + var(--space-1));
+  top: var(--panel-top);
+  right: calc(var(--panel-side) + var(--head-row) + var(--space-1));
   display: flex;
   gap: var(--space-1);
   align-items: center;

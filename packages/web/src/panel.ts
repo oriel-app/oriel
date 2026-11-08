@@ -9,6 +9,9 @@ import type { ItemPanelView, ItemStampView, PanelInline } from "./view.ts";
 export type PanelModel = {
   id: string;
   status: "loading" | "ready" | "failed";
+  // What the page it opened from knew of the item, from the index, shown
+  // until the first read arrives, so the panel opens at once.
+  glimpse: Glimpse | null;
   // The last read, kept on screen while the item is read again.
   view: ItemPanelView | null;
   // When the index last saw the item change, as asked since the read; null
@@ -16,6 +19,8 @@ export type PanelModel = {
   changedAt: string | null;
   problem: string | null;
 };
+
+export type Glimpse = { key: string; title: string; status: string | null };
 
 // The workstream the page is about, which the panel's item can be added to:
 // the workstream's page, a thread's, or the window adding to one. `members`,
@@ -28,9 +33,9 @@ const path = (id: string) => `/api/items/${encodeURIComponent(id)}`;
 const read = (id: string): Effect => get(path(id), { kind: "item", id });
 
 // Opens `id`'s panel, reading it, and says it was opened.
-export function openPanel(id: string): [PanelModel, Effect[]] {
+export function openPanel(id: string, glimpse: Glimpse | null = null): [PanelModel, Effect[]] {
   return [
-    { id, status: "loading", view: null, changedAt: null, problem: null },
+    { id, status: "loading", glimpse, view: null, changedAt: null, problem: null },
     [read(id), report({ name: "item.panel-opened", item: id })],
   ];
 }
