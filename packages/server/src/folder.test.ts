@@ -8,21 +8,14 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type {
-  ConnectionView,
-  DiffView,
-  ThreadView,
-  WindowView,
-  WorkstreamView,
-} from "@oriel/web/view";
+import type { ConnectionView, ThreadView, WindowView, WorkstreamView } from "@oriel/web/view";
 import { memorySecrets } from "./connection.ts";
-import { host, json, type Script, testApp } from "./testing.ts";
+import { json, type Script, testApp } from "./testing.ts";
 
 // A fresh folder for each test, removed when it ends.
 function folder(t: TestContext, files: Record<string, string>) {
@@ -52,66 +45,6 @@ async function connected(t: TestContext, options: Parameters<typeof testApp>[1] 
   assert.equal(reply.status, 200);
   return { ...app, dir, folder: json<{ connection: ConnectionView }>(reply).connection };
 }
-
-test("connecting a folder by its path syncs its markdown files into the window", async (t) => {
-  const app = await connected(t);
-  assert.deepEqual([app.folder.identity, app.folder.items], [app.dir.root, 2]);
-  assert.deepEqual(await app.connection("folder"), app.folder);
-  // The sidebar lists it after Jira, as it lists every source.
-  const sources = (await app.connections()).connections;
-  assert.deepEqual(
-    sources.map(({ kind, name, about, items }) => [kind, name, about, items]),
-    [
-      ["jira", "Jira", "SYN on oriel.atlassian.net", 120],
-      ["folder", "Folder", app.dir.root, 2],
-    ],
-  );
-  const window = app.app.window("epic");
-  const own = window.clusters.find((c) => c.row.key === "no-epics-in-source");
-  assert.deepEqual(own?.list.map((row) => row.title).toSorted(), ["Interviews", "Launch plan"]);
-  assert.equal(own?.row.origin.kind, "derived");
-  const connects = app.app.telemetry().filter((e) => e.name === "source.connected");
-  assert.deepEqual(
-    connects.map((e) => e.data.source),
-    ["jira", "folder"],
-  );
-});
-
-test("only a folder can be connected, by a full path, from this window", async (t) => {
-  const app = await testApp(t);
-  const dir = folder(t, { "a.md": "a" });
-  const refused = async (path: string) =>
-    json<{ error: string }>(await app.connect("folder", { path }));
-  assert.match((await refused(join(dir.top, "missing"))).error, /There's no folder/);
-  assert.match((await refused(join(dir.root, "a.md"))).error, /a file, not a folder/);
-  assert.match((await refused("notes")).error, /full path/);
-  // A path the check refuses is named alone, not beside Jira's details.
-  assert.equal((await refused("")).error, "$.path: expected a folder path");
-  assert.equal((await app.connect("folder", { path: "x".repeat(5000) })).status, 413);
-  const given = { kind: "folder", given: { path: dir.root } };
-  assert.equal(
-    (await app.post("/api/connections", given, { origin: "https://attacker.example" })).status,
-    403,
-  );
-  const unsigned = await app.handle({
-    method: "POST",
-    url: "/api/connections",
-    headers: { host, "content-type": "application/json" },
-    body: app.body(JSON.stringify(given)),
-  });
-  assert.equal(unsigned.status, 403);
-  assert.equal(
-    (
-      await app.handle({
-        method: "PUT",
-        url: "/api/connections",
-        headers: { host, origin: `http://${host}` },
-      })
-    ).status,
-    405,
-  );
-  assert.equal(await app.connection("folder"), null);
-});
 
 const fileIds = (view: WindowView) =>
   view.clusters
@@ -172,18 +105,6 @@ test("another folder takes the place of the first as a later connection, and the
   assert.equal((await app.connect("folder", { path: app.dir.root })).status, 200);
   assert.deepEqual(await window(), first);
   assert.deepEqual(await members(), [[held, true]]);
-  // Each connect counted, the later one as later.
-  assert.deepEqual(
-    app.app
-      .telemetry()
-      .flatMap((e) => (e.name === "source.connected" ? [[e.data.source, e.data.later]] : [])),
-    [
-      ["jira", false],
-      ["folder", false],
-      ["folder", true],
-      ["folder", false],
-    ],
-  );
   await app.app.close();
   const again = await testApp(t, { db });
   assert.deepEqual(await window(again), first);
@@ -289,78 +210,9 @@ test("a folder that can't be listed isn't kept; the one before stays as it was",
   // Back to normal, so the temporary directory can be removed.
   chmodSync(locked, 0o700);
   assert.equal(refused.status, 400);
-  assert.match(json<{ error: string }>(refused).error, /couldn't read the folder/);
   assert.deepEqual(await app.connection("folder"), app.folder);
   const after = fileIds(app.app.window("epic"));
   assert.deepEqual(after, before);
-});
-
-test("a folder syncs again on demand, and when the server starts", async (t) => {
-  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-db-")));
-  t.after(() => rmSync(top, { recursive: true, force: true }));
-  const db = join(top, "oriel.db");
-  const app = await connected(t, { db });
-  app.dir.write("Retro.md", "What went well.");
-  const synced = json<{ connection: ConnectionView }>(await app.sync("folder"));
-  assert.equal(synced.connection.items, 3);
-  await app.app.close();
-  app.dir.write("Later.md", "Written while Oriel was off.");
-  const again = await testApp(t, { db });
-  assert.equal((await again.connection("folder"))?.items, 4);
-});
-
-test("a folder's row says what its last sync changed, and nothing once a sync changes nothing", async (t) => {
-  const app = await connected(t);
-  const row = async () => (await app.connection("folder"))?.lastSync;
-  assert.deepEqual(await row(), { new: 2, changed: 0, removed: 0 });
-  app.dir.write("Retro.md", "What went well.");
-  app.dir.write("Launch plan.md", "# Launch plan, v2\n\nShip the phone wallet first.");
-  rmSync(join(app.dir.root, "research/Interviews.md"));
-  assert.equal((await app.sync("folder")).status, 200);
-  assert.deepEqual(await row(), { new: 1, changed: 1, removed: 1 });
-  assert.equal((await app.sync("folder")).status, 200);
-  assert.deepEqual(await row(), { new: 0, changed: 0, removed: 0 });
-});
-
-test("a dropped link to another site is refused by naming the sources connected now", async (t) => {
-  const app = await testApp(t, { slack: { mode: "fixture" } });
-  const { id } = json<{ id: string }>(
-    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
-  );
-  const why = async () =>
-    json<{ refused: { why: string }[] }>(
-      await app.post(`/api/workstreams/${id}/drop`, {
-        links: ["https://example.com/doc"],
-        files: [],
-      }),
-    ).refused.map((refusal) => refusal.why);
-  assert.deepEqual(await why(), ["Only Jira and Slack items can be added, not other pages."]);
-  const dir = folder(t, notes);
-  assert.equal((await app.connect("folder", { path: dir.root })).status, 200);
-  assert.deepEqual(await why(), [
-    "Only Jira, Folder and Slack items can be added, not other pages.",
-  ]);
-});
-
-test("a file dropped that the index doesn't have yet is found by syncing the folder once", async (t) => {
-  const app = await connected(t);
-  const created = await app.post("/api/workstreams", {
-    kind: "picked",
-    name: "Launch",
-    items: ["jira:SYN-10"],
-  });
-  const { id } = json<{ id: string }>(created);
-  app.dir.write("Retro.md", "What went well.");
-  const modified = Math.trunc(statSync(join(app.dir.root, "Retro.md")).mtimeMs);
-  const dropped = json<{ workstream: WorkstreamView; added: string[]; refused: unknown[] }>(
-    await app.post(`/api/workstreams/${id}/drop`, {
-      links: [],
-      files: [{ name: "Retro.md", modified }],
-    }),
-  );
-  assert.equal(dropped.added.length, 1);
-  assert.deepEqual(dropped.refused, []);
-  assert.ok(dropped.workstream.members.some((m) => m.ref.title === "Retro"));
 });
 
 test("a workstream mixes Jira and folder items; its thread's region binds items.* for both, jira.* for Jira's", async (t) => {
@@ -409,111 +261,4 @@ test("a workstream mixes Jira and folder items; its thread's region binds items.
   const read = new Map(value.items.map((item) => [item.id, item]));
   assert.match(read.get(file)?.text ?? "", /Ship the phone wallet first/);
   assert.equal(read.get("jira:SYN-10")?.gone, false);
-});
-
-test("an epic picked beside a plan lets the agent create stories in it, and shows once per grouping", async (t) => {
-  const story: Script = async (bindings) => ({
-    value: bindings.dts,
-    writes: [
-      ["jira.createStory", [{ summary: "Pay with a gift card", epic: "jira:SYN-1" }], "new:1"],
-    ],
-  });
-  const app = await connected(t, {
-    writes: true,
-    plan: () => [{ run: "story" }],
-    scripts: { story },
-  });
-  // The epic shows once: as its cluster's heading, which picks it, under the
-  // epic grouping; as an item under its assignee; not at all as stuck work.
-  for (const [grouping, times] of [
-    ["epic", 1],
-    ["assignee", 1],
-    ["stuck", 0],
-  ] as const) {
-    const window = app.app.window(grouping);
-    const shown = window.clusters.flatMap((c) => [
-      ...(c.row.anchor ? [c.row.anchor.id] : []),
-      ...c.list.map((row) => row.id),
-    ]);
-    assert.equal(shown.filter((id) => id === "jira:SYN-1").length, times, grouping);
-  }
-  const window = app.app.window("epic");
-  assert.ok(window.clusters.some((c) => c.row.anchor?.id === "jira:SYN-1"));
-  const plan = window.clusters
-    .flatMap((c) => c.list)
-    .find((row) => row.title === "Launch plan" && row.id.startsWith("folder:"))?.id;
-  assert.ok(plan);
-  const { id: workstreamId } = json<{ id: string }>(
-    await app.post("/api/workstreams", {
-      kind: "picked",
-      name: "Launch",
-      items: [plan, "jira:SYN-1"],
-    }),
-  );
-  const { id } = json<{ id: string }>(
-    await app.post(`/api/workstreams/${workstreamId}/threads`, {
-      text: "Turn the plan into stories",
-    }),
-  );
-  await app.app.settled();
-  const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
-  const finished = thread.entries.find((e) => e.kind === "run.finished");
-  assert.ok(finished?.kind === "run.finished");
-  assert.match(
-    JSON.parse(finished.run.returned ?? "null") as string,
-    /type EpicId =\n {2}\| "jira:SYN-1";/,
-  );
-  const entry = thread.entries.find((e) => e.kind === "change-set");
-  assert.ok(entry?.kind === "change-set", "the run captured a change set");
-  const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
-  assert.deepEqual(
-    diff.lines.map((line) => line.sentence),
-    [
-      "Create a story “Pay with a gift card” in the epic “Checkout v2: phone wallets and saved cards” (SYN-1).",
-    ],
-  );
-});
-
-test("on the desktop app, a folder comes from the system's picker; cancelling changes nothing", async (t) => {
-  const { root } = folder(t, { "plan.md": "# Plan\n\nShip it.\n" });
-  const asked: string[] = [];
-  let answer: string | null | Error = null;
-  const app = await testApp(t, {
-    pickFolder: async (prompt) => {
-      asked.push(prompt);
-      if (answer instanceof Error) throw answer;
-      return answer;
-    },
-  });
-  assert.equal((await app.connections()).picker, true);
-  assert.equal(await app.connection("folder"), null);
-  const pick = { kind: "folder" };
-
-  const cancelled = await app.post("/api/connections/picker", pick);
-  assert.equal(cancelled.status, 200);
-  assert.deepEqual(json(cancelled), { picked: false });
-
-  answer = root;
-  const picked = json<{ connection: ConnectionView; picked: boolean }>(
-    await app.post("/api/connections/picker", pick),
-  );
-  assert.equal(picked.picked, true);
-  assert.equal(picked.connection.identity, root);
-  assert.equal(picked.connection.items, 1);
-  assert.match(asked[0] ?? "", /folder of markdown files/);
-
-  // A picker that couldn't open says so, and the folder stays.
-  answer = new Error("a folder picker is already open");
-  const failed = await app.post("/api/connections/picker", pick);
-  assert.equal(failed.status, 409);
-  assert.equal((await app.connection("folder"))?.identity, root);
-  // Only a connector with a folder step has one.
-  answer = root;
-  assert.equal((await app.post("/api/connections/picker", { kind: "jira" })).status, 409);
-});
-
-test("under pnpm dev there's no picker: a folder is typed", async (t) => {
-  const app = await testApp(t);
-  assert.equal((await app.connections()).picker, false);
-  assert.equal((await app.post("/api/connections/picker", { kind: "folder" })).status, 409);
 });

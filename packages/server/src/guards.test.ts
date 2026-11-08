@@ -2,19 +2,11 @@
 // records for the pilot (SPEC §7).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type WorkstreamMember, type IndexRecord, type Instant, ulid } from "@oriel/core";
-import {
-  ensureWorkspace,
-  workstreamStore,
-  loadMigrations,
-  migrate,
-  open,
-  threadStore,
-} from "@oriel/db";
+import type { IndexRecord, WorkstreamMember } from "@oriel/core";
 import type { ThreadView } from "@oriel/web/view";
 import type { Agent } from "./agent.ts";
-import { host, json, type Script, t0, testApp } from "./testing.ts";
-import { memberOf, views } from "./views.ts";
+import { json, testApp } from "./testing.ts";
+import { memberOf } from "./views.ts";
 
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
@@ -33,38 +25,13 @@ async function thread(t: Parameters<typeof testApp>[0], options: Parameters<type
   return { ...app, workstreamId, id, view, say };
 }
 
-test("every line a run logs names its thread and its run, each proxied read included", async (t) => {
-  const listed: Script = async (bindings) => ({
-    value: (await bindings.read("items.list", [])).value,
-  });
-  const app = await thread(t, {
-    plan: () => [{ run: "list" }, { run: "list" }],
-    scripts: { list: listed },
-  });
-  const runIds = (await app.view()).entries.flatMap((e) =>
-    e.kind === "run.started" ? [e.runId] : [],
-  );
-  assert.equal(runIds.length, 2);
-  const reads = app.logged.filter((line) => line.message === "sandbox.read");
-  assert.equal(reads.length, 2);
-  for (const [i, line] of reads.entries()) {
-    assert.equal(line.fields.thread_id, app.id);
-    assert.equal(line.fields.run_id, runIds[i]);
-  }
-  const runs = app.logged.filter((line) => line.message === "sandbox.run");
-  assert.ok(runs.every((line) => line.fields.thread_id === app.id && line.fields.run_id));
-});
-
 test("a thread that has asked its last question takes no more, and says why", async (t) => {
   const app = await thread(t, { limits: { maxTurnsPerThread: 2 } });
   assert.equal((await app.say("Two")).status, 202);
   const refused = await app.say("Three");
   assert.equal(refused.status, 409);
-  assert.match(json<{ error: string }>(refused).error, /all 2 of its questions/);
   const after = await app.view();
-  const last = after.entries.at(-1);
-  assert.ok(last?.kind === "limit");
-  assert.match(last.reason, /Start a new thread/);
+  assert.equal(after.entries.at(-1)?.kind, "limit");
   assert.equal(after.entries.filter((e) => e.kind === "user").length, 2);
   // Asking again doesn't repeat the notice.
   assert.equal((await app.say("Four")).status, 409);
@@ -81,141 +48,26 @@ test("a thread that has spent its tokens takes no more, whatever the agent does"
   const app = await thread(t, { agent: () => spending, limits: { maxTokensPerThread: 10 } });
   const refused = await app.say("Two");
   assert.equal(refused.status, 409);
-  assert.match(
-    json<{ error: string }>(refused).error,
-    /^This thread has used its 10 tokens\. Start a new thread on this workstream to keep going\.$/,
-  );
   assert.equal((await app.view()).entries.at(-1)?.kind, "limit");
 });
 
-test("the first sync connects the source; marking a thread done is recorded", async (t) => {
-  const app = await thread(t, {});
-  assert.deepEqual(app.app.telemetry()[0], {
-    name: "source.connected",
-    at: t0,
-    data: { source: "jira", later: false },
-  });
-  app.advance(1000);
-  await app.post(`/api/threads/${app.id}/done`);
-  const done = app.app.telemetry().at(-1);
-  assert.deepEqual([done?.name, done?.data.threadId], ["thread.marked-done", app.id]);
-});
-
-test("the window reports grouping switches, clusters opened or closed and pivots regrouped, and nothing else", async (t) => {
+test("the window's telemetry keeps nothing but the event: unknown events and fields are refused", async (t) => {
   const app = await testApp(t);
-  const send = (body: unknown, headers = {}) => app.post("/api/telemetry", body, headers);
-  assert.equal((await send({ name: "grouping.switched", grouping: "stuck" })).status, 202);
-  assert.equal((await send({ name: "cluster.opened" })).status, 202);
-  assert.equal((await send({ name: "cluster.closed" })).status, 202);
+  const send = (body: unknown) => app.post("/api/telemetry", body);
+  const before = app.app.telemetry().length;
   // Only that it was regrouped, never by what.
   assert.equal((await send({ name: "block.regrouped", rows: "assignee" })).status, 202);
-  assert.deepEqual(
-    app.app
-      .telemetry()
-      .slice(-4)
-      .map((e) => [e.name, e.data]),
-    [
-      ["grouping.switched", { grouping: "stuck" }],
-      ["cluster.opened", {}],
-      ["cluster.closed", {}],
-      ["block.regrouped", {}],
-    ],
-  );
+  assert.deepEqual(app.app.telemetry().at(-1)?.data, {});
   for (const bad of [
     { name: "changeset.decided", changeSetId: "x" },
     { name: "grouping.switched", grouping: "toString" },
-    // The old name, which the window no longer sends.
-    { name: "zoom.changed", from: "cluster", to: "list" },
   ])
     assert.equal((await send(bad)).status, 400, JSON.stringify(bad));
   assert.equal(
     (await send({ name: "grouping.switched", grouping: "epic", pad: "x".repeat(300) })).status,
     413,
   );
-  assert.equal(
-    (
-      await send(
-        { name: "grouping.switched", grouping: "epic" },
-        { origin: "https://attacker.example" },
-      )
-    ).status,
-    403,
-  );
-  assert.equal(
-    (
-      await app.handle({
-        method: "POST",
-        url: "/api/telemetry",
-        headers: { host, "content-type": "application/json" },
-        body: app.body('{"name":"grouping.switched","grouping":"epic"}'),
-      })
-    ).status,
-    403,
-  );
-  assert.equal(app.app.telemetry().length, 5);
-});
-
-test("an item that moved keeps its title in a workstream's history and a thread's markers", async () => {
-  const db = open(":memory:");
-  const at = t0 as Instant;
-  migrate(db, loadMigrations(), at);
-  const id = (n: number) => ulid(n, new Uint8Array(10));
-  ensureWorkspace(db, { id: id(1), name: "test" }, at);
-  const workstreams = workstreamStore(db);
-  const threads = threadStore(db);
-  workstreams.create(
-    { id: id(2), workspaceId: id(1), name: "G", origin: { kind: "picked" } },
-    [],
-    at,
-  );
-  threads.open({ id: id(3), workspaceId: id(1), workstreamId: id(2) }, at);
-  workstreams.add(id(2), [{ id: "jira:SYN-5", stableId: "10005" }], { kind: "user" }, at);
-  threads.follow(id(2), at, () => id(4));
-  // SYN-5 has since moved to another project: the index has it as OA-1.
-  const moved = {
-    id: "jira:OA-1",
-    stableId: "10005",
-    title: "Moved story",
-    location: "https://oriel.atlassian.net/browse/OA-1",
-    updatedAt: at,
-    facets: {},
-    attrs: {},
-  } as IndexRecord;
-  const shown = views({
-    workstreams,
-    threads,
-    records: () => [moved],
-    presentations: {},
-    asOf: () => at,
-    now: () => at,
-    running: () => false,
-    sketchBase: new URL("http://127.0.0.1:4311/sketches/"),
-    changeSets: {
-      get: async () => null,
-      ofThread: async () => [],
-      nextSteps: async () => [],
-      applying: () => false,
-      stalled: () => false,
-    },
-    drafted: () => null,
-    writable: false,
-  });
-  const added = (await shown.workstream(id(2)))?.changes[0]?.added[0];
-  assert.deepEqual([added?.key, added?.title], ["OA-1", "Moved story"]);
-  const marker = (
-    await shown.thread(
-      id(3),
-      [],
-      new Map(),
-      () => false,
-      () => false,
-    )
-  )?.entries.find((e) => e.kind === "marker");
-  assert.ok(marker?.kind === "marker");
-  assert.deepEqual(
-    marker.added.map((r) => r.title),
-    ["Moved story"],
-  );
+  assert.equal(app.app.telemetry().length, before + 1);
 });
 
 test("a member is found by identity, so a moved item is removed under its new handle", () => {

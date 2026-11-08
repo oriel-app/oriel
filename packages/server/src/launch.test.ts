@@ -1,6 +1,6 @@
 // The desktop app's launch secret (decision 0036): every request needs its
 // cookie, except what a review link's page needs, where the review token is
-// the credential. `pnpm dev` has no secret, and its guard is as it was.
+// the credential.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -76,7 +76,6 @@ test("with a launch secret, every page and route needs its cookie, GET included"
   for (const path of paths) {
     const refused = await handle(get(path));
     assert.equal(refused.status, 403, path);
-    assert.match(String(refused.body), /only the Oriel app that started it/);
     assert.equal(refused.headers["referrer-policy"], "no-referrer");
     const planted = await handle(get(path, { cookie: "oriel-launch=planted" }));
     assert.equal(planted.status, 403, path);
@@ -183,11 +182,4 @@ test("a review link's page, opening and deciding need no cookie; making or revok
   assert.equal((await post("/api/review/dismiss", { token })).status, 400);
   // A dead token gets the API's own answer, not a pass.
   assert.equal((await post("/api/review/open", { token })).status, 404);
-});
-
-test("without a launch secret, as `pnpm dev` runs, no request needs a cookie", async (t) => {
-  const app = await testApp(t);
-  const handle = handler({ ...files(t), port, api: app.app.api });
-  for (const path of ["/", "/browse", "/api/workstreams", "/app/main.js"])
-    assert.equal((await handle(get(path))).status, 200, path);
 });

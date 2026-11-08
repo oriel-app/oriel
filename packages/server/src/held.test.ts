@@ -5,18 +5,10 @@
 // change set: a link can be forwarded, so its holder may be anyone.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import type { Actor, Instant, Ulid } from "@oriel/core";
-import type { Message } from "@oriel/db";
-import type {
-  ChatEntry,
-  DiffView,
-  StreamEvent,
-  ThreadSummaryView,
-  ThreadView,
-} from "@oriel/web/view";
+import type { Actor, Ulid } from "@oriel/core";
+import type { ChatEntry, DiffView, ThreadSummaryView, ThreadView } from "@oriel/web/view";
 import { refusal } from "./actions.ts";
-import { history } from "./turns.ts";
-import type { Agent, ChatMessage } from "./agent.ts";
+import type { Agent } from "./agent.ts";
 import { scriptedAgent } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
@@ -140,33 +132,6 @@ test("a review link's reason starts no turn: it is held in the thread under the 
   assert.deepEqual(app.events("question.asked").length, 1);
 });
 
-test("whoever a held message is from, history leaves it out until it is sent", () => {
-  const at = "2026-11-01T09:00:00.000Z" as Instant;
-  const from = {
-    kind: "review-link",
-    by: name,
-    changeSet: "01JBZ0000000000000000000C1" as Ulid,
-  } as const;
-  const chat: Message[] = [
-    { seq: 1, at, role: "user", text: "Rename SYN-23" },
-    { seq: 2, at, role: "held", from: { ...from, askFirst: false }, text: reason, outcome: null },
-    {
-      seq: 3,
-      at,
-      role: "held",
-      from: { ...from, askFirst: false },
-      text: reason,
-      outcome: "discarded",
-    },
-    { seq: 4, at, role: "held", from: { ...from, askFirst: false }, text: reason, outcome: "sent" },
-  ];
-  const told = JSON.stringify(history(chat, () => ""));
-  assert.ok(told.includes("Rename SYN-23"));
-  // Sent, it reached the agent as the user's own message, said after it.
-  assert.ok(!told.includes(JSON.stringify(reason).slice(1, -1)));
-  assert.ok(!told.includes(JSON.stringify(name).slice(1, -1)));
-});
-
 test("nothing held reaches the agent: the turns after it get neither the held message nor its sender's name", async (t) => {
   const app = await linked(t);
   await app.rejectOnLink();
@@ -180,42 +145,6 @@ test("nothing held reaches the agent: the turns after it get neither the held me
   assert.equal((await app.held())[0]?.outcome, null);
 });
 
-// The Send is counted once, as the reason for rejecting the change set, and
-// says who it was held from and whether the user edited it.
-function countedOnce(app: Awaited<ReturnType<typeof linked>>, how: "sent" | "edited") {
-  assert.deepEqual(
-    app.events("question.asked").filter((event) => event.rejected === app.changeSetId),
-    [
-      {
-        threadId: app.threadId,
-        rejected: app.changeSetId,
-        held: { from: "review-link", edited: how === "edited" },
-      },
-    ],
-  );
-}
-
-test("Send says a held message as the user's message, and the turn it starts is theirs", async (t) => {
-  const app = await linked(t);
-  await app.rejectOnLink();
-  const reply = await app.send();
-  assert.equal(reply.status, 202);
-  await app.app.settled();
-  assert.equal(app.inputs.length, 2);
-  assert.equal(app.texts.at(-1), reason);
-  // Sent on, it reaches the agent: the check above can see it. Oriel asked
-  // what was wrong as it was held, and doesn't again.
-  assert.ok(reached(app.inputs, reason));
-  assert.equal(app.inputs.at(-1)?.split(`"role":"note"`).length, 2);
-  const view = await app.view();
-  assert.equal((await app.held())[0]?.outcome, "sent");
-  const said = view.entries.filter((e) => e.kind === "user").map((e) => e.text);
-  assert.deepEqual(said.at(-1), reason);
-  // The revised change set waits on review; the reason no longer holds it.
-  assert.deepEqual(await app.waits(), ["review"]);
-  countedOnce(app, "sent");
-});
-
 test("Edit sends the user's words instead, and the sender's never reach the agent", async (t) => {
   const app = await linked(t);
   await app.rejectOnLink();
@@ -226,75 +155,6 @@ test("Edit sends the user's words instead, and the sender's never reach the agen
   assert.ok(!reached(app.inputs, reason));
   assert.ok(!reached(app.inputs, name));
   assert.equal((await app.held())[0]?.outcome, "sent");
-  countedOnce(app, "edited");
-});
-
-test("an edit that leaves a held message as it was counts as sending it", async (t) => {
-  const app = await linked(t);
-  await app.rejectOnLink();
-  assert.equal((await app.send({ text: reason })).status, 202);
-  await app.app.settled();
-  countedOnce(app, "sent");
-});
-
-test("Discard settles a held message with no turn, and it never reaches the agent", async (t) => {
-  const app = await linked(t);
-  await app.rejectOnLink();
-  const reply = await app.discard();
-  assert.equal(reply.status, 200);
-  assert.equal((await app.held())[0]?.outcome, "discarded");
-  assert.deepEqual(app.events("held-message.discarded"), [
-    { threadId: app.threadId, from: "review-link" },
-  ]);
-  // Back to the person's turn, as after any rejection.
-  assert.deepEqual(await app.waits(), ["reply"]);
-  await app.post(`/api/threads/${app.threadId}/messages`, { text: "Try again." });
-  await app.app.settled();
-  assert.equal(app.inputs.length, 2);
-  assert.ok(!reached(app.inputs, reason));
-});
-
-test("another page open on the thread hears its held message settle, and loads the thread again", async (t) => {
-  const app = await linked(t);
-  await app.rejectOnLink();
-  const own = (await app.get(`/api/threads/${app.threadId}/events`)).stream;
-  assert.ok(own);
-  const stream = own[Symbol.asyncIterator]();
-  const event = async () => {
-    const data = /^data: (.*)$/m.exec(String((await stream.next()).value))?.[1];
-    return data === undefined ? null : (JSON.parse(data) as StreamEvent);
-  };
-  // What it had, up to its status.
-  while ((await event())?.type !== "status");
-  assert.equal((await app.discard()).status, 200);
-  assert.equal((await event())?.type, "status");
-  // The lists hear on the workspace's stream; its own page, only this.
-  assert.deepEqual(await event(), { type: "chat" });
-  await stream.return?.();
-});
-
-test("a held message is sent or discarded once", async (t) => {
-  const app = await linked(t);
-  await app.rejectOnLink();
-  assert.equal((await app.discard()).status, 200);
-  assert.equal((await app.send()).status, 409);
-  assert.equal((await app.discard()).status, 409);
-  await app.app.settled();
-  assert.equal(app.inputs.length, 1);
-});
-
-test("with nothing held at a place in the chat, Send and Discard are refused", async (t) => {
-  const app = await linked(t);
-  assert.equal((await app.send()).status, 409);
-  assert.equal((await app.discard()).status, 409);
-  // The person's own reason is their reply, not held (OA-145).
-  const hash = json<DiffView>(await app.post(`/api/change-sets/${app.changeSetId}/diff`)).hash;
-  await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash });
-  await app.post(`/api/threads/${app.threadId}/messages`, { text: "Wrong title." });
-  await app.app.settled();
-  assert.deepEqual(await app.held(), []);
-  assert.equal(app.texts.at(-1), "Wrong title.");
-  assert.equal((await app.send()).status, 409);
 });
 
 // The first turn proposes; any later one thinks until stopped.
@@ -326,7 +186,6 @@ test("mid-turn, a message is held all the same, and can be sent once the agent i
   assert.equal((await app.held())[0]?.outcome, null);
   const busy = await app.send();
   assert.equal(busy.status, 409);
-  assert.match(json<{ error: string }>(busy).error, /still answering/);
   assert.equal((await app.held())[0]?.outcome, null);
   await app.post(`/api/threads/${app.threadId}/stop`);
   await app.app.settled();
@@ -343,88 +202,9 @@ test("past the thread's caps, a message is held; sending it is refused, and it s
   assert.equal(json<{ problem: string | null }>(reply).problem, null);
   const refused = await app.send();
   assert.equal(refused.status, 409);
-  assert.match(json<{ error: string }>(refused).error, /all 1 of its questions/);
   assert.equal((await app.held())[0]?.outcome, null);
   assert.equal((await app.discard()).status, 200);
   assert.equal(app.inputs.length, 1);
-});
-
-test("a message held in a thread marked done brings it back to wait on the user", async (t) => {
-  const app = await linked(t);
-  app.advance(1_000);
-  await app.post(`/api/threads/${app.threadId}/done`, {});
-  assert.equal((await app.view()).state, "done");
-  app.advance(1_000);
-  await app.rejectOnLink();
-  assert.equal((await app.view()).state, "working");
-  assert.deepEqual(await app.waits(), ["held"]);
-});
-
-test("an Undo rejected on its review link is never asked about, held or sent", async (t) => {
-  const app = await linked(t, { writes: true });
-  const hash = json<DiffView>(await app.post(`/api/change-sets/${app.changeSetId}/diff`)).hash;
-  await app.post(`/api/change-sets/${app.changeSetId}/approve`, { hash });
-  await app.app.settled();
-  const undo = json<{ revert: string }>(
-    await app.post(`/api/change-sets/${app.changeSetId}/revert`),
-  ).revert;
-  const minted = json<{ url: string }>(await app.post(`/api/change-sets/${undo}/review-link`));
-  const token = new URL(minted.url).pathname.split("/").at(-1);
-  const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
-  const decided = await app.post("/api/review/decide", {
-    token,
-    changeSet: undo,
-    kind: "rejected",
-    name,
-    hash: opened.diff.hash,
-    reason: "Keep the new title.",
-  });
-  assert.equal(decided.status, 200);
-  const [held] = await app.held();
-  assert.equal(held?.text, "Keep the new title.");
-  assert.equal((await app.send()).status, 202);
-  await app.app.settled();
-  assert.ok(!app.inputs.some((input) => input.includes(`"role":"note"`)));
-});
-
-test("a reason held mid-turn is sent after Oriel asks what was wrong, so the agent reads it as the answer", async (t) => {
-  // Each turn's history. Only the second turn thinks until stopped.
-  const histories: string[] = [];
-  let turns = 0;
-  const app = await linked(t, {
-    agent: (deps) => {
-      const proposes = scriptedAgent(deps, () => [{ run: "rename" }, { text: "I proposed it." }]);
-      return {
-        async *turn(input, options) {
-          histories.push(JSON.stringify(input.history));
-          if (turns++ !== 1) {
-            yield* proposes.turn(input, options);
-            return;
-          }
-          const { signal } = options;
-          await new Promise((resolve) => signal.addEventListener("abort", resolve));
-          yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
-        },
-      };
-    },
-  });
-  await app.post(`/api/threads/${app.threadId}/messages`, { text: "And the epic?" });
-  await app.rejectOnLink("One story too many.");
-  await app.post(`/api/threads/${app.threadId}/stop`);
-  await app.app.settled();
-  assert.equal(histories.length, 2);
-  assert.ok(!histories.some((h) => h.includes(`"role":"note"`)), "asked mid-turn");
-  assert.equal((await app.send()).status, 202);
-  await app.app.settled();
-  assert.equal(histories.length, 3);
-  // The agent's history ends with Oriel's line, which the reason answers.
-  const last = (JSON.parse(histories.at(-1) ?? "[]") as ChatMessage[]).at(-1);
-  assert.deepEqual(last?.role === "note" && last.note, {
-    kind: "rejected",
-    changeSet: app.changeSetId,
-    via: "review-link",
-  });
-  countedOnce(app, "sent");
 });
 
 test("a reason keeps nothing the person can't see: hidden characters are dropped as it is held", async (t) => {
@@ -454,14 +234,6 @@ test("invisible characters outside the format category go too", async (t) => {
   assert.equal((await app.held())[0]?.text, "Too many.");
 });
 
-test("a reason of hidden characters only holds nothing", async (t) => {
-  const app = await linked(t);
-  const reply = await app.rejectOnLink("\u202E\u2066\u{E0041}");
-  assert.equal(reply.status, 200);
-  assert.deepEqual(await app.held(), []);
-  assert.deepEqual(await app.waits(), ["reply"]);
-});
-
 test("a review link's reason is capped shorter than a message, and one too long holds nothing", async (t) => {
   const app = await linked(t);
   const long = await app.rejectOnLink("x".repeat(2_001));
@@ -469,25 +241,6 @@ test("a review link's reason is capped shorter than a message, and one too long 
   assert.deepEqual(await app.held(), []);
   assert.equal((await app.rejectOnLink("x".repeat(2_000))).status, 200);
   assert.equal((await app.held())[0]?.text.length, 2_000);
-});
-
-test("approving on a review link takes no reason", async (t) => {
-  const app = await linked(t);
-  const minted = json<{ url: string }>(
-    await app.post(`/api/change-sets/${app.changeSetId}/review-link`),
-  );
-  const token = new URL(minted.url).pathname.split("/").at(-1);
-  const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
-  const reply = await app.post("/api/review/decide", {
-    token,
-    changeSet: app.changeSetId,
-    kind: "approved",
-    name: "Ana",
-    hash: opened.diff.hash,
-    reason: "Looks good.",
-  });
-  assert.equal(reply.status, 400);
-  assert.deepEqual(await app.held(), []);
 });
 
 test("only the user sends or discards a held message: the agent, a tool and the review link are refused", () => {

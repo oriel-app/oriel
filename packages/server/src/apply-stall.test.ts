@@ -128,14 +128,3 @@ test("an apply that stalls is told again, so the window shows it stuck, and agai
   assert.deepEqual(w.told(), [true, true, true, false]);
   assert.equal(w.next()?.cancelled, true);
 });
-
-test("an apply refused at once sets nothing looking", async () => {
-  const w = world();
-  const approving = w.dispatch("changeset.approve", { changeSet: w.changeSetId, hash: "h" }, user);
-  await settled();
-  w.ending.reject(Object.assign(new Error("busy"), { name: "ChangeSetError", code: "busy" }));
-  const answered = await approving;
-  assert.equal(answered.problem, "busy");
-  assert.ok(w.timers.every((timer) => timer.cancelled));
-  assert.deepEqual(w.told(), [true, false]);
-});

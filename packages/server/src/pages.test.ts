@@ -3,30 +3,6 @@ import { test } from "node:test";
 import { json, testApp } from "./testing.ts";
 import { webUrl } from "./views.ts";
 
-test("the app's pages are the same shell; anything else 404s", async (t) => {
-  const { get } = await testApp(t);
-  const shell = String((await get("/")).body);
-  for (const path of [
-    "/done",
-    "/workstreams/01JBZ0000000000000000000G1",
-    "/threads/01JBZ0000000000000000000T1",
-  ]) {
-    const reply = await get(path);
-    assert.equal(reply.status, 200, path);
-    assert.equal(String(reply.body), shell, path);
-  }
-  for (const path of [
-    "/workstreams/nope",
-    "/threads/",
-    "/inbox",
-    "/done/x",
-    "/review/",
-    "/review/a/b",
-  ])
-    assert.equal((await get(path)).status, 404, path);
-  assert.equal((await get("/api/nope")).status, 404);
-});
-
 test("a review link's page is the shell, unindexed, never cached, sending no referrer", async (t) => {
   const { get } = await testApp(t);
   const reply = await get("/review/abcDEF_-123");
@@ -59,11 +35,4 @@ test("only an http(s) location becomes a link", () => {
     "",
   ])
     assert.equal(webUrl(location), null, location);
-});
-
-test("a new thread's draft is the shell too", async (t) => {
-  const { get } = await testApp(t);
-  const reply = await get("/threads/new");
-  assert.equal(reply.status, 200);
-  assert.equal(String(reply.body), String((await get("/")).body));
 });

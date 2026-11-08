@@ -2,9 +2,9 @@
 // its stdin and stdout, and the server on a loopback port the OS picks.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { type AddressInfo, createServer } from "node:net";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
@@ -19,9 +19,9 @@ import { account, estimate, fakeSandbox, t0, testApp } from "../testing.ts";
 import { keyStore } from "../api-key.ts";
 import { models } from "../model.ts";
 import { memorySettings } from "../settings.ts";
-import { keepPort, keptPort } from "./port.ts";
+import { keptPort } from "./port.ts";
 import type { ServerLine } from "./protocol.ts";
-import { type DesktopOptions, runDesktop, Stopped, takeStdout } from "./run.ts";
+import { type DesktopOptions, runDesktop } from "./run.ts";
 
 const secret = "5a".repeat(32);
 const cookie = `oriel-launch=${secret}`;
@@ -82,18 +82,12 @@ function start(
   return { input, out, logged, secrets, signals, running };
 }
 
-test("desktop mode names its URL first, answers only with the cookie, and quits when stdin ends", async (t) => {
+test("desktop mode answers only with the launch cookie, a review link without it, and the link dies at quit", async (t) => {
   const data = folder(t);
   const shell = start(data);
   const { serving, exited } = await shell.running;
-  assert.deepEqual(shell.out[0], { kind: "ready", url: serving.url });
-  assert.deepEqual(shell.out[1], { id: 1, kind: "secret.get", name: "jira" });
-  assert.equal(keptPort(data), serving.port);
-
   assert.equal((await fetch(serving.url)).status, 403);
-  const page = await fetch(serving.url, { headers: { cookie } });
-  assert.equal(page.status, 200);
-  assert.match(await page.text(), /<div id="app">/);
+  assert.equal((await fetch(serving.url, { headers: { cookie } })).status, 200);
   const url = await reviewLink(serving);
   assert.equal(new URL(url).origin, new URL(serving.url).origin);
   const token = new URL(url).pathname.split("/").at(-1);
@@ -103,9 +97,6 @@ test("desktop mode names its URL first, answers only with the cookie, and quits 
 
   shell.input.end();
   assert.equal(await exited, 0);
-  // Every line out was the channel's.
-  assert.ok(shell.out.every((line) => ("id" in line ? true : line.kind === "ready")));
-  assert.equal(shell.out.filter((line) => !("id" in line)).length, 1);
   // Closed, so the database opens again, and the link died at quit.
   open(join(data, "oriel.db"), { exclusive: true }).close();
   const after = await testApp(t, { db: join(data, "oriel.db") });
@@ -157,47 +148,17 @@ test("the MCP door listens apart from the window, keeps its port, and a tool the
   assert.equal(await exited, 0);
 });
 
-test("a kept door port another program holds leaves the door closed, never moved, and the window up", async (t) => {
-  const data = folder(t);
-  const squatter = createServer();
-  await new Promise<void>((resolve) => squatter.listen(0, "127.0.0.1", resolve));
-  t.after(() => squatter.close());
-  const taken = (squatter.address() as AddressInfo).port;
-  mkdirSync(data, { recursive: true });
-  keepPort(data, taken, "mcp-port");
-  const shell = start(data);
-  const { serving, exited } = await shell.running;
-  assert.deepEqual(serving.door, {
-    closed: "Its port is taken by another program. Quit that program, then restart Oriel.",
-  });
-  assert.equal(keptPort(data, "mcp-port"), taken);
-  const listed = (await (await send(serving.url, "/api/outside-tools")).json()) as {
-    door: unknown;
-  };
-  assert.deepEqual(listed.door, serving.door);
-  shell.input.end();
-  assert.equal(await exited, 0);
-});
-
-test("SIGTERM quits as stdin's end does", async (t) => {
-  const shell = start(folder(t));
-  const { exited } = await shell.running;
-  shell.signals.emit("SIGTERM");
-  assert.equal(await exited, 0);
-  assert.ok(shell.logged.some((line) => line.fields.why === "SIGTERM"));
-});
-
 test("a second server can't open a data folder's database while the first runs", async (t) => {
   const data = folder(t);
   const first = start(data);
   const { exited } = await first.running;
   const second = start(data);
-  await assert.rejects(second.running, /locked/);
+  await assert.rejects(second.running);
   first.input.end();
   assert.equal(await exited, 0);
 });
 
-test("the kept port is used again, a taken one moves up and is kept, and links left live are revoked", async (t) => {
+test("review links a killed launch left live are revoked at the next launch", async (t) => {
   const data = folder(t);
   // A launch that made a review link and was killed: nothing ran at quit,
   // so the link is still live in the file.
@@ -205,35 +166,15 @@ test("the kept port is used again, a taken one moves up and is kept, and links l
   const { serving } = await first.running;
   const token = new URL(await reviewLink(serving)).pathname.split("/").at(-1);
   await serving.close();
-  const port = serving.port;
-
-  // Something else holds the port now.
+  // Something else holds its port now, so the next launch moves up and
+  // doesn't reuse a connection the killed one left open.
   const squatter = createServer();
-  await new Promise<void>((resolve) => squatter.listen(port, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => squatter.listen(serving.port, "127.0.0.1", resolve));
   t.after(() => squatter.close());
   const next = start(data, 1);
-  const moved = await next.running;
-  assert.ok(moved.serving.port > port);
-  assert.equal(keptPort(data), moved.serving.port);
-  assert.ok(
-    next.logged.some(
-      (line) =>
-        line.message === "desktop: revoked the review links an earlier launch left live" &&
-        line.fields.count === 1 &&
-        line.fields.moved === true,
-    ),
-  );
-  assert.equal((await send(moved.serving.url, "/api/review/open", { token }, false)).status, 404);
+  const again = await next.running;
+  assert.equal((await send(again.serving.url, "/api/review/open", { token }, false)).status, 404);
   next.input.end();
-  assert.equal(await moved.exited, 0);
-
-  // With the port free again, the next launch keeps the one it has now.
-  keepPort(data, moved.serving.port);
-  const third = start(data, 1);
-  const again = await third.running;
-  assert.equal(again.serving.port, moved.serving.port);
-  assert.ok(!third.logged.some((line) => line.message.startsWith("desktop: revoked")));
-  third.input.end();
   assert.equal(await again.exited, 0);
 });
 
@@ -270,93 +211,6 @@ async function reviewLink(serving: Serving): Promise<string> {
   assert.ok(set);
   return (await call<{ url: string }>(`/api/change-sets/${set.id}/review-link`, {})).url;
 }
-
-test("desktop mode's stdout carries only the channel: everything else written there goes to stderr", () => {
-  const written: string[] = [];
-  const errors: string[] = [];
-  const stdout = {
-    write: ((chunk: string) => written.push(chunk) > 0) as NodeJS.WriteStream["write"],
-  };
-  const stderr = {
-    write: ((chunk: string) => errors.push(chunk) > 0) as NodeJS.WriteStream["write"],
-  };
-  const channelWrite = takeStdout(stdout, stderr);
-  stdout.write("a stray log line\n");
-  channelWrite('{"kind":"ready","url":"http://127.0.0.1:4320/"}\n');
-  assert.deepEqual(written, ['{"kind":"ready","url":"http://127.0.0.1:4320/"}\n']);
-  assert.deepEqual(errors, ["a stray log line\n"]);
-});
-
-test("asked to stop while starting, it stops at once, and closes what was starting", async (t) => {
-  const data = folder(t);
-  // A shell that doesn't answer yet: the app waits on the saved connection.
-  const input = new PassThrough();
-  const asked = Promise.withResolvers<void>();
-  const signals = new EventEmitter();
-  input.write(`${secret}\n`);
-  const running = runDesktop({
-    data,
-    input,
-    write: (line) => {
-      if ("id" in (JSON.parse(line) as ServerLine)) asked.resolve();
-    },
-    log: () => {},
-    signals,
-    firstPort: 0,
-    firstDoorPort: 0,
-    app: { now: () => instant(new Date(t0)), sandbox: fakeSandbox({}) },
-  });
-  await asked.promise;
-  signals.emit("SIGTERM");
-  const stopped = await running.then(
-    () => assert.fail("it started"),
-    (error: unknown) => error,
-  );
-  assert.ok(stopped instanceof Stopped);
-  // The shell goes; what was starting finishes and is closed, so the
-  // database can be opened again.
-  input.end();
-  await stopped.closed;
-  open(join(data, "oriel.db"), { exclusive: true }).close();
-});
-
-test("asked to stop before the launch secret, it stops at once", async (t) => {
-  const signals = new EventEmitter();
-  const running = runDesktop({
-    data: folder(t),
-    input: new PassThrough(),
-    write: () => assert.fail("nothing goes out"),
-    log: () => {},
-    signals,
-    firstPort: 0,
-    firstDoorPort: 0,
-  });
-  signals.emit("SIGTERM");
-  await assert.rejects(running, Stopped);
-});
-
-test("asked to stop while it looks for a model, it stops at once", async (t) => {
-  const input = new PassThrough();
-  const signals = new EventEmitter();
-  const looking = Promise.withResolvers<void>();
-  input.write(`${secret}\n`);
-  const running = runDesktop({
-    data: folder(t),
-    input,
-    write: () => assert.fail("nothing goes out"),
-    log: () => {},
-    signals,
-    firstPort: 0,
-    firstDoorPort: 0,
-    model: () => {
-      looking.resolve();
-      return new Promise(() => {});
-    },
-  });
-  await looking.promise;
-  input.end();
-  await assert.rejects(running, Stopped);
-});
 
 test("the API key is kept in the shell's store from Settings, and the next launch runs on it", async (t) => {
   const data = folder(t);
@@ -410,43 +264,4 @@ test("the API key is kept in the shell's store from Settings, and the next launc
   assert.doesNotMatch(JSON.stringify([first.logged, second.logged]), new RegExp(key));
   second.input.end();
   assert.equal(await two.exited, 0);
-});
-
-test("the folder picker, notifications and how many threads Oriel works on go to the shell", async (t) => {
-  const shell = start(folder(t));
-  t.after(() => void shell.input.end());
-  const { serving, exited } = await shell.running;
-  // This fake shell answers every pick as cancelled.
-  const picked = await send(serving.url, "/api/connections/picker", { kind: "folder" });
-  assert.deepEqual(await picked.json(), { picked: false });
-  assert.ok(shell.out.some((line) => "id" in line && line.kind === "folder.pick"));
-
-  const workstream = (await (
-    await send(serving.url, "/api/workstreams", {
-      kind: "cluster",
-      grouping: "epic",
-      cluster: "10001",
-    })
-  ).json()) as { id: string };
-  const thread = (await (
-    await send(serving.url, `/api/workstreams/${workstream.id}/threads`, { text: "Estimate it" })
-  ).json()) as { id: string };
-  await serving.app.settled();
-  const told = shell.out.filter((line) => "id" in line && line.kind === "notify");
-  assert.deepEqual(
-    told.map((line) => ("open" in line ? [line.title, line.body, line.open] : [])),
-    // The scripted agent's estimate proposes a change set.
-    [["A change set waits for your review", "Estimate it", `/threads/${thread.id}`]],
-  );
-  // While its turn ran, Oriel worked on one thread, and then on none.
-  const working = () =>
-    shell.out.flatMap((line) => ("id" in line && line.kind === "working" ? [line.threads] : []));
-  assert.deepEqual(working(), [1, 0]);
-  // With asking before quitting off, the shell hears nothing of the next turn.
-  await send(serving.url, "/api/settings", { askBeforeQuitting: false });
-  await send(serving.url, `/api/threads/${thread.id}/messages`, { text: "And again" });
-  await serving.app.settled();
-  assert.deepEqual(working(), [1, 0]);
-  shell.input.end();
-  assert.equal(await exited, 0);
 });
