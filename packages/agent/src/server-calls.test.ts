@@ -12,7 +12,6 @@ import {
   checkCallerInit,
   claudeCodeServerCalls,
   codexServerCalls,
-  sameArgs,
   serverCallArgs,
   type ServerCallsOptions,
 } from "./server-calls.ts";
@@ -40,7 +39,7 @@ const init = (over: Message = {}): Message => ({
 
 // What the fake model calls, for each message Oriel sends it, in order: one
 // call or more, each with its tool and input.
-type Turn = { tool: string; input: unknown }[];
+type Turn = { tool: string; input: unknown; large?: true; structured?: unknown }[];
 
 function child(onLine: (message: Message, emit: (message: Message) => void) => void) {
   const process = new EventEmitter() as EventEmitter & {
@@ -117,6 +116,7 @@ function fakeClaude(turns: Turn[], report: Message = init()) {
           });
           if (said.behavior !== "allow") continue;
           run.allowed.push(said);
+          const whole = [{ type: "text", text: JSON.stringify({ called: call.tool }) }];
           emit({
             type: "user",
             message: {
@@ -124,10 +124,18 @@ function fakeClaude(turns: Turn[], report: Message = init()) {
                 {
                   type: "tool_result",
                   tool_use_id: callId,
-                  content: [{ type: "text", text: JSON.stringify({ called: call.tool }) }],
+                  // Past its size, Claude Code saves the answer and shows a
+                  // preview; the message keeps the whole.
+                  content: call.large
+                    ? "<persisted-output>\nOutput too large (81.5KB). Full output saved to: /x.json\n\nPreview (first 2KB):\n[\n</persisted-output>"
+                    : whole,
                 },
               ],
             },
+            tool_use_result:
+              call.structured === undefined
+                ? whole
+                : { content: whole, structuredContent: call.structured },
           });
         }
         emit({
@@ -294,16 +302,73 @@ test("a turn the CLI refuses before any call, as on a plan's limit, sent nothing
   );
 });
 
-test("a call with other input is denied, and fails with nothing sent", async () => {
+test("whatever input the model types, the server gets Oriel's", async () => {
+  const args = { cloudId: "c", issueIdOrKey: "SYN-2" };
+  // As Haiku once typed a call with no arguments: wrapped in `input`.
   const fake = fakeClaude([
-    [{ tool: "mcp__atlassian__getJiraIssue", input: { cloudId: "c", issueIdOrKey: "SYN-3" } }],
+    [{ tool: "mcp__atlassian__getJiraIssue", input: { input: { issueIdOrKey: "SYN-3" } } }],
   ]);
+  const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
+  await calls.call({ tool: "getJiraIssue", args });
+  assert.deepEqual(fake.spawned[0]?.allowed, [{ behavior: "allow", updatedInput: args }]);
+  calls.close();
+});
+
+test("a turn the model missed sent nothing, and is tried once more in a fresh process", async () => {
+  const args = { cloudId: "c", issueIdOrKey: "SYN-2" };
+  // It replied without calling, then called the tool it was asked for.
+  const fake = fakeClaude([[], [{ tool: "mcp__atlassian__getJiraIssue", input: args }]]);
+  const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
+  await calls.call({ tool: "getJiraIssue", args });
+  assert.equal(fake.spawned.length, 2);
+  assert.deepEqual(fake.spawned[1]?.allowed, [{ behavior: "allow", updatedInput: args }]);
+  calls.close();
+});
+
+test("a turn missed twice fails with nothing sent", async () => {
+  const fake = fakeClaude([[{ tool: "mcp__atlassian__searchJiraIssuesUsingJql", input: {} }], []]);
   const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
   await assert.rejects(
     calls.call({ tool: "getJiraIssue", args: { cloudId: "c", issueIdOrKey: "SYN-2" } }),
-    (error) => error instanceof WriteStalled && /with other input/.test(error.message),
+    (error) => error instanceof WriteStalled,
   );
-  assert.deepEqual(fake.spawned[0]?.allowed, []);
+  assert.equal(fake.spawned.length, 2);
+  assert.ok(fake.spawned.every((run) => run.allowed.length === 0));
+});
+
+test("an answer Claude Code saved for its size is read whole, not from its preview", async () => {
+  const args = { cloudId: "c", jql: "project = SYN" };
+  const fake = fakeClaude([
+    [{ tool: "mcp__atlassian__getJiraIssue", input: { cloudId: "c", jql: "<text>" }, large: true }],
+  ]);
+  const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
+  const answer = await calls.call({ tool: "getJiraIssue", args });
+  assert.deepEqual(answer, {
+    content: [{ type: "text", text: '{"called":"mcp__atlassian__getJiraIssue"}' }],
+  });
+  calls.close();
+});
+
+test("a saved answer with structured content keeps it", async () => {
+  const structured = { values: [["BL-108", "Open"]] };
+  const fake = fakeClaude([
+    [{ tool: "mcp__atlassian__getJiraIssue", input: {}, large: true, structured }],
+  ]);
+  const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
+  const answer = await calls.call({ tool: "getJiraIssue", args: {} });
+  assert.deepEqual(answer, {
+    content: [{ type: "text", text: '{"called":"mcp__atlassian__getJiraIssue"}' }],
+    structuredContent: structured,
+  });
+  calls.close();
+});
+
+test("a call with no arguments is asked for as one", async () => {
+  const fake = fakeClaude([[{ tool: "mcp__atlassian__getJiraIssue", input: {} }]]);
+  const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
+  await calls.call({ tool: "getJiraIssue", args: {} });
+  const told = JSON.stringify(fake.spawned[0]?.wrote.filter((message) => message.type === "user"));
+  assert.match(told, /getJiraIssue with no arguments\./);
   calls.close();
 });
 
@@ -335,12 +400,6 @@ test("a process that loaded something else makes no call", async () => {
     calls.call({ tool: "getJiraIssue", args: { cloudId: "c", issueIdOrKey: "SYN-2" } }),
     /tools other than/,
   );
-});
-
-test("inputs compare whatever their keys' order", () => {
-  assert.ok(sameArgs({ a: 1, b: [1, { c: 2 }] }, { b: [1, { c: 2 }], a: 1 }));
-  assert.ok(!sameArgs({ a: 1 }, { a: 1, b: 2 }));
-  assert.ok(!sameArgs([1, 2], [2, 1]));
 });
 
 // A stand-in for Codex's app server: the person has another server beside
