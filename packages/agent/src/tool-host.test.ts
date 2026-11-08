@@ -78,11 +78,11 @@ test("calls a tool on the list for Oriel alone, and declines what the CLI asks",
   const answer = await host.call({ server: "teams", tool: "echo", args: { q: 1 } });
   assert.deepEqual(answer.content, [{ type: "text", text: '{"q":1}' }]);
   assert.deepEqual(t.calls(), ["call echo not-for-model"]);
-  const asked = host.call({ server: "teams", tool: "hang", args: {} });
-  await t.out;
-  await host.close();
-  assert.ok(mayHaveLanded(await failed(asked)));
+  // `slow` answers only once the fake has Oriel's answer to its question.
+  const slow = await host.call({ server: "teams", tool: "slow", args: {} });
+  assert.deepEqual(slow.content, [{ type: "text", text: "slow" }]);
   assert.ok(t.lines().includes("answered error"), "Oriel declined the CLI's question");
+  await host.close();
   assert.equal(alive(host.pid), false);
   assert.equal(existsSync(host.dir), false);
   t.done();
