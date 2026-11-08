@@ -3372,20 +3372,38 @@ const scenes: Scene[] = [
   {
     name: "new-thread-picked",
     path: "/threads/new",
+    // Two threads from nothing first: their workstreams, not named yet, are
+    // picked by their threads' titles, never as a second "New workstream".
     make: async () => {
       const on = (await writing()).serving;
       await post("/api/workstreams", checkout, on);
+      for (const text of ["Plan gift cards", "Draft the kiosk rollout"]) {
+        await post("/api/threads", { text }, on);
+        await on.app.settled();
+      }
       return on;
     },
     act: async (page) => {
-      const picked = await page.evaluate(async () => {
+      const listed = await page.evaluate(async () => {
         const { workstreams } = (await (await fetch("/api/workstreams")).json()) as {
-          workstreams: { id: string; name: string }[];
+          workstreams: { id: string; name: string; origin: { kind: string } }[];
         };
-        return workstreams.length === 1 ? workstreams[0] : null;
+        return workstreams;
       });
-      if (!picked) throw new Error("the scene's server should have one workstream");
-      await page.getByRole("combobox", { name: "Workstream" }).selectOption({ label: picked.name });
+      const picked = listed.find((each) => each.origin.kind === "cluster");
+      if (!picked || listed.length !== 3)
+        throw new Error(`the scene's server should have three workstreams, not ${listed.length}`);
+      const picker = page.getByRole("combobox", { name: "Workstream" });
+      await picker.locator("option").nth(listed.length).waitFor({ state: "attached" });
+      const options = await picker.locator("option").allTextContents();
+      if (
+        options.filter((option) => option === "New workstream").length !== 1 ||
+        new Set(options).size !== options.length
+      )
+        throw new Error(
+          `The picker's options should differ, with one default: ${options.join(" | ")}`,
+        );
+      await picker.selectOption({ label: picked.name });
       await page
         .getByRole("textbox", { name: "Message" })
         .fill("Which stories here still need estimates?");
@@ -3400,7 +3418,7 @@ const scenes: Scene[] = [
           ]) as Promise<[{ workstream: { id: string } }, { workstreams: unknown[] }]>,
         id,
       );
-      if (thread.workstream.id !== picked.id || all.workstreams.length !== 1)
+      if (thread.workstream.id !== picked.id || all.workstreams.length !== listed.length)
         throw new Error(
           `The new thread went to ${thread.workstream.id}, with ${all.workstreams.length} workstreams, not ${picked.id}`,
         );

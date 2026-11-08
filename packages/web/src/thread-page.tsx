@@ -62,6 +62,7 @@ import {
   type NoteView,
   type RunView,
   type SecondLookView,
+  type ThreadSummaryView,
   type ThreadView,
   type WorkstreamRef,
   type WorkstreamSummary,
@@ -256,14 +257,17 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
 export function NewThreadPage({
   model,
   workstreams,
+  threads,
   dispatch,
 }: {
   model: NewThreadModel;
   workstreams: readonly WorkstreamSummary[] | null;
+  threads: readonly ThreadSummaryView[] | null;
   dispatch: Dispatch;
 }) {
   const send = (msg: NewThreadMsg) => dispatch({ type: "newThread", msg });
   const open = startable(workstreams);
+  const labels = pickerLabels(open, threads ?? []);
   const picked = open.find((workstream) => workstream.id === model.workstream) ?? null;
   // One picker, shown in one place at a time: CSS hides the other, so only
   // one is ever in the accessibility tree.
@@ -278,10 +282,10 @@ export function NewThreadPage({
           send({ type: "workstreamPicked", workstream: event.currentTarget.value || null })
         }
       >
-        <option value="">New workstream</option>
+        <option value="">{blankName}</option>
         {open.map((workstream) => (
           <option key={workstream.id} value={workstream.id}>
-            {workstream.name}
+            {labels.get(workstream.id)}
           </option>
         ))}
       </select>
@@ -323,6 +327,39 @@ export function NewThreadPage({
         )}
       </aside>
     </div>
+  );
+}
+
+// What a workstream a thread from nothing makes is called until it's named:
+// the picker's default, which makes one.
+const blankName = "New workstream";
+
+// Each workstream in the picker under a name a person can tell apart, never
+// the default's: one a thread from nothing made and nobody named yet goes by
+// its newest thread's title, as the sidebar lists that thread. A name that
+// still repeats gets its place among them.
+function pickerLabels(
+  open: readonly WorkstreamSummary[],
+  threads: readonly ThreadSummaryView[],
+): Map<string, string> {
+  const titleOf = (id: string) =>
+    threads
+      .filter((thread) => thread.workstream.id === id && thread.title)
+      .sort((a, b) => b.activityAt.localeCompare(a.activityAt))[0]?.title ?? "Untitled thread";
+  const named = open.map((workstream) => ({
+    id: workstream.id,
+    name:
+      workstream.origin.kind === "thread" && workstream.name === blankName
+        ? titleOf(workstream.id)
+        : workstream.name,
+  }));
+  const seen = new Map<string, number>();
+  return new Map(
+    named.map(({ id, name }) => {
+      const nth = (seen.get(name) ?? 0) + 1;
+      seen.set(name, nth);
+      return [id, nth === 1 ? name : `${name} (${nth})`];
+    }),
   );
 }
 

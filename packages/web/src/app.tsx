@@ -293,6 +293,7 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
           <NewThreadPage
             model={model.newThread}
             workstreams={model.workstreams}
+            threads={model.threads}
             dispatch={dispatch}
           />
         )
