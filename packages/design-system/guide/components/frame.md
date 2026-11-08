@@ -17,7 +17,7 @@ It's CSS, but for [the bead](/components/bead), which is the frame's material gr
 
 - **The shell** (`.shell` in `window.css`) is `--frame`, the page's whole height, so a long page never shows a gap beside the sidebar. The sidebar is the same colour, with no line between them.
 - **The column** (`.shell-main` in `window.css`) is `--bg`, `--frame-band` in from the right, past the panel when it sits beside the page.
-- **The [item panel](/components/item-panel)**, beside the page, and a thread's [right rail](/components/right-rail) at 1180px and up, are `--frame` at the window's right edge, as the sidebar is at its left: `--beside` is their width, which the column keeps clear of.
+- **The [item panel](/components/item-panel)**, beside the page, and a thread's [right rail](/components/right-rail) at 1280px and up, are `--frame` at the window's right edge, as the sidebar is at its left: `--beside` is their width, which the column keeps clear of.
 - **The band and the corners** (`.frame` in `window.css`) are one fixed box as wide as the column, its top corners rounded, with the frame's colour reaching out from it (`--frame-reach`) and cut to the column's top. It stays as the page scrolls under it, and takes no pointer. Its layer is `--layer-frame`: over the page and its sticky parts, under the sidebar's drawer, the panel, the window chat and the bead.
 
 ```html specimen id=wide title="Wide: the sidebar, the band and the curve where they meet" height=200 pad=0
