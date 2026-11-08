@@ -24,13 +24,22 @@
 // fixture world in memory), in this process. With `--through codex --server
 // <name>` it records the real server as the person's own Codex lists it
 // under <name>, through its app server's `mcpServer/tool/call`, with no
-// model and only that server's read tools: point it at our test site or
-// workspace, never a person's data. People are replaced with numbered
-// placeholders (packages/jira/src/recorded.ts). Nothing is written.
-// Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through codex --server <name>] [--channels <a,b>]
+// model and only that server's read tools; with `--through claude-code`,
+// as their Claude Code lists it, a turn of its smallest model a call. Point
+// it at our test site or workspace, never a person's data: Jira reads SYN.
+// A real server's recordings are `real-sync.json` and `real-read.json`,
+// beside the stand-in's. People are replaced with numbered placeholders
+// (packages/jira/src/recorded.ts). Nothing is written.
+// Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through <codex|claude-code> --server <name>] [--channels <a,b>]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { checkCodex, codexServerCalls } from "../packages/agent/src/index.ts";
+import {
+  checkClaudeCode,
+  checkCodex,
+  claudeCodeServerCalls,
+  claudeCodeServers,
+  codexServerCalls,
+} from "../packages/agent/src/index.ts";
 import {
   type IndexRecord,
   type RecordedCall,
@@ -42,7 +51,10 @@ import {
   type OpenVia,
 } from "../packages/core/src/index.ts";
 import { atlassianServer } from "../packages/jira/src/atlassian.ts";
-import { standInCaller as atlassianCaller } from "../packages/jira/src/atlassian-standin.ts";
+import {
+  standInCaller as atlassianCaller,
+  standInCloudId,
+} from "../packages/jira/src/atlassian-standin.ts";
 import { callsDir as jiraCalls } from "../packages/jira/src/calls-cassette.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { callsDir as linearCalls } from "../packages/linear/src/calls.ts";
@@ -73,6 +85,27 @@ import {
   shown,
 } from "../packages/sheets/src/fixture.ts";
 
+// An Atlassian answer scrubbed as Jira's are, with the site's cloud ID as
+// the stand-in's, and without the call's context the server adds to its
+// structured content, which names the account.
+export function scrubAtlassian(value: unknown, people = new Map<string, string>()): unknown {
+  const cloud = (each: unknown): unknown =>
+    typeof each === "string"
+      ? each.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g, (id) =>
+          id === standInCloudId ? id : standInCloudId,
+        )
+      : Array.isArray(each)
+        ? each.map(cloud)
+        : typeof each === "object" && each !== null
+          ? Object.fromEntries(
+              Object.entries(each)
+                .filter(([key]) => key !== "context")
+                .map(([key, item]) => [key, cloud(item)]),
+            )
+          : each;
+  return scrubJira(cloud(value), people);
+}
+
 // A Slack answer with its people as numbered placeholders, their IDs and
 // the names and contact details of their profiles, and the workspace's
 // address as a placeholder's: none of our test workspace is in the repo.
@@ -82,12 +115,46 @@ export function scrubSlack(value: unknown, people = new Map<string, string>()): 
     people.set(key, made);
     return made;
   };
-  if (typeof value === "string")
-    return value
+  if (typeof value === "string") {
+    // Slack's server answers in Markdown: a person's name stands beside their
+    // ID, as "Name <email> (U0…)", "<@U0…|Name>" or a profile's lines, so
+    // each name it gives is replaced wherever it appears, longest first.
+    const names = new Set<string>();
+    for (const [, name] of value.matchAll(
+      /(?:Message from |From: )(.+?)(?: <[^>\n]*>)? \([UWB][A-Z0-9]{2,}\)/g,
+    ))
+      if (name) names.add(name);
+    for (const [, name] of value.matchAll(/<@[UW][A-Z0-9]+\|([^>]+)>/g)) if (name) names.add(name);
+    for (const [, name] of value.matchAll(/^Creator: (.+?) \(<@/gm)) if (name) names.add(name);
+    for (const [, name] of value.matchAll(/^(?:Display Name|Real Name|Username): (.+)$/gm))
+      if (name?.trim()) names.add(name.trim());
+    // Each name earlier answers gave, and each word of one, as a message
+    // may name someone by their first name alone.
+    for (const key of people.keys()) if (key.startsWith("name:")) names.add(key.slice(5));
+    let scrubbed = value.replace(
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/g,
+      "person@example.com",
+    );
+    for (const name of [...names].toSorted((a, b) => b.length - a.length))
+      scrubbed = scrubbed.replaceAll(
+        name,
+        placeholder(`name:${name}`, (n) => `Person ${n}`),
+      );
+    for (const name of names)
+      for (const word of name.split(/\s+/))
+        if (word.length >= 3 && !/^(Person|[0-9]+)$/.test(word))
+          scrubbed = scrubbed.replace(
+            new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
+            "Person",
+          );
+    return scrubbed
+      .replace(/^(Organization Name|Phone|Timezone|Title|Pronouns): .*$/gm, "$1: ")
       .replace(/\b[UW][A-Z0-9]{8,}\b/g, (id) =>
         placeholder(id, (n) => `U0PERSON${String(n).padStart(3, "0")}`),
       )
-      .replace(/https:\/\/[a-z0-9-]+(\.enterprise)?\.slack\.com/g, "https://oriel-test.slack.com");
+      .replace(/https:\/\/[a-z0-9-]+(\.enterprise)?\.slack\.com/g, "https://oriel-test.slack.com")
+      .replace(/https:\\\/\\\/[a-z0-9-]+\.slack\.com/g, "https:\\/\\/oriel-test.slack.com");
+  }
   if (Array.isArray(value)) return value.map((item) => scrubSlack(item, people));
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
@@ -155,7 +222,14 @@ type Kind = {
   standInLine: string;
   realLine: (version: string) => string;
   scrub: (value: unknown, people: Map<string, string>) => unknown;
-  connection: (channels: readonly string[] | null) => Omit<ToOpen, "id" | "number" | "secret">;
+  // Where its parser reads only an answer's text: its structured content,
+  // which some agents pass on, isn't kept.
+  textOnly?: true;
+  // Through the real server, where `real`.
+  connection: (
+    channels: readonly string[] | null,
+    real: boolean,
+  ) => Omit<ToOpen, "id" | "number" | "secret">;
   open: (
     connection: ToOpen,
     via: OpenVia,
@@ -203,9 +277,16 @@ const kinds: Record<string, Kind> = {
     standInLine:
       "From the stand-in (@oriel/jira/standin, SYN in memory), not Atlassian's server: re-record with --through codex.",
     realLine: (version) =>
-      `From Atlassian's Rovo MCP server, through Codex ${version}, on our test site.`,
-    scrub: scrubJira,
-    connection: () => ({ prefix: "jira", identity: "", options: {} }),
+      `From Atlassian's Rovo MCP server, through ${version}, on our test site's SYN.`,
+    scrub: scrubAtlassian,
+    textOnly: true,
+    // The real site's SYN, which scripts/seed-jira.ts seeds from the
+    // fixture: never another project there.
+    connection: (_, real) => ({
+      prefix: "jira",
+      identity: "",
+      options: real ? { project: "SYN" } : {},
+    }),
     open: openJira as Kind["open"],
     reads: () => recordedReads(loadJiraFixture()),
   },
@@ -215,8 +296,7 @@ const kinds: Record<string, Kind> = {
     standIn: () => slackCaller(),
     standInLine:
       "From the stand-in (@oriel/slack/standin, Ferrowick in memory), not Slack's server: re-record with --through codex.",
-    realLine: (version) =>
-      `From Slack's MCP server, through Codex ${version}, in our test workspace.`,
+    realLine: (version) => `From Slack's MCP server, through ${version}, in our test workspace.`,
     scrub: scrubSlack,
     connection: (channels) => {
       const fixture = loadSlackFixture();
@@ -235,8 +315,7 @@ const kinds: Record<string, Kind> = {
     standIn: () => linearCaller(),
     standInLine:
       "From the stand-in (@oriel/linear/standin, Ferrowick's Linear in memory), not Linear's server: re-record with --through codex.",
-    realLine: (version) =>
-      `From Linear's MCP server, through Codex ${version}, in our test workspace.`,
+    realLine: (version) => `From Linear's MCP server, through ${version}, in our test workspace.`,
     scrub: scrubLinear,
     connection: () => ({ prefix: "linear", identity: "", options: {} }),
     open: openLinear as Kind["open"],
@@ -254,7 +333,7 @@ const kinds: Record<string, Kind> = {
     standInLine:
       "From packages/sheets-mcp in its fixture mode, on its shipped fixture/backlog.json: no Google account. Re-record with --through codex.",
     realLine: (version) =>
-      `From packages/sheets-mcp signed in to Google, through Codex ${version}, on our test account's spreadsheets.`,
+      `From packages/sheets-mcp signed in to Google, through ${version}, on our test account's spreadsheets.`,
     // Our own server's answers hold nothing of a person but cell text,
     // which the test account's spreadsheets make up.
     scrub: (value) => value,
@@ -266,13 +345,10 @@ const kinds: Record<string, Kind> = {
 };
 
 // A tool's answer scrubbed, in its JSON text.
-function scrubbed(
-  answer: ToolAnswer,
-  scrub: Kind["scrub"],
-  people: Map<string, string>,
-): ToolAnswer {
+function scrubbed(answer: ToolAnswer, kind: Kind, people: Map<string, string>): ToolAnswer {
+  const { structuredContent, ...rest } = answer;
   return {
-    ...answer,
+    ...rest,
     content: answer.content.map((block) => {
       if (typeof block !== "object" || block === null || !("text" in block)) return block;
       let parsed: unknown;
@@ -282,11 +358,11 @@ function scrubbed(
         // Prose can't be scrubbed by its fields: check it by hand.
         throw new Error("an answer isn't JSON, so Oriel can't scrub it: nothing was written");
       }
-      return { ...block, text: JSON.stringify(scrub(parsed, people)) };
+      return { ...block, text: JSON.stringify(kind.scrub(parsed, people)) };
     }),
-    ...(answer.structuredContent === undefined
+    ...(structuredContent === undefined || kind.textOnly
       ? {}
-      : { structuredContent: scrub(answer.structuredContent, people) }),
+      : { structuredContent: kind.scrub(structuredContent, people) }),
   };
 }
 
@@ -304,12 +380,15 @@ export async function recordCalls(
       calls: scrubbing
         ? calls.map(({ call, answer }) => ({
             call: { tool: call.tool, args: kind.scrub(call.args, people) as typeof call.args },
-            answer: scrubbed(answer as ToolAnswer, kind.scrub, people),
+            answer: scrubbed(answer as ToolAnswer, kind, people),
           }))
         : calls,
     };
-    writeFileSync(new URL(name, kind.dir), `${JSON.stringify(file, null, 2)}\n`);
-    console.log(`${name}: ${calls.length} calls`);
+    // A real server's recording sits beside the stand-in's, which the
+    // tests compare with the fixture.
+    const named = scrubbing ? `real-${name}` : name;
+    writeFileSync(new URL(named, kind.dir), `${JSON.stringify(file, null, 2)}\n`);
+    console.log(`${named}: ${calls.length} calls`);
   };
   const refuse: ToolCaller = async () => {
     throw new Error("the recording writes nothing");
@@ -320,7 +399,7 @@ export async function recordCalls(
       {
         id: "01JRECORDING00000000000000" as never,
         number: 1,
-        ...kind.connection(channels),
+        ...kind.connection(channels, scrubbing),
       },
       {
         log: () => {},
@@ -357,7 +436,7 @@ export async function recordCalls(
     {
       id: "01JRECORDING00000000000000" as never,
       number: 1,
-      ...kind.connection(channels),
+      ...kind.connection(channels, scrubbing),
     },
     {
       log: () => {},
@@ -516,7 +595,7 @@ if (import.meta.main) {
   const channels = values.channels ? values.channels.split(",").map((name) => name.trim()) : null;
   if (!kind) {
     console.error(
-      "Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through codex --server <name>] [--channels <a,b>]",
+      "Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through <codex|claude-code> --server <name>] [--channels <a,b>]",
     );
     process.exitCode = 2;
   } else if (values.through === undefined) {
@@ -550,12 +629,49 @@ if (import.meta.main) {
       log: () => {},
     });
     try {
-      await recordCalls(kind, calls.call, kind.realLine(codex.cli.version), true, channels);
+      await recordCalls(
+        kind,
+        calls.call,
+        kind.realLine(`Codex ${codex.cli.version}`),
+        true,
+        channels,
+      );
+    } finally {
+      calls.close();
+    }
+  } else if (values.through === "claude-code" && values.server) {
+    // The same, through the person's Claude Code, which has no tool call of
+    // its own: each call is a turn on its smallest model, allowed only that
+    // call (packages/agent/src/server-calls.ts), so it spends a little of
+    // their plan. A remote server only.
+    mkdirSync(kind.dir, { recursive: true });
+    const claude = await checkClaudeCode();
+    if (!claude.ok) throw new Error(claude.problem.message);
+    const at = kind.server.at;
+    if (!at || !("url" in at)) throw new Error("Claude Code records a remote server only");
+    const found = (await claudeCodeServers(claude.cli)).find((each) => each.name === values.server);
+    if (!found) throw new Error(`Claude Code lists no server named ${values.server}`);
+    const calls = claudeCodeServerCalls(claude.cli, {
+      server: { name: values.server, url: at.url, transport: found.transport ?? "http" },
+      tools: kind.server.reads,
+      others: found.tools.filter((tool) => !kind.server.reads.includes(tool)),
+      log: () => {},
+    });
+    try {
+      await recordCalls(
+        kind,
+        calls.call,
+        kind.realLine(`Claude Code ${claude.cli.version}`),
+        true,
+        channels,
+      );
     } finally {
       calls.close();
     }
   } else {
-    console.error("--through takes codex, with --server naming the server in your Codex");
+    console.error(
+      "--through takes codex or claude-code, with --server naming the server in that agent",
+    );
     process.exitCode = 2;
   }
 }

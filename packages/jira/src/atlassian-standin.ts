@@ -1,17 +1,18 @@
 // A stand-in for Atlassian's Rovo MCP server (OA-276), so Jira's support
 // through a source server can be built and tried with no Atlassian account:
-// it reports the real server's name and tool names, and answers each tool
-// from SYN, `fixtures/jira`, in memory, with what the REST call it wraps
-// returns, as the real one does, and its search as a page of `nodes`. Writes
-// change only this process's copy. Never published, never bundled.
-//
-// Atlassian documents its tools' names, not their arguments or answers:
-// those here are the parser's (`atlassian.ts`), to be checked against the
-// real server's (packages/standin-mcp/README.md, "Re-recording"). Served
-// over stdio by packages/standin-mcp, and in memory to this package's tests:
+// it reports the real server's name and lists the tools it lists flat at
+// the address Atlassian's instructions give, with the operations Oriel runs
+// through `executeRead` and `executeWrite`, and answers each from SYN,
+// `fixtures/jira`, in memory, in the real server's shapes, as recorded in
+// fixtures/jira-mcp/real.json: JSON under `data`, the "full" view's, rich
+// text as Markdown, custom fields by their labels, and a failure as
+// `{"error": true, "message", "statusCode"}`. Writes change only this
+// process's copy. Never published, never bundled. Served over stdio by
+// packages/standin-mcp, and in memory to this package's tests:
 // `@oriel/jira/standin`.
 import { type StandInAnswer, type StandInTool, standInCalls } from "@oriel/core";
-import { textToAdf } from "./adf.ts";
+import { adfToText, textToAdf } from "./adf.ts";
+import { fromMarkdown, toMarkdown } from "./atlassian.ts";
 import { frozenAt } from "./declared-fixture.ts";
 import { loadJiraFixture } from "./fixture.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
@@ -20,19 +21,18 @@ import { memorySite, memorySiteOrigin } from "./memory-site.ts";
 export type { StandInTool } from "@oriel/core";
 type ToolResult = StandInAnswer;
 
-// Its JSON as a tool's text, as the server it stands in for answers.
+// Its value as a tool's text, under `data`, as the real server answers.
 const ok = (value: unknown): ToolResult => ({
-  content: [{ type: "text", text: JSON.stringify(value) }],
+  content: [{ type: "text", text: JSON.stringify({ data: value }) }],
 });
-// One short sentence, as a tool that failed answers.
-const failed = (words: string): ToolResult => ({
-  content: [{ type: "text", text: words }],
+// A failure, as the real server answers one: its words and REST's status.
+const failed = (message: string, statusCode = 400): ToolResult => ({
+  content: [{ type: "text", text: JSON.stringify({ error: true, message, statusCode }) }],
   isError: true,
 });
 
-// What it reports in its handshake: the name Oriel's entry for the real one
-// gives, which Atlassian doesn't document.
-export const atlassianInfo = { name: "atlassian-rovo-mcp-server", version: "standin" };
+// What it reports in its handshake, as the real one does.
+export const atlassianInfo = { name: "atlassian-mcp-server", version: "standin" };
 
 // The one site it reaches, as the resources tool lists it.
 export const standInCloudId = "8f3c2a71-5d0e-4b6a-9c1f-2e7d4b8a6f10";
@@ -42,11 +42,34 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const string = { type: "string" };
 const number = { type: "number" };
+const object = { type: "object" };
 const schema = (properties: Record<string, unknown>, required: string[]) => ({
   type: "object",
   properties: { cloudId: string, ...properties },
   required: ["cloudId", ...required],
 });
+
+// An issue as the real server gives one: its description in Markdown, and
+// each custom field by a label, with its ID and value.
+const asServer = (raw: unknown): unknown => {
+  if (!isObject(raw) || !isObject(raw.fields)) return raw;
+  const fields: Record<string, unknown> = {};
+  const customFields: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(raw.fields)) {
+    if (/^customfield_[0-9]+$/.test(name))
+      customFields[`Field ${name.slice("customfield_".length)}`] =
+        value === null || value === undefined ? { id: name } : { id: name, value };
+    else if (name === "description")
+      fields.description = value === null ? null : toMarkdown(adfToText(value));
+    else fields[name] = value;
+  }
+  return {
+    ...raw,
+    fields: { ...fields, ...(Object.keys(customFields).length ? { customFields } : {}) },
+  };
+};
+const commentAsServer = (raw: unknown): unknown =>
+  isObject(raw) ? { ...raw, body: toMarkdown(adfToText(raw.body)) } : raw;
 
 // SYN in memory, as the stand-in starts from.
 export const standInSite = () => {
@@ -80,18 +103,18 @@ export function atlassianStandIn(site = standInSite()) {
   ): Promise<ToolResult> => {
     const response = await rest(method, path, body);
     if (response.status >= 200 && response.status <= 299)
-      return ok(response.body === null ? { ok: true } : shape(response.body));
+      return ok(response.body === null ? {} : shape(response.body));
     const words =
       isObject(response.body) && Array.isArray(response.body.errorMessages)
         ? response.body.errorMessages.join(" ")
         : "";
-    return failed(`Jira answered ${response.status}. ${words}`.trim());
+    return failed(words || `Jira answered ${response.status}.`, response.status);
   };
   const key = (args: Record<string, unknown>) => String(args.issueIdOrKey ?? "");
   const issue = (args: Record<string, unknown>) => `/rest/api/3/issue/${key(args)}`;
-  // A rich-text argument as REST takes it: a document as given, text made
-  // one.
-  const doc = (value: unknown) => (typeof value === "string" ? textToAdf(value) : value);
+  // A rich-text argument as REST takes it: Markdown made a document.
+  const doc = (value: unknown) =>
+    typeof value === "string" ? textToAdf(fromMarkdown(value)) : value;
 
   const read = (
     name: string,
@@ -112,12 +135,11 @@ export function atlassianStandIn(site = standInSite()) {
     properties: Record<string, unknown>,
     required: string[],
     call: (args: Record<string, unknown>) => Promise<ToolResult>,
-    destructive = false,
   ): StandInTool => ({
     name,
     description,
     inputSchema: schema(properties, required),
-    annotations: { readOnlyHint: false, ...(destructive ? { destructiveHint: true } : {}) },
+    annotations: { readOnlyHint: false },
     call,
   });
   // A tool the real server has that Oriel never calls.
@@ -129,31 +151,81 @@ export function atlassianStandIn(site = standInSite()) {
     call: async () => failed(`${name} isn't in the stand-in.`),
   });
 
+  // The operations `executeRead` runs by name, as the real one's discover
+  // names them: only those Oriel runs.
+  const operations: Record<string, (inputs: Record<string, unknown>) => Promise<ToolResult>> = {
+    listJiraIssueRemoteIssueLinks: (inputs) => answer("GET", `${issue(inputs)}/remotelink`),
+    listJiraBoards: (inputs) =>
+      answer(
+        "GET",
+        `/rest/agile/1.0/board?projectKeyOrId=${String(inputs.projectKeyOrId ?? "")}`,
+        undefined,
+        (body) => ({ startAt: 0, total: listed(body).length, isLast: true, values: listed(body) }),
+      ),
+    getJiraBoardConfig: (inputs) =>
+      answer("GET", `/rest/agile/1.0/board/${Number(inputs.boardId)}/configuration`),
+    listJiraProjectIssueTypesMetadata: (inputs) =>
+      answer(
+        "GET",
+        `/rest/api/3/issue/createmeta/${String(inputs.projectIdOrKey)}/issuetypes`,
+        undefined,
+        (body) => ({ ...(body as object), startAt: 0 }),
+      ),
+    listJiraIssueTransitions: (inputs) => answer("GET", `${issue(inputs)}/transitions`),
+    getJiraCurrentUser: () => answer("GET", "/rest/api/3/myself"),
+    listJiraProjects: () => answer("GET", "/rest/api/3/project/search"),
+  };
+  const writeOperations: Record<string, (inputs: Record<string, unknown>) => Promise<ToolResult>> =
+    {
+      createJiraIssueRemoteIssueLink: (inputs) =>
+        answer("POST", `${issue(inputs)}/remotelink`, {
+          object: { url: inputs.url, title: inputs.title ?? inputs.url },
+        }),
+    };
+  const execute = (
+    name: string,
+    description: string,
+    known: Record<string, (inputs: Record<string, unknown>) => Promise<ToolResult>>,
+    readOnly: boolean,
+  ): StandInTool => ({
+    name,
+    description,
+    inputSchema: schema({ name: string, inputs: object }, ["name"]),
+    annotations: { readOnlyHint: readOnly },
+    call: async (args) => {
+      const run = known[String(args.name)];
+      if (!run) return failed(`Unknown operation ${String(args.name)}.`, 400);
+      return run(isObject(args.inputs) ? args.inputs : {});
+    },
+  });
+
   const tools: StandInTool[] = [
     {
       name: "getAccessibleAtlassianResources",
-      description: "List the Atlassian sites you can reach, with their cloud IDs.",
+      description: "Returns the cloudId(s) available to the current user.",
       inputSchema: { type: "object", properties: {} },
       annotations: { readOnlyHint: true },
       call: async () =>
-        ok([
-          {
-            id: standInCloudId,
-            url: memorySiteOrigin,
-            name: "oriel",
-            scopes: ["read:jira-work", "write:jira-work"],
-          },
-        ]),
+        ok({
+          resources: [
+            {
+              cloudId: standInCloudId,
+              url: memorySiteOrigin,
+              products: [{ id: "jira", access: "read-write" }],
+            },
+          ],
+        }),
     },
     unused("atlassianUserInfo", "Your Atlassian account.", true),
     read(
       "searchJiraIssuesUsingJql",
-      "Search work items using JQL.",
+      "Search for Jira issues using JQL.",
       {
         jql: string,
-        fields: { type: "array", items: string },
+        fields: { type: "array", items: {} },
         maxResults: number,
         nextPageToken: string,
+        view: string,
       },
       ["jql"],
       async (args) => {
@@ -164,101 +236,79 @@ export function atlassianStandIn(site = standInSite()) {
           maxResults: asked,
           ...(typeof args.nextPageToken === "string" ? { nextPageToken: args.nextPageToken } : {}),
         });
-        if (response.status !== 200) return failed(`Jira answered ${response.status}.`);
+        if (response.status !== 200)
+          return failed(`Failed to search issues: ${response.status}`, response.status);
         const page = response.body as { issues: unknown[]; nextPageToken?: string };
-        const at = Number(args.nextPageToken ?? 0) || 0;
-        const total = page.nextPageToken ? Number(page.nextPageToken) + 1 : at + page.issues.length;
         return ok({
-          issues: {
-            totalCount: total,
-            nodes: page.issues,
-            remainingCount: Math.max(0, total - at - page.issues.length),
-            webUrl: `${memorySiteOrigin}/issues?jql=${encodeURIComponent(String(args.jql))}`,
-            pageInfo: {
-              hasNextPage: page.nextPageToken !== undefined,
-              endCursor: page.nextPageToken ?? null,
-            },
-          },
+          issues: page.issues.map(asServer),
+          ...(page.nextPageToken === undefined ? {} : { nextPageToken: page.nextPageToken }),
+          isLast: page.nextPageToken === undefined,
+          appliedContentFormat: "markdown",
         });
       },
     ),
     read(
       "getJiraIssue",
-      "Fetch a work item by ID or key.",
-      { issueIdOrKey: string, fields: { type: "array", items: string }, expand: string },
+      "Get a Jira or JSM issue by key or ID.",
+      { issueIdOrKey: string, fields: { type: "array", items: {} }, expand: string, view: string },
       ["issueIdOrKey"],
       (args) => {
         const query = new URLSearchParams();
         if (Array.isArray(args.fields)) query.set("fields", args.fields.join(","));
         if (typeof args.expand === "string") query.set("expand", args.expand);
-        return answer("GET", `${issue(args)}?${query}`);
+        return answer("GET", `${issue(args)}?${query}`, undefined, (body) => ({
+          ...(asServer(body) as object),
+          appliedContentFormat: "markdown",
+        }));
       },
     ),
     read(
       "listJiraIssueComments",
-      "A work item's comments, paginated.",
-      { issueIdOrKey: string, startAt: number, maxResults: number, orderBy: string },
+      "Get a paginated list of comments for a Jira issue.",
+      {
+        issueIdOrKey: string,
+        startAt: { type: "integer" },
+        maxResults: { type: "integer" },
+        orderBy: string,
+        view: string,
+      },
       ["issueIdOrKey"],
-      (args) => answer("GET", `${issue(args)}/comment`),
-    ),
-    read(
-      "listJiraIssueRemoteIssueLinks",
-      "A work item's remote links.",
-      { issueIdOrKey: string },
-      ["issueIdOrKey"],
-      (args) => answer("GET", `${issue(args)}/remotelink`),
-    ),
-    read("listJiraBoards", "Boards visible to you.", { projectKeyOrId: string }, [], (args) =>
-      answer("GET", `/rest/agile/1.0/board?projectKeyOrId=${String(args.projectKeyOrId ?? "")}`),
-    ),
-    read(
-      "getJiraBoardConfig",
-      "A board's settings: its filter, columns and estimation.",
-      { boardId: number },
-      ["boardId"],
-      (args) => answer("GET", `/rest/agile/1.0/board/${Number(args.boardId)}/configuration`),
-    ),
-    read(
-      "listJiraProjectIssueTypesMetadata",
-      "The work item types in a space.",
-      { projectIdOrKey: string },
-      ["projectIdOrKey"],
       (args) =>
-        answer("GET", `/rest/api/3/issue/createmeta/${String(args.projectIdOrKey)}/issuetypes`),
-    ),
-    read(
-      "listJiraIssueTransitions",
-      "The workflow transitions a work item can take now.",
-      { issueIdOrKey: string },
-      ["issueIdOrKey"],
-      (args) => answer("GET", `${issue(args)}/transitions`),
-    ),
-    read("getJiraCurrentUser", "The current Jira user.", {}, [], () =>
-      answer("GET", "/rest/api/3/myself"),
-    ),
-    read("listJiraProjects", "The Jira spaces visible to you.", {}, [], () =>
-      answer("GET", "/rest/api/3/project/search"),
+        answer("GET", `${issue(args)}/comment`, undefined, (body) => {
+          const all = isObject(body) && Array.isArray(body.comments) ? body.comments : [];
+          const at = Math.max(Number(args.startAt ?? 0) || 0, 0);
+          const most = Math.min(Math.max(Number(args.maxResults ?? 100) || 100, 1), 100);
+          const page = all.slice(at, at + most);
+          return {
+            startAt: at,
+            maxResults: most,
+            total: all.length,
+            isLast: at + page.length >= all.length,
+            appliedContentFormat: "markdown",
+            comments: page.map(commentAsServer),
+          };
+        }),
     ),
     write(
       "createJiraIssue",
-      "Create a work item.",
+      "Create a new Jira issue.",
       {
         projectKey: string,
-        issueTypeName: string,
+        issueType: string,
         summary: string,
-        description: {},
+        description: string,
         contentFormat: string,
         parent: string,
-        additional_fields: { type: "object" },
+        additional_fields: object,
       },
-      ["projectKey", "issueTypeName", "summary"],
+      ["projectKey", "issueType", "summary"],
       async (args) => {
         const project = String(args.projectKey);
         const types = await rest("GET", `/rest/api/3/issue/createmeta/${project}/issuetypes`);
-        const listed =
+        const listedTypes =
           isObject(types.body) && Array.isArray(types.body.issueTypes) ? types.body.issueTypes : [];
-        const type = listed.find((each) => isObject(each) && each.name === args.issueTypeName);
-        if (!isObject(type)) return failed(`No work item type ${String(args.issueTypeName)}.`);
+        const type = listedTypes.find((each) => isObject(each) && each.name === args.issueType);
+        if (!isObject(type)) return failed(`No issue type ${String(args.issueType)}.`);
         return answer("POST", "/rest/api/3/issue", {
           fields: {
             ...(isObject(args.additional_fields) ? args.additional_fields : {}),
@@ -273,8 +323,8 @@ export function atlassianStandIn(site = standInSite()) {
     ),
     write(
       "editJiraIssue",
-      "Edit a work item's editable fields.",
-      { issueIdOrKey: string, fields: { type: "object" }, contentFormat: string },
+      "Update a Jira issue's fields.",
+      { issueIdOrKey: string, fields: object, contentFormat: string },
       ["issueIdOrKey", "fields"],
       async (args) => {
         const { assignee, description, ...fields } = isObject(args.fields) ? args.fields : {};
@@ -295,49 +345,32 @@ export function atlassianStandIn(site = standInSite()) {
     ),
     write(
       "transitionJiraIssue",
-      "Change a work item's status, or move it to a sprint or the backlog.",
-      { issueIdOrKey: string, transition: { type: "object" } },
-      ["issueIdOrKey", "transition"],
-      (args) => answer("POST", `${issue(args)}/transitions`, { transition: args.transition }),
+      "Transition a Jira issue to a new workflow status.",
+      { issueIdOrKey: string, transitionId: string },
+      ["issueIdOrKey"],
+      (args) =>
+        answer("POST", `${issue(args)}/transitions`, {
+          transition: { id: String(args.transitionId) },
+        }),
     ),
     write(
       "addOrEditJiraIssueComment",
-      "Add a comment to a work item, or edit one.",
-      { issueIdOrKey: string, commentBody: {}, contentFormat: string, commentId: string },
-      ["issueIdOrKey", "commentBody"],
+      "Add a comment to a Jira issue, or edit one.",
+      { issueIdOrKey: string, commentBody: string, contentFormat: string, commentId: string },
+      ["issueIdOrKey"],
       (args) =>
         args.commentId !== undefined
           ? Promise.resolve(failed("Editing a comment isn't in the stand-in."))
           : answer("POST", `${issue(args)}/comment`, { body: doc(args.commentBody) }),
     ),
-    write(
-      "createJiraIssueRemoteIssueLink",
-      "Link a work item to a web page.",
-      { issueIdOrKey: string, url: string, title: string },
-      ["issueIdOrKey", "url"],
-      (args) =>
-        answer("POST", `${issue(args)}/remotelink`, {
-          object: { url: args.url, title: args.title ?? args.url },
-        }),
-    ),
-    unused("addOrEditJiraIssueWorklog", "Log time on a work item, or edit a worklog.", false),
-    unused("createJiraIssueLink", "Link two work items.", false),
-    write(
-      "deleteJiraIssue",
-      "Permanently delete a work item.",
-      { issueIdOrKey: string },
-      ["issueIdOrKey"],
-      (args) => answer("DELETE", issue(args)),
-      true,
-    ),
-    write(
-      "deleteJiraComment",
-      "Permanently delete a comment.",
-      { issueIdOrKey: string, commentId: string },
-      ["issueIdOrKey", "commentId"],
-      (args) => answer("DELETE", `${issue(args)}/comment/${String(args.commentId)}`),
-      true,
-    ),
+    unused("discover", "Find Atlassian operations that are not already in your tool list.", true),
+    execute("executeRead", "Run a read-only Atlassian operation by name.", operations, true),
+    execute("executeWrite", "Run a write Atlassian operation by name.", writeOperations, false),
+    {
+      ...unused("executeDestructive", "Run a destructive Atlassian operation by name.", false),
+      annotations: { readOnlyHint: false, destructiveHint: true },
+    },
+    unused("search", "Search Jira and Confluence.", true),
   ];
   // Every call names the one site it reaches.
   return tools.map((tool): StandInTool =>
@@ -348,7 +381,11 @@ export function atlassianStandIn(site = standInSite()) {
           call: async (args) =>
             args.cloudId === standInCloudId
               ? tool.call(args)
-              : failed("That cloud ID isn't a site you can reach."),
+              : failed("That cloud ID isn't a site you can reach.", 404),
         },
   );
 }
+
+// A REST listing's values.
+const listed = (body: unknown): unknown[] =>
+  isObject(body) && Array.isArray(body.values) ? body.values : [];

@@ -1,0 +1,371 @@
+{
+  "recorded": "From Slack's MCP server, through Claude Code 2.1.319, in our test workspace.",
+  "calls": [
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {}
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON003\\nUsername: Person 1\\nDisplay Name: \\nReal Name: Person 2\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: Yes\\nOwner: Yes\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_list_user_channels",
+        "args": {
+          "types": "public_channel",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"## My Channels (showing 3 of 3 total)\\n\\n### #new-channel\\n- **ID:** C0CDCM2D02K\\n- **Type:** Public Channel\\n- **Purpose:** This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\n- **Archived:** No\\n\\n### #social\\n- **ID:** C0CDMRE5PAP\\n- **Type:** Public Channel\\n- **Purpose:** Other channels are for work. This one’s just for fun. Get to know your teammates and show your lighter side. 🎈\\n- **Archived:** No\\n\\n### #all-oriel\\n- **ID:** C0CDS3SP5E2\\n- **Type:** Public Channel\\n- **Purpose:** Share announcements and updates about company news, upcoming events, or teammates who deserve some kudos. ⭐\\n- **Archived:** No\\n\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_search_channels",
+        "args": {
+          "keywords": [
+            "new-channel"
+          ],
+          "natural_language_query": "",
+          "limit": 20
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"results\":\"# Search Results for: \\n\\n## Channels (1 results)\\n### Result 1 of 1\\nName: #new-channel\\nCreator: Person 2 (<@U0PERSON003)\\nCreated: 2026-10-31 10:42:41 PDT\\nPurpose: This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\nPermalink: [link](https://oriel-test.slack.com/archives/C0CDCM2D02K)\\nIs Archived: false\\nChannel Type: public_channel\\n\\n---\\n\\n\",\"pagination_info\":\"End of results - No more pages available.\\\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_list_user_channels",
+        "args": {
+          "types": "public_channel",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"## My Channels (showing 3 of 3 total)\\n\\n### #new-channel\\n- **ID:** C0CDCM2D02K\\n- **Type:** Public Channel\\n- **Purpose:** This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\n- **Archived:** No\\n\\n### #social\\n- **ID:** C0CDMRE5PAP\\n- **Type:** Public Channel\\n- **Purpose:** Other channels are for work. This one’s just for fun. Get to know your teammates and show your lighter side. 🎈\\n- **Archived:** No\\n\\n### #all-oriel\\n- **ID:** C0CDS3SP5E2\\n- **Type:** Public Channel\\n- **Purpose:** Share announcements and updates about company news, upcoming events, or teammates who deserve some kudos. ⭐\\n- **Archived:** No\\n\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_search_channels",
+        "args": {
+          "keywords": [
+            "oriel-team"
+          ],
+          "natural_language_query": "",
+          "limit": 20
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"results\":\"# Search Results for: \\n\\n## Channels (1 results)\\n### Result 1 of 1\\nName: #oriel-team\\nCreator: Person 4 (<@U0PERSON005)\\nCreated: 2026-10-31 13:38:15 PDT\\nPermalink: [link](https://oriel-test.slack.com/archives/C0CDP98AKA9)\\nIs Archived: false\\nChannel Type: public_channel\\n\\n---\\n\\n\",\"pagination_info\":\"End of results - No more pages available.\\\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_list_user_channels",
+        "args": {
+          "types": "public_channel",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"## My Channels (showing 3 of 3 total)\\n\\n### #new-channel\\n- **ID:** C0CDCM2D02K\\n- **Type:** Public Channel\\n- **Purpose:** This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\n- **Archived:** No\\n\\n### #social\\n- **ID:** C0CDMRE5PAP\\n- **Type:** Public Channel\\n- **Purpose:** Other channels are for work. This one’s just for fun. Get to know your teammates and show your lighter side. 🎈\\n- **Archived:** No\\n\\n### #all-oriel\\n- **ID:** C0CDS3SP5E2\\n- **Type:** Public Channel\\n- **Purpose:** Share announcements and updates about company news, upcoming events, or teammates who deserve some kudos. ⭐\\n- **Archived:** No\\n\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_channel",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "limit": 1
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"Channel: #oriel-team (C0CDP98AKA9)\\n\\n=== Message from Person 4 <person@example.com> (U0PERSON005) at 2026-10-31 13:39:04 PDT === \\nMessage TS: 1793479144.818789\\nWeek wrap: OA-33 is in review, OA-23 is sized at 7, the slow window on big boards is found and written up, and empty groups moved up. Anything I missed?\\nThread: 4 replies (latest: 2026-10-31 13:39:10 PDT)\",\"pagination_info\":\"There are more messages available. To view the next page, use cursor: `bmV4dF90czoxNzkzNDc5MTQwNzQ4MjQ5`\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479144.818789",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:39:04 PDT\\nMessage TS: 1793479144.818789\\nWeek wrap: OA-33 is in review, OA-23 is sized at 7, the slow window on big boards is found and written up, and empty groups moved up. Anything I missed?\\n\\n=== THREAD REPLIES (4 total) ===\\n\\n--- Reply 1 of 4 ---\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:39:06 PDT\\nMessage TS: 1793479146.183399\\nThe \\\"Not in the index\\\" customers. They're still waiting on a date.\\n\\n--- Reply 2 of 4 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:39:07 PDT\\nMessage TS: 1793479147.554809\\nRight: next week, after OA-33. Thanks, Person.\\n\\n--- Reply 3 of 4 ---\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:39:08 PDT\\nMessage TS: 1793479148.938889\\nCan we demo the new diff to a customer before it ships?\\n\\n--- Reply 4 of 4 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:39:10 PDT\\nMessage TS: 1793479150.313039\\nYes. Let's set it up with Person's customers.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON005"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON005\\nUsername: Person 12\\nDisplay Name: Person 4\\nReal Name: Person 4\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON011"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON011\\nUsername: Person 15\\nDisplay Name: Person 8\\nReal Name: Person 8\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON009"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON009\\nUsername: Person 13\\nDisplay Name: Person 6\\nReal Name: Person 6\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479140.748249",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:39:00 PDT\\nMessage TS: 1793479140.748249\\nCustomer call recap: they love that nothing is written to Jira until they approve. Next, they want to see the Slack conversations about a Jira item next to it. That's OA-23 and then OA-24.\\n\\n=== THREAD REPLIES (2 total) ===\\n\\n--- Reply 1 of 2 ---\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:39:02 PDT\\nMessage TS: 1793479142.090679\\nSame in tickets: \\\"where did we decide this?\\\" usually means a Slack thread.\\n\\n--- Reply 2 of 2 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:39:03 PDT\\nMessage TS: 1793479143.452839\\nLinking works when people name the key, like OA-23. For threads that don't, we need grouping by problem, OA-25.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON010"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON010\\nUsername: Person 14\\nDisplay Name: Person 7\\nReal Name: Person 7\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479138.009419",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:38:58 PDT\\nMessage TS: 1793479138.009419\\nOA-33 mock v2 is up. An undo of a delete now hides empty fields instead of showing a dash and an arrow.\\n\\n=== THREAD REPLIES (1 total) ===\\n\\n--- Reply 1 of 1 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:59 PDT\\nMessage TS: 1793479139.369269\\nThe engine side is ready: each line already knows whether a field was empty.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479133.912479",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:38:53 PDT\\nMessage TS: 1793479133.912479\\nQuestion for the room: should the sidebar show empty groups at all? I have six \\\"New group\\\"s from clicking New thread and then leaving.\\n\\n=== THREAD REPLIES (2 total) ===\\n\\n--- Reply 1 of 2 ---\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:38:55 PDT\\nMessage TS: 1793479135.272019\\nCustomers mention it too. One thought they had six projects.\\n\\n--- Reply 2 of 2 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:56 PDT\\nMessage TS: 1793479136.651589\\nThere's a story for making the group on the first message. I'll move it up.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479127.089899",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:47 PDT\\nMessage TS: 1793479127.089899\\nProfiled the slow window with 4,000 items. The grouping recomputes its clusters on every open. Caching them per region version would fix most of it.\\n\\n=== THREAD REPLIES (4 total) ===\\n\\n--- Reply 1 of 4 ---\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:38:48 PDT\\nMessage TS: 1793479128.443369\\nBoard sizes so far: 4,100, 3,800 and 6,500 issues, each on a single board.\\n\\n--- Reply 2 of 4 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:49 PDT\\nMessage TS: 1793479129.816339\\nSo it's big boards, not many boards. Person, how big is the caching change?\\n\\n--- Reply 3 of 4 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:51 PDT\\nMessage TS: 1793479131.184309\\nSmall. A day, maybe two with tests.\\n\\n--- Reply 4 of 4 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:52 PDT\\nMessage TS: 1793479132.544459\\nLet's write it up: the window opens slowly on big boards, so cache clusters per region version.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479124.371679",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:44 PDT\\nMessage TS: 1793479124.371679\\nOA-23 sizing: 5 points to read channels and threads, plus 2 for the synthetic fixture and evals. Linking across sources is OA-24, separately.\\n\\n=== THREAD REPLIES (1 total) ===\\n\\n--- Reply 1 of 1 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:45 PDT\\nMessage TS: 1793479125.731249\\nGood. Let's start it after OA-33 lands.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479117.579009",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:38:37 PDT\\nMessage TS: 1793479117.579009\\nDifferent topic: a customer with about 4,000 issues says the window takes forever to open. That's the third one this month.\\n\\n=== THREAD REPLIES (4 total) ===\\n\\n--- Reply 1 of 4 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:38 PDT\\nMessage TS: 1793479118.923679\\nIs it the first sync, or every open?\\n\\n--- Reply 2 of 4 ---\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:38:40 PDT\\nMessage TS: 1793479120.279639\\nEvery open, they say. Around 20 seconds.\\n\\n--- Reply 3 of 4 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:41 PDT\\nMessage TS: 1793479121.633119\\nThen it isn't the sync. I'll profile it with a big fixture tomorrow.\\n\\n--- Reply 4 of 4 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:42 PDT\\nMessage TS: 1793479122.999309\\nThere's no story for this yet. <@U0PERSON011|Person 8>, can you collect which customers it is and how big their boards are?\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479110.781809",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:38:30 PDT\\nMessage TS: 1793479110.781809\\nDiff mock for OA-33: new items are cards, edits mark only the changed words, deletes are struck through. Thoughts?\\n\\n=== THREAD REPLIES (4 total) ===\\n\\n--- Reply 1 of 4 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:32 PDT\\nMessage TS: 1793479112.136049\\nMuch calmer. Can a PM still see which epic a new story lands in?\\n\\n--- Reply 2 of 4 ---\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:38:33 PDT\\nMessage TS: 1793479113.495739\\nYes, it's on the card, under the title.\\n\\n--- Reply 3 of 4 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:34 PDT\\nMessage TS: 1793479114.851579\\nA word-level diff is cheap for titles. For long descriptions I'd mark changed paragraphs, not every word.\\n\\n--- Reply 4 of 4 ---\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:38:36 PDT\\nMessage TS: 1793479116.208359\\nFair. Paragraphs for descriptions, words for titles.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479102.556999",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:38:22 PDT\\nMessage TS: 1793479102.556999\\nHeads up: two customers this morning approved a change set that created a story, then saw \\\"Not in the index\\\" where the story should be. Both thought it had failed.\\n\\n=== THREAD REPLIES (5 total) ===\\n\\n--- Reply 1 of 5 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:23 PDT\\nMessage TS: 1793479103.917479\\nThat's the sync after an apply running before Jira's search has caught up. A restart fixes it, which isn't a fix.\\n\\n--- Reply 2 of 5 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:25 PDT\\nMessage TS: 1793479105.283849\\nIs that already a story?\\n\\n--- Reply 3 of 5 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:26 PDT\\nMessage TS: 1793479106.647589\\nYes: \\\"Show created items right after an apply\\\", in OA-1.\\n\\n--- Reply 4 of 5 ---\\nFrom: Person 8 <person@example.com> (U0PERSON011)\\nTime: 2026-10-31 13:38:28 PDT\\nMessage TS: 1793479108.030019\\nCan I give them a date?\\n\\n--- Reply 5 of 5 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:29 PDT\\nMessage TS: 1793479109.419649\\nNot yet. Tell them the story is real and nothing was lost. I'll know more on Wednesday.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_thread",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "message_ts": "1793479097.061399",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:17 PDT\\nMessage TS: 1793479097.061399\\nMorning all. Plan for the week: make the change set diff readable (OA-33) and start reading Slack (OA-23). <@U0PERSON010|Person 7>, can you size OA-23 by Wednesday?\\n\\n=== THREAD REPLIES (3 total) ===\\n\\n--- Reply 1 of 3 ---\\nFrom: Person 7 <person@example.com> (U0PERSON010)\\nTime: 2026-10-31 13:38:18 PDT\\nMessage TS: 1793479098.437899\\nYes. My first guess is 5 points. Threads are the tricky part, since a reply can arrive days after its parent.\\n\\n--- Reply 2 of 3 ---\\nFrom: Person 6 <person@example.com> (U0PERSON009)\\nTime: 2026-10-31 13:38:19 PDT\\nMessage TS: 1793479099.812039\\nI'll mock the diff today. The idea: a new item is one card marked New, with no dashes or arrows.\\n\\n--- Reply 3 of 3 ---\\nFrom: Person 4 <person@example.com> (U0PERSON005)\\nTime: 2026-10-31 13:38:21 PDT\\nMessage TS: 1793479101.177609\\nGreat, Person. Share it here when it's ready.\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+          }
+        ]
+      }
+    }
+  ]
+}
