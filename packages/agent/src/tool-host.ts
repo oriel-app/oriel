@@ -111,6 +111,8 @@ export function toolHostArgs(grants: readonly Grant[], dev: readonly DevServer[]
   return [
     ...(standIns.length ? ["--mcp-config", JSON.stringify(devConfig(standIns))] : []),
     "-p",
+    // Which stream-json output needs.
+    "--verbose",
     "--input-format",
     "stream-json",
     "--output-format",
@@ -198,6 +200,7 @@ const unsentSaid = [
 // may have landed, and isn't the tool's own failure.
 const lostSaid = [
   /^mcp_call cancelled by client/,
+  /^MCP session expired for /,
   /^URL elicitation required/,
   /^MCP server .* (sent a response over|sent a message that was too large)/,
 ];

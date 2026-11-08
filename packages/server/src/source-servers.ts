@@ -57,9 +57,8 @@ export type SourceServersDeps = {
   // A look ended: every page hears, as what it found may have changed.
   heard(): void;
   // How often sync runs, in minutes, or null for when Oriel opens and when
-  // the person presses sync; and whether the agent spends the person's
-  // plan on it, as Claude Code does.
-  sync(): { every: number | null; plan: boolean };
+  // the person presses sync.
+  sync(): { every: number | null };
   now(): Instant;
   log(message: string, fields: Record<string, unknown>): void;
 };

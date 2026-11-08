@@ -189,7 +189,7 @@ export const serversView = (over: Partial<SourceServersView> = {}): SourceServer
   kinds: [],
   missing: [],
   card: null,
-  sync: { every: null, plan: true },
+  sync: { every: null },
   ...over,
 });
 

@@ -8,9 +8,8 @@
 // for Slack a reply to Amara's question, for Linear ENG-4 planned into
 // cycle 14, for Sheets BL-108 moved on, after mapping the Backlog tab of
 // packages/sheets-mcp's shipped fixture, which it runs in fixture mode, as
-// a local server Claude Code starts by its command. On Claude Code that spends a
-// little of the person's plan on its smallest model; on Codex, none. The
-// index is in memory.
+// a local server Claude Code starts by its command. No model runs on
+// either agent. The index is in memory.
 // Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear|sheets]
 import { checkCodex } from "../packages/agent/src/index.ts";
 import { rowKey } from "../packages/sheets/src/attrs.ts";

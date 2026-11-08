@@ -247,7 +247,7 @@ export type SourceServersView = {
     appeared: FoundServerView[];
     gone: { kind: string; server: string; on: boolean }[];
   } | null;
-  sync: { every: number | null; plan: boolean };
+  sync: { every: number | null };
 };
 
 // What a connection's review step shows (decision 0051): whether it waits

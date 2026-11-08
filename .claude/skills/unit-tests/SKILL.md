@@ -19,7 +19,7 @@ A change that crosses pages and touches stored data gets both a flow and an upgr
 
 A unit test stays only if it guards one of these. Name the class in review.
 
-1. **Trust boundary:** the sandbox and bindings; the permission and replay guards in packages/agent/src/server-calls.ts; secrets never logged, printed or sent; source content kept out of prompts and `.d.ts` files; the review link; only a person approves.
+1. **Trust boundary:** the sandbox and bindings; the tool host's list, start checks and replay guards in packages/agent/src/tool-host.ts; secrets never logged, printed or sent; source content kept out of prompts and `.d.ts` files; the review link; only a person approves.
 2. **Data a person can lose:** change-set apply, revert and Undo; migrations run on data; sync identity (IDs that survive a re-sync or a move); connection secrets moving and being deleted; workstreams, threads or unsent messages lost on failure, retry, races or Undo.
 3. **Untrusted input rejected** where it prevents unauthorized access, unsafe writes, data corruption or resource exhaustion. Parsing or formatting alone does not qualify.
 4. **A defect seen before:** pure logic reproducing an observed defect. Cite the fixing PR or commit and the wrong result. One test per failure.

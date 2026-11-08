@@ -468,13 +468,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     discover: () => (options.discover ?? discoverWith(options.models))(store.get()),
     changed: () => turned(),
     heard: () => told(),
-    sync: () => {
-      const running = options.models?.choose(store.get()).model;
-      return {
-        every: store.get().sourceSync,
-        plan: running?.provider.kind === "claude-code",
-      };
-    },
+    sync: () => ({ every: store.get().sourceSync }),
     now,
     log,
   });

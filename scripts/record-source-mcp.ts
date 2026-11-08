@@ -25,7 +25,8 @@
 // <name>` it records the real server as the person's own Codex lists it
 // under <name>, through its app server's `mcpServer/tool/call`, with no
 // model and only that server's read tools; with `--through claude-code`,
-// as their Claude Code lists it, a turn of its smallest model a call. Point
+// as their Claude Code lists it, through its tool host's `mcp_call`, with
+// no model either. Point
 // it at our test site or workspace, never a person's data: Jira reads SYN.
 // A real server's recordings are `real-sync.json` and `real-read.json`,
 // beside the stand-in's. People are replaced with numbered placeholders
@@ -625,7 +626,6 @@ if (import.meta.main) {
           ? { name: values.server, url: at.url, transport: "http" }
           : { name: values.server },
       tools: kind.server.reads,
-      others: [],
       log: () => {},
     });
     try {
@@ -640,21 +640,22 @@ if (import.meta.main) {
       calls.close();
     }
   } else if (values.through === "claude-code" && values.server) {
-    // The same, through the person's Claude Code, which has no tool call of
-    // its own: each call is a turn on its smallest model, allowed only that
-    // call (packages/agent/src/server-calls.ts), so it spends a little of
-    // their plan. A remote server only.
+    // The same, through the person's Claude Code's tool host
+    // (packages/agent/src/tool-host.ts): each call is its `mcp_call`, with
+    // no model, to the server where Claude Code lists it.
     mkdirSync(kind.dir, { recursive: true });
     const claude = await checkClaudeCode();
     if (!claude.ok) throw new Error(claude.problem.message);
-    const at = kind.server.at;
-    if (!at || !("url" in at)) throw new Error("Claude Code records a remote server only");
     const found = (await claudeCodeServers(claude.cli)).find((each) => each.name === values.server);
     if (!found) throw new Error(`Claude Code lists no server named ${values.server}`);
     const calls = claudeCodeServerCalls(claude.cli, {
-      server: { name: values.server, url: at.url, transport: found.transport ?? "http" },
+      server:
+        found.url && found.transport
+          ? { name: values.server, url: found.url, transport: found.transport }
+          : found.local
+            ? { name: values.server, local: found.local }
+            : { name: values.server },
       tools: kind.server.reads,
-      others: found.tools.filter((tool) => !kind.server.reads.includes(tool)),
       log: () => {},
     });
     try {
