@@ -258,6 +258,8 @@ export const diffLine = (
   source: "Jira",
   applied: false,
   error: null,
+  dismissed: false,
+  check: null,
   brought: [],
   fields: [],
   ...over,

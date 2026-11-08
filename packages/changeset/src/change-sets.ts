@@ -155,6 +155,9 @@ const maxErrorChars = 500;
 // The preview of a line whose item was gone when the diff was shown. No
 // catalogue field starts with "$".
 const goneMark = "$gone";
+// The preview of a line its source said, when the diff was shown, it wouldn't
+// take as it stands, with why.
+const refusedMark = "$refused";
 // For a mutation whose stored arguments no longer pass its source's catalogue,
 // as one captured before the catalogue tightened.
 const staleArgs = "This change's stored arguments are no longer valid";
@@ -340,7 +343,7 @@ function outsideRegion(
 // its item could be read since. Null when it has none.
 function approvedFrom(preview: FieldValues | null): FieldValues | null {
   if (preview === null) return null;
-  const values = Object.fromEntries(Object.entries(preview).filter(([f]) => f !== goneMark));
+  const values = Object.fromEntries(Object.entries(preview).filter(([f]) => !f.startsWith("$")));
   return Object.keys(values).length > 0 ? values : null;
 }
 
@@ -618,10 +621,53 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const found = await writer.read(item, [...fields]);
       return found === "gone" || found.stableId !== stableId ? "gone" : found.values;
     };
+    // An item that can't be read is "unread": the diff still shows, and a
+    // change to it can't be approved until it's read again.
     const live = new Map(
       await Promise.all(
-        [...wanted].map(async ([item, entry]) => [item, await readLive(item, entry)] as const),
+        [...wanted].map(
+          async ([item, entry]) =>
+            [item, await readLive(item, entry).catch(() => "unread" as const)] as const,
+        ),
       ),
+    );
+    // Before a decision, whether the source would take each change it can
+    // check ahead, as a status move against the item's workflow: why not, or
+    // that it's only checked when sent, since Oriel couldn't check it now.
+    const undecided = set.decision === null;
+    const checked = new Map<Ulid, { refused: string } | { later: string }>();
+    await Promise.all(
+      set.mutations.map(async (m) => {
+        const item = itemOf(m);
+        if (!undecided || m.status !== "pending" || item === null || isNewRef(item)) return;
+        const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
+        const { writer } = sourceOf(prefix);
+        if (!writer?.check || !writer.checks?.includes(m.op) || !spec.args(m.args).ok) return;
+        const name = catalogueFor(specs, kind).name;
+        const later = {
+          later: `Oriel couldn't check this with ${name} just now; ${name} checks it when it's applied.`,
+        };
+        const stableId = wanted.get(item)?.stableId ?? null;
+        const now = live.get(item);
+        if (stableId === null || now === undefined || now === "gone") return;
+        // After an earlier change of the same kind to the item, its state
+        // then isn't its state now.
+        const earlier = set.mutations.some(
+          (e) => e.seq < m.seq && e.status === "pending" && e.op === m.op && itemOf(e) === item,
+        );
+        if (now === "unread" || earlier) {
+          checked.set(
+            m.id,
+            earlier
+              ? { later: `${name} checks this when it's applied, after the change above.` }
+              : later,
+          );
+          return;
+        }
+        const why = await writer.check(m.op, item, stableId, m.args).catch(() => undefined);
+        if (why === undefined) checked.set(m.id, later);
+        else if (why !== null) checked.set(m.id, { refused: why });
+      }),
     );
     // Field values per item (or new item's ref) as earlier lines leave them.
     const state = new Map<string, Record<string, unknown>>();
@@ -637,7 +683,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const parsed = parseItemId(id);
       if (!parsed) return null;
       const field = catalogueFor(specs, parsed.kind).titleField;
-      const values = live.get(id) ?? (await reader(parsed.prefix).current(id, [field]));
+      const known = live.get(id);
+      const values =
+        known === undefined || known === "unread"
+          ? await reader(parsed.prefix)
+              .current(id, [field])
+              .catch(() => "gone" as const)
+          : known;
       return values === "gone" ? null : text(values[field]);
     };
     const lines: Diff["lines"] = [];
@@ -686,7 +738,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             : null;
         const name =
           later ??
-          (now && now !== "gone" ? text(now[catalogue.titleField]) : null) ??
+          (now && now !== "gone" && now !== "unread" ? text(now[catalogue.titleField]) : null) ??
           text(after[catalogue.titleField]) ??
           text(before[catalogue.titleField]);
         const subject: Subject = m.target === null ? null : { kind: "item", id: item, title: name };
@@ -718,7 +770,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       let subject: Subject = null;
       let values: Record<string, unknown> = {};
       if (item !== null) {
-        const now = live.get(item);
+        const read = live.get(item);
+        // Once decided, a line Oriel can't read shows what it was approved
+        // from; before, it can't be approved until it's read.
+        const kept = undecided ? null : approvedFrom(m.preview);
+        const now = read === "unread" && kept ? kept : read;
+        if (now === "unread") {
+          gone.add(m.id);
+          lines.push({
+            mutationId: m.id,
+            sentence: `Oriel couldn't read ${key(item)} from ${catalogue.name} just now, so this change can't be shown or approved yet.`,
+            target: m.target,
+            kind: lineKind,
+            makes: spec.makes,
+            source: catalogue.name,
+            fields: [],
+          });
+          continue;
+        }
         if (now === undefined || now === "gone") {
           gone.add(m.id);
           lines.push({
@@ -746,6 +815,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const before = Object.fromEntries(
         Object.keys(after).map((f) => [f, (shown ? shown[f] : values[f]) ?? null]),
       );
+      const check = checked.get(m.id);
       lines.push({
         mutationId: m.id,
         sentence: await spec.describe(m.args, context(subject, before)),
@@ -753,6 +823,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         kind: lineKind,
         makes: spec.makes,
         source: catalogue.name,
+        ...(check ? { check } : {}),
         fields: await Promise.all(
           Object.keys(after).map(async (f) => {
             const value = after[f];
@@ -795,7 +866,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         const shown = Object.fromEntries(line.fields.map((f) => [f.name, f.before]));
         const kept = m.status === "failed" ? approvedFrom(m.preview) : null;
         const values = kept ?? (gone ? {} : shown);
-        rows.setPreview(line.mutationId, gone ? { ...values, [goneMark]: true } : values);
+        const refused = line.check && "refused" in line.check ? line.check.refused : null;
+        rows.setPreview(line.mutationId, {
+          ...values,
+          ...(gone ? { [goneMark]: true } : {}),
+          ...(refused === null ? {} : { [refusedMark]: refused }),
+        });
       }
     });
 
@@ -1189,6 +1265,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           }) ??
       (first ? null : { code: "refused" as const, message: "every change in it has applied" });
     if (refusal || !first) return refusal;
+    // Sending it again as approved would only be refused again.
+    if (refusedForGood(first))
+      return {
+        code: "refused",
+        message: `${catalogueFor(specs, mustSpec(specs, first, set.mutations).kind).name} won't take mutation ${first.seq} as it stands; leave it out and approve the rest, or dismiss the rest`,
+      };
     const plan = sendPlan(first, set);
     return "refusal" in plan ? plan.refusal : null;
   };
@@ -1221,6 +1303,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     if (gone)
       return refused(
         `${key(gone.target ?? "the new item")} couldn't be read when this was last reviewed; it can be approved once it can be read again`,
+      );
+    const unwanted = open.find(
+      (m) => typeof m.preview?.[refusedMark] === "string" || refusedForGood(m),
+    );
+    if (unwanted)
+      return refused(
+        `mutation ${unwanted.seq} (${unwanted.op}): ${catalogueFor(specs, mustSpec(specs, unwanted, set.mutations).kind).name} won't take it as it stands; leave it out, or reject the change set`,
       );
     return sentAndWaiting(first, set);
   };
@@ -1582,7 +1671,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         // sent. The row is unsent again, unless an earlier send of it went
         // unchecked and may still be there.
         if (error instanceof SourceRefused) {
-          const why = error.sent ? said : `${notSent}${said}`;
+          const why = `${error.final ? finalMark : ""}${error.sent ? said : `${notSent}${said}`}`;
           rows.markRefused(
             mutationId,
             sent,
@@ -2112,6 +2201,12 @@ const unheard =
 // How apply stores a write that was never sent: a read or a check before it
 // failed.
 const notSent = "Nothing was sent: ";
+// How apply marks a refusal its source would give again, whenever it was
+// sent as approved (`SourceRefused.final`): trying again can't help.
+const finalMark = "Refused as it stands: ";
+// A row its source refused for good, which nothing has sent since.
+const refusedForGood = (m: { status: string; error: string | null }): boolean =>
+  m.status === "pending" && m.error?.startsWith(finalMark) === true;
 // A request and how the source answered it, as the writer reports one.
 const answer =
   /^(GET|PUT|POST|DELETE) \S+: (?:(\d{3})|unexpected response \([^)]*\))\.?(?: ([\s\S]*))?$/;
@@ -2135,6 +2230,7 @@ function plainUnsent(why: string): string {
 // sent, and its nonce) is Oriel's bookkeeping and goes. Oriel's own reasons
 // are already plain.
 export function plainError(error: string): string {
+  if (error.startsWith(finalMark)) return plainError(error.slice(finalMark.length));
   const bare = error.replace(sendMark, "");
   if (bare.startsWith(notSent)) return plainUnsent(bare.slice(notSent.length));
   const lost = unheard.exec(bare);

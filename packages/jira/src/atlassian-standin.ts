@@ -361,7 +361,12 @@ export function atlassianStandIn(site = standInSite()) {
       (args) =>
         args.commentId !== undefined
           ? Promise.resolve(failed("Editing a comment isn't in the stand-in."))
-          : answer("POST", `${issue(args)}/comment`, { body: doc(args.commentBody) }),
+          : // With no ID Oriel can read: the real server's answer gave none,
+            // three times out of three (2026-11-08). Its shape wasn't
+            // recorded, so Oriel finds the comment among the issue's.
+            answer("POST", `${issue(args)}/comment`, { body: doc(args.commentBody) }, () => ({
+              appliedContentFormat: "markdown",
+            })),
     ),
     unused("discover", "Find Atlassian operations that are not already in your tool list.", true),
     execute("executeRead", "Run a read-only Atlassian operation by name.", operations, true),

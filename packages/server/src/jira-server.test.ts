@@ -162,6 +162,52 @@ test("an approved change set replays through the write tools, from another proce
   assert.ok(it.jiraRows().some((row) => row.title === "Checkout through the server"));
 });
 
+test("a comment through the server lands, its ID found among the issue's, as the server's answer gives none", async (t) => {
+  const note = "Closed as overtaken by the tool host.";
+  const it = await world(t, {
+    script: async () => ({
+      value: null,
+      writes: [
+        ["jira.setStatus", ["jira:SYN-10", "In Progress"]],
+        ["jira.addComment", ["jira:SYN-10", note]],
+      ],
+    }),
+  });
+  await it.turnOn();
+  const { id: workstreamId } = json<{ id: string }>(
+    await it.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10001" }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await it.post(`/api/workstreams/${workstreamId}/threads`, { text: "Start it, and say so" }),
+  );
+  await it.app.settled();
+  const view = json<ThreadView>(await it.get(`/api/threads/${threadId}`));
+  const entry = view.entries.find((each) => each.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  const diff = json<DiffView>(await it.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  // The move was checked against SYN-10's workflow through the server.
+  assert.ok(diff.lines.every((line) => line.check === null));
+  assert.ok(
+    it.made.some((each) => each.call.args.name === "listJiraIssueTransitions"),
+    "the transitions were read",
+  );
+  it.advance(1000);
+  const approved = await it.post(`/api/change-sets/${entry.changeSetId}/approve`, {
+    hash: diff.hash,
+  });
+  assert.equal(json<{ changeSet: { status: string } }>(approved).changeSet.status, "applied");
+  const comments = it.site.issue("SYN-10")?.comments ?? [];
+  assert.equal(comments.length, 1);
+  const [line] = json<DiffView>(
+    await it.post(`/api/change-sets/${entry.changeSetId}/diff`),
+  ).lines.slice(1);
+  assert.ok(line?.applied);
+  assert.deepEqual(
+    line.fields.map((field) => field.name),
+    [`comment:${comments[0]?.id}`],
+  );
+});
+
 test("an answer Oriel can't read stops the sync with the server named, and keeps the index", async (t) => {
   let garble = false;
   const it = await world(t, {

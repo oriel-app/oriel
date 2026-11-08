@@ -849,6 +849,9 @@ export function views(deps: ViewDeps) {
         };
       };
       const rows = new Map(set.mutations.map((m) => [m.id, m]));
+      // Rejected once part of it was sent: dismissed.
+      const dismissal =
+        set.decision?.kind === "rejected" && set.mutations.some((m) => m.status !== "pending");
       const brought = broughtIn(set.threadId);
       const named = (line: Diff["lines"][number]) =>
         [
@@ -864,7 +867,11 @@ export function views(deps: ViewDeps) {
         lines: diff.lines.map((line) => {
           const row = rows.get(line.mutationId);
           const applied = row?.status === "applied";
-          const error = !applied && !applying && row?.error ? plainError(row.error) : null;
+          // Once dismissed, what was left is only that: why it stopped and
+          // what to check were said before.
+          const dismissed = !applied && dismissal;
+          const error =
+            !applied && !applying && !dismissed && row?.error ? plainError(row.error) : null;
           return {
             mutationId: line.mutationId,
             sentence: line.sentence,
@@ -877,6 +884,8 @@ export function views(deps: ViewDeps) {
             source: line.source,
             applied,
             error,
+            dismissed,
+            check: line.check ?? null,
             brought: named(line),
             fields: line.fields.map((field) => ({
               name: field.name,

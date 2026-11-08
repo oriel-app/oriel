@@ -74,8 +74,6 @@ export type ThreadModel = {
   problems: Readonly<Record<string, string>>;
   // Review links minted here, by change set.
   links: Readonly<Record<string, string>>;
-  // What dismissing a change set said to check, by change set.
-  notes: Readonly<Record<string, readonly string[]>>;
   notice: string | null;
   // The thread was deleted while its page was open.
   deleted: boolean;
@@ -171,7 +169,6 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       undoing: [],
       problems: {},
       links: {},
-      notes: {},
       notice: null,
       deleted: false,
       statuses: 0,
@@ -289,15 +286,6 @@ const offered = (model: ThreadModel, changeSetId: string, step: SetStep): boolea
 // The lines the engine says can be left out now.
 export const removable = (model: ThreadModel, changeSetId: string): readonly string[] =>
   stepsOf(model, changeSetId).flatMap((s) => (s.kind === "remove" ? s.mutationIds : []));
-
-const warningsOf = (body: unknown): string[] | null =>
-  typeof body === "object" &&
-  body !== null &&
-  "warnings" in body &&
-  Array.isArray(body.warnings) &&
-  body.warnings.every((w) => typeof w === "string")
-    ? body.warnings
-    : null;
 
 const without = <T>(record: Readonly<Record<string, T>>, key: string) =>
   Object.fromEntries(Object.entries(record).filter(([k]) => k !== key));
@@ -780,9 +768,8 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         problem === null
           ? without(model.problems, tag.changeSetId)
           : { ...model.problems, [tag.changeSetId]: problem };
-      // Dismissing says what to check.
-      const warnings = msg.ok ? warningsOf(msg.body) : null;
-      const notes = warnings ? { ...model.notes, [tag.changeSetId]: warnings } : model.notes;
+      // What a dismissal leaves to check showed beside Dismiss, once: once
+      // dismissed, it goes.
       // A rejection stood and the thread asks what was wrong: the message
       // box waits for the answer. It asks nothing of an Undo, which Oriel
       // made, and couldn't if the server says why.
@@ -793,7 +780,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       // reloads it here too. A refusal changed nothing, but what it was
       // refused on may have moved: reload.
       return [
-        { ...model, busy, deciding, problems, notes },
+        { ...model, busy, deciding, problems },
         msg.ok
           ? rejected
             ? [{ type: "focusComposer" }]

@@ -828,6 +828,12 @@ export type DiffView = {
     applied: boolean;
     // Why apply stopped at this change, in plain words; null otherwise.
     error: string | null;
+    // Left unapplied when the rest of a change set that started applying
+    // was dismissed.
+    dismissed: boolean;
+    // Before a decision: why its source won't take it as it stands, or that
+    // its source checks it only when it's applied.
+    check: { refused: string } | { later: string } | null;
     // The items it names, as its target or a value, that the agent or an
     // outside tool put in the workstream, so an approver can tell (decision
     // 0024).

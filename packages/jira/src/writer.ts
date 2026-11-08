@@ -106,6 +106,7 @@ const comment = object({
   author: optional(object({ accountId: string })),
 });
 const createdComment = object({ id: numericId });
+const commentList = object({ comments: array(object({ id: numericId, body: optional(unknown) })) });
 const myself = object({ accountId: string });
 const transitions = object({
   transitions: array(
@@ -414,9 +415,35 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     }
   };
 
+  // The transition that leads `key` from `was` to `status`, or, when its
+  // workflow offers none, why not, in a person's words.
+  const wayTo = async (
+    key: string,
+    was: unknown,
+    status: string,
+  ): Promise<{ id: string } | { refused: string }> => {
+    const offered = await call(
+      transport,
+      { method: "GET", path: `${api}/issue/${key}/transitions` },
+      transitions,
+    );
+    const open = offered.transitions.filter((t) => t.isAvailable !== false);
+    const way = open.find((t) => t.to.name === status);
+    if (way) return { id: way.id };
+    const allowed = [...new Set(open.map((t) => t.to.name))].filter((name) => name !== was);
+    return {
+      refused: `${key} can't move from “${String(was)}” to “${status}”: ${
+        allowed.length
+          ? `its workflow allows only ${allowed.map((name) => `“${name}”`).join(", ")}`
+          : "its workflow allows no move from there"
+      }`,
+    };
+  };
+
   // Jira moves an item only along its workflow: the transition that leads to
-  // `status` is sent, and with none, nothing is. An item already in `status`
-  // needs no move, so a retry of one that landed sends nothing again.
+  // `status` is sent, and with none, nothing is, and sending it again won't
+  // change that. An item already in `status` needs no move, so a retry of one
+  // that landed sends nothing again.
   const move = async (
     send: Send,
     target: Target,
@@ -425,23 +452,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const before = await existing(target, ["status"]);
     const was = before.values.status;
     if (was !== status) {
-      const offered = await call(
-        transport,
-        { method: "GET", path: `${api}/issue/${before.key}/transitions` },
-        transitions,
-      );
-      const open = offered.transitions.filter((t) => t.isAvailable !== false);
-      const way = open.find((t) => t.to.name === status);
-      if (!way) {
-        const allowed = [...new Set(open.map((t) => t.to.name))].filter((name) => name !== was);
-        throw new Error(
-          `${before.key} can't move from “${String(was)}” to “${status}”: ${
-            allowed.length
-              ? `its workflow allows only ${allowed.map((name) => `“${name}”`).join(", ")}`
-              : "its workflow allows no move from there"
-          }`,
-        );
-      }
+      const way = await wayTo(before.key, was, status);
+      if ("refused" in way) throw new SourceRefused(way.refused, { sent: false, final: true });
       await send({
         method: "POST",
         path: `${api}/issue/${before.key}/transitions`,
@@ -471,21 +483,51 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
   };
 
+  // The IDs and plain text of every comment on an issue.
+  const commentsOn = async (key: string) =>
+    (
+      await call(transport, { method: "GET", path: `${api}/issue/${key}/comment` }, commentList)
+    ).comments.map((each) => ({ id: each.id, text: adfToText(each.body) }));
+
+  // A comment's ID is read from Jira's answer where it gives one, as REST
+  // does. Atlassian's server answers without one Oriel can read, so the
+  // comment is found among the issue's: the one with the approved text that
+  // wasn't there before it was sent. With none or more than one, Oriel can't
+  // tell which landed, and says it may have.
   const addComment = async (
     send: Send,
     target: Target,
     { body }: JiraArgs<"addComment">,
   ): Promise<WriteResult<"jira">> => {
     const before = await existing(target, []);
+    const had = new Set((await commentsOn(before.key)).map((each) => each.id));
     const response = await send({
       method: "POST",
       path: `${api}/issue/${before.key}/comment`,
       body: { body: textToAdf(body) },
     });
     const made = createdComment(response.body);
-    if (!made.ok) throw new Error("addComment: Jira's answer had no comment ID");
-    const name = commentField(made.value.id);
+    const id = made.ok ? made.value.id : await newComment(before.key, had, body);
+    const name = commentField(id);
     return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
+  };
+
+  // Text as two renderings of it compare: Markdown's round trip may move
+  // spaces and line breaks.
+  const loosely = (text: string) => text.replace(/\s+/g, " ").trim();
+  const newComment = async (key: string, had: ReadonlySet<string>, body: string) => {
+    const found = await commentsOn(key).catch(() => null);
+    const fresh = found?.filter((each) => !had.has(each.id)) ?? [];
+    const same = fresh.filter((each) => loosely(each.text) === loosely(body));
+    // Only one new comment, whatever its rendering, is the one sent.
+    const [only] = same.length ? same : fresh;
+    if (only === undefined || (same.length ? same : fresh).length !== 1)
+      throw new Error(
+        found === null
+          ? "addComment: Jira's answer had no comment ID, and Oriel couldn't read the issue's comments to find it"
+          : "addComment: Jira's answer had no comment ID, and Oriel couldn't tell which of the issue's comments it is",
+      );
+    return only.id;
   };
 
   const deleteItem = async (send: Send, target: Target): Promise<WriteResult<"jira">> => {
@@ -514,6 +556,16 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
           throw new Error(`${op}: no stable ID to check ${target} against`);
         return await write(send, op, { id: target, stableId: expectedStableId }, args);
       }),
+    // A status move, against the item's workflow as Jira gives it now.
+    checks: ["setStatus"],
+    check: async (op, target, expectedStableId, args) => {
+      if (op !== "setStatus") return null;
+      const { status } = valid(jiraOps.setStatus.args, args, op);
+      const before = await existing({ id: target, stableId: expectedStableId }, ["status"]);
+      if (before.values.status === status) return null;
+      const way = await wayTo(before.key, before.values.status, status);
+      return "refused" in way ? way.refused : null;
+    },
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);
       return found === "gone" ? "gone" : found.values;

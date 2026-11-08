@@ -3776,6 +3776,16 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
+.line-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.diff-line[data-dismissed] .line-head {
+  color: var(--text-muted);
+}
+
 .line-error .quiet-action {
   padding-left: 0;
   color: var(--text-muted);

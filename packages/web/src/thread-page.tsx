@@ -111,6 +111,17 @@ const statusNames: Record<ChangeSetView["status"], string> = {
   applying: "Applying…",
 };
 
+// A set that started applying and went no further says which way it ended:
+// stopped partway, waiting on the person, or the rest dismissed.
+const statusName = (set: ChangeSetView): string =>
+  set.status !== "partial"
+    ? statusNames[set.status]
+    : set.decision?.kind === "rejected"
+      ? "Partly applied, the rest dismissed"
+      : set.errors.length > 0
+        ? "Stopped partway"
+        : statusNames.partial;
+
 export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: Dispatch }) {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   // Where the page is, for as long as this thread is on screen.
@@ -798,7 +809,6 @@ function ChangeSet(props: {
   const diff = model.diffs[set.id];
   const busy = model.busy.includes(set.id);
   const problem = model.problems[set.id];
-  const notes = model.notes[set.id] ?? [];
   const link = model.links[set.id];
   const reverts = set.reverts.flatMap((id) => view.changeSets.find((s) => s.id === id) ?? []);
   // Only what the change set engine offers, in its order.
@@ -856,7 +866,7 @@ function ChangeSet(props: {
       {counted && <span class="change-set-writes">{counted}</span>}
       {/* Announced as it moves, as when Approve and apply turns it to applying. */}
       <span id={`${anchor}-status`} class="change-set-status" role="status">
-        {set.stalled ? waitingNames.stalled : statusNames[set.status]}
+        {set.stalled ? waitingNames.stalled : statusName(set)}
         {set.decision &&
           set.decision.via === "review-link" &&
           ` by ${set.decision.by} via review link`}
@@ -1008,13 +1018,6 @@ function ChangeSet(props: {
         <p class="change-set-problem" role="alert">
           {problem}
         </p>
-      )}
-      {notes.length > 0 && (
-        <ul class="may-have-landed" role="note">
-          {notes.map((note) => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
       )}
       {reverts.map((revert) => (
         <ChangeSet key={revert.id} set={revert} model={model} view={view} send={send} />
@@ -1383,8 +1386,11 @@ export function Diff(props: {
 }) {
   const offered = (id: string) =>
     props.onRemove !== undefined && (props.removable ?? []).includes(id);
+  // Why it stopped or won't go: apply's reason, or, before a decision, its
+  // source's (`check`).
   const shown = props.diff.lines.map((line) => ({
     ...line,
+    stop: line.error ?? (line.check && "refused" in line.check ? line.check.refused : null),
     fields: line.fields.map(withUnits),
   }));
   return (
@@ -1395,7 +1401,8 @@ export function Diff(props: {
           class="diff-line"
           data-kind={line.kind}
           data-applied={line.applied ? "" : undefined}
-          data-stopped={line.error ? "" : undefined}
+          data-stopped={line.stop ? "" : undefined}
+          data-dismissed={line.dismissed ? "" : undefined}
         >
           <Brought brought={line.brought} />
           {line.kind === "create" && line.fields.length > 0 ? (
@@ -1440,9 +1447,19 @@ export function Diff(props: {
               )}
             </>
           )}
-          {line.error && (
+          {line.check && "later" in line.check && (
+            <p class="line-note" role="note">
+              {line.check.later}
+            </p>
+          )}
+          {line.dismissed && (
+            <p class="line-note" role="note">
+              Not applied: the rest was dismissed.
+            </p>
+          )}
+          {line.stop && (
             <p class="line-error" role="note">
-              {line.error}
+              {line.stop}
               {offered(line.mutationId) && (
                 <button
                   type="button"
@@ -1455,7 +1472,7 @@ export function Diff(props: {
               )}
             </p>
           )}
-          {!line.error && offered(line.mutationId) && (
+          {!line.stop && offered(line.mutationId) && (
             <Tooltip text="Leave this change out">
               <button
                 type="button"
