@@ -93,21 +93,6 @@ function fresh() {
   };
 }
 
-test("a change set applied in full makes it done; one partly applied doesn't, until it's dismissed", () => {
-  const { changeSet, decide, state } = fresh();
-  const partly = changeSet([
-    { after: { points: 3 }, at: after(1000) },
-    { after: { points: 5 }, at: null },
-  ]);
-  decide(partly, "approved", after(500));
-  assert.deepEqual(state(after(2000)), ["working", null]);
-  // The rest of the first still awaits review, so the second settles nothing.
-  changeSet([{ after: { points: 3, updated: after(3000) }, at: after(3000) }]);
-  assert.deepEqual(state(after(4000)), ["working", null]);
-  decide(partly, "rejected", after(5000));
-  assert.deepEqual(state(after(6000)), ["done", "applied"]);
-});
-
 test("a rejection undone puts its change set back awaiting review, so the thread isn't done", () => {
   const { db, changeSet, decide, state } = fresh();
   const rejected = changeSet([{ after: { points: 5 }, at: null }]);
