@@ -44,6 +44,9 @@ type Run = {
   policy?: "disable_non_proxied_udp" | "default_public_interface_only";
   preload?: boolean;
   proxy?: number;
+  // A proxy on a port nothing listens on, with only these origins let past:
+  // no proxy process at all.
+  deadProxy?: string;
   settle: number;
 };
 
@@ -66,6 +69,11 @@ async function partition(name: string, run: Run, asked: string[]): Promise<Sessi
       // Loopback is bypassed by default; the harness's "remote" listeners
       // are on loopback, so the proxy must see loopback too.
       proxyBypassRules: "<-loopback>",
+    });
+  if (run.deadProxy)
+    await own.setProxy({
+      proxyRules: "http://127.0.0.1:1",
+      proxyBypassRules: `<-loopback>,${run.deadProxy}`,
     });
   return own;
 }

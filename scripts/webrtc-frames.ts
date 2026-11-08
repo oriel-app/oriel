@@ -367,7 +367,13 @@ const kinds = ["sandboxed", "srcdoc", "data", "blob", "partition"] as const;
 type Kind = (typeof kinds)[number];
 const variants = ["direct", "child-blank", "child-srcdoc"] as const;
 type Variant = (typeof variants)[number];
-type Levers = { csp?: boolean; policy?: boolean; preload?: boolean; proxy?: boolean };
+type Levers = {
+  csp?: boolean;
+  policy?: boolean;
+  preload?: boolean;
+  proxy?: boolean;
+  deadproxy?: boolean;
+};
 type Run = {
   id: number;
   kind: Kind;
@@ -662,6 +668,9 @@ async function electron(out: string, switches: string[]): Promise<Engine> {
             ...(run.levers.policy ? { policy: "disable_non_proxied_udp" } : {}),
             ...(run.levers.preload ? { preload: true } : {}),
             ...(run.levers.proxy ? { proxy: proxyPort } : {}),
+            ...(run.levers.deadproxy
+              ? { deadProxy: `127.0.0.1:${hostPort},localhost:${appPort}` }
+              : {}),
             settle,
           })}\n`,
         );
@@ -778,7 +787,7 @@ type Plan = {
   variants: readonly Variant[];
 };
 const label = (l: Levers) =>
-  [l.csp && "csp", l.policy && "policy", l.preload && "preload", l.proxy && "proxy"]
+  [l.csp && "csp", l.policy && "policy", l.preload && "preload", l.proxy && "proxy", l.deadproxy && "deadproxy"]
     .filter(Boolean)
     .join("+") || "none";
 
@@ -795,6 +804,8 @@ const plans: Plan[] = values.desktop
           { preload: true },
           { proxy: true },
           { policy: true, proxy: true },
+          { deadproxy: true },
+          { policy: true, deadproxy: true },
           { policy: true, preload: true },
           { policy: true, preload: true, proxy: true },
         ],
