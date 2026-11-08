@@ -13,7 +13,7 @@ Oriel moves little. A dense tool read all day shouldn't make people wait for it,
 "Motion: quick for a state, move for a place, and how a move settles" (`:root` in `window.css`).
 
 - `--duration-quick` (120ms): **a state**. Something changes where it is: a chevron turns, a switch flips, a hidden action fades in, a list dims while it reloads.
-- `--duration-move` (180ms): **a place**. Something travels or arrives: the item panel slides in, the window chat arrives, the sidebar folds, the drawer opens, a swiped row slides.
+- `--duration-move` (180ms): **a place**. Something travels or arrives: the window chat arrives, the sidebar folds, the drawer opens, a swiped row slides.
 - `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`): how a move settles, fast then gentle. Use it for anything that arrives.
 - `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a small flourish** (decision 0056). Only [the bead](/components/bead) uses them, for its count's pop and its caught-up mark. Its shape moves on springs of its own, in script (see below).
 
@@ -25,8 +25,8 @@ tokens motion
 
 ## What moves
 
-- **The item panel** (`.item-panel` in `window.css`) slides in from `--slide-panel` (0.375rem) to the right and fades in, at move speed with `--ease-out`. Its contents fade in again for each item it shows (`panel-fade`).
-- **The window chat** (`.window-chat` in `window.css`) arrives the same way. On a narrow screen it's a bottom sheet that rises `--space-6` (`@starting-style` in `window.css`).
+- **The item panel** (`.item-panel` in `window.css`) slides in from `--slide-panel` (0.375rem) to the right and fades in, at quick speed (`--duration-quick`) with `--ease-out`: a click on an item should feel answered at once (2026-11-08). Its contents fade in again for each item it shows (`panel-fade`), at the same speed.
+- **The window chat** (`.window-chat` in `window.css`) arrives the same way, but at move speed. On a narrow screen it's a bottom sheet that rises `--space-6` (`@starting-style` in `window.css`).
 - **The sidebar's fold** (`.shell` in `window.css`): its grid column narrows to icons, at move speed.
 - **A change set folding itself** (`.change-set[data-closing]` in `window.css`): once its apply ends on screen and a 1.2s beat has passed, everything under its head closes to nothing and fades, at move speed with `--ease-out`, then it folds. Under reduced motion it folds at once.
 - **The drawer** on a narrow screen slides in from the left, and its scrim fades. Closing, it stays visible until the move ends, then leaves the tab order (`.sidebar` in `window.css`).

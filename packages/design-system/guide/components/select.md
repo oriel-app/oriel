@@ -3,19 +3,20 @@ title: Select
 status: drifting
 group: Inputs
 order: 35
-classes: select, filter, filters, add-to
-summary: The browser's own select, in three places with three boxes: Browse's filters, the picked-items bar's Add to…, and Settings' model pickers.
+classes: select, filter, filters, add-to, new-thread-workstream
+summary: The browser's own select, in four places with three boxes: Browse's filters, a new thread's workstream, the picked-items bar's Add to…, and Settings' model pickers.
 ---
 
 # Select
 
 ## What it is
 
-A native `<select>`: pick one value from a list the person doesn't need to see all at once. Oriel has three, each with its own box:
+A native `<select>`: pick one value from a list the person doesn't need to see all at once. Oriel has four, in three boxes:
 
 1. **Browse's filters** (`.filter select`): Source, Status, Assignee and Workstream, after the item search. Muted, small text in a `--line` border; once a filter is set, the text and border strengthen (`[data-set]`).
 2. **Add to…** (`.add-to`) in Browse's picked-items bar: adds the picked items to a workstream the moment one is chosen, then goes back to "Add to…". It's a menu written as a select.
 3. **Settings' model pickers** (`.settings .select`): Default model and Title model, under a field name and an about line.
+4. **A new thread's workstream** (`.new-thread-workstream`): Browse's filter, where a thread's page names its workstream, above the title. "New workstream" is the default, which the first message makes with the thread; or one of the open workstreams, but the window chat's, which the thread then starts in. Wider than a filter (24rem at most), for a workstream's name.
 
 The browser draws the list itself, so the open list looks like the system's, in every theme. The proposed `Select`, in modern CSS (including a styled list where the browser allows it), is in the [select lab](/lab/select).
 
@@ -136,6 +137,20 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 </div>
 ```
 
+```html specimen id=new-thread title="4. A new thread's workstream, an existing one picked" width=640
+<header class="thread-head">
+  <label class="filter crumb new-thread-workstream">
+    <span class="visually-hidden">Workstream</span>
+    <select data-set>
+      <option value="">New workstream</option>
+      <option value="ws-1" selected>Checkout v2: phone wallets and saved cards</option>
+      <option value="ws-2">Gift cards</option>
+    </select>
+  </label>
+  <div class="thread-title-row"><h1 class="thread-title">New thread</h1></div>
+</header>
+```
+
 ## States
 
 ```html specimen id=state-set title="Unset and set: only Browse's filters show a value was picked" state=rest
@@ -229,6 +244,7 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 
 - Browse's filters, selects included: `Filters` in `packages/web/src/window-page.tsx`. CSS `.filters`, `.filter select` and `.filter select[data-set]` in `window.css`.
 - Add to…: `Selection` in `packages/web/src/window-page.tsx`. CSS `.add-to` in `window.css`.
+- A new thread's workstream: `NewThreadPage` in `packages/web/src/thread-page.tsx`. CSS `.new-thread-workstream select` in `window.css`, over `.filter select`.
 - Model pickers: `ModelPicker` in `packages/web/src/settings-page.tsx`, used by `Providers` for Default model and Title model. CSS `.settings :is(.input, .select)`, `.settings :is(.input, .select):focus-visible` and `.settings-field .select` in `window.css`.
 
 ## Drift

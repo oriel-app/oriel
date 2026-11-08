@@ -1065,6 +1065,25 @@ const commentOn = async (then: "propose" | "approve") => {
   }
   return { serving, threadId, review: new URL(review.url).pathname };
 };
+// A reply in a Slack conversation, waiting: the review link names the
+// conversation as the thread does, never by its raw key.
+const replyOn = async () => {
+  const { serving } = await writing({ mode: "fixture" });
+  const { id: workstreamId } = await post<{ id: string }>(
+    "/api/workstreams",
+    { kind: "picked", name: "SMS updates", items: [smsCopy] },
+    serving,
+  );
+  const threadId = await ask(
+    "reply: Signed off. SYN-61 takes this copy as it is.",
+    serving,
+    workstreamId,
+  );
+  const setId = await changeSetOf(serving, threadId);
+  const review = await post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, serving);
+  return { serving, threadId, review: new URL(review.url).pathname };
+};
+const replying = await replyOn();
 const commenting = await commentOn("propose");
 const commented = await commentOn("approve");
 const handing = await handOff("propose");
@@ -2248,6 +2267,21 @@ const scenes: Scene[] = [
     },
   },
   {
+    name: "thread-reply",
+    path: `/threads/${replying.threadId}`,
+    on: replying.serving,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    name: "review-reply",
+    path: replying.review,
+    on: replying.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
     name: "thread-comment-applied",
     path: `/threads/${commented.threadId}`,
     on: commented.serving,
@@ -3184,6 +3218,56 @@ const scenes: Scene[] = [
       page
         .getByRole("textbox", { name: "Message" })
         .fill("Plan kiosk wallets: an epic, and stories for tap to pay and receipts"),
+  },
+  // The workstream picked for a new thread, before it is sent.
+  {
+    name: "new-thread-workstream",
+    path: "/threads/new",
+    act: async (page) => {
+      await page
+        .getByRole("combobox", { name: "Workstream" })
+        .selectOption({ label: "Gift cards" });
+      await page.getByRole("textbox", { name: "Message" }).fill("Which of these need estimates?");
+    },
+  },
+  // Sent: the thread starts in the workstream picked for it, not a new one.
+  {
+    name: "new-thread-picked",
+    path: "/threads/new",
+    make: async () => {
+      const on = (await writing()).serving;
+      await post("/api/workstreams", checkout, on);
+      return on;
+    },
+    act: async (page) => {
+      const picked = await page.evaluate(async () => {
+        const { workstreams } = (await (await fetch("/api/workstreams")).json()) as {
+          workstreams: { id: string; name: string }[];
+        };
+        return workstreams.length === 1 ? workstreams[0] : null;
+      });
+      if (!picked) throw new Error("the scene's server should have one workstream");
+      await page.getByRole("combobox", { name: "Workstream" }).selectOption({ label: picked.name });
+      await page
+        .getByRole("textbox", { name: "Message" })
+        .fill("Which stories here still need estimates?");
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.waitForURL(/\/threads\/(?!new)[^/?#]+$/);
+      const id = new URL(page.url()).pathname.split("/").pop() ?? "";
+      const [thread, all] = await page.evaluate(
+        async (id) =>
+          Promise.all([
+            (await fetch(`/api/threads/${id}`)).json(),
+            (await fetch("/api/workstreams")).json(),
+          ]) as Promise<[{ workstream: { id: string } }, { workstreams: unknown[] }]>,
+        id,
+      );
+      if (thread.workstream.id !== picked.id || all.workstreams.length !== 1)
+        throw new Error(
+          `The new thread went to ${thread.workstream.id}, with ${all.workstreams.length} workstreams, not ${picked.id}`,
+        );
+      await page.locator(".thread-head .crumb").filter({ hasText: picked.name }).waitFor();
+    },
   },
   {
     name: "thread-revert",

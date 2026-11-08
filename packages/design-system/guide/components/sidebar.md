@@ -347,9 +347,9 @@ Variants are modifier classes on the same link:
 
 ### Search and New thread
 
-The field is `.sidebar-search-field`, a label around the icon, a hidden name and the input. The label draws the focus: a `--focus` border and ring on `:focus-within`, while the input itself has no outline (`.sidebar-search-field:focus-within` in `window.css`). Typing finds threads by name, by what was said in them and by what their change sets wrote. While the field has a query, its results take the place of Needs you, Workstreams and Done (`Sidebar` in `packages/web/src/sidebar.tsx`).
+The field is `.sidebar-search-field`, a label around the icon, a hidden name and the input. The label draws the focus: a `--focus` border and ring on `:focus-within`, while the input itself has no outline (`.sidebar-search-field:focus-within` in `window.css`). Typing finds threads by name, by what was said in them and by what their change sets wrote. While the field has a query, its results take the place of Needs you, Workstreams and Done, below Window, so nothing above them moves as typing starts (`SearchResults` in `packages/web/src/sidebar.tsx`).
 
-```html specimen id=search-results title="Search with results" height=330 pad=0
+```html specimen id=search-results title="Search with results" height=380 pad=0
 <div class="shell">
   <aside class="sidebar" aria-label="Sidebar">
     <div class="sidebar-search">
@@ -378,54 +378,63 @@ The field is `.sidebar-search-field`, a label around the icon, a hidden name and
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
         </a>
       </div>
-      <div class="search-results">
-        <p class="rail-empty" role="status">3 results</p>
-        <div id="results-2" role="listbox" aria-label="Threads found" class="search-list">
-          <a
-            id="result-2-0"
-            role="option"
-            tabindex="-1"
-            aria-selected="true"
-            class="search-result"
-            href="/threads/estimates"
+    </div>
+    <nav class="sidebar-pages" aria-label="Pages">
+      <a href="/" class="nav-link">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="2.5" width="12" height="11" rx="2" />
+          <path d="M2 6.5h12M5 9.5h6M5 11.5h4" />
+        </svg>
+        <span class="sidebar-label">Window</span>
+      </a>
+    </nav>
+    <div class="search-results">
+      <p class="rail-empty" role="status">3 results</p>
+      <div id="results-2" role="listbox" aria-label="Threads found" class="search-list">
+        <a
+          id="result-2-0"
+          role="option"
+          tabindex="-1"
+          aria-selected="true"
+          class="search-result"
+          href="/threads/estimates"
+        >
+          <span class="search-result-head"
+            ><span class="nav-name">Which stories here still need estimates?</span></span
           >
-            <span class="search-result-head"
-              ><span class="nav-name">Which stories here still need estimates?</span></span
-            >
-            <span class="nav-waiting-workstream">Checkout v2: phone wallets and saved cards</span>
-          </a>
-          <a
-            id="result-2-1"
-            role="option"
-            tabindex="-1"
-            aria-selected="false"
-            class="search-result"
-            href="/threads/estimates"
+          <span class="nav-waiting-workstream">Checkout v2: phone wallets and saved cards</span>
+        </a>
+        <a
+          id="result-2-1"
+          role="option"
+          tabindex="-1"
+          aria-selected="false"
+          class="search-result"
+          href="/threads/estimates"
+        >
+          <span class="search-result-head">
+            <span class="nav-name">Which stories here still need estimates?</span>
+            <span class="search-result-set" data-state="pending">Change set waiting</span>
+          </span>
+          <span class="search-result-excerpt"
+            >Estimate “Pay with a phone wallet on the website” (SYN-23) at 3 points.</span
           >
-            <span class="search-result-head">
-              <span class="nav-name">Which stories here still need estimates?</span>
-              <span class="search-result-set" data-state="pending">Change set waiting</span>
-            </span>
-            <span class="search-result-excerpt"
-              >Estimate “Pay with a phone wallet on the website” (SYN-23) at 3 points.</span
-            >
-            <span class="nav-waiting-workstream">Checkout v2: phone wallets and saved cards</span>
-          </a>
-          <a
-            id="result-2-2"
-            role="option"
-            tabindex="-1"
-            aria-selected="false"
-            class="search-result"
-            href="/threads/plan-gift-cards"
+          <span class="nav-waiting-workstream">Checkout v2: phone wallets and saved cards</span>
+        </a>
+        <a
+          id="result-2-2"
+          role="option"
+          tabindex="-1"
+          aria-selected="false"
+          class="search-result"
+          href="/threads/plan-gift-cards"
+        >
+          <span class="search-result-head"><span class="nav-name">Plan gift cards</span></span>
+          <span class="search-result-excerpt"
+            >Which of these have no estimate yet, and which epic should hold them?</span
           >
-            <span class="search-result-head"><span class="nav-name">Plan gift cards</span></span>
-            <span class="search-result-excerpt"
-              >Which of these have no estimate yet, and which epic should hold them?</span
-            >
-            <span class="nav-waiting-workstream">Gift cards</span>
-          </a>
-        </div>
+          <span class="nav-waiting-workstream">Gift cards</span>
+        </a>
       </div>
     </div>
   </aside>

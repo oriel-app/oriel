@@ -101,8 +101,11 @@ export function Sidebar(props: {
           <span class="sidebar-label">Window</span>
         </Link>
       </nav>
-      {/* While a search shows its results, they take the lists' place. */}
-      {!searching(model.search) && (
+      {/* While a search shows its results, they take the lists' place, below
+          Window, so nothing above them moves as typing starts. */}
+      {searching(model.search) ? (
+        <SearchResults search={model.search} dispatch={dispatch} />
+      ) : (
         <>
           <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
           <Workstreams where={where} moving={model.moving} dispatch={dispatch} />
@@ -144,7 +147,6 @@ function ThreadSearch(props: {
   const { search, dispatch } = props;
   const send = (msg: SearchMsg) => dispatch({ type: "search", msg });
   const shown = searching(search) ? (search.results ?? []) : [];
-  const optionId = (index: number) => `thread-search-${index}`;
   const keyed = (event: KeyboardEvent) => {
     const msg: SearchMsg | null =
       event.key === "ArrowDown"
@@ -209,54 +211,61 @@ function ThreadSearch(props: {
           </Link>
         </Tooltip>
       </div>
-      {searching(search) && (
-        <div class="search-results">
-          <p class="rail-empty" role="status">
-            {search.failed
-              ? "Oriel couldn't search just now. Keep typing to try again."
-              : search.results === null
-                ? ""
-                : search.results.length === 0
-                  ? "No thread matches that."
-                  : plural(search.results.length, "result")}
-          </p>
-          <div id={listId} role="listbox" aria-label="Threads found" class="search-list">
-            {shown.map((result, index) => (
-              <Link
-                key={`${result.thread.id}-${result.changeSet?.id ?? ""}`}
-                route={resultRoute(result)}
-                dispatch={dispatch}
-                msg={{ type: "search", msg: { type: "picked", index } }}
-                id={optionId(index)}
-                role="option"
-                tabIndex={-1}
-                aria-selected={index === search.active}
-                class="search-result"
-              >
-                <span class="search-result-head">
-                  <span class="nav-name">{result.thread.title ?? "New thread"}</span>
-                  {result.changeSet && (
-                    <span class="search-result-set" data-state={result.changeSet.state}>
-                      {`Change set ${changeSetStateNames[result.changeSet.state]}`}
-                    </span>
-                  )}
+    </div>
+  );
+}
+
+// What a search found, where the lists were.
+function SearchResults({ search, dispatch }: { search: SearchModel; dispatch: Dispatch }) {
+  const shown = search.results ?? [];
+  return (
+    <div class="search-results">
+      <p class="rail-empty" role="status">
+        {search.failed
+          ? "Oriel couldn't search just now. Keep typing to try again."
+          : search.results === null
+            ? ""
+            : search.results.length === 0
+              ? "No thread matches that."
+              : plural(search.results.length, "result")}
+      </p>
+      <div id={listId} role="listbox" aria-label="Threads found" class="search-list">
+        {shown.map((result, index) => (
+          <Link
+            key={`${result.thread.id}-${result.changeSet?.id ?? ""}`}
+            route={resultRoute(result)}
+            dispatch={dispatch}
+            msg={{ type: "search", msg: { type: "picked", index } }}
+            id={optionId(index)}
+            role="option"
+            tabIndex={-1}
+            aria-selected={index === search.active}
+            class="search-result"
+          >
+            <span class="search-result-head">
+              <span class="nav-name">{result.thread.title ?? "New thread"}</span>
+              {result.changeSet && (
+                <span class="search-result-set" data-state={result.changeSet.state}>
+                  {`Change set ${changeSetStateNames[result.changeSet.state]}`}
                 </span>
-                {/* A name that matched is the title above already. */}
-                {result.matched !== "name" && (
-                  <span class="search-result-excerpt">{result.excerpt}</span>
-                )}
-                <span class="nav-waiting-workstream">{result.thread.workstream.name}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+              )}
+            </span>
+            {/* A name that matched is the title above already. */}
+            {result.matched !== "name" && (
+              <span class="search-result-excerpt">{result.excerpt}</span>
+            )}
+            <span class="nav-waiting-workstream">{result.thread.workstream.name}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
 
 const fieldId = "thread-search";
 const listId = "thread-search-results";
+
+const optionId = (index: number) => `thread-search-${index}`;
 
 // Whether the field holds a query, so its results show instead of the lists.
 const searching = (search: SearchModel) => search.query.trim() !== "";
