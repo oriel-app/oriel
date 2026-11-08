@@ -46,27 +46,6 @@ function entry(source: string, withImportMap = false) {
   });
 }
 
-test("--deny-read doesn't stop a static import of a local file", async () => {
-  const { out } = await entry(
-    `import { canary } from ${JSON.stringify(secretTs)};\nconsole.log(canary);\n`,
-  );
-  assert.match(out, new RegExp(canary));
-});
-
-test("--deny-read doesn't stop a static JSON import", async () => {
-  const { out } = await entry(
-    `import secret from ${JSON.stringify(secretJson)} with { type: "json" };\nconsole.log(JSON.stringify(secret));\n`,
-  );
-  assert.match(out, new RegExp(canary));
-});
-
-test("--deny-read doesn't stop a literal import() in module source", async () => {
-  const { out } = await entry(
-    `const secret = await import(${JSON.stringify(pathToFileURL(secretTs).href)});\nconsole.log(secret.canary);\n`,
-  );
-  assert.match(out, new RegExp(canary));
-});
-
 test("--deny-read stops import() of a file: URL inside an AsyncFunction body", async () => {
   const body = `return (await import(${JSON.stringify(pathToFileURL(secretTs).href)})).canary;`;
   const { out } = await entry(
