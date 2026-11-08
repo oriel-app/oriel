@@ -1548,6 +1548,32 @@ async function overviewShown(page: Page): Promise<void> {
 // onto the sidebar; at 390, where the sidebar is a drawer, its row's menu
 // does the same.
 let moveFrom = "";
+// A workstream still under the name a new one gets, to rename.
+const renaming = async () => {
+  const { serving } = await writing();
+  await post(
+    "/api/workstreams",
+    { kind: "picked", name: "New workstream", items: ["jira:SYN-21", "jira:SYN-23"] },
+    serving,
+  );
+  return serving;
+};
+const renameInSidebar = async (page: Page, save: boolean) => {
+  await openSidebar(page);
+  const row = page.locator(".nav-workstream-menu", { hasText: "New workstream" });
+  await row.locator(".nav-link").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const field = page.getByRole("textbox", { name: "Workstream name" });
+  await field.fill("Checkout wallets");
+  if (!save) return;
+  await field.press("Enter");
+  await page.locator(".nav-workstream-menu .nav-name", { hasText: "Checkout wallets" }).waitFor();
+  await page.locator(".nav-workstream-menu .nav-link:focus").waitFor();
+  if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
+  await page.locator(".overview-workstream-name", { hasText: "Checkout wallets" }).waitFor();
+  if ((await page.locator(".nav-name", { hasText: "New workstream" }).count()) > 0)
+    throw new Error("The sidebar still shows the old name.");
+};
 const moving = async () => {
   const { serving } = await writing();
   const from = await post<{ id: string }>(
@@ -2906,6 +2932,10 @@ const scenes: Scene[] = [
       await pointerAway(page);
     },
   },
+  // A workstream renamed in place from its menu in the sidebar: the field,
+  // then, after Enter, the new name in the sidebar and on the overview.
+  { name: "rename-field", path: "/", make: renaming, act: (page) => renameInSidebar(page, false) },
+  { name: "rename-saved", path: "/", make: renaming, act: (page) => renameInSidebar(page, true) },
   // An item dragged from a workstream's page onto another workstream in
   // the sidebar moves there, with Undo.
   { name: "drag-move", path: "/", make: moving, act: moveToGiftCards },

@@ -774,7 +774,8 @@ button.sidebar-search-open {
 .rename-field {
   width: 100%;
   min-height: 1.875rem;
-  padding: 0 var(--space-2);
+  /* Its text where the row's name was. */
+  padding: 0 var(--space-2) 0 calc(var(--space-1) - var(--border-thin));
   border: var(--border-thin) solid var(--focus);
   border-radius: var(--radius);
   outline: none;

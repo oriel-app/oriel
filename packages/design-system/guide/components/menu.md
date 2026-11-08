@@ -20,7 +20,7 @@ Its touch twin is the **swipe** (`Swipeable` in `packages/web/src/swipe.tsx`): s
 Two menus are about ending something (decision 0028), and two about moving an item ([Drag to move](/patterns/drag-to-move)):
 
 - **ThreadMenu**, "Actions for {title}": Mark done (left out once the thread is done), and Delete… (`ThreadMenu` in `packages/web/src/close-thread.tsx`).
-- **WorkstreamMenu**, "Actions for {name}": Mark done or Reopen, and Delete… (`WorkstreamMenu` in `packages/web/src/end-workstream.tsx`).
+- **WorkstreamMenu**, "Actions for {name}": Rename, Mark done or Reopen, and Delete… (`WorkstreamMenu` in `packages/web/src/end-workstream.tsx`). Rename swaps the row for its name in a [text field](/components/text-field) (`.rename-field`), in place.
 - **An item's row on a workstream's page**, "Move {key}": Move to “{name}” for each other open workstream, then Move to a new workstream (`movingOf` in `packages/web/src/workstream-page.tsx`). Its wrapper is `.member-menu`, `display: contents`, so the row's cells stay the row's grid.
 - **The drop menu**, opened where an item dragged onto the sidebar's Workstreams heading was let go: Create new workstream, and Cancel (`Workstreams` in `packages/web/src/sidebar.tsx`).
 
