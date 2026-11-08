@@ -17,7 +17,7 @@ export const usage = `usage: pnpm -s github <operation>
   pr-view <number>
   pr-create <branch> <title> <body>
   pr-edit <number> <body> [title]
-  pr-enqueue <number>
+  pr-enqueue <number> [--despite <check>]...
   pr-wait <number>
   runs [branch]
   next-decision
@@ -26,6 +26,10 @@ export const usage = `usage: pnpm -s github <operation>
 A title is one line, type(scope): summary (SPEC §10), and a body never is,
 so a title and body given the wrong way round are refused. While CI runs,
 pr-enqueue arms auto-merge instead, and the PR enters the queue when it passes.
+pr-enqueue refuses while a check on the head has failed, been cancelled or
+timed out, or while one the merge queue won't wait for is still running: one
+that main's ruleset doesn't require, such as ui. --despite <check> lets that
+one check through, and the output names each.
 pr-enqueue retries once, 3 seconds on, when GitHub hasn't yet seen a push
 that just landed. pr-view's first fields say whether the PR is in the merge
 queue and whether auto-merge is armed.
@@ -47,7 +51,8 @@ that writes it again.`;
 
 export type Operation =
   | { op: "pr-list" | "next-decision" | "landed" }
-  | { op: "pr-view" | "pr-enqueue" | "pr-wait"; number: number }
+  | { op: "pr-view" | "pr-wait"; number: number }
+  | { op: "pr-enqueue"; number: number; despite: string[] }
   | { op: "pr-create"; branch: string; title: string; body: string }
   | { op: "pr-edit"; number: number; body: string; title?: string }
   | { op: "runs"; branch: string | null }
@@ -65,14 +70,24 @@ const prNumber = (value: string | undefined) =>
 const isTitle = (text: string) =>
   /^[a-z]+(\([a-z0-9,-]+\))?!?: (?=\S)[^\p{Cc}\p{Zl}\p{Zp}]+$/u.test(text);
 const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") && !isTitle(text);
+const checkName = /^[\w.()/][\w .()/-]*$/;
 
 export function parse(args: readonly string[]): Operation | { error: string } {
   const [op, ...rest] = args;
   if ((op === "pr-list" || op === "next-decision" || op === "landed") && rest.length === 0)
     return { op };
-  if ((op === "pr-view" || op === "pr-enqueue" || op === "pr-wait") && rest.length === 1) {
+  if ((op === "pr-view" || op === "pr-wait") && rest.length === 1) {
     const number = prNumber(rest[0]);
     if (number) return { op, number };
+  }
+  if (op === "pr-enqueue" && rest.length % 2 === 1) {
+    const [first, ...flags] = rest;
+    const number = prNumber(first);
+    const despite = flags.filter((_, i) => i % 2 === 1);
+    const pairs = flags.every((flag, i) =>
+      i % 2 === 0 ? flag === "--despite" : checkName.test(flag),
+    );
+    if (number && pairs) return { op, number, despite };
   }
   if (op === "pr-create" && rest.length === 3) {
     const [branch = "", title = "", body = ""] = rest;
@@ -200,6 +215,55 @@ const autoMergeOff = (errors: GraphqlResult["errors"]) =>
     /auto.?merge (is )?(not allowed|not enabled|disabled)/i.test(message),
   );
 
+// What pr-enqueue reads of the checks before it enqueues: the check runs on
+// a commit, and the checks main's ruleset requires, which the merge queue
+// waits for. Its ruleset is read rather than the workflows' triggers: it
+// names the checks themselves, and the agent token can read it.
+export type Checks = {
+  runs(sha: string): Promise<CheckRun[]>;
+  required(): Promise<string[]>;
+  despite: readonly string[];
+};
+
+const red = (run: CheckRun) =>
+  run.status === "completed" &&
+  ["failure", "cancelled", "timed_out", "startup_failure", "action_required"].includes(
+    run.conclusion ?? "",
+  );
+
+// Why the PR must not enter the queue at this head, if it mustn't: a check
+// that ended red, or one still running that the queue won't wait for, so it
+// would merge whatever that check goes on to say (#228, with ui failing).
+// A check named in --despite is let through, and every one is said.
+export async function checksGate(
+  checks: Checks,
+  sha: string,
+): Promise<{ refusal: string | null; notes: string[] }> {
+  const runs = await checks.runs(sha);
+  const required = await checks.required();
+  const stopping = runs.filter(
+    (run) => red(run) || (run.status !== "completed" && !required.includes(run.name)),
+  );
+  const said = (run: CheckRun) =>
+    run.status === "completed"
+      ? `${run.name} (${run.conclusion})`
+      : `${run.name} (${run.status}, and main's ruleset requires only ${required.join(", ") || "nothing"}, so the merge queue won't wait for it)`;
+  const notes = checks.despite.map((name) => {
+    const run = runs.find((r) => r.name === name);
+    return `despite ${name}: ${run ? (stopping.includes(run) ? said(run) : `${run.status} ${run.conclusion ?? ""}`.trim()) : "no such check on the head"}`;
+  });
+  const left = stopping.filter((run) => !checks.despite.includes(run.name));
+  if (left.length === 0) return { refusal: null, notes };
+  return {
+    refusal: [
+      `not enqueued: PR head ${sha.slice(0, 7)} has ${left.map(said).join("; ")}.`,
+      "Fix it and push, or rerun it, then run pr-enqueue again once it passes. To enqueue anyway, pass --despite <check> for each, and say why in the PR.",
+      ...notes,
+    ].join("\n"),
+    notes,
+  };
+}
+
 // Enqueue the PR, pinned to the commit just checked so a push in between
 // can't slip in. While CI runs, GitHub refuses an enqueue, so arm auto-merge
 // instead: the PR enters the queue when CI passes. That pin holds only while
@@ -215,8 +279,23 @@ export async function enqueue(
   first: Enqueued,
   pause: (ms: number) => Promise<void>,
   reread: () => Promise<Enqueued>,
+  checks: Checks,
 ): Promise<unknown> {
   let pr = first;
+  // The checks on a head, before it's enqueued; again when it's read again.
+  let notes: string[] = [];
+  const gate = async (on: Enqueued) => {
+    const gated = await checksGate(checks, on.headRefOid);
+    if (gated.refusal) throw new Error(gated.refusal);
+    notes = gated.notes;
+  };
+  const said = (result: unknown) =>
+    notes.length === 0
+      ? result
+      : [...notes, typeof result === "string" ? result : JSON.stringify(result, null, 2)].join(
+          "\n",
+        );
+  await gate(pr);
   const enqueueOn = (on: Enqueued) =>
     send(
       `mutation ($id: ID!, $oid: GitObjectID!) {
@@ -230,9 +309,10 @@ export async function enqueue(
   if (headMoved(enqueued.errors)) {
     await pause(headMovedPauseMs);
     pr = await reread();
+    await gate(pr);
     enqueued = await enqueueOn(pr);
   }
-  if (!enqueued.errors) return enqueued.data;
+  if (!enqueued.errors) return said(enqueued.data);
   const variables = { id: pr.id, oid: pr.headRefOid };
   const waiting = waitingOnChecks(enqueued.errors);
   if (!waiting) throw graphqlError(enqueued.errors);
@@ -247,7 +327,9 @@ export async function enqueue(
     variables,
   );
   if (!armed.errors)
-    return `auto-merge armed: PR #${pr.number} at ${pr.headRefOid.slice(0, 7)} enters the merge queue when CI passes. It stays armed through later pushes, so push nothing more to it without a fresh go-ahead.`;
+    return said(
+      `auto-merge armed: PR #${pr.number} at ${pr.headRefOid.slice(0, 7)} enters the merge queue when CI passes. It stays armed through later pushes, so push nothing more to it without a fresh go-ahead.`,
+    );
   if (autoMergeOff(armed.errors))
     throw new Error(
       `not enqueued: ${waiting} Auto-merge is off for ${repo.owner}/${repo.name}, and the agent token can't turn it on. Needs you: tick "Allow auto-merge" under Settings → General → Pull Requests. Until then, run pr-enqueue again once CI passes.`,
@@ -625,6 +707,16 @@ export async function landed(run: Git): Promise<string> {
   return landedReport(base, landedLog(log), mine);
 }
 
+async function checkRuns(token: string, sha: string): Promise<CheckRun[]> {
+  return (
+    (await call(
+      token,
+      "GET",
+      `/repos/${repo.owner}/${repo.name}/commits/${sha}/check-runs?filter=latest&per_page=100`,
+    )) as { check_runs: CheckRun[] }
+  ).check_runs;
+}
+
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
 export async function run(token: string, operation: Operation): Promise<unknown> {
@@ -686,6 +778,21 @@ export async function run(token: string, operation: Operation): Promise<unknown>
         await own(),
         sleep,
         own,
+        {
+          runs: (sha) => checkRuns(token, sha),
+          required: async () => {
+            const rules = (await call(token, "GET", `${base}/rules/branches/main`)) as {
+              type: string;
+              parameters?: { required_status_checks?: { context: string }[] };
+            }[];
+            return rules.flatMap((rule) =>
+              rule.type === "required_status_checks"
+                ? (rule.parameters?.required_status_checks ?? []).map((c) => c.context)
+                : [],
+            );
+          },
+          despite: operation.despite,
+        },
       );
     }
     case "pr-wait": {
@@ -699,14 +806,7 @@ export async function run(token: string, operation: Operation): Promise<unknown>
           if (!pr) throw new Error(`no PR #${number} in ${repo.owner}/${repo.name}`);
           return pr;
         },
-        checkRuns: async (sha) =>
-          (
-            (await call(
-              token,
-              "GET",
-              `${base}/commits/${sha}/check-runs?filter=latest&per_page=100`,
-            )) as { check_runs: CheckRun[] }
-          ).check_runs,
+        checkRuns: (sha) => checkRuns(token, sha),
         annotations: async (id) =>
           (await call(
             token,
