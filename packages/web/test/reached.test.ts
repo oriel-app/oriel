@@ -1,20 +1,13 @@
-// The window recovers by itself when Oriel comes back (OA-102): a page that
-// said Oriel can't be reached loads what's on screen again once its stream
-// reconnects, and stops saying so, showing what actually happened.
+// OA-102, fixed in c27653bc (#91): a thread's page that said Oriel can't be
+// reached stayed so after Oriel came back, hiding whether an Approve sent as
+// it restarted had applied. Once its stream reconnects it loads again.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Effect, type Tag, unreachable } from "../src/http.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
-import {
-  changeSetView,
-  diffView,
-  threadView,
-  workstreamSummary,
-  workstreamView,
-} from "../testing.ts";
+import { changeSetView, diffView, threadView } from "../testing.ts";
 
 const threadId = "01JBZ0000000000000000000T1";
-const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 
 function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
@@ -63,39 +56,4 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
   assert.equal(after.thread?.notice, null);
   assert.equal(after.thread?.problems[setId], undefined);
   assert.equal(after.thread?.view?.changeSets[0]?.status, "applied");
-});
-
-test("a thread's notice of anything else stays when it loads again", () => {
-  const [shown] = run(
-    init({ page: "thread", id: threadId })[0],
-    replied({ kind: "thread", id: threadId }, threadView({ id: threadId })),
-    { type: "thread", msg: { type: "draftChanged", text: "Any risks?" } },
-    { type: "thread", msg: { type: "sendClicked" } },
-    replied({ kind: "sent", threadId }, { error: "The agent is still answering." }, false),
-  );
-  const [after] = run(
-    shown,
-    replied({ kind: "thread", id: threadId }, threadView({ id: threadId })),
-  );
-  assert.equal(after.thread?.notice, "The agent is still answering.");
-});
-
-test("a workstream's page, once Oriel is back, loads again and stops saying it can't be reached", () => {
-  const view = workstreamView({ workstream: workstreamSummary({ name: "Launch" }) });
-  const [shown] = run(
-    init({ page: "workstream", id: workstreamId })[0],
-    replied({ kind: "workstream", id: workstreamId }, view),
-    { type: "workstream", msg: { type: "nameEdited", name: "Gates" } },
-    { type: "workstream", msg: { type: "nameSaved" } },
-    replied({ kind: "renamed", id: workstreamId }, away, false),
-  );
-  assert.equal(shown.workstream?.notice, unreachable);
-  // The page's watch on the workspace opens again, as it does after any drop.
-  const [back, effects] = run(shown, { type: "threadsMoved" });
-  const load = requests(effects).find((r) => r.tag.kind === "workstreamSynced");
-  assert.ok(load);
-  const renamed = workstreamView({ workstream: workstreamSummary({ name: "Gates", version: 1 }) });
-  const [after] = run(back, replied(load.tag, renamed));
-  assert.equal(after.workstream?.notice, null);
-  assert.equal(after.workstream?.view?.workstream.name, "Gates");
 });

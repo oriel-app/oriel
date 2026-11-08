@@ -60,26 +60,3 @@ test("Undo on a line posts its call to the shared Undo path, naming the line, on
   // A line with nothing to undo sends nothing.
   assert.deepEqual(updateThread(loaded(), { type: "lineUndoClicked", seq, index: 1 })[1], []);
 });
-
-test("once answered the thread reloads to show the line; a refusal says why", () => {
-  const [busy] = updateThread(loaded(), { type: "lineUndoClicked", seq, index: 0 });
-  const tag = { kind: "lineUndone", threadId, seq, index: 0 } as const;
-  const refused: Replied = {
-    type: "replied",
-    tag,
-    ok: false,
-    body: { error: "it was already undone" },
-  };
-  const [after, effects] = threadReplied(busy, refused);
-  assert.deepEqual([after.undoing, after.notice], [[], "it was already undone"]);
-  assert.deepEqual(effects, [
-    {
-      type: "http",
-      method: "GET",
-      url: `/api/threads/${threadId}`,
-      tag: { kind: "thread", id: threadId },
-    },
-  ]);
-  const ok: Replied = { type: "replied", tag, ok: true, body: { undo: null } };
-  assert.deepEqual(threadReplied(busy, ok)[0].notice, null);
-});

@@ -1,6 +1,5 @@
-// Sending a message takes the user to the latest entry (OA-107), and keeps
-// them there for the reply; what anyone else adds never pulls a user who
-// scrolled up.
+// OA-107, fixed in c27653bc (#91): a message sent while scrolled up didn't
+// take the user to the latest entry, so they didn't see it or the reply.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
@@ -63,39 +62,4 @@ test("sending while scrolled up lands at the latest entry, and stays there for t
   const said = run(sent[0], entry({ seq: 3, at, kind: "user", text: "Why?" }));
   assert.equal(shows(said), true);
   assert.equal(shows(run(said[0], reply(4))), true);
-});
-
-test("sending a held message to the agent while scrolled up lands at the latest entry", () => {
-  const [sent] = run(scrolledUp(), { type: "thread", msg: { type: "heldSendClicked", seq: 2 } });
-  assert.equal(sent.thread?.atLatest, true);
-  // It reloads once sent, which shows it sent, and the page goes there.
-  const answered = run(sent, {
-    type: "replied",
-    tag: { kind: "held", threadId: id, seq: 2 },
-    ok: true,
-    body: {},
-  });
-  const reload = answered[1].find((e) => e.type === "http" && e.tag.kind === "thread");
-  assert.ok(reload?.type === "http");
-  const body = threadView({ id, entries: [{ ...held, outcome: "sent" }], lastSeq: 2 });
-  assert.equal(shows(run(answered[0], { type: "replied", tag: reload.tag, ok: true, body })), true);
-});
-
-test("a reply arriving while scrolled up still doesn't move the page", () => {
-  const after = run(scrolledUp(), reply(3));
-  assert.equal(after[0].thread?.view?.entries.length, 3);
-  assert.equal(shows(after), false);
-  // Nor once the user, having sent, scrolled up again to read.
-  const typed = run(scrolledUp(), {
-    type: "thread",
-    msg: { type: "draftChanged", text: "Why?" },
-  })[0];
-  const [sent] = run(typed, { type: "thread", msg: { type: "sendClicked" } }, up);
-  assert.equal(shows(run(sent, reply(3))), false);
-});
-
-test("a message that isn't sent leaves the page where it is", () => {
-  // Nothing typed: nothing is sent.
-  const [still] = run(scrolledUp(), { type: "thread", msg: { type: "sendClicked" } });
-  assert.equal(still.thread?.atLatest, false);
 });

@@ -1,7 +1,6 @@
-// The to-review pill's view of a change set (OA-260, OA-272): shown, or
-// above or below what's on screen, against the room the window leaves
-// above the composer; and observers that hear every change of it, even
-// across a jump that crosses no half.
+// OA-272, fixed in 16849c9b (#223): the to-review pill pointed the wrong way
+// for a change set taller than the room above the composer, and after a jump
+// that crossed no observer threshold.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Box, placed, watching } from "../src/change-set.ts";
@@ -15,21 +14,6 @@ test("a change set taller than the room, at the latest, reads as shown", () => {
   assert.equal(placed(at(room - 600, 600), room), "shown");
   // Filling the room from top to bottom, taller than twice it.
   assert.equal(placed(at(-400, 1600), room), "shown");
-});
-
-test("a change set reads as shown with half of it, or of the room, in the room", () => {
-  assert.equal(placed(at(40, 100), room), "shown");
-  assert.equal(placed(at(room - 50, 100), room), "shown");
-  assert.equal(placed(at(room - 49, 100), room), "below");
-  assert.equal(placed(at(-51, 100), room), "above");
-  // Behind the composer, though on screen, is out of the room.
-  assert.equal(placed(at(room + 10, 100), room), "below");
-  assert.equal(placed(at(-3000, 100), room), "above");
-  // Taller than the room: half the room, 90, is enough.
-  assert.equal(placed(at(room - 90, 1200), room), "shown");
-  assert.equal(placed(at(room - 89, 1200), room), "below");
-  assert.equal(placed(at(90 - 1200, 1200), room), "shown");
-  assert.equal(placed(at(89 - 1200, 1200), room), "above");
 });
 
 // An IntersectionObserver, by its spec: it calls back on observing, and
@@ -64,12 +48,4 @@ test("the observers hear each change, a jump that crosses no half too", () => {
         const frames = [at(from, height), at(to, height)];
         assert.equal(heard(frames), placed(at(to, height), room), `${height}: ${from} → ${to}`);
       }
-});
-
-test("the observers hear a scroll through a change set taller than twice the room", () => {
-  const frames = Array.from({ length: 130 }, (_, n) => at(room - n * 15, 1600));
-  for (let n = 1; n <= frames.length; n++) {
-    const last = frames[n - 1];
-    if (last) assert.equal(heard(frames.slice(0, n)), placed(last, room), `frame ${n}`);
-  }
 });

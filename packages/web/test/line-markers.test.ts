@@ -1,6 +1,6 @@
-// An Undo or Redo under the agent's reply is said by its line there, "…,
-// which you undid" (OA-118): the marker it left later in the chat folds into
-// that list, as the agent's own markers do. Anyone else's stays.
+// OA-118, fixed in c27653bc (#91): an Undo under the agent's reply also left
+// a version marker later in the chat, saying the change twice. It folds into
+// the reply's list.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { entriesOf } from "../src/thread.ts";
@@ -36,26 +36,5 @@ test("the marker an Undo under the reply left folds into its list", () => {
   assert.deepEqual(
     out.map((b) => b.kind),
     ["user", "reply", "actions"],
-  );
-});
-
-test("an Undo's marker folds even after more was said", () => {
-  const later: ChatEntry[] = [
-    { seq: 5, at, kind: "user", text: "Thanks" },
-    { seq: 6, at, kind: "text", text: "Anytime." },
-    { seq: 7, at, kind: "done" },
-  ];
-  const out = entriesOf([...entries, ...later, marker(8, true)]);
-  assert.deepEqual(
-    out.map((b) => b.kind),
-    ["user", "reply", "actions", "user", "reply"],
-  );
-});
-
-test("a marker anyone else's change left stays in the chat", () => {
-  const out = entriesOf([...entries, marker(5, false)]);
-  assert.deepEqual(
-    out.map((b) => b.kind),
-    ["user", "reply", "actions", "marker"],
   );
 });

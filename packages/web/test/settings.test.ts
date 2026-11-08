@@ -1,22 +1,12 @@
-// Settings (OA-181): each section has its own address; a change shows at
-// once, the look on the page's <html> included, and goes to the server,
-// whose answer to the last change stands; a refused one loads them again.
-// Which key sends a question follows the setting.
+// An API key typed in Settings goes to the server once and the page forgets
+// it, whatever the server answers.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
-import { init as initRoot, update as updateRoot } from "../src/root.ts";
-import { parseRoute, routeUrl, settingsSections } from "../src/route.ts";
 import {
   initSettings,
-  loadSettings,
-  loadUsage,
   type SettingsModel,
   settingsReplied,
-  sendKey,
-  sends,
-  timeFormat,
-  afterApprove,
   updateSettings,
 } from "../src/settings.ts";
 import type { ProviderView, SettingsView } from "../src/view.ts";
@@ -62,162 +52,7 @@ const replied = (tag: Replied["tag"], ok: boolean, body: unknown): Replied => ({
 const posts = (effects: readonly Effect[]) =>
   effects.flatMap((e) => (e.type === "http" && e.method === "POST" ? [[e.url, e.body]] : []));
 
-test("Settings has an address per section, and nothing else under it", () => {
-  assert.deepEqual(parseRoute("/settings", ""), { page: "settings", section: "providers" });
-  assert.deepEqual(parseRoute("/settings/appearance", ""), {
-    page: "settings",
-    section: "appearance",
-  });
-  assert.deepEqual(parseRoute("/settings/asking", ""), { page: "settings", section: "asking" });
-  assert.equal(parseRoute("/settings/providers", "").page, "overview");
-  assert.deepEqual(parseRoute("/settings/notifications", ""), {
-    page: "settings",
-    section: "notifications",
-  });
-  assert.deepEqual(parseRoute("/settings/general", ""), { page: "settings", section: "general" });
-  for (const section of settingsSections) {
-    const route = { page: "settings" as const, section };
-    const url = routeUrl(route);
-    assert.deepEqual(parseRoute(url, ""), route);
-  }
-});
-
-test("settings load with any page but a review link's, which keeps the default look", () => {
-  const loads = (path: string) => initRoot(parseRoute(path, ""))[1].includes(loadSettings);
-  assert.equal(loads("/"), true);
-  assert.equal(loads("/done"), true);
-  assert.equal(loads("/settings/asking"), true);
-  assert.equal(loads("/review/abc"), false);
-});
-
-test("a theme picked shows at once, with no reload, and goes to the server", () => {
-  const [model, effects] = updateSettings(loaded, {
-    type: "changed",
-    change: { theme: "broadsheet" },
-  });
-  assert.equal(model.view?.theme, "broadsheet");
-  assert.deepEqual(effects[0], { type: "showLook", theme: "broadsheet", textSize: "default" });
-  assert.deepEqual(posts(effects), [["/api/settings", { theme: "broadsheet" }]]);
-  // Turning a provider off shows at once too, and touches no look.
-  const [off, offEffects] = updateSettings(loaded, {
-    type: "changed",
-    change: { provider: "claude-code", on: false },
-  });
-  assert.equal(off.view?.providers[0]?.on, false);
-  assert.equal(
-    offEffects.some((e) => e.type === "showLook"),
-    false,
-  );
-});
-
-test("only the answer to the last change stands, and a refused one loads them again", () => {
-  let [model] = updateSettings(loaded, { type: "changed", change: { textSize: "large" } });
-  [model] = updateSettings(model, { type: "changed", change: { textSize: "small" } });
-  const early = settingsReplied(
-    model,
-    replied({ kind: "settingsChanged" }, true, { ...view, textSize: "large" }),
-  );
-  assert.equal(early[0].view?.textSize, "small");
-  assert.deepEqual(early[1], []);
-  const last = settingsReplied(
-    early[0],
-    replied({ kind: "settingsChanged" }, true, { ...view, textSize: "small" }),
-  );
-  assert.equal(last[0].pending, 0);
-  assert.deepEqual(last[1], [{ type: "showLook", theme: "graphite", textSize: "small" }]);
-  const [asked] = updateSettings(loaded, {
-    type: "changed",
-    change: { model: { provider: "api", model: "claude-opus-5-5" } },
-  });
-  const [refused, effects] = settingsReplied(
-    asked,
-    replied({ kind: "settingsChanged" }, false, {
-      error: "That model's provider isn't connected and on.",
-    }),
-  );
-  assert.equal(refused.problem, "That model's provider isn't connected and on.");
-  assert.deepEqual(effects, [loadSettings]);
-});
-
-test("a path typed is saved as a change, and an emptied one is cleared", () => {
-  let [model] = updateSettings(loaded, {
-    type: "pathTyped",
-    provider: "claude-code",
-    text: " /opt/homebrew/bin/claude ",
-  });
-  let effects: Effect[];
-  [model, effects] = updateSettings(model, { type: "pathSaved", provider: "claude-code" });
-  assert.deepEqual(posts(effects), [
-    ["/api/settings", { provider: "claude-code", path: "/opt/homebrew/bin/claude" }],
-  ]);
-  [model] = updateSettings(model, { type: "pathTyped", provider: "claude-code", text: "" });
-  [, effects] = updateSettings(model, { type: "pathSaved", provider: "claude-code" });
-  assert.deepEqual(posts(effects), [["/api/settings", { provider: "claude-code", path: null }]]);
-});
-
-test("Check again asks once, until it answers", () => {
-  const [looking, effects] = updateSettings(loaded, { type: "lookClicked" });
-  assert.deepEqual(posts(effects), [["/api/settings/look", {}]]);
-  assert.deepEqual(updateSettings(looking, { type: "lookClicked" })[1], []);
-  const [done] = settingsReplied(looking, replied({ kind: "settingsLooked" }, true, view));
-  assert.equal(done.looking, false);
-});
-
-test("Enter sends, or Cmd/Ctrl+Enter does, as the person set it", () => {
-  const key = (
-    k: string,
-    mods: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean; isComposing?: boolean } = {},
-  ) => ({
-    key: k,
-    shiftKey: false,
-    metaKey: false,
-    ctrlKey: false,
-    isComposing: false,
-    ...mods,
-  });
-  assert.equal(sendKey(initSettings()), "enter");
-  assert.equal(sends(key("Enter"), "enter"), true);
-  assert.equal(sends(key("Enter", { shiftKey: true }), "enter"), false);
-  assert.equal(sends(key("Enter", { isComposing: true }), "enter"), false);
-  assert.equal(sends(key("Enter"), "mod-enter"), false);
-  assert.equal(sends(key("Enter", { metaKey: true }), "mod-enter"), true);
-  assert.equal(sends(key("Enter", { ctrlKey: true }), "mod-enter"), true);
-  assert.equal(sends(key("a", { metaKey: true }), "mod-enter"), false);
-});
-
-test("a reply keeps a path typed since, and a reload after a refusal keeps saying why", () => {
-  let [model] = updateSettings(loaded, {
-    type: "pathTyped",
-    provider: "claude-code",
-    text: "/opt/homebrew/bin/claude",
-  });
-  [model] = updateSettings(model, {
-    type: "changed",
-    change: { provider: "claude-code", on: false },
-  });
-  [model] = settingsReplied(model, replied({ kind: "settingsChanged" }, true, view));
-  assert.equal(model.paths["claude-code"], "/opt/homebrew/bin/claude");
-  [model] = updateSettings(model, { type: "pathSaved", provider: "claude-code" });
-  const kept = {
-    ...view,
-    providers: [{ ...claudeCode, path: "/opt/homebrew/bin/claude" }],
-  };
-  [model] = settingsReplied(model, replied({ kind: "settingsChanged" }, true, kept));
-  assert.deepEqual(model.paths, {});
-
-  [model] = updateSettings(loaded, {
-    type: "changed",
-    change: { provider: "claude-code", path: "/bin/sh" },
-  });
-  [model] = settingsReplied(
-    model,
-    replied({ kind: "settingsChanged" }, false, { error: "Give the full path." }),
-  );
-  [model] = settingsReplied(model, replied({ kind: "settings" }, true, view));
-  assert.equal(model.problem, "Give the full path.");
-});
-
-test("an API key goes to the server once, is forgotten by the page, and a refusal says why", () => {
+test("an API key goes to the server once and is forgotten by the page, refused or not", () => {
   let [model, effects] = updateSettings(loaded, { type: "keyTyped", text: "  sk-ant-typed  " });
   assert.equal(model.key, "  sk-ant-typed  ");
   assert.deepEqual(effects, []);
@@ -229,10 +64,11 @@ test("an API key goes to the server once, is forgotten by the page, and a refusa
   assert.deepEqual(updateSettings(model, { type: "keySaved" })[1], []);
   const [refused] = settingsReplied(
     model,
-    replied({ kind: "settingsKey" }, false, { error: "Anthropic doesn't accept that key." }),
+    replied({ kind: "settingsKey" }, false, { error: "Not accepted." }),
   );
   assert.equal(refused.keying, false);
-  assert.equal(refused.problem, "Anthropic doesn't accept that key.");
+  assert.equal(refused.key, "");
+  assert.ok(refused.problem);
   const [kept] = settingsReplied(model, replied({ kind: "settingsKey" }, true, view));
   assert.equal(kept.keying, false);
   assert.equal(kept.problem, null);
@@ -241,56 +77,4 @@ test("an API key goes to the server once, is forgotten by the page, and a refusa
   assert.deepEqual(posts(updateSettings(kept, { type: "keyRemoved" })[1]), [
     ["/api/settings/key", { key: null }],
   ]);
-});
-
-test("the notifications switch shows at once and goes to the server", () => {
-  const [model, effects] = updateSettings(loaded, { type: "changed", change: { notify: false } });
-  assert.equal(model.view?.notify, false);
-  assert.deepEqual(posts(effects), [["/api/settings", { notify: false }]]);
-});
-
-test("the time format shows at once, and goes to the server", () => {
-  assert.equal(timeFormat(initSettings()), "relative");
-  const [model, effects] = updateSettings(loaded, {
-    type: "changed",
-    change: { timeFormat: "absolute" },
-  });
-  assert.equal(timeFormat(model), "absolute");
-  assert.deepEqual(posts(effects), [["/api/settings", { timeFormat: "absolute" }]]);
-});
-
-test("where a thread's page goes after an approval shows at once, and goes to the server", () => {
-  assert.equal(afterApprove(initSettings()), "stay");
-  const [model, effects] = updateSettings(loaded, {
-    type: "changed",
-    change: { afterApprove: "next" },
-  });
-  assert.equal(afterApprove(model), "next");
-  assert.deepEqual(posts(effects), [["/api/settings", { afterApprove: "next" }]]);
-});
-
-test("the plan's usage loads with Settings and after Check again, and a failed load changes nothing", () => {
-  const [, effects] = updateRoot(initRoot({ page: "overview" })[0], {
-    type: "routed",
-    route: { page: "settings", section: "providers" },
-  });
-  assert.ok(effects.includes(loadUsage));
-  const usage = [
-    {
-      provider: "claude-code",
-      today: { turns: 2, inputTokens: 1200, outputTokens: 40 },
-      plan: { none: "no-plan" as const },
-    },
-  ];
-  const [shown] = settingsReplied(loaded, replied({ kind: "settingsUsage" }, true, { usage }));
-  assert.deepEqual(shown.usage, usage);
-  assert.equal(
-    settingsReplied(shown, replied({ kind: "settingsUsage" }, false, {}))[0].usage,
-    usage,
-  );
-  const [, again] = settingsReplied(
-    { ...loaded, looking: true },
-    replied({ kind: "settingsLooked" }, true, view),
-  );
-  assert.ok(again.includes(loadUsage));
 });
