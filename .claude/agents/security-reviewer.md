@@ -10,7 +10,7 @@ You need the diff, from the diff file you were given. If you got only paths, say
 
 Read first:
 
-- SPEC.md §1, §4, §5, §7 and §9, and decisions 0003, 0006, 0036 and 0059.
+- SPEC.md §1, §4, §5, §7 and §9, and decisions 0003, 0006, 0036, 0059 and 0060.
 - Every `.claude/rules/*.md`, whichever paths changed.
 - The changed code and its callers.
 
@@ -87,7 +87,10 @@ Who controls what:
   - Codex, a preview (decision 0048), whose accepted exceptions are the person's own Codex config loading, a read-only sandbox that can still read files, and a tool list the harness can't verify: anything that widens them, such as a request of Codex's other than a `run` call answered with anything but a decline, a lock-down flag, thread setting or start check dropped, or an item other than a message, its reasoning, a `run` call, a declined file change or Codex compacting its context let through without stopping the turn.
 - **Source servers** (decision 0059):
   - a source server loaded into the agent's turns, or into anything but sync and a change set's replay;
-  - sync with any tool but its one server's read tools, allowed by name, or with more than that one server loaded; on Claude Code, a sync that goes on when `system/init` reports anything else;
+  - sync with any tool but its one server's read tools, allowed by name, or with more than that one server loaded; on Claude Code, a tool host that calls on when its start checks report anything else (decision 0060);
+  - a tool outside a caller's list sent;
+  - a tool host (decision 0060) that sends a user message, answers a CLI request with anything but a decline, skips a start check (its version and `mcp_call`, exactly its granted servers at their granted addresses, every hook off), sends a call without `result_not_for_model`, or reads or keeps a hook's command;
+  - anything written under the person's `~/.claude` or `~/.codex`;
   - replay calling anything but exactly the captured mutations' write calls with exactly their arguments, or sync and replay in the same process;
   - a kind turned on by the agent, an outside tool or a review link, rather than by the person's click (or the maintainer's `--on` under `pnpm dev`);
   - Oriel changing the person's agent configuration (adding, removing, signing in or out of a server), or reading a server's definition, environment or sign-in from the agent's files;

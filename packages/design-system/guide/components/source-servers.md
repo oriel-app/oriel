@@ -18,7 +18,7 @@ The section of Settings › Connections that says what Oriel reads through the p
 - each server found whose kind is off, with the switch to turn it on;
 - for a kind with a server Oriel knows and none found, that server, and a link to its vendor's own instructions for adding it.
 
-**Look again** asks the agent now, as Sync does. **Sync** picks when Oriel reads: when it opens and when the person presses Sync (the default), or every 15 minutes or every hour. On Claude Code it says that each sync spends a little of the person's plan.
+**Look again** asks the agent now, as Sync does. **Sync** picks when Oriel reads: when it opens and when the person presses Sync (the default), or every 15 minutes or every hour.
 
 There's no button that adds, removes, signs in or signs out of a server. Oriel never changes the person's agent.
 

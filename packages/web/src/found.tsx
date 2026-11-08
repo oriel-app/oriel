@@ -289,11 +289,7 @@ export function SourceServers(props: {
       <Choices
         name="Sync"
         group="settings-source-sync"
-        about={
-          servers.sync.plan
-            ? `When Oriel reads your sources through ${agent}. On Claude Code, each sync spends a little of your plan.`
-            : `When Oriel reads your sources through ${agent}.`
-        }
+        about={`When Oriel reads your sources through ${agent}.`}
         options={syncChoices}
         value={every === null ? "open" : String(every)}
         onPick={(value) =>

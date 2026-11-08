@@ -58,14 +58,6 @@ async function world(
             const answer = await tools(call);
             return (options.answer?.(call, answer) ?? answer) as never;
           },
-          spent: () => ({
-            inputTokens: 0,
-            outputTokens: 0,
-            cacheReadTokens: 0,
-            cacheWriteTokens: 0,
-            costUsd: 0,
-            turns: 0,
-          }),
           close: () => {},
         },
       };

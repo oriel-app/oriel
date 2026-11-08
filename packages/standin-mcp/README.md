@@ -74,14 +74,14 @@ ORIEL_DEV_STANDINS=atlassian,slack,linear pnpm dev
 
 Every process of your agent that Oriel starts gets each stand-in, as `atlassian-standin`, `slack-standin` or `linear-standin`, on its own command line (Claude Code's `--mcp-config`, Codex's `-c mcp_servers.…`), never in your configuration. The connector's entry for the real server knows it at its command. Turn Jira, Slack or Linear on through it in Settings › Source servers. The desktop app never reads this variable.
 
-`node scripts/try-source-server.ts <codex|claude-code> [jira|slack|linear|sheets]` does the same end to end, with the index in memory: it finds the stand-in through your agent, turns the kind on, syncs its fixture, and approves one change set, which replays through the stand-in's write tools. On Claude Code it spends a little of your plan on Haiku, and prints how long each step took.
+`node scripts/try-source-server.ts <codex|claude-code> [jira|slack|linear|sheets]` does the same end to end, with the index in memory: it finds the stand-in through your agent, turns the kind on, syncs its fixture, and approves one change set, which replays through the stand-in's write tools. It prints how long each step took.
 
 ## Re-recording from Atlassian's own server
 
 `fixtures/jira-mcp/real-*.json` are recorded from Atlassian's server; `sync.json` and `read.json`, from this stand-in, which the tests compare with the fixture. To re-record:
 
 1. Add Atlassian's server to your Codex or Claude Code, at `https://mcp.atlassian.com/v2/mcp`, and sign in to it, as [Atlassian's instructions](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/) say, as the account of our test site. Oriel never does this for you.
-2. `node scripts/record-source-mcp.ts jira --through codex --server <its name>` (or `--through claude-code`, which spends a little of your plan). It reads SYN only, with only the server's read tools. People become numbered placeholders, times move to UTC, and the site's cloud ID becomes the stand-in's.
+2. `node scripts/record-source-mcp.ts jira --through codex --server <its name>` (or `--through claude-code`). It reads SYN only, with only the server's read tools. People become numbered placeholders, times move to UTC, and the site's cloud ID becomes the stand-in's.
 3. `pnpm --filter @oriel/jira check`. A test that fails names the tool whose answer changed: fix the parser in `packages/jira/src/atlassian.ts`, this stand-in to match, and record it again with `node scripts/record-source-mcp.ts jira`.
 4. Propose what changed for approval: fixtures need the maintainer's.
 
