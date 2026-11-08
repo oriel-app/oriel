@@ -50,7 +50,7 @@ import type {
   ProviderView,
   UsageView,
 } from "@oriel/web/view";
-import type { FoundServer, Log, SourceServer } from "@oriel/core";
+import type { FoundServer, Log } from "@oriel/core";
 import type { Agent, ServerAgentDeps } from "./agent.ts";
 import type { Discovery } from "./source-servers.ts";
 import type { ProviderSetting, Settings } from "./settings.ts";
