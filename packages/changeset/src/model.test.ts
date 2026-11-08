@@ -432,6 +432,24 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     sentGone: 0,
   };
 
+  // Whether a row's item can't be read as the item it should be: hidden, or
+  // its key taken by another item.
+  const unreadable = (
+    set: {
+      mutations: readonly {
+        ref: string | null;
+        target: string | null;
+        applied: { item: { id: string } } | null;
+      }[];
+    },
+    m: { target: string | null },
+  ) => {
+    const made = set.mutations.find((c) => c.ref !== null && c.ref === m.target);
+    const item = m.target?.startsWith("jira:") ? m.target : made?.applied?.item.id;
+    const k = item ? (parseItemId(item)?.key ?? "") : "";
+    return k !== "" && (hidden.has(k) || reused.has(k));
+  };
+
   // Invariant 7: takes one offered step on a copy of the database and of
   // Jira, and checks that it succeeds. A retry must send, or record in place,
   // its first change: only a revert's conflict check or (for a change sent
@@ -466,29 +484,49 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           );
           if (refusal !== null) {
             // Only an item that really can't be read now, or whose key another
-            // item has taken, may be shown as gone.
-            const keys = set.mutations
-              .filter((m) => m.status !== "applied")
-              .flatMap((m) => {
-                const made = set.mutations.find((c) => c.ref !== null && c.ref === m.target);
-                const item = m.target?.startsWith("jira:") ? m.target : made?.applied?.item.id;
-                return item ? [parseItemId(item)?.key ?? ""] : [];
-              });
-            const unreadable = keys.some((k) => hidden.has(k) || reused.has(k));
-            if (!(refusal instanceof ChangeSetError && /couldn.t be read/.test(refusal.message)))
+            // item has taken, may be shown as gone, and only that may refuse:
+            // the diff just read marked it so.
+            const goneShown = (copied.load(id)?.mutations ?? []).some(
+              (m) => m.status !== "applied" && m.preview?.["$gone"] === true,
+            );
+            if (!(refusal instanceof ChangeSetError && refusal.code === "refused" && goneShown))
               throw refusal;
-            if (!unreadable) throw refusal;
+            if (!set.mutations.some((m) => m.status !== "applied" && unreadable(set, m)))
+              throw refusal;
             break;
           }
           // What approval vouches for (each change shown, readable as the
           // item it should be, and valid) never stops the apply after it.
+          const sentBefore = new Set(
+            set.mutations.filter((m) => m.status === "failed").map((m) => m.id),
+          );
+          // A refusal before any send is about the first row still open.
+          const first = set.mutations.find((m) => m.status !== "applied");
           const report = await engine.apply(id).catch((error: unknown) => ({
-            failed: [{ error: error instanceof Error ? error.message : String(error) }],
+            failed: [
+              {
+                mutationId: first?.id ?? null,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            ],
           }));
-          const vouched =
-            /no longer valid|hasn.t been shown in a diff|couldn.t be read when|couldn.t tell/;
-          const stop = report.failed.find((f) => vouched.test(f.error));
-          if (stop) problem(`${id} was approved, then apply stopped: ${stop.error}`);
+          const after = copied.load(id);
+          for (const f of report.failed) {
+            const m = after?.mutations.find((each) => each.id === f.mutationId);
+            if (!after || !m) continue;
+            const sent = fork.calls.some((c) => c.mutationId === m.id);
+            const vouched =
+              m.preview === null ||
+              m.preview["$gone"] === true ||
+              catalogue.jira?.ops[m.op]?.args(m.args).ok !== true ||
+              // Sent before, and stopped unsent on an item it couldn't check.
+              (sentBefore.has(m.id) &&
+                idempotent(m.op) &&
+                m.status === "failed" &&
+                !sent &&
+                unreadable(after, m));
+            if (vouched) problem(`${id} was approved, then apply stopped: ${f.error}`);
+          }
           break;
         }
         case "reject":
@@ -501,11 +539,15 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           const first = set.mutations.find((m) => m.status !== "applied");
           const report = await engine.apply(id);
           const why = report.failed[0]?.error ?? "";
+          // A reverse row whose original stands applied: its conflict check
+          // read the source, and may stop it.
+          const conflictChecked =
+            first?.reverts != null && copied.mutation(first.reverts)?.status === "applied";
           if (
             report.applied.length === 0 &&
             fork.calls.length === 0 &&
             first?.status !== "failed" &&
-            !why.startsWith("Stopped, so nothing was overwritten")
+            !conflictChecked
           )
             problem(`retry of ${id} was offered, then stopped before sending: ${why}`);
           break;
@@ -577,7 +619,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         !kinds.includes("approve-rest")
       )
         reached.sentGone += 1;
-      if (open.some((m) => m.status === "failed" && /couldn.t tell/.test(m.error ?? "")))
+      if (open.some((m) => m.status === "failed" && idempotent(m.op) && unreadable(set, m)))
         reached.couldntTell += 1;
       if (set.revertOf !== null && rejected && set.mutations.some((m) => m.applied))
         reached.dismissedPartReverse += 1;

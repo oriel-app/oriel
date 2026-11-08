@@ -224,6 +224,28 @@ test("two changes to one field revert to the value before the first", async () =
   assert.equal(jira.issue("SYN-21")?.points, 2);
 });
 
+test("a reverse set op whose answer was lost is recorded on retry, not reported as a conflict", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  await applied(changeSets, set);
+  const back = await reverse(changeSets, set.id);
+  await approve(changeSets, back.id);
+  // The reverse lands, then its answer is lost.
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  const lost = await changeSets.apply(back.id);
+  assert.equal(lost.failed.length, 1);
+  assert.equal(jira.issue("SYN-21")?.points, 2);
+  jira.hooks.after = undefined;
+  const writes = jira.calls.length;
+
+  const retry = await changeSets.apply(back.id);
+  assert.deepEqual(retry.failed, []);
+  assert.deepEqual(retry.applied, [nth(back.mutations, 0).id]);
+  assert.equal(jira.calls.length, writes);
+});
+
 test("a set op whose result didn't report the field it set can't be reverted blind", async () => {
   const { instance, run, jira } = setup();
   // The writer reports only `updated` after a set op.
