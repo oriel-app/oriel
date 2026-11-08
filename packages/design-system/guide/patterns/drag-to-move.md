@@ -14,6 +14,22 @@ A person reading a workstream sees an item that belongs in another. Removing it 
 
 On a workstream's page each item's row drags (`Member` in `packages/web/src/parts.tsx`, with `dragItem` from `packages/web/src/drag-item.ts`). So does a Browse row, which came from no workstream, so it only joins. The cursor is a grab over the row and says move during the drag.
 
+The item rides on a card while it's dragged, in place of the browser's picture of its row (`lift` in `packages/web/src/drag-card.ts`): its key and title, raised on `--shadow`, the pointer at its left edge (`.drag-card`, `.drag-card-face` and `.drag-card-title` in `window.css`). It leans a couple of degrees the way it's pulled, 3° at most and never past 4°, and eases back to level when the pointer stops, like a card held at one corner. The row it came from dims while it's away (`[data-lifted]`). Dropped, the card is set down where the pointer let go: it comes level, shrinks a touch and fades. Dropped nowhere, it slides back to its row and fades there, and the row comes back. See [Motion](/foundations/motion#drag).
+
+```html specimen id=card title="The card, mid-drag, leaning the way it's pulled" height=110 bg=surface
+<div style="position: relative; height: 80px">
+  <div
+    class="drag-card"
+    style="position: absolute; transform: translate3d(40px, 40px, 0) rotate(2.5deg)"
+  >
+    <div class="drag-card-face">
+      <span class="key">SYN-23</span
+      ><span class="drag-card-title">Pay with a phone wallet on the website</span>
+    </div>
+  </div>
+</div>
+```
+
 Each open workstream in the sidebar takes the drop (`useItemDrop` in `packages/web/src/drag-item.ts`). While an item is over one, its row is drawn as the [drop veil](/patterns/drop-zone) is: `--accent-soft`, with a `--border-thick` `--accent` ring inside, on `--radius`. The workstream the item came from takes nothing: the cursor says no, and a drop there does nothing. A drop anywhere else cancels.
 
 ```html specimen id=over title="An item over a workstream in the sidebar" bg=surface
@@ -78,6 +94,7 @@ The keyboard, and a phone where the sidebar is a drawer, move it with the row's 
 - Draw the target only while it takes the drop, and only under the pointer.
 - Say what moved, from where and to where, in the note, with Undo.
 - Offer the same moves in the row's menu.
+- Let the card lean only with the pull, and set it down level.
 
 ## Don't
 
@@ -88,6 +105,7 @@ The keyboard, and a phone where the sidebar is a drawer, move it with the row's 
 ## Where Oriel does it
 
 - The drag and the drop targets: `dragItem` and `useItemDrop` in `packages/web/src/drag-item.ts`.
+- The card and its lean: `lift`, `drop` and `leanStep` in `packages/web/src/drag-card.ts`. The browser's own picture is set to an empty `.drag-blank`, since the page's policy loads no `data:` image.
 - The move, its note and its Undo: `updateMoving`, `movingReplied` and `movingUndos` in `packages/web/src/moving.ts`.
 - The targets: `Workstreams` and `WorkstreamEntry` in `packages/web/src/sidebar.tsx`. The menu at the drop: `Menu` in `packages/web/src/menu.tsx`.
 - The row's menu: `movingOf` in `packages/web/src/workstream-page.tsx`.

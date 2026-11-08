@@ -4,13 +4,16 @@
 // the page's DropZone leaves alone, and the item rides beside it here, since
 // a page can't read a drag's data until the drop.
 import { useEffect, useState } from "preact/hooks";
+import { drop, lift } from "./drag-card.ts";
 import type { Carried } from "./moving.ts";
 
 const itemType = "application/x-oriel-item";
 
 let carried: Carried | null = null;
 
-// The props that make a row draggable as `item`. The cursor says move.
+// The props that make a row draggable as `item`. The cursor says move, and
+// the item rides on its card (drag-card.ts): set down where it's dropped,
+// or back to its row from a drop nowhere.
 export function dragItem(item: Carried) {
   return {
     draggable: true,
@@ -19,9 +22,11 @@ export function dragItem(item: Carried) {
       carried = item;
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData(itemType, item.id);
+      lift(event, event.currentTarget as HTMLElement, { key: item.key, title: item.title ?? "" });
     },
-    onDragEnd: () => {
+    onDragEnd: (event: DragEvent) => {
       carried = null;
+      drop(event.dataTransfer?.dropEffect === "none" ? "back" : "dropped");
     },
   };
 }

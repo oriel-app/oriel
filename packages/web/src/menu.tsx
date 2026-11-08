@@ -4,7 +4,8 @@
 // between items, Home and End jump to the ends, Escape or Tab closes it and
 // gives focus back, and choosing an item closes it, then does what the item
 // does. It is a popover, in the top layer, so neither the sidebar's scroll
-// nor the drawer's slide clips or moves it.
+// nor the drawer's slide clips or moves it. It grows in from where it
+// opened and fades out, quicker than it came (window.css).
 import type { ComponentChildren, Ref } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
@@ -96,14 +97,23 @@ export function Menu(props: {
     props.onClose(refocus);
   };
 
-  // Shown, kept on screen, and focused before paint.
+  // What it showed last, kept while it fades out after it closes.
+  const shown = useRef<readonly MenuItem[]>([]);
+  if (at !== null) shown.current = props.items;
+
+  // Shown, kept on screen, and focused before paint. It grows from where it
+  // opened, the pointer or the control, wherever the edges put it.
   useLayoutEffect(() => {
     const element = own.current;
     if (!element || at === null) return;
     if (!element.matches(":popover-open")) element.showPopover();
-    const { width, height } = element.getBoundingClientRect();
-    element.style.left = `${Math.max(edge, Math.min(at.x, innerWidth - width - edge))}px`;
-    element.style.top = `${Math.max(edge, Math.min(at.y, innerHeight - height - edge))}px`;
+    // Its laid-out size, not the transformed one it grows from.
+    const { offsetWidth: width, offsetHeight: height } = element;
+    const left = Math.max(edge, Math.min(at.x, innerWidth - width - edge));
+    const top = Math.max(edge, Math.min(at.y, innerHeight - height - edge));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+    element.style.transformOrigin = `${at.x - left}px ${at.y - top}px`;
     element.querySelector<HTMLElement>("[role=menuitem]")?.focus();
   }, [at]);
 
@@ -158,23 +168,22 @@ export function Menu(props: {
         event.stopPropagation();
       }}
     >
-      {at !== null &&
-        props.items.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            role="menuitem"
-            tabIndex={-1}
-            class="context-menu-item"
-            data-danger={item.danger || undefined}
-            onClick={() => {
-              close(true);
-              item.onSelect();
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
+      {shown.current.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          role="menuitem"
+          tabIndex={-1}
+          class="context-menu-item"
+          data-danger={item.danger || undefined}
+          onClick={() => {
+            close(true);
+            item.onSelect();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }

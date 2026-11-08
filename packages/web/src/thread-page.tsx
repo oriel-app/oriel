@@ -296,7 +296,10 @@ export function NewThreadPage({
         </Dock>
       </main>
       <aside class="rail" aria-label="This thread's items">
-        <h2 class="rail-title">{picked?.size ? plural(picked.size, "item") : "No items"}</h2>
+        {/* Picked, what the workstream holds arrives (window.css). */}
+        <h2 key={picked?.id ?? ""} class={picked ? "rail-title arrive" : "rail-title"}>
+          {picked?.size ? plural(picked.size, "item") : "No items"}
+        </h2>
       </aside>
     </div>
   );
