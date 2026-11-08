@@ -111,10 +111,16 @@ function parseBody(text: string): unknown {
   }
 }
 
+// How a replay says a request has no cassette: what the system under test
+// sends changed since its case was recorded, so the case is stale, not broken.
+// The agent's turn wraps it in its own words.
+const missing = "no cassette for this ";
+export const isMissingCassette = (error: string | null) => error?.includes(missing) ?? false;
+
 function replay(file: URL, key: string, model: string | null): Response {
   if (!existsSync(file)) {
     throw new Error(
-      `no cassette for this ${model ?? "model"} request: ${fileURLToPath(file)} is missing. ` +
+      `${missing}${model ?? "model"} request: ${fileURLToPath(file)} is missing. ` +
         "The request changed or was never recorded; record it with `pnpm evals`.",
     );
   }

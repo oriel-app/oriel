@@ -6,3 +6,8 @@ export const cassettesDir = new URL("tests/cassettes/", repoRoot);
 export const roundsDir = new URL(".evals/", repoRoot);
 export const climbsDir = new URL("packages/evals/climbs/", repoRoot);
 export const envFile = new URL(".env", repoRoot);
+// Present while main's cassettes wait for the night's recording: an
+// agent-facing PR adds it, and the nightly recording removes it.
+export const staleFile = new URL("packages/evals/stale.md", repoRoot);
+// The last nightly recording's summary, which the next one compares with.
+export const nightlyFile = new URL("packages/evals/nightly.json", repoRoot);

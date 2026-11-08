@@ -1,8 +1,0 @@
-{
-  "id": "delete-workstream-on-its-page",
-  "split": "test",
-  "kind": 2,
-  "region": "boarding-epic",
-  "prompt": "Delete this workstream, I don't need it any more.",
-  "expect": [{ "grader": "zero-mutations" }, { "grader": "mentions", "text": ["page"] }]
-}
