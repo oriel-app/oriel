@@ -117,6 +117,36 @@ test("the mutation cap: a run that captures more than a change set may hold capt
   assert.deepEqual(records.changeSets, []);
 });
 
+const unestimated = `
+  const stories = await jira.listStories();
+  return stories.filter((s) => !s.gone && s.points === null).map((s) => s.id);
+`;
+
+test("the token cap bounds each response by what's left after the input it already knows of", async () => {
+  const { turn, model, records } = harness(
+    [
+      { scripts: [unestimated], usage: tokens(4_000, 1_000) },
+      { scripts: [unestimated], usage: tokens(6_000, 500) },
+      { text: ["Never asked for."] },
+    ],
+    { limits: { maxTokensPerThread: 20_000 } },
+  );
+  const events = await turn({ region: weather, spent: { inputTokens: 1_500, outputTokens: 500 } });
+
+  // 20000 - 2000 spent = 18000 for the first. Then 20000 - 2000 - 5000 used -
+  // 5000 the next request sends again = 8000. Then 20000 - 2000 - 11500 -
+  // 6500 = 0: no response could read the second run's result, so that run
+  // never starts and the turn stops.
+  assert.deepEqual(model.conversations[0]?.maxOutputTokens, [18_000, 8_000]);
+  assert.equal(model.unplayed(), 1);
+  assert.deepEqual(kinds(events), ["run.started", "run.finished", "limit", "done"]);
+  assert.equal(records.runs.length, 1);
+  assert.deepEqual(events.at(-1), {
+    kind: "done",
+    usage: { inputTokens: 10_000, outputTokens: 1_500 },
+  });
+});
+
 // Abort.
 
 test("an abort while the model streams proposes no change set", async () => {

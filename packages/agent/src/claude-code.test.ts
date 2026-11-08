@@ -517,19 +517,24 @@ const tracker = {
 };
 
 test("the person's servers, as Oriel looks them up, carry none of their headers or environment", () => {
+  const headerSecret = "hdr-secret-7f3a91";
+  const envSecret = "env-secret-c42e05";
   const found = claudeCodeServersOf({
     mcpServers: [
-      tracker,
+      {
+        ...tracker,
+        config: { ...tracker.config, headers: { Authorization: `Bearer ${headerSecret}` } },
+      },
       {
         name: "local",
         status: "connected",
-        config: { command: "tracker-mcp", args: ["--x"], env: { TRACKER_TOKEN: "secret-env" } },
+        config: { command: "tracker-mcp", args: ["--x"], env: { TRACKER_TOKEN: envSecret } },
       },
     ],
   });
   assert.equal(found.length, 2);
   const said = JSON.stringify(found);
-  assert.ok(!said.includes("Authorization") && !said.includes("secret-env"), said);
+  assert.ok(!said.includes(headerSecret) && !said.includes(envSecret), said);
 });
 
 test("listing the person's servers loads their own, with no tool, no hook and no message", () => {

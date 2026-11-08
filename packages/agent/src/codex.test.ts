@@ -358,6 +358,36 @@ test("earlier turns arrive as one run result before the new message, never as us
   assert.deepEqual(input, [{ type: "text", text: "And now?", text_elements: [] }]);
 });
 
+test("Codex's own file changes and questions are declined, and the turn goes on", async () => {
+  const fake = fakeCodex({
+    steps: [
+      { item: "fileChange" },
+      { asks: "item/fileChange/requestApproval" },
+      { asks: "item/tool/requestUserInput" },
+      { text: "I can't change files." },
+    ],
+  });
+  const { req } = request();
+  const conversation = codexProvider({
+    cli,
+    model: "gpt-6.1-sol",
+    spawn: fake.spawn,
+    env: { HOME: "/Users/maya", OPENAI_API_KEY: "sk-nope" },
+  }).converse(req);
+  const events = await collect(conversation.next([], { maxOutputTokens: 8000 }));
+  assert.equal(events.at(-1)?.kind, "end");
+  const run = fake.spawned[0];
+  assert.deepEqual(
+    run?.answers.map((a) => [a.method, a.answer.result ?? "error"]),
+    [
+      ["item/fileChange/requestApproval", { decision: "decline" }],
+      ["item/tool/requestUserInput", "error"],
+    ],
+  );
+  // Oriel's own API key never reaches the Codex it starts.
+  assert.equal(run?.env.OPENAI_API_KEY, undefined);
+});
+
 test("a tool Oriel thought was off stops the turn the moment Codex starts it", async () => {
   for (const item of [
     "commandExecution",
