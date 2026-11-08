@@ -9,15 +9,16 @@ The maintainer, 2026-11-08: "the app is getting complex. I think we need to do a
 ## Decision
 
 1. **Effect isn't adopted now, wholesale or at the edges.** The backend stays plain TypeScript. What makes it unwieldy is fixed by the stories below, and none of them needs Effect.
-2. **One process supervisor** in packages/agent owns every long-lived child process: the CLI turns, Codex's app server, 0060's tool host and the first run's commands. It is the spike's plain tool host, generalised.
-3. **The composition roots get smaller.** `createApp`, `changeSetsOver` and `api` split into modules with explicit inputs, until no backend function is over 400 lines.
+2. **One process supervisor** in packages/agent owns the life of every long-lived child process and its descendants: the CLI turns, Codex's app server, 0060's tool host and the first run's commands. Protocols sit above it as adapters: JSON lines with requests by ID for the CLIs, and plain output lines for the first run.
+3. **The composition roots get smaller.** `createApp`, `changeSetsOver` and `api` split into modules with explicit inputs. None of them, and nothing they split into, stays over 400 lines. The other long functions (`threadStore`, `views`, `indexStore`, `setupService`) wait for a story that touches them.
 4. **One owner for each repeated thing:**
    - one harness interface;
    - one stdio MCP server;
    - the "waits on you" rule in core;
    - a known server's identity in its connector's declaration only.
 5. **Revisit Effect** when either of these happens, and run the spike's comparison again on the code as it is then:
-   - two or more fixes merged in a month for cancellation, cleanup or leaked processes, outside the supervisor;
+   - two or more fixes merged in a month for cancellation, cleanup or leaked processes, the supervisor's included;
+   - the supervisor's lifetime and concurrency code passes about 600 lines;
    - Oriel runs as a hosted, multi-tenant server.
 
    If it's adopted then, use the shape the spike measured:
@@ -70,7 +71,7 @@ The maintainer, 2026-11-08: "the app is getting complex. I think we need to do a
 - `server-calls.ts` passes `new AbortController().signal`, which nothing aborts.
 - `ToolCaller` takes no signal, though 0060 requires one ("When a run ends, however it ends, its calls still waiting are cancelled").
 
-**MCP servers, written four times,** each with its own two-revision handshake:
+**MCP servers, written four times,** each with its own handshake. The door speaks four revisions, and the others two:
 
 - Oriel's door, `server/mcp/protocol.ts` (434 lines);
 - `standin-mcp` (127);
@@ -79,9 +80,11 @@ The maintainer, 2026-11-08: "the app is getting complex. I think we need to do a
 
 **A new harness reaches 16 files outside packages/agent.** "codex" appears in:
 
-- 8 in server: app, api, model, main, settings, setup, setup/cli and setup/state;
-- 7 in web;
+- 7 in server: app, api, model, main, settings, setup and setup/cli;
+- 8 in web;
 - core's telemetry.
+
+Some of these are the vendor's own words in the window, which stay. The rest are branches a harness interface removes.
 
 **A new kind.** 0049's "one package and one line" holds on the product path, but not for the dev stand-ins:
 
@@ -91,9 +94,10 @@ The maintainer, 2026-11-08: "the app is getting complex. I think we need to do a
 
 **Layers.** The server imports values, not only types, from the window's package `@oriel/web`:
 
-- `waitsOnUser`;
+- `waitsOnUser` and `waitingOn`;
 - `chipIds`, `quoteKey` and `quotesFrom`;
-- the themes.
+- `isGroupingId`, and Settings' constants;
+- the themes and the built files, which are Node-side and belong to the window on purpose.
 
 **The 2026-11-05 audit's stories:**
 
@@ -124,19 +128,19 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 
 **Measured:**
 
-|                                                             | Plain                                                   | Effect                                                                                                                                                                   |
-| ----------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Code lines, no blanks or comments                           | 163                                                     | 208, its Promise edge included                                                                                                                                           |
-| Shared test: 12 cases, 8 runs                               | 12/12 every run                                         | 12/12 every run                                                                                                                                                          |
-| Kill mid-call: abort until both calls failed (median of 10) | 0.2 ms                                                  | 0.2 ms                                                                                                                                                                   |
-| Close when the CLI ignores SIGTERM (300 ms grace)           | 304 ms                                                  | 304 ms                                                                                                                                                                   |
-| Bugs found after it was written                             | none                                                    | 2. A detached close hadn't marked the host closed before the next call went out (my test). A second `close()` returned before the process was dead (both Effect agents). |
-| `tsc -p packages/agent` (median of 5)                       | 0.46 s                                                  | 0.65 s (+41%). Files 297 → 472, memory 112 → 185 MB                                                                                                                      |
-| Import cost in the server                                   | about 2 ms                                              | 150–300 ms and +23 MB heap from `effect`; 60–90 ms with deep imports                                                                                                     |
-| `pnpm check` (in a heavy slot)                              | MAIN_CHECK                                              | SPIKE_CHECK                                                                                                                                                              |
-| Install                                                     |                                                         | +60.8 MB: one package, no transitive dependencies. node_modules 78 → 140 MB                                                                                              |
-| Shipped in the desktop app                                  | 0.9 MB of third-party packages today (preact, tinypool) | +60.8 MB, as `bundle.ts` copies packages whole. 38 MB if pruned to `dist`, 14.8 MB of which is JavaScript                                                                |
-| Newest version allowed (7-day minimum age)                  |                                                         | 4.1.1. Version 4.1.2 came out 2026-11-02; Effect 4 has had 11 releases in 5 weeks                                                                                        |
+|                                                             | Plain                                                                                                                                                                                     | Effect                                                                                                                                                                                                            |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code lines, no blanks or comments                           | 163                                                                                                                                                                                       | 208, its Promise edge included                                                                                                                                                                                    |
+| Shared test: 12 cases, 8 runs                               | 12/12 every run                                                                                                                                                                           | 12/12 every run                                                                                                                                                                                                   |
+| Kill mid-call: abort until both calls failed (median of 10) | 0.2 ms                                                                                                                                                                                    | 0.2 ms                                                                                                                                                                                                            |
+| Close when the CLI ignores SIGTERM (300 ms grace)           | 304 ms                                                                                                                                                                                    | 304 ms                                                                                                                                                                                                            |
+| Bugs found after it was written                             | Shared by both: an answer cut at a block's edge went unmarked (Sol; fixed). Both kill only the direct child, so a descendant can outlive `close()` (Sol; the supervisor's contract below) | Also 2 of its own: a detached close hadn't marked the host closed before the next call went out (my test); a second `close()` returned before the process was dead (both Effect agents). Both fixed on the branch |
+| `tsc -p packages/agent` (median of 5)                       | 0.46 s                                                                                                                                                                                    | 0.65 s (+41%). Files 297 → 472, memory 112 → 185 MB                                                                                                                                                               |
+| Import cost in the server                                   | about 2 ms                                                                                                                                                                                | From the `effect` barrel: 247 files, 5.34 MB, 150–300 ms, +23 MB heap. With deep imports of the 8 modules used: 83 files, 2.30 MB, 60–90 ms                                                                       |
+| `pnpm check`, warm, twice each                              | 32 s, 33 s (116 s cold)                                                                                                                                                                   | 32 s, 34 s                                                                                                                                                                                                        |
+| Install                                                     |                                                                                                                                                                                           | +60.8 MB: one package, no transitive dependencies. node_modules 78 → 140 MB                                                                                                                                       |
+| Shipped in the desktop app                                  | 0.9 MB of third-party packages today (preact, tinypool)                                                                                                                                   | +60.8 MB as `bundle.ts` copies packages whole today. About 2.3 MB if the copier kept only what deep imports load, which is work `bundle.ts` doesn't do yet                                                        |
+| Newest version allowed (7-day minimum age)                  |                                                                                                                                                                                           | 4.1.1. Version 4.1.2 came out 2026-11-02; Effect 4 has had 11 releases in 5 weeks                                                                                                                                 |
 
 **Where Effect shone:**
 
@@ -147,7 +151,7 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 **Where it didn't:**
 
 - **Interruption carries no value.** The edge needs an `onSent` callback to tell "stopped before it was sent" from "stopped while out", and 0060's at-most-once write gate rests on that difference.
-- **`Scope.close` isn't one close however many ask.** Both Effect bugs were lifecycle bugs, the kind Effect is meant to rule out.
+- **This implementation's lifecycle bugs.** It manages a scope by hand, with mutable flags and a detached close, and both of its bugs sat there. That's a finding about this code, not something Effect promises to make impossible. A more idiomatic scoped design might avoid both.
 - **The plain version's subtle part** was a queued call whose own run ends: a `started` flag and a listener, about 15 lines.
 
 **The agent test.**
@@ -162,9 +166,9 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 | Effect                                                                              | 121 s | 6/6 each run        | 32 (`Semaphore.make(n)`, and a fix to `close`) |
 | Effect, with its source vendored in the repo (the first link's `git subtree` trick) | 120 s | 6/6 each run        | 33 (`Effect.cached` for `close`)               |
 
-- **One run each:** this is an anecdote, not a rate.
+- **One run each:** it shows each version can be changed correctly by an agent, not which is more reliable or faster. "Correct" here means it passed these checks.
 - **Vendoring changed nothing measurable.** Effect's npm package already ships its `src/`, an `AGENTS.md` and `ai-docs/`. Both Effect agents read the Semaphore's source in node_modules to check that its queue keeps order.
-- **The 2026-11-05 claim "agents write plain TypeScript better" didn't hold here.** Agents wrote Effect 4 correctly, and found a bug in it.
+- **The 2026-11-05 claim "agents write plain TypeScript better" isn't supported here.** Agents changed Effect 4 code so it passed the same checks, and found a bug in it.
 
 **TanStack AI.**
 
@@ -185,15 +189,21 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 - **"Agents and reviewers write plain TypeScript better": not shown.**
   - All three agents were correct.
   - Reviewers weren't tested.
-- **"The biggest dependency by far": still true, and now measured.**
-  - 60.8 MB in the desktop app, beside 0.9 MB of third-party packages today.
-  - 150–300 ms on the server's start.
+- **"The biggest dependency by far": true of the package, not of what Oriel would load.**
+  - The package is 60.8 MB, beside 0.9 MB of third-party packages in the app today.
+  - With deep imports and a copier that prunes, the cost is about 2.3 MB and 60–90 ms on the server's start. So size alone doesn't decide it.
 
 **SPEC §6 and 0008 decide this, not taste.**
 
 - Oriel takes a dependency only when it is security-critical, a protocol standard or a database driver.
 - Effect is none of these, so adopting it means amending §6.
-- The spike doesn't earn that amendment.
+- **The tradeoff, stated plainly.** Effect at the edges buys one private module with scoped cleanup, cancellable queues and a shorter concurrency change, behind a Promise edge that works.
+- **What it costs:**
+  - a §6 amendment;
+  - a pruning copier in `bundle.ts`;
+  - a second way of writing lifecycle code in a repo agents maintain;
+  - a library on 11 releases in 5 weeks, which pnpm's 7-day floor keeps behind by at least one.
+- For one module of about 300 lines, the spike doesn't earn that.
 
 **Effect doesn't fix what is unwieldy.**
 
@@ -213,10 +223,10 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 ## Rejected
 
 - **Effect wholesale.** It ships 60.8 MB and slows the server's start, needs a §6 amendment, and fixes nothing on the pain list.
-- **Effect at named edges now: the supervisor and the tool host, behind Promise edges.** This was the closest call.
-  - It would make the supervisor's concurrency and interruption shorter.
-  - Against it: the whole package would ship for one module of about 300 lines.
-  - Its two bugs show the lifecycle needs the same care either way.
+- **Effect at named edges now: the supervisor and the tool host, behind Promise edges, with deep imports and a pruned bundle.** This was the closest call.
+  - It would make the supervisor's concurrency and interruption shorter, at about 2.3 MB and 60–90 ms.
+  - Against it: the costs in "Why", for one module of about 300 lines.
+  - The process-tree and truncation bugs Sol found hit both versions alike, so the hard parts of the lifecycle need the same care either way.
   - Decision 5 keeps the door open.
 - **Vendoring Effect's source with `git subtree`.** The npm package already carries its source and agent docs. Vendoring adds 71 MB to the repo for no measured gain.
 - **TanStack AI, with or without Effect.** It's an SDK loop over model APIs. Oriel's agent is the person's own harness.
@@ -226,25 +236,29 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 
 **packages/agent**
 
-- **`process.ts`, the supervisor.** It owns:
-  - a child process in its own empty folder;
-  - JSON lines in and out;
-  - Oriel's requests by ID;
-  - declining every request from the child that the caller doesn't handle;
-  - an idle timer;
-  - a deadline and an `AbortSignal` for each request;
-  - one close however many ask: SIGTERM, then SIGKILL after a grace, then the folder goes;
-  - why the process ended.
+- **`process.ts`, the supervisor: a process's life only.** It owns:
+  - a child in its own process group, in a folder of its own (empty, unless the caller gives one, as an installer needs);
+  - one close however many ask: SIGTERM to the group, then SIGKILL after a grace, then the folder goes;
+  - closing every child when Oriel's own process exits;
+  - an idle timer and an `AbortSignal`;
+  - why it ended, even when a descendant holds the inherited stdio open.
 
-  Claude Code's session, Codex's app server, the tool host and the first run's commands are built on it. It's tested with the spike's kill-mid-call test against a fake child.
+  It's tested with the spike's kill-mid-call test against a fake child, plus a descendant that outlives its parent, a child that ignores SIGTERM, and stdio held by a grandchild.
+
+- **`json-lines.ts`, a protocol adapter above it:**
+  - JSON lines in and out;
+  - Oriel's requests by ID, each with its own deadline;
+  - declining every request from the child that the caller doesn't handle.
+
+  Claude Code's session, Codex's app server and the tool host use it. The first run's commands use the supervisor with plain output lines and stdin closed.
 
 - **`harness.ts`, one interface:** check, plan, provider, titler, discovery and tool host, with `claudeCode` and `codex` as its values. The server, Setup and Settings take a harness by its ID and branch on no names.
 
 **packages/core**
 
-- `waitsOnUser`, chip IDs and quote keys move here from web.
+- These move here from web: `waitsOnUser` and `waitingOn`; `chipIds`, `quoteKey` and `quotesFrom`; `isGroupingId`; and Settings' constants.
 - `ToolCaller` takes a signal.
-- The server imports only types and `files` from `@oriel/web`, and `scripts/check-repo.ts` checks that.
+- From `@oriel/web`, the server then imports types from `view`, plus `files` and `themes`. Those two are Node-side code that serves the window, and they stay there. `scripts/check-repo.ts` checks this.
 
 **packages/server**
 
@@ -266,7 +280,7 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 **MCP servers**
 
 - One small stdio MCP server module serves tools only, in both revisions. `standin-mcp`, `tiny-server` and `sheets-mcp` use it, and it knows nothing of Oriel.
-- Oriel's door keeps its HTTP transport and shares the module's tool dispatch.
+- Oriel's door keeps its HTTP transport and its four revisions, and shares the module's tool dispatch.
 
 **Known servers**
 
@@ -279,8 +293,8 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 Each story leaves main working.
 
 1. **Known servers named once.** `standins.ts` reads `reports` from the declaration, with a test that every stand-in matches a known server. It's small, and it ends the class of mistake behind #238.
-2. **The supervisor** (absorbs OA-249). Claude Code's session and Codex's app server move onto it. `server-calls.ts` gets a real signal, and `ToolCaller` takes one.
-3. **0060 story 1, the tool host,** on the supervisor. The Haiku path goes.
+2. **The supervisor and the JSON-lines adapter** (absorbs OA-249). Claude Code's session, Codex's app server and the first run's commands (`setup/cli.ts`) move onto it. `server-calls.ts` gets a real signal, and `ToolCaller` takes one.
+3. **0060 story 1, the tool host,** on the supervisor. 0060's counted at-most-once test stays a hard gate before replay goes through it and before the Haiku path is deleted. The spike's fake CLI doesn't establish that property.
 4. **`createApp`, part one: `connections/`.** It's the largest piece and has no change a person sees. The flow tests guard it.
 5. **"Waits on you" in core** (OA-250), and the import check.
 6. **One harness interface.** The server, Setup and Settings stop naming harnesses.
@@ -301,5 +315,5 @@ Each story leaves main working.
 - Stories 2 and 3 touch the processes the agent's turns run in:
   - both take the sol-loop's longer rounds;
   - story 3 also takes the security review 0060 already asks for.
-- "Hit every surface" doesn't change for stories 4 to 9, which a person can't see. The flow tests and `pnpm check` guard them.
+- Stories 4 to 9 mean no change a person sees, but they move connections, thread states, change-set phases, Setup and Settings. So each still checks CLAUDE.md's "Hit every surface" list, as it reaches. It also runs `pnpm ui-check` when it touches packages/web, and `pnpm perf` when it touches the index, the overview or Browse.
 - If Decision 5's trigger fires, the spike branch is where to start, and its numbers are the baseline to beat.
