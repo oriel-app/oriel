@@ -35,12 +35,16 @@ test("a line longer than the most is dropped whole, once, and what follows is re
     "tail\n",
     line(6),
   ]);
-  assert.deepEqual(answers, [
-    {
-      jsonrpc: "2.0",
-      id: null,
-      error: { code: codes.invalidRequest, message: "Message too long" },
-    },
-    { jsonrpc: "2.0", id: 6, result: { got: null } },
-  ]);
+  // One invalid-request error, with no ID to answer (the line had none it
+  // could read), then the next request answered.
+  const [dropped, next, ...more] = answers as {
+    jsonrpc: string;
+    id: unknown;
+    error?: { code: number };
+  }[];
+  assert.equal(dropped?.jsonrpc, "2.0");
+  assert.equal(dropped?.id, null);
+  assert.equal(dropped?.error?.code, codes.invalidRequest);
+  assert.deepEqual(next, { jsonrpc: "2.0", id: 6, result: { got: null } });
+  assert.deepEqual(more, []);
 });

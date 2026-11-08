@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fixedAccess } from "./access.ts";
 import type { Fixture } from "./fixture.ts";
 import { mcpServer } from "./server.ts";
 import { answerOf, backlogId, called, callTool, overStandIn, refused, request } from "./testing.ts";
@@ -133,14 +132,22 @@ test("writes keep to the cell cap too, and send nothing when over it", async () 
 });
 
 test("a tool that fails in a way of its own logs only the error's name", async () => {
+  const sentinel = "sentinel-secret-7f3a";
   const logged: string[] = [];
   const server = mcpServer({
-    fetch: async () => Response.json({ files: "not a list" }),
-    source: fixedAccess("t"),
+    fetch: async () => Response.json({ files: [] }),
+    source: {
+      access: async () => {
+        throw new TypeError(`token ${sentinel} broke`);
+      },
+      secrets: () => [],
+    },
     log: (line) => logged.push(line),
   });
   const result = await callTool(server, "list_spreadsheets");
   assert.equal(result.isError, true);
   assert.equal(logged.length, 1);
   assert.match(logged[0] ?? "", /\(TypeError\)$/);
+  assert.ok(!logged.join("\n").includes(sentinel));
+  assert.ok(!JSON.stringify(result).includes(sentinel));
 });
