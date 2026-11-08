@@ -276,7 +276,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         ))}
       </div>
       {/* Under the clusters, not over them: a grouping with Oriel's clusters
-          starts its list where every other grouping does. */
+          starts its list where every other grouping does. */}
       {derived && (
         <p class="derived-note">
           <span class="derived-tag">Oriel rule</span>
