@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkClaudeCode, claudeCodeProvider, claudeCodeTitler } from "./claude-code.ts";
+import { checkClaudeCode, claudeCodeProvider } from "./claude-code.ts";
 import type { ModelEvent, ToolCall } from "./provider.ts";
 import { titleModel } from "./title.ts";
 
@@ -128,13 +128,3 @@ test(
     assert.deepEqual(kept, []);
   },
 );
-
-test("a title on the real CLI, through its smallest model", { skip }, async () => {
-  const found = await checkClaudeCode();
-  assert.ok(found.ok);
-  const title = await claudeCodeTitler({ cli: found.cli })(
-    "Which stories in the checkout epic have nobody on them?",
-    { signal: new AbortController().signal, log: () => {} },
-  );
-  assert.ok(title && title.length <= 60, String(title));
-});

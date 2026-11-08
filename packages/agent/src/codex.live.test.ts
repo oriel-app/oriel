@@ -15,7 +15,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkCodex, codexProvider, codexTitler } from "./codex.ts";
+import { checkCodex, codexProvider } from "./codex.ts";
 import type { ModelEvent, ToolCall, ToolSpec } from "./provider.ts";
 
 const live = process.env.ORIEL_LIVE_CODEX === "1";
@@ -149,17 +149,6 @@ test(
     }
   },
 );
-
-test("a title on the real Codex", { skip }, async () => {
-  const found = await checkCodex();
-  assert.ok(found.ok);
-  const model = found.models.find((m) => m.isDefault)?.id ?? found.models[0]?.id ?? "";
-  const title = await codexTitler({ cli: found.cli, model })(
-    "Which stories in the checkout epic have nobody on them?",
-    { signal: new AbortController().signal, log: () => {} },
-  );
-  assert.ok(title && title.length <= 60, String(title));
-});
 
 // A stand-in for the model's endpoint: it keeps each request Codex sends and
 // answers with one line of text.
