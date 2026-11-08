@@ -25,7 +25,7 @@ A bars block in an answer (`.block-bars`, decision 0030) is a chart, not a meter
 ## When to use it
 
 - **Status bar:** beside a group of items, to show how far along it is by count: a Browse cluster's head, a workstream's row on the overview. "Its parts are counts, not estimates" (`StatusBar` in `packages/web/src/window-page.tsx`).
-- **Plan meter:** for a fraction of a limit, where more is worse. It's a `<meter>` because it's a measurement, not a task's progress.
+- **Plan meter:** for a fraction of a limit, where more is worse. It's a `<meter>` because it's a measurement, not a task's progress. Settings shows it in its own Usage section, one block a CLI, not under Providers' rows: a row keeps to what a person picks a provider by.
 - **Progress with a total:** none in Oriel today, since the first run stopped reading a source on its own screen (decision 0059). A new one is a native `<progress max value>`, named.
 - **Spark:** to show whether something is moving, not how much. It has no axis and no numbers; its label says the total.
 

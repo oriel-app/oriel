@@ -1142,7 +1142,7 @@ export type PlanWindowView = {
   resetsAt: string | null;
 };
 
-// A Claude Code or Codex instance's usage, under its row in Settings:
+// A Claude Code or Codex instance's usage, in Settings' Usage:
 // Oriel's own counts for today, and the plan's windows, or why there are
 // none: no plan limits apply (an API key), the CLI didn't answer, or it
 // isn't ready.
@@ -1151,6 +1151,19 @@ export type UsageView = {
   today: UsageCountsView;
   plan: { windows: PlanWindowView[] } | { none: "no-plan" | "no-answer" | "not-ready" };
 };
+
+// Settings' sections, each its own address (OA-181), in the order its list
+// shows them: the browser routes them, and the server serves their pages.
+export const settingsSections = [
+  "providers",
+  "usage",
+  "connections",
+  "general",
+  "appearance",
+  "asking",
+  "notifications",
+] as const;
+export type SettingsSection = (typeof settingsSections)[number];
 
 // How the window writes a time: "3 min ago", or as a date and time.
 export const timeFormats = ["relative", "absolute"] as const;

@@ -1160,7 +1160,8 @@ button.nav-more {
     display: flex;
   }
 
-  .shell[data-folded] .nav-link {
+  /* The sidebar's own links only: Settings' sections are nav links too. */
+  .shell[data-folded] .sidebar .nav-link {
     position: relative;
     justify-content: center;
     width: 2.25rem;
@@ -6510,9 +6511,10 @@ button.overview-title:hover {
   align-items: start;
 }
 
+/* It sticks below the frame's band, as the right rail does, not under it. */
 .settings-sections {
   position: sticky;
-  top: var(--space-4);
+  top: calc(var(--bar-height) + var(--inset-top));
   display: grid;
   gap: 1px;
 }
@@ -6535,10 +6537,24 @@ button.overview-title:hover {
   gap: var(--space-3);
 }
 
+/* Every section's title row is as tall as one with a button beside it,
+   as Providers' Check again, so moving between sections leaves the title
+   where it was. */
 .settings-title {
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--text-sm) * var(--leading) + 0.5rem + 2 * var(--border-thin));
   margin: 0;
   font-size: var(--text-lg);
   font-weight: var(--weight-strong);
+}
+
+/* A short section shows no scrollbar and a long one does: its room is kept
+   either way, so the frame doesn't move sideways between them. */
+html:has(.settings-page) {
+  scrollbar-gutter: stable;
+  /* The room kept is the frame's, beside its band. */
+  background: var(--frame);
 }
 
 .settings-lede {
@@ -6921,10 +6937,28 @@ button.overview-title:hover {
   accent-color: var(--accent);
 }
 
-/* A server's list may be long: it scrolls, with Find above it. */
-.connection-options .choices {
+/* A server's list may be long: it scrolls, with Find above it and its
+   actions below, so Use these is never a scroll to the list's foot. */
+.pick-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.pick-list .choices {
   max-height: 18rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Listing asks the person's agent: the button stays pressed, at full
+   strength, with a spinner, until the list comes. */
+.pick-open[aria-pressed="true"] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--surface-hover);
+  color: var(--text);
+  opacity: 1;
 }
 
 @media (max-width: 760px) {
@@ -7395,8 +7429,8 @@ a.button.primary {
   color: var(--on-accent);
 }
 
-/* How much of the plan Oriel has used, under Claude Code's row (decision
-   0046): today's counts, then each window of the plan as a meter. */
+/* How much of the plan Oriel has used, in Settings' Usage, one block a CLI
+   (decision 0046): today's counts, then each window of the plan as a meter. */
 .plan-usage {
   display: grid;
   flex: 1 0 100%;

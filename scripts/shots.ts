@@ -1695,10 +1695,20 @@ return waiting.why;`;
 const suggesting = (await writing({ mode: "fixture" })).serving;
 
 const scenes: Scene[] = [
-  // Settings (OA-181): its sections, each a page; Providers first.
+  // Settings (OA-181): its sections, each a page; Providers first, its rows
+  // without the plan, which Usage shows.
   {
     name: "settings-providers",
     path: "/settings",
+    on: settingsServer,
+    act: async (page) => {
+      await page.locator("#provider-codex .provider-state", { hasText: "Ready" }).waitFor();
+      if (await page.locator(".plan-usage").count()) throw new Error("usage on Providers' rows");
+    },
+  },
+  {
+    name: "settings-usage",
+    path: "/settings/usage",
     on: settingsServer,
     act: (page) => page.locator(".plan-window").first().waitFor(),
   },
@@ -1709,6 +1719,59 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.getByRole("button", { name: "Use a Claude Code at another path" }).click();
       await page.getByRole("textbox", { name: "Path to Claude Code" }).waitFor();
+    },
+  },
+  // Moving between sections holds the frame still: the title, the
+  // sections' list and the column stay where they were.
+  {
+    name: "settings-steady",
+    path: "/settings",
+    on: settingsServer,
+    act: async (page) => {
+      const frame = () =>
+        Promise.all(
+          [".settings-title", ".settings-sections", ".settings-body"].map(async (selector) => {
+            const box = await page.locator(selector).first().boundingBox();
+            // A title is as wide as its words; the rest by their width.
+            const size = selector === ".settings-title" ? box?.height : box?.width;
+            return box ? [box.x, box.y, size ?? 0].map(Math.round).join(",") : "none";
+          }),
+        );
+      await page.locator("#provider-codex .provider-state", { hasText: "Ready" }).waitFor();
+      const before = (await frame()).join(" ");
+      for (const name of ["General", "Connections", "Usage", "Providers"]) {
+        await page
+          .getByRole("navigation", { name: "Settings" })
+          .getByRole("link", { name })
+          .click();
+        await page.locator(".settings-title", { hasText: name }).first().waitFor();
+        const now = (await frame()).join(" ");
+        if (now !== before) throw new Error(`${name} moves the frame: ${before} to ${now}`);
+      }
+      await page
+        .getByRole("navigation", { name: "Settings" })
+        .getByRole("link", { name: "General" })
+        .click();
+    },
+  },
+  // The sidebar folded: Settings' sections keep their own width.
+  {
+    name: "settings-folded",
+    path: "/settings/general",
+    on: settingsServer,
+    act: async (page) => {
+      await page.locator(".settings-switch .switch").waitFor();
+      if ((page.viewportSize()?.width ?? 0) > 760) {
+        await page.getByRole("button", { name: "Hide sidebar" }).click();
+        await page.locator(".shell[data-folded]").waitFor();
+      }
+      // Wide, each fills the list's column; narrow, they're tabs, as wide as
+      // their words.
+      if ((page.viewportSize()?.width ?? 0) <= 760) return;
+      const list = await page.locator(".settings-sections").boundingBox();
+      const link = await page.locator(".settings-sections .nav-link").first().boundingBox();
+      if (!list || !link || link.width < list.width - 1)
+        throw new Error(`Settings' sections squashed: ${link?.width} of ${list?.width}`);
     },
   },
   {
@@ -4098,6 +4161,57 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
+  // A source server's switch flips at once, before the server answers: off
+  // and straight back on while the first is on its way ends on, as the
+  // last click asked, and the server keeps it on; one the server refuses
+  // flips back, and says why in its row.
+  {
+    name: "settings-source-servers-twice",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "on", slack: "on", state: setupFinished }),
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      // The first turning waits for the second click before it's answered.
+      let clicked = () => {};
+      const second = new Promise<void>((done) => (clicked = done));
+      await page.route("**/api/actions/source.off", async (route) => {
+        await second;
+        await route.continue();
+      });
+      const on = section.locator(".provider-row", { hasText: "Slack" });
+      await on.getByRole("switch", { name: "Slack on" }).click();
+      await on.getByRole("switch", { name: "Slack off" }).waitFor({ timeout: 500 });
+      await on.getByRole("switch", { name: "Slack off" }).click();
+      await on.getByRole("switch", { name: "Slack on" }).waitFor({ timeout: 500 });
+      const turned = page.waitForResponse("**/api/actions/source.on");
+      clicked();
+      await turned;
+      await page.reload();
+      await section.getByRole("switch", { name: "Slack on" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "settings-source-servers-refused",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, atlassian: "on", slack: "on", state: setupFinished }),
+    refused: 502,
+    act: async (page) => {
+      await page.route("**/api/actions/source.off", (route) =>
+        route.fulfill({
+          status: 502,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Claude Code didn't answer. Try again." }),
+        }),
+      );
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByRole("switch", { name: "Slack on" }).click();
+      const row = section.locator(".provider-row", { hasText: "Slack" });
+      await row.locator(".connection-problem", { hasText: "didn't answer" }).waitFor();
+      await row.getByRole("switch", { name: "Slack on" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
+    },
+  },
   // Linear's MCP server found, and Linear on through it, a stand-in of it
   // answering Ferrowick's Linear (OA-278): Settings, the overview, Browse
   // by epic and an issue's panel.
@@ -4142,6 +4256,56 @@ scenes.push(
       await row.first().scrollIntoViewIfNeeded();
     },
   })),
+  // Pick asks the person's agent for the list, which takes a while: the
+  // button shows it's working at once, and takes no second click.
+  {
+    name: "settings-picks-listing",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, slack: "on", state: setupFinished }),
+    act: async (page: Page) => {
+      await hang(page, "/api/connections/*/pick");
+      const row = page.locator(".connection-row", { hasText: "through Slack's" });
+      await row.getByRole("button", { name: "Pick" }).click();
+      const listing = row.getByRole("button", { name: "Listing…" });
+      await listing.waitFor({ timeout: 500 });
+      if (!(await listing.isDisabled())) throw new Error("Listing… takes a second click");
+      await row.scrollIntoViewIfNeeded();
+    },
+  },
+  // A long list of spreadsheets: it scrolls, and Use these stays in sight
+  // under it, never a scroll to the list's foot.
+  {
+    name: "settings-picks-long",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheetsMcp: "on", state: setupFinished }),
+    act: async (page: Page) => {
+      await page.route("**/api/connections/*/pick", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            more: true,
+            choices: Array.from({ length: 40 }, (_, i) => ({
+              value: `sheet-${i + 1}`,
+              name: `Spreadsheet ${i + 1}`,
+              count: null,
+              updatedAt: null,
+            })),
+          }),
+        }),
+      );
+      const row = page.locator(".connection-row", { hasText: "through sheets-mcp" });
+      await row.getByRole("button", { name: "Pick" }).click();
+      await row.getByRole("checkbox", { name: "Spreadsheet 1", exact: true }).check();
+      const use = row.getByRole("button", { name: "Use these 1" });
+      await use.scrollIntoViewIfNeeded();
+      const list = await row.locator(".pick-list .choices").boundingBox();
+      const button = await use.boundingBox();
+      const height = page.viewportSize()?.height ?? 0;
+      if (!list || !button || list.height > 18 * 16 + 1 || button.y + button.height > height)
+        throw new Error("Use these isn't in sight under the list");
+      await row.locator(".pick-list").evaluate((list) => list.scrollIntoView({ block: "center" }));
+    },
+  },
   {
     name: "setup-found-picks",
     path: "/setup",

@@ -1,8 +1,8 @@
 // Settings (OA-181): its sections down the left, each its own address, with
 // room for more. Providers first: one row per provider instance, what Oriel
 // found for it and a switch, then the default model and the Title model,
-// picked from those connected and on, and how much of the plan Oriel has
-// used. Connections: every connection, and Add a connection. General: how a time is written, where a thread's page goes after
+// picked from those connected and on. Usage: how much of each plan Oriel has
+// used, apart from the rows, which keep to what a person picks by. Connections: every connection, and Add a connection. General: how a time is written, where a thread's page goes after
 // an approval, and whether the desktop app asks before quitting while Oriel
 // works. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
@@ -30,6 +30,7 @@ import type {
 
 const sections: { id: SettingsSection; name: string }[] = [
   { id: "providers", name: "Providers" },
+  { id: "usage", name: "Usage" },
   { id: "connections", name: "Connections" },
   { id: "general", name: "General" },
   { id: "appearance", name: "Appearance" },
@@ -91,6 +92,8 @@ export function SettingsPage(props: {
               setup={props.setup}
               sendSetup={sendSetup}
             />
+          ) : section === "usage" ? (
+            <Usage model={model} view={view} send={send} />
           ) : section === "general" ? (
             <General view={view} change={change} />
           ) : section === "appearance" ? (
@@ -117,7 +120,6 @@ function Providers(props: {
   const { model, view, send, change, setup } = props;
   const cli = setup.view?.cli ?? null;
   const codex = setup.view?.codex ?? null;
-  const usage = (id: string) => model.usage?.find((u) => u.provider === id) ?? null;
   const path = (provider: SettingsView["providers"][number]) =>
     view.cliPaths && (
       <CliPath
@@ -148,14 +150,7 @@ function Providers(props: {
           <h2 id="settings-providers" class="settings-title">
             Providers
           </h2>
-          <button
-            type="button"
-            class="button"
-            disabled={model.looking}
-            onClick={() => send({ type: "lookClicked" })}
-          >
-            {model.looking ? "Checking…" : "Check again"}
-          </button>
+          <CheckAgain model={model} send={send} />
         </div>
         <p class="settings-lede">
           Oriel's agent runs on one of these. Your own Claude Code, or Codex as a preview, runs on
@@ -186,7 +181,6 @@ function Providers(props: {
                 onToggle={(on) => change({ provider: provider.id, on })}
                 onKey={() => document.getElementById("provider-api")?.scrollIntoView()}
               >
-                <PlanUsage usage={usage(provider.id)} name={provider.name} />
                 {path(provider)}
               </CodexRow>
             ) : (
@@ -204,9 +198,6 @@ function Providers(props: {
                     onSave={() => send({ type: "keySaved" })}
                     onRemove={() => send({ type: "keyRemoved" })}
                   />
-                )}
-                {provider.kind !== "api" && (
-                  <PlanUsage usage={usage(provider.id)} name={provider.name} />
                 )}
                 {provider.kind !== "api" && path(provider)}
               </ProviderRow>
@@ -234,6 +225,58 @@ function Providers(props: {
         />
       </section>
     </>
+  );
+}
+
+// Looks for every provider again, and so asks each CLI about its plan again.
+function CheckAgain(props: { model: SettingsModel; send(msg: SettingsMsg): void }) {
+  const { model, send } = props;
+  return (
+    <button
+      type="button"
+      class="button"
+      disabled={model.looking}
+      onClick={() => send({ type: "lookClicked" })}
+    >
+      {model.looking ? "Checking…" : "Check again"}
+    </button>
+  );
+}
+
+// Settings' Usage: how much of each CLI's plan Oriel has used, one block a
+// CLI, apart from Providers' rows, which keep to what a person picks by.
+function Usage(props: { model: SettingsModel; view: SettingsView; send(msg: SettingsMsg): void }) {
+  const { model, view, send } = props;
+  const plans = view.providers.filter((provider) => provider.kind !== "api");
+  return (
+    <section class="settings-section" aria-labelledby="settings-usage">
+      <div class="settings-head">
+        <h2 id="settings-usage" class="settings-title">
+          Usage
+        </h2>
+        {!view.scripted && <CheckAgain model={model} send={send} />}
+      </div>
+      {view.scripted ? (
+        <p class="settings-lede">
+          Oriel is running its scripted agent, as <code>--agent scripted</code> asked, so it uses no
+          plan.
+        </p>
+      ) : model.usage === null ? (
+        <p class="loading">Loading…</p>
+      ) : plans.length === 0 ? (
+        <p class="settings-lede">No provider here runs on a plan.</p>
+      ) : (
+        plans.map((provider) => (
+          <div key={provider.id} class="settings-field">
+            <span class="settings-field-name">{provider.name}</span>
+            <PlanUsage
+              usage={model.usage?.find((u) => u.provider === provider.id) ?? null}
+              name={provider.name}
+            />
+          </div>
+        ))
+      )}
+    </section>
   );
 }
 
@@ -286,7 +329,9 @@ function PlanUsage({ usage, name }: { usage: UsageView | null; name: string }) {
         <p class="plan-note">{name} didn't say how much of your plan is used. Check again.</p>
       ) : plan.none === "no-plan" ? (
         <p class="plan-note">This {name} isn't on a subscription plan, so it has no plan limits.</p>
-      ) : null}
+      ) : (
+        <p class="plan-note">{name} isn't ready, so it can't say how much of your plan is used.</p>
+      )}
     </div>
   );
 }

@@ -14,6 +14,8 @@ import {
   filterParams,
   type GroupingId,
   isGroupingId,
+  type SettingsSection,
+  settingsSections,
 } from "./view.ts";
 
 export type Route = Page & { item?: string };
@@ -34,15 +36,7 @@ export type Page =
   | { page: "setup" }
   | { page: "review"; token: string };
 
-export const settingsSections = [
-  "providers",
-  "connections",
-  "general",
-  "appearance",
-  "asking",
-  "notifications",
-] as const;
-export type SettingsSection = (typeof settingsSections)[number];
+export type { SettingsSection };
 
 const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
 const workstreamPath = new RegExp(`^/workstreams/(${ulid})$`);
