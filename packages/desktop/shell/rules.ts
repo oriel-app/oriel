@@ -363,6 +363,14 @@ export function secretsInMemory(argv: readonly string[]): boolean {
   return argv.includes("--background") || argv.includes("--launch-file");
 }
 
+// The server's arguments (desktop/PROTOCOL.md). A launch a script made, as
+// `secretsInMemory` reads it, adds `--placeholder-account`: its server
+// shows every account as a placeholder, never the person's email or plan,
+// since that script may take screenshots to publish (OA-308).
+export function serverArguments(argv: readonly string[], data: string): string[] {
+  return ["--desktop", "--data", data, ...(secretsInMemory(argv) ? ["--placeholder-account"] : [])];
+}
+
 // The shell's own switches, and whether each takes a value. Every other
 // argument is refused (main.ts): Chromium and Node read hundreds of
 // switches from the command line, and some open a debugger

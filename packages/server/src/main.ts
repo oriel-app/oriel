@@ -35,7 +35,8 @@
 // turns on through it.
 //
 // `--desktop --data <dir>` is the server as the desktop app's shell starts
-// it, and takes no other flag: see desktop/PROTOCOL.md. In the app it runs
+// it, and takes no other flag but `--placeholder-account`, which the shell
+// adds when a script started it: see desktop/PROTOCOL.md. In the app it runs
 // on the shell's own Node, as Electron's utility process, and the channel
 // is messages on its parent port (decision 0047); elsewhere, stdin and
 // stdout. Every source turns on through the person's own agent's servers,
@@ -77,6 +78,7 @@ const { values, tokens } = parseArgs({
     "claude-code": { type: "string" },
     desktop: { type: "boolean" },
     data: { type: "string" },
+    "placeholder-account": { type: "boolean" },
   },
   tokens: true,
 });
@@ -88,8 +90,13 @@ const pipes = !values.desktop
     ? portPipes(parent)
     : { input: process.stdin, write: takeStdout(process.stdout, process.stderr) };
 const flags = new Set(tokens.flatMap((token) => (token.kind === "option" ? [token.name] : [])));
-if (values.desktop && [...flags].some((flag) => flag !== "desktop" && flag !== "data")) {
-  console.error("--desktop takes only --data");
+const desktopFlags = new Set(["desktop", "data", "placeholder-account"]);
+if (values.desktop && [...flags].some((flag) => !desktopFlags.has(flag))) {
+  console.error("--desktop takes only --data and --placeholder-account");
+  process.exit(2);
+}
+if (flags.has("placeholder-account") && !values.desktop) {
+  console.error("--placeholder-account is for the desktop app's server only");
   process.exit(2);
 }
 if ((values.desktop === true) !== flags.has("data")) {
@@ -176,7 +183,14 @@ if (pipes && values.data) {
         models,
         settings,
         looked: first,
-        setup: { state, fresh, home, env, trust },
+        setup: {
+          state,
+          fresh,
+          home,
+          env,
+          trust,
+          placeholder: values["placeholder-account"] === true,
+        },
       };
     },
   }).catch((error: unknown) => {

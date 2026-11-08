@@ -8,7 +8,7 @@ node packages/server/src/main.ts --desktop --data <folder>
 
 In the app the server runs on Electron's own Node, as the shell's utility process, which has no stdin (decision 0047). There the channel's text travels as messages on the process's parent port, which only the shell holds: each string the shell sends is text it would have written to stdin, `null` is stdin's end, and each line the server writes comes back as one string. Anywhere else, as under `pnpm desktop:server` and in tests, it's stdin and stdout. Everything below is the same either way; "stdin" and "stdout" name the channel's two directions.
 
-`--data` is the folder the server keeps its files in, as an absolute path. The shell picks it: its OS's usual per-person folder for app data. The server builds no path of its own and takes no other flag in desktop mode. `protocol.ts` beside this file holds the same shapes as validators; when the two disagree, it wins.
+`--data` is the folder the server keeps its files in, as an absolute path. The shell picks it: its OS's usual per-person folder for app data. The server builds no path of its own. Its one other flag in desktop mode is `--placeholder-account`, which the shell adds when a script launched it (`--background` or `--launch-file`, as `pnpm desktop:try` does): every account then shows as `you@example.com` on a placeholder plan, never the person's own, so a screenshot names nobody. `protocol.ts` beside this file holds the same shapes as validators; when the two disagree, it wins.
 
 ## Start
 

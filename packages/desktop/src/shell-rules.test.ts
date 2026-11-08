@@ -10,6 +10,7 @@ import {
   readyOrigin,
   refusedArguments,
   secretsInMemory,
+  serverArguments,
   storageProblem,
 } from "../shell/rules.ts";
 
@@ -181,6 +182,18 @@ test("in the background, or with a launch file, secrets stay in memory, away fro
   assert.equal(secretsInMemory(["Oriel", "--launch-file", "--data", "/tmp/o"]), true);
   assert.equal(secretsInMemory(["Oriel", "--data", "/tmp/o"]), false);
   assert.equal(secretsInMemory(["Oriel"]), false);
+});
+
+test("a launch a script made shows a placeholder account; the person's own launch never does", () => {
+  for (const by of ["--background", "--launch-file"])
+    assert.deepEqual(serverArguments(["Oriel", by, "--data", "/tmp/o"], "/tmp/o"), [
+      "--desktop",
+      "--data",
+      "/tmp/o",
+      "--placeholder-account",
+    ]);
+  assert.deepEqual(serverArguments(["Oriel"], "/d"), ["--desktop", "--data", "/d"]);
+  assert.deepEqual(serverArguments(["Oriel", "-psn_0_1234"], "/d"), ["--desktop", "--data", "/d"]);
 });
 
 test("a launch takes only the shell's own switches, each value where one belongs", () => {

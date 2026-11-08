@@ -131,6 +131,8 @@ async function firstRun(
     codex?: { signedIn?: boolean; login?: "signs-in" | "fails" };
     // Its update brings it up to date, and each check after it waits here.
     updates?: { held: (release: () => void) => void };
+    // As under `pnpm desktop:try`.
+    placeholder?: boolean;
   } = {},
 ) {
   const home = mkdtempSync(join(tmpdir(), "oriel-first-run-"));
@@ -220,6 +222,7 @@ async function firstRun(
       world.fronted += 1;
     },
     ...(options.start ? { start: options.start } : {}),
+    ...(options.placeholder ? { placeholder: true } : {}),
   };
   const app = await testApp(t, { models: chooser, settings, setup });
   const view = async () => json<SetupView>(await app.get("/api/setup"));
@@ -250,6 +253,31 @@ test("a binary whose signature isn't Anthropic's is never run, and its row says 
   await run.send("/api/setup/cli", { command: "sign-in" });
   await run.app.settled();
   assert.equal(existsSync(join(run.world.home, "login-args")), false);
+});
+
+test("under desktop:try, no page the window loads names the signed-in account (OA-308)", async (t) => {
+  const run = await firstRun(t, {
+    installed: {},
+    signedIn: true,
+    codex: { signedIn: true },
+    placeholder: true,
+  });
+  const { cli, codex } = await run.view();
+  for (const row of [cli, codex]) {
+    assert.equal(row?.state, "ready");
+    assert.deepEqual(row?.account, {
+      email: "you@example.com",
+      plan: "Placeholder plan",
+      personal: true,
+    });
+  }
+  // Every page the first run and Settings load, as the bytes the server
+  // sends. The window's event streams carry only thread events.
+  for (const page of ["/api/setup", "/api/settings", "/api/settings/usage", "/api/overview"]) {
+    const body = String((await run.get(page)).body);
+    for (const identity of ["maya@example.com", "Claude Pro", "ChatGPT Plus"])
+      assert.ok(!body.includes(identity), `${page} names ${identity}`);
+  }
 });
 
 test("a sign-in that doesn't finish says so, and its log holds no email, key, code or link query", async (t) => {
