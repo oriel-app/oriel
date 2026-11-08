@@ -29,8 +29,8 @@ const endings = (workstream: Ended, done: boolean, send: (msg: EndingMsg) => voi
 ];
 
 // A workstream's row with its menu, and with `swipe`, a swipe left that
-// shows the same actions. Rename, first, swaps the row for its name in a
-// field: Enter or leaving it saves, as on the workstream's page; Escape, or
+// shows its endings. The menu's Rename, first, swaps the row for its name
+// in a field: Enter or leaving it saves, as on the workstream's page; Escape, or
 // a name left empty, keeps the old one.
 export function WorkstreamMenu(props: {
   workstream: Ended;
@@ -42,10 +42,8 @@ export function WorkstreamMenu(props: {
 }) {
   const { workstream, dispatch } = props;
   const [naming, setNaming] = useState(false);
-  const items: MenuItem[] = [
-    { label: "Rename", onSelect: () => setNaming(true) },
-    ...endings(workstream, props.done, sender(dispatch)),
-  ];
+  const ends = endings(workstream, props.done, sender(dispatch));
+  const items: MenuItem[] = [{ label: "Rename", onSelect: () => setNaming(true) }, ...ends];
   // Ended by a key, focus goes back to the row's link, once it's back.
   const finish = (name: string | null, refocus: HTMLElement | null) => {
     setNaming(false);
@@ -55,7 +53,7 @@ export function WorkstreamMenu(props: {
   const shown = naming ? (
     <NameField name={workstream.name} onDone={finish} />
   ) : props.swipe ? (
-    <Swipeable actions={items}>{props.children}</Swipeable>
+    <Swipeable actions={ends}>{props.children}</Swipeable>
   ) : (
     props.children
   );

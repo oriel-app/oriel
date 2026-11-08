@@ -2779,8 +2779,8 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A swipe on it in the sidebar shows Rename, Mark done and Delete,
-    // the last against more resistance.
+    // A swipe on it in the sidebar shows Mark done and Delete; Rename is
+    // in its menu only.
     name: "ending-swipe",
     path: endedPage,
     on: ending,
@@ -2789,7 +2789,7 @@ const scenes: Scene[] = [
       await openSidebar(page);
       const row = page.locator(".nav-workstream-menu .swipe").first();
       await row.hover();
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 48; i++) {
         await page.mouse.wheel(10, 0);
         await page.waitForTimeout(16);
       }
