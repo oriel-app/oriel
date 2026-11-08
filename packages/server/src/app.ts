@@ -53,6 +53,7 @@ import {
   type Recognized,
   type ConnectRefusal,
   type PickChoice,
+  unlistedNamed,
   pickedInto,
   pickedOf,
   type SourceServer,
@@ -749,7 +750,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     const pick = through?.known.picks?.find((each) => field === null || each.name === field);
     if (!through || !pick) return null;
     try {
-      return await pick.list(through.read, query, asThrough(connection));
+      const listed = await pick.list(through.read, query, asThrough(connection));
+      // A picked one it doesn't give, by the name Oriel last knew of it.
+      if (!listed.choices.some((each) => each.unlisted)) return listed;
+      const records = () => index.records(workspaceId, connection.prefix, unknown);
+      return unlistedNamed(listed, query, new Map(pick.known?.(records()) ?? []));
     } catch (error) {
       log("source servers: a pick's list failed", {
         kind: connection.kind,
@@ -2611,6 +2616,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         many: pick.many === true,
         most: pick.most ?? null,
         unpicked: pick.unpicked,
+        unlisted: pick.unlisted ?? null,
         picked: pickedOf(pick, kept.options),
       })),
     };

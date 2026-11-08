@@ -67,6 +67,7 @@ import { indexStore, open as openDb } from "../packages/db/src/index.ts";
 import { replayNoticer } from "./noticed/replay.ts";
 import { annotation, onCi } from "./annotations.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
+import { loadSlackFixture } from "../packages/slack/src/fixture.ts";
 import { history as pastWeeks, weekAt, weeks } from "./history-world.ts";
 import {
   type FirstRunOptions,
@@ -4508,6 +4509,55 @@ scenes.push(
       await row.locator(".pick-list").evaluate((list) => list.scrollIntoView({ block: "center" }));
     },
   },
+  // A picked channel the person left (OA-289): Slack's server no longer
+  // lists it, and the picker still shows it, ticked, by the name Oriel
+  // last knew, saying why; and unticked, it's unpicked.
+  ...(["settings-picks-left", "settings-picks-left-unpicked"] as const).map((name) => {
+    let fixture = loadSlackFixture();
+    return {
+      name,
+      path: "/settings/connections",
+      make: () => {
+        // The person is in #random too, at first.
+        fixture = loadSlackFixture();
+        fixture.picked.push("C0FW2RANDOM");
+        return firstRun({
+          cli: { signedIn: true },
+          slack: "on",
+          slackFixture: fixture,
+          state: setupFinished,
+        })();
+      },
+      act: async (page: Page) => {
+        const row = page.locator(".connection-row", { hasText: "through Slack's" });
+        await row.getByRole("button", { name: "Pick" }).click();
+        for (const each of [/#weather-disruptions/, /#random/])
+          await row.getByRole("checkbox", { name: each }).check();
+        await row.getByRole("button", { name: "Use these 2" }).click();
+        await row.getByText("2 picked.").waitFor();
+        // The person leaves #random.
+        fixture.picked = fixture.picked.filter((id) => id !== "C0FW2RANDOM");
+        await row.getByRole("button", { name: "Change" }).click();
+        const left = row.getByRole("checkbox", { name: /#random/ });
+        await left.waitFor();
+        if (!(await left.isChecked()))
+          throw new Error("A picked channel the person left isn't ticked");
+        await row.locator(".choice-unlisted", { hasText: "You're not in this channel" }).waitFor();
+        if (name === "settings-picks-left-unpicked") {
+          await left.uncheck();
+          await row.getByRole("button", { name: "Use these 1" }).click();
+          await row.getByText("1 picked.").waitFor();
+          await row.getByRole("button", { name: "Change" }).click();
+          await row.getByRole("checkbox", { name: /#weather-disruptions/ }).waitFor();
+          if ((await row.getByRole("checkbox", { name: /#random/ }).count()) !== 0)
+            throw new Error("An unpicked channel the person left is still listed");
+        }
+        await row
+          .locator(".pick-list")
+          .evaluate((list) => list.scrollIntoView({ block: "center" }));
+      },
+    };
+  }),
   {
     name: "setup-found-picks",
     path: "/setup",

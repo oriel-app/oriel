@@ -7146,6 +7146,20 @@ html:has(.settings-page) {
   accent-color: var(--accent);
 }
 
+/* A picked one the server's list doesn't give: its name, and why under it. */
+.choice-unlisted {
+  align-items: start;
+}
+
+.choice-unlisted input {
+  margin-top: 0.25em;
+}
+
+.choice-text {
+  display: grid;
+  gap: 2px;
+}
+
 /* A server's list may be long: it scrolls, with Find above it and its
    actions below, so Use these is never a scroll to the list's foot. */
 .pick-list {

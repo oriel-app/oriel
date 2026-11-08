@@ -20,15 +20,11 @@ export const slackOptionFields = [
   },
   { kind: "read-only", name: "readOnly" },
 ] as const satisfies readonly OptionField[];
-// Through Slack's server, a connection with none reads the person's first
-// channels (decision 0059).
+// Through Slack's server, a connection with none, or none left after the
+// person unpicks them, reads the person's first channels (decision 0059).
 export const slackOptions = object({
   readOnly: optional(boolean),
   channels: optional(
-    refine(
-      array(channel),
-      (list) => list.length > 0 && list.length <= 50,
-      "expected 1 to 50 channels",
-    ),
+    refine(array(channel), (list) => list.length <= 50, "expected at most 50 channels"),
   ),
 });

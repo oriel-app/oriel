@@ -128,6 +128,9 @@ export type PickChoice = {
   // How many items it holds, and when it last changed, when the source says.
   count: number | null;
   updatedAt: string | null;
+  // Picked, but not in the list the server gave, as a channel the person
+  // left: it shows by the name Oriel last knew, so it can be unpicked.
+  unlisted?: true;
 };
 
 // A connection as its connector made it: its options.

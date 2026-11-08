@@ -13,6 +13,7 @@
 // https://docs.slack.dev/ai/slack-mcp-server/
 import {
   answerText,
+  type IndexRecord,
   narrowed,
   type SourceServer,
   ServerUnreadable,
@@ -30,6 +31,7 @@ import {
   searchedChannelsOf,
   threadOf,
 } from "./slack-answers.ts";
+import { slackAttrsOf } from "./attrs.ts";
 import { maxChannels } from "./source.ts";
 
 // Its tools Oriel calls, by what each does.
@@ -64,7 +66,14 @@ export const slackServer: SourceServer = {
       many: true,
       most: maxChannels,
       unpicked: `your first ${maxChannels} channels`,
-      async list(read, query) {
+      // A picked channel the person isn't in. Oriel reads it as long as
+      // Slack lets it; once Slack won't, a sync stops, keeping the window
+      // as it was, and the connection waits when it opens again
+      // (`serverProblem`, `openThrough`).
+      unlisted:
+        "You're not in this channel. Oriel reads it while Slack lets it; once Slack won't, syncing stops until you unpick it.",
+      known: (records) => channelNames(records),
+      async list(read, query, connection) {
         const api = slackServerReads({ read });
         const listed: { value: string; name: string }[] = [];
         const cursors = new Set<string>();
@@ -83,11 +92,23 @@ export const slackServer: SourceServer = {
           if (!cursor || cursors.has(cursor)) break;
           cursors.add(cursor);
         }
-        return narrowed(listed, query);
+        // Only a whole list says a picked channel isn't among them.
+        const picked = Array.isArray(connection.options.channels)
+          ? connection.options.channels.filter((each) => typeof each === "string")
+          : [];
+        return narrowed(listed, query, cursor ? [] : picked);
       },
     },
   ],
 };
+
+// The names of the channels indexed messages are in, by ID, as `#name`.
+function* channelNames(records: readonly IndexRecord[]): Iterable<readonly [string, string]> {
+  for (const record of records) {
+    const attrs = slackAttrsOf(record);
+    if (attrs) yield [attrs.channel.id, `#${attrs.channel.name}`];
+  }
+}
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

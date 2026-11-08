@@ -30,6 +30,7 @@ import type {
   ConnectionView,
   ConnectorView,
   OptionField,
+  PickChoiceView,
   ReviewOutline,
 } from "./view.ts";
 
@@ -718,7 +719,7 @@ function PickOption(props: {
           <div class="choices">
             {setting.choices.map((choice) =>
               many ? (
-                <label key={choice.value} class="choice">
+                <label key={choice.value} class={choiceClass(choice)}>
                   <input
                     type="checkbox"
                     value={choice.value}
@@ -734,10 +735,10 @@ function PickOption(props: {
                       )
                     }
                   />
-                  {choice.name}
+                  <ChoiceName choice={choice} pick={field} />
                 </label>
               ) : (
-                <label key={choice.value} class="choice">
+                <label key={choice.value} class={choiceClass(choice)}>
                   <input
                     type="radio"
                     name={`connection-${connection.id}-${field.name}`}
@@ -749,7 +750,7 @@ function PickOption(props: {
                       props.onPick(choice.value);
                     }}
                   />
-                  {choice.name} ({choice.value})
+                  <ChoiceName choice={choice} pick={field} />
                 </label>
               ),
             )}
@@ -759,13 +760,19 @@ function PickOption(props: {
               <button
                 type="button"
                 class="button primary"
-                disabled={setting.pending || ticked.length === 0}
+                // Unticking every one picked, the connection reads what it
+                // reads with none, where it says.
+                disabled={setting.pending || (ticked.length === 0 && (none || !field.unpicked))}
                 onClick={() => {
                   list(false);
                   props.onPick(ticked);
                 }}
               >
-                {ticked.length === 0 ? "Use these" : `Use these ${ticked.length}`}
+                {ticked.length === 0
+                  ? field.unpicked && !none
+                    ? "Use none"
+                    : "Use these"
+                  : `Use these ${ticked.length}`}
               </button>
             )}
             <button type="button" class="button" onClick={() => list(false)}>
@@ -780,6 +787,26 @@ function PickOption(props: {
     </fieldset>
   );
 }
+
+// A choice in a pick's list, by its name, with its value where one is
+// picked alone; one picked that the list didn't give says why, in its
+// pick's words, under its name.
+function ChoiceName(props: { choice: PickChoiceView; pick: ConnectionPick }) {
+  const { choice, pick } = props;
+  const name = pick.many ? choice.name : `${choice.name} (${choice.value})`;
+  if (!choice.unlisted) return <>{name}</>;
+  return (
+    <span class="choice-text">
+      {name}
+      <span class="settings-field-about">
+        {pick.unlisted ?? "Picked, but no longer in the list."}
+      </span>
+    </span>
+  );
+}
+
+const choiceClass = (choice: PickChoiceView) =>
+  choice.unlisted ? "choice choice-unlisted" : "choice";
 
 // Every connector the window connects itself, what's on this Mac, and whether it
 // may connect it now, or why not; one picked shows its steps beneath it. The

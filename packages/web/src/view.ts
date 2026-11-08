@@ -195,6 +195,8 @@ export type ConnectionPick = {
   many: boolean;
   most: number | null;
   unpicked: string;
+  // What it says of a picked value its list doesn't give, if it says.
+  unlisted: string | null;
   // The values its options pick now, as its server's pick reads them.
   picked: string[];
 };
@@ -300,6 +302,9 @@ export type PickChoiceView = {
   name: string;
   count: number | null;
   updatedAt: string | null;
+  // Picked, but not in the list the server gave, by the name Oriel last
+  // knew: it shows so it can be unpicked.
+  unlisted?: true;
 };
 
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
