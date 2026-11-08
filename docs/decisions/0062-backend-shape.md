@@ -96,7 +96,7 @@ Some of these are the vendor's own words in the window, which stay. The rest are
 
 - `waitsOnUser` and `waitingOn`;
 - `chipIds`, `quoteKey` and `quotesFrom`;
-- `isGroupingId`, and Settings' constants;
+- `isGroupingId`, `browseFilter`, `statusCategories` and `pageSize`, and Settings' constants (`afterApproves`, `providerKinds`, `sendKeys`, `textSizes`, `timeFormats`);
 - the themes and the built files, which are Node-side and belong to the window on purpose.
 
 **The 2026-11-05 audit's stories:**
@@ -139,7 +139,7 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 | Import cost in the server                                   | about 2 ms                                                                                                                                                                                | From the `effect` barrel: 247 files, 5.34 MB, 150–300 ms, +23 MB heap. With deep imports of the 8 modules used: 83 files, 2.30 MB, 60–90 ms                                                                       |
 | `pnpm check`, warm, twice each                              | 32 s, 33 s (116 s cold)                                                                                                                                                                   | 32 s, 34 s                                                                                                                                                                                                        |
 | Install                                                     |                                                                                                                                                                                           | +60.8 MB: one package, no transitive dependencies. node_modules 78 → 140 MB                                                                                                                                       |
-| Shipped in the desktop app                                  | 0.9 MB of third-party packages today (preact, tinypool)                                                                                                                                   | +60.8 MB as `bundle.ts` copies packages whole today. About 2.3 MB if the copier kept only what deep imports load, which is work `bundle.ts` doesn't do yet                                                        |
+| Shipped in the desktop app                                  | About 31 MB of third-party packages today: TypeScript and its native compiler (30 MB, which the bindings ship to typecheck scripts, 0016) and preact (0.8 MB)                             | +60.8 MB as `bundle.ts` copies packages whole today, about three times what ships now. About 2.3 MB (+7%) if the copier kept only what deep imports load, which is work `bundle.ts` doesn't do yet                |
 | Newest version allowed (7-day minimum age)                  |                                                                                                                                                                                           | 4.1.1. Version 4.1.2 came out 2026-11-02; Effect 4 has had 11 releases in 5 weeks                                                                                                                                 |
 
 **Where Effect shone:**
@@ -190,7 +190,7 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
   - All three agents were correct.
   - Reviewers weren't tested.
 - **"The biggest dependency by far": true of the package, not of what Oriel would load.**
-  - The package is 60.8 MB, beside 0.9 MB of third-party packages in the app today.
+  - The package is 60.8 MB, about twice the 31 MB of third-party packages the app ships today, nearly all of it TypeScript.
   - With deep imports and a copier that prunes, the cost is about 2.3 MB and 60–90 ms on the server's start. So size alone doesn't decide it.
 
 **SPEC §6 and 0008 decide this, not taste.**
@@ -256,7 +256,7 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 
 **packages/core**
 
-- These move here from web: `waitsOnUser` and `waitingOn`; `chipIds`, `quoteKey` and `quotesFrom`; `isGroupingId`; and Settings' constants.
+- These move here from web: `waitsOnUser` and `waitingOn`; `chipIds`, `quoteKey` and `quotesFrom`; `isGroupingId`, `browseFilter`, `statusCategories` and `pageSize`; and Settings' constants. That is every value the server imports from `@oriel/web` today, but `files` and `themes`.
 - `ToolCaller` takes a signal.
 - From `@oriel/web`, the server then imports types from `view`, plus `files` and `themes`. Those two are Node-side code that serves the window, and they stay there. `scripts/check-repo.ts` checks this.
 
