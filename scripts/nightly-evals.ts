@@ -55,11 +55,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { isJudged, type Split, splits } from "../packages/evals/src/case.ts";
+import { type GraderName, type Split, splits } from "../packages/evals/src/case.ts";
 import { type Command, defaults, type Io, main, repoIo } from "../packages/evals/src/cli.ts";
 import { readResults } from "../packages/evals/src/compare.ts";
 import { casesDir, nightlyFile, roundsDir, staleFile } from "../packages/evals/src/repo.ts";
-import type { CaseResult } from "../packages/evals/src/runner.ts";
+import { type CaseResult, exitCode, type Failing } from "../packages/evals/src/runner.ts";
 
 // Draws after the first, for a case whose draw would fail the replay.
 const redraws = 2;
@@ -78,24 +78,19 @@ type Night = {
   replay: "pass" | "fail";
 };
 
-// What CI's replay would fail on: an error, or a deterministic case failing
-// any grader but the one its `failing` mark names, or passing past its mark.
-// A judged case's verdict never fails it, so it is never drawn again.
-function breaksReplay(r: CaseResult, failing: ReadonlyMap<string, string>): boolean {
-  if (r.outcome === "error") return true;
-  const marked = failing.get(r.id);
-  if (marked !== undefined)
-    return r.outcome === "pass" ? false : r.grades.some((g) => !g.pass && g.grader !== marked);
-  return r.outcome === "fail" && !isJudged(r.kind);
-}
+// What leaves a case's cassettes unfit for CI: a draw that saved none, or
+// one CI's replay would fail, as CI decides it. A judged case's verdict never
+// fails it, so it is never drawn again for that.
+const breaksReplay = (r: CaseResult, failing: Failing) =>
+  r.error !== null || r.unrecorded !== null || exitCode([r], "replay", failing) === 1;
 
 // Each case's file name and `failing` grader, by its ID.
-function caseFiles(): Map<string, { file: string; failing?: string }> {
-  const found = new Map<string, { file: string; failing?: string }>();
+function caseFiles(): Map<string, { file: string; failing?: GraderName }> {
+  const found = new Map<string, { file: string; failing?: GraderName }>();
   for (const file of readdirSync(casesDir).filter((name) => name.endsWith(".json"))) {
     const parsed = JSON.parse(readFileSync(new URL(file, casesDir), "utf8")) as {
       id: string;
-      failing?: { grader: string };
+      failing?: { grader: GraderName };
     };
     found.set(parsed.id, {
       file,
@@ -157,7 +152,7 @@ function report(tonight: Night, before: Night | null, notes: readonly string[]):
   );
   if (added.length) lines.push(`**New cases:** ${added.map((id) => `\`${id}\``).join(", ")}`);
   lines.push(
-    `**Replay:** ${tonight.replay === "pass" ? "passes" : "FAILS: a case failed every draw; the hub decides"}`,
+    `**Replay:** ${tonight.replay === "pass" ? "passes" : "FAILS: a case failed or wasn't recorded on every draw; the hub decides"}`,
   );
   lines.push(`**Spend:** $${tonight.usd.toFixed(2)}`);
   for (const note of notes) lines.push(`- ${note}`);
@@ -172,7 +167,7 @@ async function run(): Promise<number> {
   }
   const before = lastNight();
   const files = caseFiles();
-  const failing = new Map(
+  const failing: Failing = new Map(
     [...files].flatMap(([id, f]) => (f.failing ? [[id, f.failing] as const] : [])),
   );
   mkdirSync(roundsDir, { recursive: true });
@@ -219,14 +214,22 @@ async function run(): Promise<number> {
       rmSync(only, { recursive: true, force: true });
     }
   }
-  // Every cassette is current now.
-  if (existsSync(staleFile)) {
+  // A case whose last draw saved no cassettes keeps its old ones, which
+  // may be stale, so stale.md stays and the night fails.
+  const unrecorded = [...last.values()]
+    .filter((r) => r.error !== null || r.unrecorded !== null)
+    .map((r) => r.id);
+  if (unrecorded.length)
+    notes.push(
+      `not recorded on any draw, so packages/evals/stale.md stays: ${unrecorded.join(", ")}`,
+    );
+  else if (existsSync(staleFile)) {
     rmSync(staleFile);
     notes.push("packages/evals/stale.md is removed: every case is recorded again.");
   }
   const replay = await round(
     { command: "replay", model: defaults.model, judge: defaults.judge },
-    { stale: undefined },
+    unrecorded.length ? {} : { stale: undefined },
     new URL("replay/", night),
   );
   const firstDraw = Object.fromEntries(
@@ -250,13 +253,13 @@ async function run(): Promise<number> {
       ]),
     ),
     usd,
-    replay: replay.code === 0 ? "pass" : "fail",
+    replay: replay.code === 0 && !unrecorded.length ? "pass" : "fail",
   };
   writeFileSync(nightlyFile, `${JSON.stringify(tonight, null, 2)}\n`);
   const text = report(tonight, before, notes);
   writeFileSync(new URL("summary.md", night), text);
   console.log(text);
-  return replay.code;
+  return tonight.replay === "pass" ? 0 : 1;
 }
 
 if (import.meta.main) process.exitCode = await run();

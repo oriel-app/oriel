@@ -3,17 +3,8 @@
     "tabs": [
       {
         "at": "1FwRaidFixture000000000000000000000000000000/4100",
-        "header": 1,
-        "end": "blank",
-        "hidden": false,
-        "key": "B",
-        "title": "C",
         "status": "E",
-        "states": { "done": ["Closed"] },
-        "assignee": "D",
-        "estimate": null,
-        "link": null,
-        "parent": null
+        "states": { "done": ["Closed"] }
       }
     ]
   }
