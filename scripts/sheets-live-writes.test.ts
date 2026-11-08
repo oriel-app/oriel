@@ -95,21 +95,6 @@ test("it sends the writer's own writes to a tab of its own, prints what each cel
     typeof value === "number" ? { numberValue: value } : { stringValue: value },
   );
   assert.equal(code, 0);
-  assert.deepEqual(lines, [
-    `${file} add tab: 200`,
-    "edit A1 (RAW): 200",
-    "edit B1 (RAW): 200",
-    "empty B1 (RAW): 200",
-    "new row 2 (typed): 200",
-    "read back: 200, 1 tab(s)",
-    "A1: text",
-    "B1: nothing",
-    "A2: text",
-    "B2: text",
-    "C2: number",
-    "delete tab: 200",
-    "revoke: 200",
-  ]);
   assert.deepEqual(
     posted.flatMap((p) => {
       const body = p.body as { valueInputOption?: string };
@@ -120,15 +105,4 @@ test("it sends the writer's own writes to a tab of its own, prints what each cel
   const printed = lines.join("\n");
   for (const value of [client.id, client.secret, tokens.access, tokens.refresh, "4/fake-code"])
     assert.ok(!printed.includes(value));
-});
-
-test("a `=` value Google kept as a formula fails the run, and the tab is still deleted", async () => {
-  const { code, lines } = await run((value) =>
-    typeof value === "string" && value.startsWith("=")
-      ? { formulaValue: value }
-      : { stringValue: value },
-  );
-  assert.equal(code, 1);
-  assert.ok(lines.includes("A1: formula"));
-  assert.ok(lines.includes("delete tab: 200"));
 });

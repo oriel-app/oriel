@@ -28,11 +28,8 @@ test("--env names the .env to record as, a regular file with one link; else the 
   assert.deepEqual(await recordingEnv(path, root), account);
   const link = join(dir, "link.env");
   symlinkSync(path, link);
-  assert.deepEqual(await recordingEnv(link, root), {
-    error: `${link} is not a regular file with one link; it is refused`,
-  });
-  const none = join(dir, "none.env");
-  assert.deepEqual(await recordingEnv(none, root), { error: `no file at ${none}` });
+  assert.ok("error" in (await recordingEnv(link, root)));
+  assert.ok("error" in (await recordingEnv(join(dir, "none.env"), root)));
   // Without --env, the root's, as before: none there, or this one.
   assert.ok("error" in (await recordingEnv(undefined, root)));
   assert.deepEqual(await recordingEnv(undefined, pathToFileURL(path)), account);

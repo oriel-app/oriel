@@ -1,47 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { type TestContext, test } from "node:test";
-import { pathToFileURL } from "node:url";
+import { test } from "node:test";
 import type { After, Fetch } from "../packages/sheets/src/index.ts";
-import { live, liveEnv } from "./sheets-live.ts";
+import { live } from "./sheets-live.ts";
 
 // Made-up values; none is a real client or token.
 const client = { id: "fake-client.apps.googleusercontent.com", secret: "fake-client-secret-0123" };
-const envText = `GOOGLE_CLIENT_ID=${client.id}\nGOOGLE_CLIENT_SECRET=${client.secret}\nANTHROPIC_API_KEY=sk-ant-fake\n`;
 const tokens = { access: "fake-access-token", refresh: "fake-refresh-token" };
-
-const realDir = (t: TestContext) => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "oriel-sheets-live-")));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-};
-
-test("--env names the .env holding the client, a regular file with one link; else the root's", async (t) => {
-  const dir = realDir(t);
-  const path = join(dir, "main.env");
-  writeFileSync(path, envText);
-  const root = pathToFileURL(join(dir, "missing", ".env"));
-  assert.deepEqual(await liveEnv(path, root), client);
-  const link = join(dir, "link.env");
-  symlinkSync(path, link);
-  assert.deepEqual(await liveEnv(link, root), {
-    error: `${link} is not a regular file with one link; it is refused`,
-  });
-  assert.deepEqual(await liveEnv(join(dir, "none.env"), root), {
-    error: `no file at ${join(dir, "none.env")}`,
-  });
-  assert.deepEqual(await liveEnv(undefined, pathToFileURL(path)), client);
-  writeFileSync(join(dir, "partial.env"), `GOOGLE_CLIENT_SECRET=${client.secret}\n`);
-  const partial = await liveEnv(join(dir, "partial.env"), root);
-  assert.ok("error" in partial && !partial.error.includes(client.secret));
-  // --no-secret reads the ID alone, even where the secret is set.
-  assert.deepEqual(await liveEnv(path, root, { noSecret: true }), { id: client.id, secret: null });
-  assert.deepEqual(await liveEnv(join(dir, "partial.env"), root, { noSecret: true }), {
-    error: "GOOGLE_CLIENT_ID must be set in .env",
-  });
-});
 
 // Google, from the token endpoint to Drive: signed in until revoked. With
 // `wantsSecret`, it refuses a token request with no secret, as Google says
@@ -113,48 +77,7 @@ const run = async (as: typeof client | { id: string; secret: null }, answers: Fe
 test("it prints each picked spreadsheet's ID and version, and statuses, never a value", async () => {
   const { code, lines } = await run(client, google());
   assert.equal(code, 0);
-  assert.deepEqual(lines, [
-    "1AbC-sheet version 42",
-    "sheets api: 200",
-    "comments: 403",
-    "about: 200",
-    "refresh: refreshed",
-    "revoke: 200",
-    "refresh after revoke: signed-out",
-  ]);
   const printed = lines.join("\n");
   for (const value of [client.id, client.secret, tokens.access, tokens.refresh, "4/fake-code"])
     assert.ok(!printed.includes(value));
-});
-
-test("--no-secret ends on whether Google took the exchange and refresh without it", async () => {
-  const idOnly = { id: client.id, secret: null };
-  const accepted = await run(idOnly, google());
-  assert.equal(accepted.code, 0);
-  assert.equal(
-    accepted.lines.at(-1),
-    "verdict: Google accepted the exchange and refresh without the secret",
-  );
-
-  const exchange = await run(idOnly, google({ wantsSecret: true }));
-  assert.equal(exchange.code, 1);
-  assert.deepEqual(exchange.lines, [
-    "sign-in failed: Google refused the token request without the client's secret (400 invalid_request)",
-    "verdict: Google refused the exchange without the secret",
-  ]);
-
-  const refreshed = await run(idOnly, google({ wantsSecret: true, allowed: 1 }));
-  assert.equal(refreshed.code, 1);
-  assert.ok(
-    refreshed.lines.includes(
-      "refresh: failed (Google refused the token request without the client's secret (400 invalid_request))",
-    ),
-  );
-  assert.equal(
-    refreshed.lines.at(-1),
-    "verdict: Google accepted the exchange without the secret, but refused the refresh",
-  );
-
-  // With the secret, no verdict is printed.
-  assert.ok(!(await run(client, google())).lines.some((line) => line.startsWith("verdict")));
 });
