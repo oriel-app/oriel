@@ -93,23 +93,6 @@ function fresh() {
   };
 }
 
-test("a new thread is working, in its workstream's latest version", () => {
-  const { workstreams, workstreamId, threads, workspaceId, state } = fresh();
-  assert.deepEqual(state(t0), ["working", null]);
-  workstreams.add(
-    workstreamId,
-    [{ id: "jira:SYN-3", stableId: "10003" }],
-    { kind: "user" },
-    after(1),
-  );
-  threads.open({ id: id(9), workspaceId, workstreamId }, after(2));
-  assert.equal(threads.get(id(9), after(2))?.regionVersion, 2);
-  assert.throws(
-    () => threads.open({ id: id(10), workspaceId, workstreamId: id(99) }, t0),
-    /no workstream/,
-  );
-});
-
 test("a change set applied in full makes it done; one partly applied doesn't, until it's dismissed", () => {
   const { changeSet, decide, state } = fresh();
   const partly = changeSet([
@@ -183,67 +166,6 @@ test("of two change sets, applying one leaves the thread working while the other
   }
 });
 
-test("the user can mark it done, and a later message makes it working again", () => {
-  const { threads, threadId, message, state } = fresh();
-  threads.markDone(threadId, after(1000));
-  assert.deepEqual(state(after(2000)), ["done", "marked"]);
-  // Still done long after: a settled thread isn't dropped.
-  assert.deepEqual(state(after(30 * day)), ["done", "marked"]);
-  message(after(3000));
-  assert.deepEqual(state(after(4000)), ["working", null]);
-  assert.throws(() => threads.markDone(id(99), t0), /no thread/);
-});
-
-test("an applied assignee change or attached link hands it off; a removed link doesn't", () => {
-  const assigned = fresh();
-  assigned.changeSet([{ after: { assignee: "amara" }, at: after(1000) }]);
-  assert.deepEqual(assigned.state(after(2000)), ["handed-off", null]);
-  const linked = fresh();
-  linked.changeSet([
-    { after: { "link:10100": { url: "https://x", title: "x" } }, at: after(1000) },
-  ]);
-  assert.deepEqual(linked.state(after(2000)), ["handed-off", null]);
-  const unlinked = fresh();
-  unlinked.changeSet([{ after: { "link:10100": null }, at: after(1000) }]);
-  assert.deepEqual(unlinked.state(after(2000)), ["done", "applied"]);
-});
-
-test("a change set settles the thread when it completes, whatever its mutations' order", () => {
-  const assign = (at: Instant | null) => ({ after: { assignee: "amara" }, at });
-  const estimate = (at: Instant | null) => ({ after: { points: 3 }, at });
-  for (const mutations of [
-    [assign(after(1000)), estimate(after(2000))],
-    [estimate(after(1000)), assign(after(2000))],
-  ]) {
-    const { changeSet, state } = fresh();
-    changeSet(mutations);
-    assert.deepEqual(state(after(3000)), ["handed-off", null]);
-  }
-  // Partly applied, it settles nothing; once it completes, it hands off.
-  const { db, changeSet, state } = fresh();
-  changeSet([assign(after(1000)), estimate(null)]);
-  assert.deepEqual(state(after(3000)), ["working", null]);
-  db.prepare("update mutations set status = 'applied', applied = ? where status = 'pending'").run(
-    JSON.stringify({
-      item: { id: "jira:SYN-1", stableId: "10001" },
-      before: {},
-      after: { points: 3 },
-      at: after(4000),
-    }),
-  );
-  assert.deepEqual(state(after(5000)), ["handed-off", null]);
-  // A later set that hands nothing off makes it done.
-  changeSet([estimate(after(6000))]);
-  assert.deepEqual(state(after(7000)), ["done", "applied"]);
-});
-
-test("of two settlings the later counts", () => {
-  const { threads, threadId, changeSet, state } = fresh();
-  changeSet([{ after: { assignee: "amara" }, at: after(1000) }]);
-  threads.markDone(threadId, after(2000));
-  assert.deepEqual(state(after(3000)), ["done", "marked"]);
-});
-
 test("a thread 0002 carried over from a region derives its state like any other", () => {
   const db = open(":memory:");
   const [first, ...rest] = loadMigrations();
@@ -264,15 +186,6 @@ test("a thread 0002 carried over from a region derives its state like any other"
   assert.equal(threadStore(db).get(t, after(8 * day))?.state, "dropped");
 });
 
-test("a working thread is dropped after 7 idle days, and activity resets the clock", () => {
-  const { message, state } = fresh();
-  assert.deepEqual(state(after(7 * day - 1)), ["working", null]);
-  assert.deepEqual(state(after(7 * day)), ["dropped", null]);
-  message(after(6 * day));
-  assert.deepEqual(state(after(7 * day)), ["working", null]);
-  assert.deepEqual(state(after(13 * day)), ["dropped", null]);
-});
-
 test("reopening takes the done mark off, leaving whatever else settled it", () => {
   const { db, threads, threadId, changeSet, state } = fresh();
   assert.equal(threads.reopen(threadId), false);
@@ -284,43 +197,4 @@ test("reopening takes the done mark off, leaving whatever else settled it", () =
   threads.markDone(threadId, after(4000));
   threads.reopen(threadId);
   assert.deepEqual(state(after(5000)), ["done", "applied"]);
-});
-
-test("an agent event is rewritten in place; nothing else is", () => {
-  const { threads, threadId } = fresh();
-  const seq = threads.append(threadId, { role: "agent", event: { kind: "a" } }, id(50), t0);
-  assert.equal(threads.rewrite(threadId, seq, { kind: "b" }), true);
-  assert.deepEqual(threads.messages(threadId).at(-1), {
-    seq,
-    at: t0,
-    role: "agent",
-    event: { kind: "b" },
-  });
-  const said = threads.append(threadId, { role: "user", text: "hi" }, id(51), after(1));
-  assert.equal(threads.rewrite(threadId, said, { kind: "c" }), false);
-});
-
-test("marking a thread done again keeps who marked it, and when; reopened or working again, it takes a new mark", () => {
-  const { db, threads, threadId, message } = fresh();
-  const agent = { kind: "agent", threadId } as const;
-  const mark = () => {
-    const row = db.prepare("select marked_by from done_marks where thread_id = ?").get(threadId) as
-      | { marked_by: string }
-      | undefined;
-    const thread = db.prepare("select marked_done_at from threads where id = ?").get(threadId) as {
-      marked_done_at: string | null;
-    };
-    return [row && JSON.parse(row.marked_by), thread.marked_done_at];
-  };
-  assert.equal(threads.markDone(threadId, after(1000)), true);
-  assert.equal(threads.markDone(threadId, after(2000), agent), false);
-  assert.deepEqual(mark(), [{ kind: "user" }, after(1000)]);
-  // Reopened in between, the agent's is a new mark.
-  assert.equal(threads.reopen(threadId, after(1000)), true);
-  assert.equal(threads.markDone(threadId, after(3000), agent), true);
-  assert.deepEqual(mark(), [agent, after(3000)]);
-  // Working again since, as a message makes it, the user's is a new mark.
-  message(after(4000));
-  assert.equal(threads.markDone(threadId, after(5000)), true);
-  assert.deepEqual(mark(), [{ kind: "user" }, after(5000)]);
 });

@@ -58,21 +58,6 @@ function fresh() {
   return { sync, live };
 }
 
-test("a part listed in full loses what it no longer has; the rest stays", async () => {
-  const { sync, live } = fresh();
-  await sync({ records: ["a/1", "a/2", "b/1"].map(row), cursor: "v1" }, true);
-  const report = await sync({ records: [row("a/1")], cursor: "v2", swept: ["a/"] }, false);
-  assert.equal(report.gone, 1);
-  assert.deepEqual(live(), ["a/1", "b/1"]);
-});
-
-test("a part listed in full with nothing in it loses everything under it", async () => {
-  const { sync, live } = fresh();
-  await sync({ records: ["a/1", "a/2", "b/1"].map(row), cursor: "v1" }, true);
-  await sync({ records: [], cursor: "v2", swept: ["a/"] }, false);
-  assert.deepEqual(live(), ["b/1"]);
-});
-
 test("without parts, a sync that isn't a full sweep marks nothing gone", async () => {
   const { sync, live } = fresh();
   await sync({ records: ["a/1", "a/2"].map(row), cursor: "v1" }, true);

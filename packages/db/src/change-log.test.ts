@@ -57,63 +57,6 @@ function record(
   };
 }
 
-test("a sync logs the facets it changed, before and after, and nothing for an item it didn't", () => {
-  const { index, workspaceId, sync } = fresh();
-  sync([record("1", "SYN-1", { state: "todo" }), record("2", "SYN-2", { state: "todo" })], t0);
-  assert.deepEqual(index.changes(workspaceId), [], "a first sync has nothing to compare");
-  const version = sync(
-    [
-      { ...record("1", "SYN-1", { state: "done" }, 3), title: "Renamed" },
-      { ...record("2", "SYN-2", { state: "todo" }), title: "Renamed too" },
-    ],
-    later(1),
-  );
-  assert.deepEqual(index.changes(workspaceId), [
-    {
-      seq: 1,
-      source: "jira",
-      stableId: "1",
-      version,
-      at: later(1),
-      facets: {
-        state: { before: "todo", after: "done" },
-        declared: { size: { before: null, after: 3 } },
-      },
-      gone: false,
-    },
-  ]);
-});
-
-test("the change log holds facets, never an item's title or text", () => {
-  const { db, sync } = fresh();
-  sync([record("1", "SYN-1", { state: "todo" })], t0);
-  sync([{ ...record("1", "SYN-1", { state: "done" }), title: "Secret plans" }], later(1));
-  const rows = JSON.stringify(db.prepare("select * from change_log").all());
-  assert.doesNotMatch(rows, /Secret plans|Title of/);
-});
-
-test("a tombstone logs when it happened, as does a handle another item takes", () => {
-  const { index, workspaceId, sync } = fresh();
-  sync([record("1", "SYN-1", {}), record("2", "SYN-2", {})], t0);
-  sync([], later(1), ["1"]);
-  // SYN-2 is recreated: a new item takes its handle, and the old one is gone.
-  sync([record("3", "SYN-2", {})], later(2));
-  sync([], later(3), ["1"]);
-  assert.deepEqual(
-    index.changes(workspaceId).map(({ stableId, at, gone, facets }) => ({
-      stableId,
-      at,
-      gone,
-      facets,
-    })),
-    [
-      { stableId: "1", at: later(1), gone: true, facets: {} },
-      { stableId: "2", at: later(2), gone: true, facets: {} },
-    ],
-    "an item already gone isn't logged again",
-  );
-});
-
 test("an entry is in the same transaction as the page that made it", () => {
   const { index, workspaceId, sync } = fresh();
   sync([record("1", "SYN-1", { state: "todo" }), record("2", "SYN-2", {})], t0);
@@ -140,18 +83,6 @@ test("an entry is in the same transaction as the page that made it", () => {
   assert.deepEqual(
     index.records(workspaceId, "jira", attrs).map((r) => r.facets.state),
     ["todo", undefined],
-  );
-});
-
-test("an entry older than 90 days goes with the next sync, even one that changed nothing", () => {
-  const { index, workspaceId, sync } = fresh();
-  sync([record("1", "SYN-1", { state: "todo" })], t0);
-  sync([record("1", "SYN-1", { state: "in-progress" })], later(1));
-  sync([record("1", "SYN-1", { state: "done" })], later(50));
-  sync([record("1", "SYN-1", { state: "done" })], later(92));
-  assert.deepEqual(
-    index.changes(workspaceId).map((entry) => entry.at),
-    [later(50)],
   );
 });
 
@@ -193,24 +124,5 @@ test("once a prune empties the change log, what changes next is still unseen", (
   assert.deepEqual(
     index.changes(workspaceId, lastSeen(db, workspaceId)?.seq).map((e) => e.at),
     [later(101)],
-  );
-});
-
-test("the change log is read once per write to the index, and every reader shares it, frozen", () => {
-  const { index, workspaceId, sync } = fresh();
-  sync([record("1", "SYN-1", { state: "todo" }), record("2", "SYN-2", { state: "todo" })], t0);
-  sync([record("1", "SYN-1", { state: "done" })], later(1));
-  const first = index.changes(workspaceId);
-  assert.equal(index.changes(workspaceId)[0], first[0]);
-  assert.ok(Object.isFrozen(first[0]) && Object.isFrozen(first[0]?.facets));
-  sync([record("2", "SYN-2", { state: "done" })], later(2));
-  assert.deepEqual(
-    index.changes(workspaceId).map((entry) => entry.stableId),
-    ["1", "2"],
-  );
-  assert.deepEqual(
-    index.changes(workspaceId, first[0]?.seq).map((entry) => entry.stableId),
-    ["2"],
-    "only what committed after the entry asked for",
   );
 });

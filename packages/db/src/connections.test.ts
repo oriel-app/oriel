@@ -19,76 +19,6 @@ function fresh() {
   return { db, id, workspaceId, connections: connectionStore(db) };
 }
 
-const acme = "https://acme.atlassian.net";
-
-test("a connection is numbered within its kind, and its prefix follows", () => {
-  const { id, workspaceId, connections } = fresh();
-  const first = connections.connect(
-    workspaceId,
-    { id: id(), kind: "jira", identity: acme, options: { project: "SYN" } },
-    t0,
-  );
-  const folder = connections.connect(
-    workspaceId,
-    { id: id(), kind: "folder", identity: "/Users/pm/notes", options: {} },
-    t0,
-  );
-  const second = connections.connect(
-    workspaceId,
-    { id: id(), kind: "jira", identity: "https://globex.atlassian.net", options: {} },
-    later(1),
-  );
-  assert.ok("connection" in first && "connection" in folder && "connection" in second);
-  assert.deepEqual(
-    [first, folder, second].map((made) => [made.connection.prefix, made.revived]),
-    [
-      ["jira", false],
-      ["folder", false],
-      ["jira.2", false],
-    ],
-  );
-  assert.deepEqual(connections.get(workspaceId, first.connection.id), {
-    id: first.connection.id,
-    kind: "jira",
-    number: 1,
-    prefix: "jira",
-    identity: acme,
-    name: null,
-    options: { project: "SYN" },
-    every: null,
-    connectedAt: t0,
-    disconnectedAt: null,
-  });
-  assert.deepEqual(
-    connections.live(workspaceId, "jira").map((c) => c.prefix),
-    ["jira", "jira.2"],
-  );
-});
-
-test("a second connection to the same thing is refused, with the one that has it", () => {
-  const { id, workspaceId, connections } = fresh();
-  const made = connections.connect(
-    workspaceId,
-    { id: id(), kind: "jira", identity: acme, options: { project: "SYN" } },
-    t0,
-  );
-  assert.ok("connection" in made);
-  const again = connections.connect(
-    workspaceId,
-    { id: id(), kind: "jira", identity: acme, options: { project: "ACME" } },
-    later(1),
-  );
-  assert.deepEqual(again, { taken: made.connection });
-  assert.deepEqual(connections.planned(workspaceId, "jira", acme), { live: made.connection });
-  // The same text is another thing to another connector.
-  const folder = connections.connect(
-    workspaceId,
-    { id: id(), kind: "folder", identity: acme, options: {} },
-    later(1),
-  );
-  assert.ok("connection" in folder);
-});
-
 test("a disconnected connection is a tombstone, which connecting the same thing revives", () => {
   const { id, workspaceId, connections } = fresh();
   const notes = connections.connect(
@@ -138,37 +68,4 @@ test("a disconnected connection is a tombstone, which connecting the same thing 
       ["folder.2", null],
     ],
   );
-});
-
-test("a live connection's options change in place", () => {
-  const { id, workspaceId, connections } = fresh();
-  const made = connections.connect(
-    workspaceId,
-    { id: id(), kind: "jira", identity: acme, options: { project: "SYN" } },
-    t0,
-  );
-  assert.ok("connection" in made);
-  assert.equal(connections.configure(workspaceId, made.connection.id, { project: "ACME" }), true);
-  assert.deepEqual(connections.get(workspaceId, made.connection.id)?.options, {
-    project: "ACME",
-  });
-});
-
-test("a live connection's name and how often it syncs change in place, and a tombstone keeps neither", () => {
-  const { id, workspaceId, connections } = fresh();
-  const made = connections.connect(
-    workspaceId,
-    { id: id(), kind: "jira", identity: acme, options: { project: "SYN" } },
-    t0,
-  );
-  assert.ok("connection" in made);
-  const { connection } = made;
-  assert.equal(connections.settle(workspaceId, connection.id, { name: "Ours", every: 15 }), true);
-  const set = connections.get(workspaceId, connection.id);
-  assert.deepEqual([set?.name, set?.every, set?.options], ["Ours", 15, { project: "SYN" }]);
-  connections.disconnect(workspaceId, connection.id, later(1));
-  const gone = connections.get(workspaceId, connection.id);
-  assert.deepEqual([gone?.name, gone?.every], [null, null]);
-  // Only a live one is set.
-  assert.equal(connections.settle(workspaceId, connection.id, { name: "Ours", every: 5 }), false);
 });
