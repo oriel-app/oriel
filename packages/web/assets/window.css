@@ -5240,7 +5240,7 @@ a.replies:hover {
 
 /* Two actions of one fill, such as Rename and Mark done, apart. */
 .swipe-action + .swipe-action {
-  box-shadow: inset calc(-1 * var(--border-thin)) 0 0 var(--surface);
+  border-right: var(--border-thin) solid var(--surface);
 }
 
 /* The panel beside the page: one item in its source's own view. Screens with
