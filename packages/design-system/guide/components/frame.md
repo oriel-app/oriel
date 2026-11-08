@@ -11,13 +11,13 @@ summary: The window's one material: the sidebar, a band along the page column's 
 
 ## What it is
 
-The frame (decision 0056, amended) is one material: the sidebar, a 4px band along the top of the page column, and a 4px band down its right, all `--frame`. The page column is set into it, on `--bg`. Where the band meets the sidebar, the column's corner takes a long, gentle curve, "like a table's apron running into its leg" (`--frame-corner`, 26px in Graphite), and its top-right corner the same. The frame casts a slight shadow onto the column (`--frame-shadow`), so the page looks just inset.
+The frame (decision 0056, amended) is one material: the sidebar, a 4px band along the top of the page column, and a 4px band down its right, all `--frame`. The page column is set into it, on `--bg`. Where the band meets the sidebar, the column's corner takes a long, gentle curve, "like a table's apron running into its leg" (`--frame-corner`, 26px in Graphite), and its top-right corner the same, always. What sits on the column's right, the [item panel](/components/item-panel) or, on a wide screen, a thread's [right rail](/components/right-rail), is the sidebar's material too, at the window's edge, so the column sits inset between two bars (2026-11-08). The frame casts a slight shadow onto the column (`--frame-shadow`), so the page looks just inset.
 
 It's CSS, but for [the bead](/components/bead), which is the frame's material growing from the band:
 
 - **The shell** (`.shell` in `window.css`) is `--frame`, the page's whole height, so a long page never shows a gap beside the sidebar. The sidebar is the same colour, with no line between them.
 - **The column** (`.shell-main` in `window.css`) is `--bg`, `--frame-band` in from the right, past the panel when it sits beside the page.
-- **The [item panel](/components/item-panel)**, beside the page, is the column's sibling in the same frame: the band above it, between it and the column and on its right, and the column's curve, paper and shade.
+- **The [item panel](/components/item-panel)**, beside the page, and a thread's [right rail](/components/right-rail) at 1280px and up, are `--frame` at the window's right edge, as the sidebar is at its left: `--beside` is their width, which the column keeps clear of.
 - **The band and the corners** (`.frame` in `window.css`) are one fixed box as wide as the column, its top corners rounded, with the frame's colour reaching out from it (`--frame-reach`) and cut to the column's top. It stays as the page scrolls under it, and takes no pointer. Its layer is `--layer-frame`: over the page and its sticky parts, under the sidebar's drawer, the panel, the window chat and the bead.
 
 ```html specimen id=wide title="Wide: the sidebar, the band and the curve where they meet" height=200 pad=0

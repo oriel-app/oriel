@@ -566,11 +566,11 @@ else hide(button);</code></pre>
 </div>
 ```
 
-**Where it sits.** The panel is `position: fixed` on the right, set into the [frame](/components/frame) as the page column's sibling: below the band at `--frame-top`, `--frame-band` from the right edge and from the column, `--panel` wide (30rem) less the band, with the column's curved top corners (`--frame-curve`), paper (`--bg`) and inner shade (`--frame-shadow`). Three widths, by the screen (`@media (min-width: 1100px)` and `@media (max-width: 760px)` in `window.css`):
+**Where it sits.** The panel is `position: fixed` at the window's right edge, the whole window's height, `--panel` wide (30rem), in the [frame](/components/frame)'s material (`--frame`), as the sidebar is on the left: the page column, curved at both top corners, sits inset between the two (2026-11-08). Three widths, by the screen (`@media (min-width: 1100px)` and `@media (max-width: 760px)` in `window.css`):
 
 - **1100px and wider: beside.** `.shell[data-panel]` sets `--beside` to the panel's width and `.shell-main` takes it as a right margin, so the page narrows and nothing is covered. No shadow. A narrowed page can cross its own container queries: a thread's [right rail](/components/right-rail) moves under the chat.
-- **761 to 1099px: over the page's right side,** the same card, with `--shadow` too.
-- **760px and narrower: the whole screen,** from edge to edge and over the bar, square, with no shade: a sheet, not a card.
+- **761 to 1099px: over the page's right side,** with `--shadow`, as the drawer casts.
+- **760px and narrower: the whole screen,** from edge to edge and over the bar, on `--bg`, square, with no shade: a sheet. Its sides are `--space-3`, as a phone-width page's are.
 
 **Motion.** It arrives at once, with a quick slide and fade, and only moves: "nothing beside or inside it reflows" (`.shell` in `window.css`). The panel's `@starting-style` in `window.css` starts it from `opacity: 0` and `translateX(var(--slide-panel))` (0.375rem), and it moves in over `--duration-quick` (120ms) on `--ease-out`. Its children fade in with `panel-fade` (`.item-panel > *` in `window.css`), again for each item it shows, while the panel itself stays put. Under reduced motion it keeps only the fade (`@media (prefers-reduced-motion: reduce)` in `window.css`). It has no closing animation: it leaves at once. See [Motion](/foundations/motion).
 

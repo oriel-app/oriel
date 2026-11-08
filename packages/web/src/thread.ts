@@ -974,13 +974,21 @@ export type NewThreadModel = {
   id: number;
   draft: string;
   workstream: string | null;
+  // What a new workstream will be called: the user's, unless it's blank or
+  // still the default, when Oriel names it.
+  workstreamName: string;
   sending: boolean;
   notice: string | null;
 };
 
+// What a workstream a thread from nothing makes is called until it's named:
+// the picker's default, which makes one.
+export const blankWorkstreamName = "New workstream";
+
 export type NewThreadMsg =
   | { type: "draftChanged"; text: string }
   | { type: "workstreamPicked"; workstream: string | null }
+  | { type: "workstreamNamed"; name: string }
   // `workstream`: the one the picker shows, which may have gone, or been
   // marked done, since it was picked.
   | { type: "sendClicked"; workstream: string | null };
@@ -989,6 +997,7 @@ export const initNewThread = (id: number): NewThreadModel => ({
   id,
   draft: "",
   workstream: null,
+  workstreamName: blankWorkstreamName,
   sending: false,
   notice: null,
 });
@@ -1003,15 +1012,19 @@ export function updateNewThread(
     case "workstreamPicked":
       if (model.sending) return [model, []];
       return [{ ...model, workstream: msg.workstream, notice: null }, []];
+    case "workstreamNamed":
+      return [{ ...model, workstreamName: msg.name }, []];
     case "sendClicked": {
       const text = model.draft.trim();
       if (text === "" || model.sending) return [model, []];
       const tag = { kind: "threadStarted", draft: model.id } as const;
+      const name = model.workstreamName.trim();
+      const named = name === "" || name === blankWorkstreamName ? {} : { workstreamName: name };
       return [
         { ...model, workstream: msg.workstream, sending: true, notice: null },
         [
           msg.workstream === null
-            ? post("/api/threads", { text }, tag)
+            ? post("/api/threads", { text, ...named }, tag)
             : post(`/api/workstreams/${encodeURIComponent(msg.workstream)}/threads`, { text }, tag),
         ],
       ];

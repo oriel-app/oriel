@@ -16,7 +16,7 @@ A native `<select>`: pick one value from a list the person doesn't need to see a
 1. **Browse's filters** (`.filter select`): Source, Status, Assignee and Workstream, after the item search. Muted, small text in a `--line` border; once a filter is set, the text and border strengthen (`[data-set]`).
 2. **Add to…** (`.add-to`) in Browse's picked-items bar: adds the picked items to a workstream the moment one is chosen, then goes back to "Add to…". It's a menu written as a select.
 3. **Settings' model pickers** (`.settings .select`): Default model and Title model, under a field name and an about line.
-4. **A new thread's workstream** (`.new-thread-workstream`): Browse's filter, where a thread's page names its workstream, above the title. "New workstream" is the default, which the first message makes with the thread; or one of the open workstreams, but the window chat's, which the thread then starts in. Wider than a filter (24rem at most), for a workstream's name.
+4. **A new thread's workstream** (`.new-thread-workstream`): Browse's filter, at the top of the [right rail](/components/right-rail) where the rail sits beside the chat, and on the title's line where the rail waits below it (`@container page (max-width: 932px)`). Each page renders it in both places, and CSS shows one, so only one is ever in the accessibility tree. "New workstream" is the default, which the first message makes with the thread; or one of the open workstreams, but the window chat's, which the thread then starts in. As wide as the rail, or up to 14rem beside the title, for a workstream's name. Each workstream is listed under a name a person can tell apart, never the default's: one a thread from nothing made and nobody named yet goes by its newest thread's title, and a name that still repeats gets its place, "(2)" (`pickerLabels` in `packages/web/src/thread-page.tsx`).
 
 The browser draws the list itself, so the open list looks like the system's, in every theme. The proposed `Select`, in modern CSS (including a styled list where the browser allows it), is in the [select lab](/lab/select).
 
@@ -137,9 +137,9 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 </div>
 ```
 
-```html specimen id=new-thread title="4. A new thread's workstream, an existing one picked" width=640
-<header class="thread-head">
-  <label class="filter crumb new-thread-workstream">
+```html specimen id=new-thread title="4. A new thread's workstream, in the rail, an existing one picked" width=320
+<aside class="rail" aria-label="This thread's items">
+  <label class="filter new-thread-workstream" data-at="rail">
     <span class="visually-hidden">Workstream</span>
     <select data-set>
       <option value="">New workstream</option>
@@ -147,8 +147,8 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
       <option value="ws-2">Gift cards</option>
     </select>
   </label>
-  <div class="thread-title-row"><h1 class="thread-title">New thread</h1></div>
-</header>
+  <h2 class="rail-title">15 items</h2>
+</aside>
 ```
 
 ## States
@@ -244,7 +244,7 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 
 - Browse's filters, selects included: `Filters` in `packages/web/src/window-page.tsx`. CSS `.filters`, `.filter select` and `.filter select[data-set]` in `window.css`.
 - Add to…: `Selection` in `packages/web/src/window-page.tsx`. CSS `.add-to` in `window.css`.
-- A new thread's workstream: `NewThreadPage` in `packages/web/src/thread-page.tsx`. CSS `.new-thread-workstream select` in `window.css`, over `.filter select`.
+- A new thread's workstream: `NewThreadPage` in `packages/web/src/thread-page.tsx`. CSS `.new-thread-workstream` in `window.css`, over `.filter select`.
 - Model pickers: `ModelPicker` in `packages/web/src/settings-page.tsx`, used by `Providers` for Default model and Title model. CSS `.settings :is(.input, .select)`, `.settings :is(.input, .select):focus-visible` and `.settings-field .select` in `window.css`.
 
 ## Drift

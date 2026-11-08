@@ -50,7 +50,9 @@ import {
   lineKey,
   type ThreadModel,
   type ThreadMsg,
+  blankWorkstreamName,
 } from "./thread.ts";
+import { maxNameChars } from "./update.ts";
 import {
   type ActionLineView,
   type ChangeSetView,
@@ -62,6 +64,7 @@ import {
   type NoteView,
   type RunView,
   type SecondLookView,
+  type ThreadSummaryView,
   type ThreadView,
   type WorkstreamRef,
   type WorkstreamSummary,
@@ -247,47 +250,73 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
 }
 
 // A thread from nothing, before its first message: the composer, and the
-// workstream it starts in, where a thread's page names its workstream. "New
+// workstream it starts in, at the top of the rail where a thread's items
+// will be, or beside the title where the rail waits below the chat. "New
 // workstream" is the default, which sending makes, with the thread; or the
-// person picks one already open, and its items are the thread's. Either way,
-// what a change set here creates joins it.
+// person picks one already open, and its items are the thread's. While it's
+// the default, the person may name the new workstream, under the picker;
+// left as it is, Oriel names it. Either way,
+// what a change set here creates joins it. A new thread has no items of its
+// own, so the rail says nothing of them until a workstream is picked.
 export function NewThreadPage({
   model,
   workstreams,
+  threads,
   dispatch,
 }: {
   model: NewThreadModel;
   workstreams: readonly WorkstreamSummary[] | null;
+  threads: readonly ThreadSummaryView[] | null;
   dispatch: Dispatch;
 }) {
   const send = (msg: NewThreadMsg) => dispatch({ type: "newThread", msg });
   const open = startable(workstreams);
+  const labels = pickerLabels(open, threads ?? []);
   const picked = open.find((workstream) => workstream.id === model.workstream) ?? null;
+  // One picker, shown in one place at a time: CSS hides the other, so only
+  // one is ever in the accessibility tree.
+  const named = (at: "head" | "rail") =>
+    !picked && (
+      <label class="name-field new-workstream-name" data-at={at}>
+        Workstream title
+        <input
+          type="text"
+          value={model.workstreamName}
+          maxLength={maxNameChars}
+          disabled={model.sending}
+          onInput={(event) => send({ type: "workstreamNamed", name: event.currentTarget.value })}
+        />
+      </label>
+    );
+  const picker = (at: "head" | "rail") => (
+    <label class="filter new-thread-workstream" data-at={at}>
+      <span class="visually-hidden">Workstream</span>
+      <select
+        value={picked?.id ?? ""}
+        data-set={picked ? "" : undefined}
+        disabled={model.sending}
+        onChange={(event) =>
+          send({ type: "workstreamPicked", workstream: event.currentTarget.value || null })
+        }
+      >
+        <option value="">{blankWorkstreamName}</option>
+        {open.map((workstream) => (
+          <option key={workstream.id} value={workstream.id}>
+            {labels.get(workstream.id)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   return (
     <div class="thread-layout">
       <main class="thread">
         <header class="thread-head">
-          <label class="filter crumb new-thread-workstream">
-            <span class="visually-hidden">Workstream</span>
-            <select
-              value={picked?.id ?? ""}
-              data-set={picked ? "" : undefined}
-              disabled={model.sending}
-              onChange={(event) =>
-                send({ type: "workstreamPicked", workstream: event.currentTarget.value || null })
-              }
-            >
-              <option value="">New workstream</option>
-              {open.map((workstream) => (
-                <option key={workstream.id} value={workstream.id}>
-                  {workstream.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <div class="thread-title-row">
             <h1 class="thread-title">New thread</h1>
+            {picker("head")}
           </div>
+          {named("head")}
         </header>
         <ol class="chat" />
         <Dock>
@@ -307,13 +336,55 @@ export function NewThreadPage({
         </Dock>
       </main>
       <aside class="rail" aria-label="This thread's items">
+        {picker("rail")}
+        {named("rail")}
         {/* Picked, what the workstream holds arrives (window.css). */}
-        <h2 key={picked?.id ?? ""} class={picked ? "rail-title arrive" : "rail-title"}>
-          {picked?.size ? plural(picked.size, "item") : "No items"}
-        </h2>
+        {picked && picked.size > 0 && (
+          <h2 key={picked.id} class="rail-title arrive">
+            {plural(picked.size, "item")}
+          </h2>
+        )}
       </aside>
     </div>
   );
+}
+
+// Each workstream in the picker under a name a person can tell apart, never
+// the default's: one a thread from nothing made and nobody named yet goes by
+// its newest thread's title, as the sidebar lists that thread. A name that
+// still repeats gets its place among them.
+function pickerLabels(
+  open: readonly WorkstreamSummary[],
+  threads: readonly ThreadSummaryView[],
+): Map<string, string> {
+  const titleOf = (id: string) =>
+    threads
+      .filter((thread) => thread.workstream.id === id && thread.title)
+      .sort((a, b) => b.activityAt.localeCompare(a.activityAt))[0]?.title ?? "Untitled thread";
+  const named = open.map((workstream) => ({
+    id: workstream.id,
+    name:
+      workstream.origin.kind === "thread" && workstream.name === blankWorkstreamName
+        ? titleOf(workstream.id)
+        : workstream.name,
+  }));
+  // The default's label and each name's first holder keep theirs; the rest
+  // take the first "(n)" nobody has.
+  const taken = new Set([blankWorkstreamName]);
+  const labels = new Map<string, string>();
+  for (const { id, name } of named) {
+    if (taken.has(name)) continue;
+    taken.add(name);
+    labels.set(id, name);
+  }
+  for (const { id, name } of named) {
+    if (labels.has(id)) continue;
+    let nth = 2;
+    while (taken.has(`${name} (${nth})`)) nth++;
+    taken.add(`${name} (${nth})`);
+    labels.set(id, `${name} (${nth})`);
+  }
+  return labels;
 }
 
 // The workstreams a new thread can start in: those still open, but the

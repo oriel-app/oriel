@@ -485,7 +485,7 @@ The name opens Browse by assignee, filtered to in progress. The sub is right-ali
 - `.clusters` is the frame: a `--line` border on `--surface`, in every theme (see Drift). `data-anchored` makes every heading leave room for the anchor's checkbox, so chevrons line up.
 - The **toggle** is one button: chevron, name and key, then `.cluster-details` (`display: contents`) with the origin pill and `.cluster-meta`, whose count sits over the status bar in the items' status column and whose points sit over their assignee column (`.cluster-meta` in `window.css`).
 - **Origin**: `.origin` names the source; `.origin.derived` is a dashed pill with the rule, for a cluster "Oriel made; the source doesn't have it".
-- When any cluster is Oriel's, one line above the clusters says what the tag means (`.derived-note`): "**Oriel rule** marks a cluster Oriel made, which the source doesn't have. Each one shows its rule." (`Body` in `packages/web/src/window-page.tsx`).
+- When any cluster is Oriel's, one line under the clusters says what the tag means, so a grouping with Oriel's clusters starts its list where every other grouping does (`.derived-note`): "**Oriel rule** marks a cluster Oriel made, which the source doesn't have. Each one shows its rule." (`Body` in `packages/web/src/window-page.tsx`).
 - **Points**: "29 pts · 3 unestimated". A cluster of files shows none, "which isn't zero" (`ClusterPoints` in `packages/web/src/window-page.tsx`).
 - **Make workstream** "waits on the row's right until the row is pointed at" (`.make-workstream` in `window.css`), absolutely placed in the 7rem the toggle reserves. Its tooltip says exactly what it copies.
 - The anchor checkbox (`label.pick.anchor-pick`) picks the epic itself, "not its items". It shows on the heading's hover.

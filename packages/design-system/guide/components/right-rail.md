@@ -21,7 +21,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 ## When to use it
 
-- On a thread's page, always, including a new thread before its first message (with "No items").
+- On a thread's page, always, including a new thread before its first message, where it holds the workstream picker, with the new workstream's title under it while the picker is on "New workstream", and the picked workstream's count once one with items is picked.
 - To show which items a question in the thread is about. Each row opens its item in the [item panel](/components/item-panel), with Previous and Next through the rail's list.
 - To say the thread is behind its workstream, and offer Sync now.
 
@@ -172,11 +172,13 @@ There is no generated summary in the rail. It holds the title line, at most one 
     <ul class="members compact"></ul>
   </aside>
   <aside class="rail" aria-label="This thread's items">
-    <h2 class="rail-title">No items</h2>
-    <p class="rail-note">
-      No workstream yet: your first message makes one, with this thread. What a change set here
-      creates joins it.
-    </p>
+    <label class="filter new-thread-workstream" data-at="rail">
+      <span class="visually-hidden">Workstream</span>
+      <select>
+        <option value="" selected>New workstream</option>
+        <option value="ws-2">Gift cards</option>
+      </select>
+    </label>
   </aside>
 </div>
 ```
@@ -223,7 +225,9 @@ There is no generated summary in the rail. It holds the title line, at most one 
 </div>
 ```
 
-**Narrow.** "A narrow page, on a narrow screen or beside the panel: the rails move inline, and rows wrap to two lines. The region moves under the chat before the rows wrap, where a 1180px screen leaves the page beside the sidebar" (`@container page (max-width: 932px)` in `window.css`). Under `@container page (max-width: 932px)` the layout is one column, the rail is no longer sticky, and its rows become a wrapping line of type marks and keys, titles hidden. The workshop's frames are `page` containers too, so any rail specimen narrower than 932px draws this form. The container is `.shell-main`, so opening the [item panel](/components/item-panel) beside the page can move the rail under the chat on a wide screen.
+**Wide.** At 1280px and up (`@media (min-width: 1280px)` in `window.css`), where the column beside it stays wider than a narrow page with the sidebar open, the rail leaves the page: it's fixed at the window's right edge, the window's height, `--rail-beside` wide (the rail and the sidebar's `--space-3` each side), on `--frame`, as the sidebar is on the left, and `.shell:has(.rail)` sets `--beside` to its width, so the page column sits inset between the two and the chat has it to itself (2026-11-08). The [item panel](/components/item-panel) covers it while it's open.
+
+**Narrow.** Below 1280px: "A narrow page, on a narrow screen or beside the panel: the rails move inline, and rows wrap to two lines. The region moves under the chat before the rows wrap, where a 1180px screen leaves the page beside the sidebar" (`@container page (max-width: 932px)` in `window.css`). Under `@container page (max-width: 932px)` the layout is one column, the rail is no longer sticky, and its rows become a wrapping line of type marks and keys, titles hidden. The workshop's frames are `page` containers too, so any rail specimen narrower than 932px draws this form. The container is `.shell-main`, so opening the [item panel](/components/item-panel) beside the page can move the rail under the chat on a wide screen.
 
 ## States
 
@@ -337,7 +341,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 - **Disabled** is `aria-disabled="true"` on Sync now, at 0.5, while a turn runs or a sync is under way (`.sync-now[aria-disabled]` in `window.css`). It stays in the tab order so its tooltip can say why; clicks do nothing.
 - **Busy**: syncing sets `aria-busy="true"` too, and the icon pulses (`.sync-now[aria-busy] .icon` in `window.css`), and holds still under reduced motion. The tooltip says "Syncing…".
 - **Stale** is the behind note itself: the region's version is older than the workstream's.
-- **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1". A new thread's rail says "No items" and "No workstream yet: your first message makes one, with this thread. What a change set here creates joins it." The behind note wins over the empty one. Oriel's thread for moving the stand-in tracker's issues into a tracker that turned on says, in place of the empty note, "What this change creates goes to the workstreams that hold the issues it makes again.", and once it applied, "Its items went to {workstreams}." (decision 0059, OA-278); its own workstream then ends, done.
+- **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1". A new thread's rail says nothing of items: a new thread never has its own, so it holds only the workstream picker, and the picked workstream's count once one with items is picked. The behind note wins over the empty one. Oriel's thread for moving the stand-in tracker's issues into a tracker that turned on says, in place of the empty note, "What this change creates goes to the workstreams that hold the issues it makes again.", and once it applied, "Its items went to {workstreams}." (decision 0059, OA-278); its own workstream then ends, done.
 - **Error** and **loading** have no look of their own: the rail comes with the thread's page, which has its own loading and error lines.
 - **Active** isn't styled.
 

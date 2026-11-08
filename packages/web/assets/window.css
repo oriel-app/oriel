@@ -7,6 +7,9 @@ html {
   /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
   --rail: 15rem;
+  /* A thread's rail at the window's edge, in the sidebar's material, with
+     the sidebar's sides. */
+  --rail-beside: calc(var(--rail) + 2 * var(--space-3));
   --chat: 44rem;
   /* Every column's first line: how far down it starts, and how tall it is,
      its contents centred, so the sidebar, the page, the rail and the panel
@@ -50,8 +53,11 @@ html {
   /* The frame (decision 0056, amended): the sidebar, a band along the top
      of the page column and one down its right are one material, and the
      column is set into it, its top corners curved like a table's apron
-     running into its leg, in the frame's slight shadow. On a narrow screen
-     the bar is the frame, and the corners curve from its lower edge. */
+     running into its leg, in the frame's slight shadow. What sits on the
+     right of the column, the item panel or a thread's rail, is the
+     sidebar's material too, so the column sits inset between the two. On a
+     narrow screen the bar is the frame, and the corners curve from its
+     lower edge. */
   --sidebar-bg: var(--frame);
   --frame-band: 4px;
   --frame-curve: var(--frame-corner);
@@ -340,10 +346,14 @@ html[data-text-size] {
 
 /* On Browse the scrollbar's room is kept whether the page is long enough to
    need it or not, so switching groupings, which grow and shrink the page,
-   never moves it sideways. That room is the frame's. */
-html:has(.window-layout) {
-  scrollbar-gutter: stable;
-  background: var(--frame);
+   never moves it sideways. Only where a scrollbar takes room: an overlay
+   scrollbar keeps none, and a phone-width page keeps none. The room is the
+   frame's, a wider band down the column's right. */
+@media (min-width: 761px) {
+  html:has(.window-layout) {
+    scrollbar-gutter: stable;
+    background: var(--frame);
+  }
 }
 
 body {
@@ -478,9 +488,7 @@ a {
   box-shadow:
     0 0 0 var(--frame-reach) var(--frame),
     var(--frame-shadow);
-  clip-path: inset(
-    calc(-1 * var(--frame-band)) calc(-1 * (var(--beside) + var(--frame-band))) var(--space-6) 0
-  );
+  clip-path: inset(calc(-1 * var(--frame-band)) calc(-1 * var(--frame-band)) var(--space-6) 0);
   pointer-events: none;
   transition: left var(--duration-move) ease;
 }
@@ -1840,7 +1848,7 @@ button.nav-more {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin: 0 0 var(--space-3);
+  margin: var(--space-3) 0 0;
   padding: var(--space-2) var(--space-3);
   border: var(--border-thin) dashed var(--derived-line);
   border-radius: var(--radius);
@@ -2787,10 +2795,44 @@ a.replies:hover {
   margin-left: auto;
 }
 
-/* A new thread's workstream, where a thread's page names it: Browse's
-   filter, as wide as a workstream's name needs. */
+/* A new thread's workstream: Browse's filter, at the top of the rail where
+   the rail sits beside the chat, as wide as the rail; beside the title,
+   across the head row, where the rail waits below the chat. */
+.new-thread-workstream {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--head-row);
+}
+
 .new-thread-workstream select {
-  max-width: min(24rem, 100%);
+  width: 100%;
+  max-width: none;
+}
+
+.thread-title-row > .new-thread-workstream {
+  flex: 0 1 14rem;
+  margin-left: auto;
+}
+
+.thread-title-row > .new-thread-workstream[data-at="head"],
+.new-workstream-name[data-at="head"] {
+  display: none;
+}
+
+.rail > .new-thread-workstream {
+  margin-bottom: var(--space-2);
+}
+
+/* What the new workstream will be called, under the picker while it's the
+   default; under the title line where the rail waits below the chat. */
+.rail > .new-workstream-name {
+  margin-bottom: var(--space-3);
+}
+
+.thread-head > .new-workstream-name {
+  max-width: 20rem;
+  margin-top: var(--space-2);
 }
 
 .chat {
@@ -4395,33 +4437,75 @@ a.replies:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The region waits below the chat, with no top line to share. */
+  /* Where the rail isn't at the window's edge. */
+  @media (max-width: 1279px) {
+    /* The region waits below the chat, with no top line to share. */
+    .rail {
+      position: static;
+      max-height: none;
+      padding: 0 0 var(--space-6);
+    }
+
+    .rail > .rail-title {
+      min-height: 0;
+    }
+
+    .thread-title-row > .new-thread-workstream[data-at="head"] {
+      display: flex;
+    }
+
+    .new-workstream-name[data-at="head"] {
+      display: grid;
+    }
+
+    .rail > :is(.new-thread-workstream, .new-workstream-name)[data-at="rail"] {
+      display: none;
+    }
+
+    .rail .members.compact {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1) var(--space-3);
+    }
+
+    .rail .members.compact .member {
+      grid-template-columns: 0.5rem auto;
+    }
+
+    .rail .members.compact .key {
+      white-space: nowrap;
+    }
+
+    .rail .members.compact .member-title {
+      display: none;
+    }
+  }
+}
+
+/* A wide screen keeps the rail at the window's edge, in the sidebar's
+   material, so the page column sits inset between the two, and the chat has
+   the column to itself. From where the column beside it stays wider than a
+   narrow page (760px), with the sidebar open. The item panel covers it while
+   it's open. */
+@media (min-width: 1280px) {
+  .shell:has(.rail) {
+    --beside: var(--rail-beside);
+  }
+
+  .thread-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .rail {
-    position: static;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--layer-sticky);
+    width: var(--rail-beside);
     max-height: none;
-    padding: 0 0 var(--space-6);
-  }
-
-  .rail > .rail-title {
-    min-height: 0;
-  }
-
-  .rail .members.compact {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-  }
-
-  .rail .members.compact .member {
-    grid-template-columns: 0.5rem auto;
-  }
-
-  .rail .members.compact .key {
-    white-space: nowrap;
-  }
-
-  .rail .members.compact .member-title {
-    display: none;
+    padding: calc(var(--bar-height) + var(--inset-top)) var(--space-3) var(--space-3);
+    background: var(--frame);
   }
 }
 
@@ -5243,27 +5327,26 @@ a.replies:hover {
    once; narrower ones lay it over the page's right side, and a phone gives it
    the whole screen. It arrives at once, with a quick slide and fade, showing
    what the page knew of the item until its read arrives, and only moves:
-   nothing beside or inside it reflows. Beside the page it is the column's
-   sibling, set into the same frame: the band above and to its right, the
-   band's width between them, the same curved top corners, paper and shade. */
+   nothing beside or inside it reflows. It is the sidebar's material, as
+   a thread's rail is: beside the page, the column sits inset between the
+   two; over it, it casts the shadow the drawer does. */
 
 .item-panel {
   position: fixed;
-  top: var(--frame-top);
-  right: var(--frame-band);
+  top: 0;
+  right: 0;
   bottom: 0;
   z-index: var(--layer-panel);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  width: min(calc(var(--panel) - var(--frame-band)), 100vw);
-  --panel-top: var(--space-4);
+  width: min(var(--panel), 100vw);
+  --panel-top: calc(var(--frame-top) + var(--space-4));
   --panel-side: var(--space-6);
   padding: var(--panel-top) var(--panel-side) var(--space-8);
   overflow-y: auto;
-  border-radius: var(--frame-curve) var(--frame-curve) 0 0;
-  background: var(--bg);
-  box-shadow: var(--frame-shadow), var(--shadow);
+  background: var(--frame);
+  box-shadow: var(--shadow);
   overflow-wrap: anywhere;
   transition:
     opacity var(--duration-quick) var(--ease-out),
@@ -5331,7 +5414,7 @@ a.replies:hover {
   }
 
   .item-panel {
-    box-shadow: var(--frame-shadow);
+    box-shadow: none;
   }
 }
 
@@ -5339,11 +5422,10 @@ a.replies:hover {
 @media (max-width: 760px) {
   .item-panel {
     --panel-top: var(--inset-top);
-    --panel-side: var(--space-4);
-    top: 0;
+    --panel-side: var(--space-3);
     left: 0;
     width: auto;
-    border-radius: 0;
+    background: var(--bg);
     box-shadow: none;
   }
 }

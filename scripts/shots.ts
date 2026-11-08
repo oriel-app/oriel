@@ -3372,20 +3372,40 @@ const scenes: Scene[] = [
   {
     name: "new-thread-picked",
     path: "/threads/new",
+    // Two threads from nothing first: their workstreams, not named yet, are
+    // picked by their threads' titles, never as a second "New workstream".
     make: async () => {
       const on = (await writing()).serving;
       await post("/api/workstreams", checkout, on);
+      for (const text of ["Plan gift cards", "Draft the kiosk rollout"]) {
+        await post("/api/threads", { text }, on);
+        await on.app.settled();
+      }
       return on;
     },
     act: async (page) => {
-      const picked = await page.evaluate(async () => {
+      const listed = await page.evaluate(async () => {
         const { workstreams } = (await (await fetch("/api/workstreams")).json()) as {
-          workstreams: { id: string; name: string }[];
+          workstreams: { id: string; name: string; origin: { kind: string } }[];
         };
-        return workstreams.length === 1 ? workstreams[0] : null;
+        return workstreams;
       });
-      if (!picked) throw new Error("the scene's server should have one workstream");
-      await page.getByRole("combobox", { name: "Workstream" }).selectOption({ label: picked.name });
+      const picked = listed.find((each) => each.origin.kind === "cluster");
+      if (!picked || listed.length !== 3)
+        throw new Error(`the scene's server should have three workstreams, not ${listed.length}`);
+      const picker = page.getByRole("combobox", { name: "Workstream" });
+      await picker.locator("option").nth(listed.length).waitFor({ state: "attached" });
+      const options = await picker.locator("option").allTextContents();
+      if (
+        options.filter((option) => option === "New workstream").length !== 1 ||
+        new Set(options).size !== options.length
+      )
+        throw new Error(
+          `The picker's options should differ, with one default: ${options.join(" | ")}`,
+        );
+      await picker.selectOption({ label: picked.name });
+      // Only a new workstream is named here.
+      await page.getByRole("textbox", { name: "Workstream title" }).waitFor({ state: "detached" });
       await page
         .getByRole("textbox", { name: "Message" })
         .fill("Which stories here still need estimates?");
@@ -3400,11 +3420,43 @@ const scenes: Scene[] = [
           ]) as Promise<[{ workstream: { id: string } }, { workstreams: unknown[] }]>,
         id,
       );
-      if (thread.workstream.id !== picked.id || all.workstreams.length !== 1)
+      if (thread.workstream.id !== picked.id || all.workstreams.length !== listed.length)
         throw new Error(
           `The new thread went to ${thread.workstream.id}, with ${all.workstreams.length} workstreams, not ${picked.id}`,
         );
       await page.locator(".thread-head .crumb").filter({ hasText: picked.name }).waitFor();
+    },
+  },
+  // The default picked: the new workstream's title, under the picker, or under
+  // the title line where the rail waits below the chat.
+  {
+    name: "new-thread-title",
+    path: "/threads/new",
+    act: async (page) => {
+      await page.getByRole("textbox", { name: "Workstream title" }).fill("Gift card kiosk");
+      await page.getByRole("textbox", { name: "Message" }).fill("Plan the kiosk's first epic");
+    },
+  },
+  // Named: the new workstream is made with the name the person typed, which
+  // the sidebar shows.
+  {
+    name: "new-thread-named",
+    path: "/threads/new",
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      const title = page.getByRole("textbox", { name: "Workstream title" });
+      const given = await title.inputValue();
+      if (given !== "New workstream")
+        throw new Error(`The workstream title should start as New workstream, not ${given}`);
+      await title.fill("Gift card kiosk");
+      await page.getByRole("textbox", { name: "Message" }).fill("Plan the kiosk's first epic");
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.waitForURL(/\/threads\/(?!new)[^/?#]+$/);
+      await page.locator(".thread-head .crumb").filter({ hasText: "Gift card kiosk" }).waitFor();
+      await page
+        .locator(".sidebar-workstreams")
+        .getByText("Gift card kiosk", { exact: true })
+        .waitFor({ state: "attached" });
     },
   },
   {

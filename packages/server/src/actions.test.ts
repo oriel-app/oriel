@@ -201,6 +201,21 @@ test("only the person undoes a rejection, or dismisses a second look, whatever t
   assert.ok(isInverse("changeset.unreject"));
 });
 
+test("a name the user gives a thread's new workstream is theirs, so an epic made there doesn't rename it", async () => {
+  const w = world();
+  const oriel: Actor = { kind: "change-set", changeSetId: id(9) as Ulid };
+  const named = await w.dispatch("workstream.create", { kind: "thread", name: " Kiosk " }, user);
+  const blank = await w.dispatch(
+    "workstream.create",
+    { kind: "thread", name: "New workstream" },
+    user,
+  );
+  for (const made of [named, blank])
+    await w.dispatch("workstream.rename", { workstream: made.workstream, name: "Epic" }, oriel);
+  assert.equal(w.workstreams.get(named.workstream)?.name, "Kiosk");
+  assert.equal(w.workstreams.get(blank.workstream)?.name, "Epic");
+});
+
 test("making a workstream undoes as deleting it, which only the user may, while no thread uses it", async () => {
   const w = world();
   const made = await w.dispatch(

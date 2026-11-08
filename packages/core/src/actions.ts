@@ -180,12 +180,12 @@ export const actions = {
   },
   "workstream.create": {
     // From a cluster of the window, from picked items, or empty, for a
-    // thread started from nothing.
+    // thread started from nothing, under the name the user gave it there.
     doc: "Makes a workstream of the given items.",
     input: union(
       object({ kind: literal("cluster"), grouping: string, cluster: string }),
       object({ kind: literal("picked"), name, items }),
-      object({ kind: literal("thread") }),
+      object({ kind: literal("thread"), name: optional(name) }),
       object({ kind: literal("window") }),
     ),
     class: { kind: "direct", inverse: "workstream.delete" },
