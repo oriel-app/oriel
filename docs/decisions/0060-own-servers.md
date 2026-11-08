@@ -1,6 +1,6 @@
 # 0060 Own servers: Oriel's agent uses any server the person turns on, and Oriel calls every tool itself, with no model
 
-Proposed 2026-11-08. Amends 0003, 0036, 0037, 0048, 0050 and 0059. Changes SPEC §1, §2, §5, §7 and §8, `.claude/rules/bindings.md`, and the security reviewer's threat model and checklist.
+Accepted 2026-11-08. Amends 0003, 0036, 0037, 0048, 0050 and 0059. Changes SPEC §1, §2, §5, §7 and §8, `.claude/rules/bindings.md`, and the security reviewer's threat model and checklist.
 
 Adds: none
 
