@@ -16,12 +16,16 @@ import {
 } from "./signature.ts";
 
 test("a CLI runs only when codesign finds Anthropic's Team ID and spctl finds it notarized", async () => {
+  // codesign passes only when it is asked to check this path against a
+  // requirement naming Anthropic's Team ID.
   const answers =
     (codesign: number, spctl: string): RunTool =>
-    async (file) =>
-      file === "/usr/bin/codesign"
-        ? { code: codesign, output: codesign ? "test-requirement: code failed" : "" }
-        : { code: spctl.includes(": accepted") ? 0 : 3, output: spctl };
+    async (file, args) => {
+      if (file !== "/usr/bin/codesign")
+        return { code: spctl.includes(": accepted") ? 0 : 3, output: spctl };
+      const checked = args.at(-1) === "/c" && args[args.indexOf("-R") + 1] === requirement;
+      return checked && !codesign ? { code: 0, output: "" } : { code: 3, output: "failed" };
+    };
   assert.ok(requirement.includes(`certificate leaf[subject.OU] = "${anthropicTeam}"`));
   assert.equal(
     await anthropicSigned("/c", answers(0, "/c: accepted\nsource=Notarized Developer ID\n")),

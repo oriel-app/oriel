@@ -103,3 +103,30 @@ test("a review link's holder never sees the second look", async (t) => {
   assert.equal(opened.status, 200);
   assert.doesNotMatch(String(opened.body), /secondLook|next-day/);
 });
+
+test("what a thread's second looks spend counts toward the thread's token cap", async (t) => {
+  const app = await testApp(t, {
+    slack: { mode: "fixture" },
+    scripts: { propose },
+    plan: () => [{ run: "propose" }],
+    limits: { maxTokensPerThread: 50_000 },
+    // A look that spends the thread's budget and records nothing.
+    challenger: () => ({
+      async *turn() {
+        yield { kind: "done", usage: { inputTokens: 40_000, outputTokens: 10_000 } };
+      },
+    }),
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Same day only" }),
+  );
+  await app.app.settled();
+  const setId = json<ThreadView>(await app.get(`/api/threads/${threadId}`)).changeSets[0]?.id;
+  await app.post(`/api/change-sets/${setId}/second-look`);
+  await app.app.settled();
+  const next = await app.post(`/api/threads/${threadId}/messages`, { text: "And?" });
+  assert.equal(next.status, 409);
+});

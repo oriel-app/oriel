@@ -21,7 +21,7 @@ import { models } from "../model.ts";
 import { memorySettings } from "../settings.ts";
 import { keptPort } from "./port.ts";
 import type { ServerLine } from "./protocol.ts";
-import { type DesktopOptions, runDesktop } from "./run.ts";
+import { type DesktopOptions, runDesktop, takeStdout } from "./run.ts";
 
 const secret = "5a".repeat(32);
 const cookie = `oriel-launch=${secret}`;
@@ -264,4 +264,20 @@ test("the API key is kept in the shell's store from Settings, and the next launc
   assert.doesNotMatch(JSON.stringify([first.logged, second.logged]), new RegExp(key));
   second.input.end();
   assert.equal(await two.exited, 0);
+});
+
+test("desktop mode's stdout carries only the channel: everything else written there goes to stderr", () => {
+  const written: string[] = [];
+  const errors: string[] = [];
+  const stdout = {
+    write: ((chunk: string) => written.push(chunk) > 0) as NodeJS.WriteStream["write"],
+  };
+  const stderr = {
+    write: ((chunk: string) => errors.push(chunk) > 0) as NodeJS.WriteStream["write"],
+  };
+  const channelWrite = takeStdout(stdout, stderr);
+  stdout.write("a stray log line\n");
+  channelWrite('{"kind":"ready","url":"http://127.0.0.1:4320/"}\n');
+  assert.deepEqual(written, ['{"kind":"ready","url":"http://127.0.0.1:4320/"}\n']);
+  assert.deepEqual(errors, ["a stray log line\n"]);
 });

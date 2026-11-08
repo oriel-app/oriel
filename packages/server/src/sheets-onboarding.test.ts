@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { fixtureGoogle, loadSheetsFixture, scope, standInToken } from "@oriel/sheets";
-import type { OptionsReviewView } from "@oriel/web/view";
+import type { OptionsReviewView, ReviewRedrawn } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 // Made-up values; none is a real client or token.
@@ -157,4 +157,46 @@ test("Ask Oriel about a tab names it by its ID alone: no words of the sheet reac
   // The ID itself may hold a word; nothing else in the turn does.
   const rest = turn.replace(at, "");
   for (const word of words) assert.ok(!rest.includes(word), word);
+});
+
+test("a new row ID column's Undo brings back each row's item, and the workstream holding it", async (t) => {
+  const it = await sheetsApp(t);
+  const sheets = await connected(it);
+  const at = `${tracker}/1100`;
+  const { guess } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
+  await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
+  const story = "Keep the fare on a later sailing the same day";
+  const rowOf = () =>
+    it.app
+      .window("epic")
+      .clusters.flatMap((cluster) => cluster.list)
+      .find((row) => row.title === story);
+  const held = rowOf();
+  assert.ok(held);
+  const made = json<{ id: string }>(
+    await it.post("/api/workstreams", { kind: "picked", name: "Rebooking", items: [held.id] }),
+  );
+  const shown = json<OptionsReviewView>(
+    await it.get(`/api/connections/${sheets.id}/review?tab=${encodeURIComponent(at)}`),
+  );
+  const rekeyed = json<ReviewRedrawn>(
+    await it.post(`/api/connections/${sheets.id}/review`, {
+      given: shown.current?.given,
+      edit: { table: at, field: "key", column: "A" },
+    }),
+  );
+  const set = await it.post(`/api/connections/${sheets.id}/options`, { options: rekeyed.options });
+  assert.equal(set.status, 200);
+  assert.notEqual(rowOf()?.id, held.id);
+
+  const { undo } = json<{ undo: { input: unknown } }>(set);
+  assert.equal((await it.post("/api/actions/source.configure", undo.input)).status, 200);
+  assert.equal(rowOf()?.id, held.id);
+  const workstream = json<{ members: { ref: { id: string }; row: unknown }[] }>(
+    await it.get(`/api/workstreams/${made.id}`),
+  );
+  assert.deepEqual(
+    workstream.members.map((member) => [member.ref.id, member.row !== null]),
+    [[held.id, true]],
+  );
 });

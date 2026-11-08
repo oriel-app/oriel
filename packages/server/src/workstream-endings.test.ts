@@ -11,7 +11,7 @@ import {
   threadStore,
   workstreamStore,
 } from "@oriel/db";
-import type { DiffView, ThreadView, UndoView } from "@oriel/web/view";
+import type { DiffView, ThreadView, UndoView, WorkstreamsView } from "@oriel/web/view";
 import { ActionError, type Changed, dispatcher, refusal } from "./actions.ts";
 import type { Step } from "./scripted-agent.ts";
 import { ThreadBusy } from "./turns.ts";
@@ -31,12 +31,16 @@ const estimate: Script = async (bindings) => {
   assert.ok(story, "the checkout epic has an unestimated story");
   return { value: [story.id], writes: [["jira.setEstimate", [story.id, 3]]] };
 };
-const plans: Record<string, Step[]> = { Estimate: [{ run: "estimate" }] };
+const wrapUp: Script = async () => ({ intents: [["workstream.done", [{}]]] });
+const plans: Record<string, Step[]> = {
+  Estimate: [{ run: "estimate" }],
+  "Wrap up": [{ run: "wrapUp" }, { text: "Marked." }],
+};
 
 // The checkout workstream with two threads on it, each answered.
 async function workstream(t: TestContext) {
   const app = await testApp(t, {
-    scripts: { estimate },
+    scripts: { estimate, wrapUp },
     plan: (input) => {
       app.advance(1000);
       return plans[input.text] ?? [{ text: "Hello." }];
@@ -98,6 +102,18 @@ test("deleting a workstream threads use hides it and them, and refuses its revie
   const reopened = await app.post("/api/review/open", { token });
   assert.equal(reopened.status, 200);
   assert.equal(json<{ diff: DiffView }>(reopened).diff.changeSetId, set.id);
+});
+
+test("the agent can't mark its workstream done while a change set in one of its threads waits on the user", async (t) => {
+  const app = await workstream(t);
+  await app.ask(app.second, "Estimate");
+  const view = await app.ask(app.first, "Wrap up");
+  const line = view.entries.flatMap((e) => (e.kind === "actions" ? e.lines : [])).at(-1);
+  assert.equal(line?.applied, false);
+  const summary = json<WorkstreamsView>(await app.get("/api/workstreams")).workstreams.find(
+    (each) => each.id === app.workstreamId,
+  );
+  assert.equal(summary?.done, null);
 });
 
 // The dispatcher alone, over a workstream with one thread on it, and one no
