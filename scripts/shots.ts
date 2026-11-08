@@ -2960,7 +2960,7 @@ const scenes: Scene[] = [
       await page.locator(".overview-workstream-name").waitFor();
       await renameInSidebar(page, false);
       await page.getByRole("textbox", { name: "Workstream name" }).press("Enter");
-      await page.getByText("The workstream changed since this page loaded.").waitFor();
+      await page.locator(beadSays, { hasText: "changed since" }).waitFor();
       await page.locator(".nav-workstream-menu .nav-name", { hasText: "New workstream" }).waitFor();
       if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
     },

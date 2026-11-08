@@ -5238,6 +5238,11 @@ a.replies:hover {
   background: var(--danger);
 }
 
+/* Two actions of one fill, such as Rename and Mark done, apart. */
+.swipe-action + .swipe-action {
+  box-shadow: inset calc(-1 * var(--border-thin)) 0 0 var(--surface);
+}
+
 /* The panel beside the page: one item in its source's own view. Screens with
    room for a phone-width page beside it, laptops included, narrow the page at
    once; narrower ones lay it over the page's right side, and a phone gives it
