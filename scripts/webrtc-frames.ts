@@ -16,10 +16,18 @@
 // - peer-udp, peer-tcp: ICE straight to a "peer". The script makes up the
 //   peer's answer, with an ICE ufrag it chooses, and the peer's address as a
 //   candidate; the connectivity check carries "<ufrag>:<local ufrag>".
+// - stun-dns, turn-dns, ice-dns, ice-tcp-dns: the same by a name the script
+//   makes up (`q<run>z<xx>.exfil.test`). The lookup is a channel of its own:
+//   outside the harness, the name's own DNS server hears it.
 // A cell reads `LEAK` when the script's chosen bytes (its USERNAME or ufrag)
 // reached the listener, `reach` when packets or a connection did without
 // them (still a channel: which port, and when, carry bits), `proxy` when the
-// only trace is a CONNECT to the refusing proxy, and `·` when nothing came.
+// only trace is a CONNECT to the refusing proxy, `DNS` when the engine's
+// resolver was asked for one of the script's names, and `·` when nothing
+// came. DNS comes from the engine's log (`--enable-logging`): the network
+// service logs each name WebRTC hands its resolver, and the harness's own
+// `--host-resolver-rules` fence fails every probe name before any query is
+// sent (net/dns/mapped_host_resolver.cc), so nothing leaves the Mac.
 //
 // Frame kinds, each sandboxed with `allow-scripts` only, in a host page with
 // Oriel's own kind of CSP:
@@ -592,7 +600,9 @@ function scan(text: string) {
     const asked = /Failed to resolve address for (q\d+z[a-z]{2}\.exfil\.test)/.exec(line)?.[1];
     if (asked) resolved.add(asked);
     const begun =
-      /(?:host lookup for|resolving ICE candidate hostname) (q\d+z[a-z]{2}\.exfil\.test)/.exec(line)?.[1];
+      /(?:host lookup for|resolving ICE candidate hostname) (q\d+z[a-z]{2}\.exfil\.test)/.exec(
+        line,
+      )?.[1];
     if (begun) started.add(begun);
   }
 }
@@ -719,7 +729,9 @@ async function electron(
     join(app, "Contents/MacOS/Oriel"),
     [
       ...commonSwitches.map((arg) =>
-        rules && arg.startsWith("--host-resolver-rules=") ? `--host-resolver-rules=${rules.line}` : arg,
+        rules && arg.startsWith("--host-resolver-rules=")
+          ? `--host-resolver-rules=${rules.line}`
+          : arg,
       ),
       ...switches,
       "--probe-data",
@@ -857,8 +869,7 @@ async function measure(
         : heard.packets
           ? "reach"
           : asked.some((line) => line.endsWith(`:${port}`))
-            ? named.has(channel) &&
-              asked.some((line) => line.endsWith(`127.0.0.1:${port}`))
+            ? named.has(channel) && asked.some((line) => line.endsWith(`127.0.0.1:${port}`))
               ? "DNS→proxy"
               : "proxy"
             : "·";
@@ -913,7 +924,13 @@ type Plan = {
   variants: readonly Variant[];
 };
 const label = (l: Levers) =>
-  [l.csp && "csp", l.policy && "policy", l.preload && "preload", l.proxy && "proxy", l.deadproxy && "deadproxy"]
+  [
+    l.csp && "csp",
+    l.policy && "policy",
+    l.preload && "preload",
+    l.proxy && "proxy",
+    l.deadproxy && "deadproxy",
+  ]
     .filter(Boolean)
     .join("+") || "none";
 
@@ -1015,7 +1032,8 @@ for (const plan of plans) {
   const wanted = plan.levers.some((levers) =>
     plan.kinds.some((kind) =>
       plan.variants.some((variant) => {
-        const config = [plan.config, label(levers)].filter((x) => x && x !== "none").join(" · ") || "none";
+        const config =
+          [plan.config, label(levers)].filter((x) => x && x !== "none").join(" · ") || "none";
         return !only || only.test(`${config} ${kind} ${variant}`);
       }),
     ),

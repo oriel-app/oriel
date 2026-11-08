@@ -1,0 +1,161 @@
+engine: Chrome 156.0.8078.80 headless
+none                     sandboxed  direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+none                     sandboxed  child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     srcdoc     direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+none                     srcdoc     child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     data       direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+none                     data       child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     blob       direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+none                     blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+none                     blob       child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      sandboxed  direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      sandboxed  child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      srcdoc     direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      srcdoc     child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      data       direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      data       child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      blob       direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+console: Unrecognized Content-Security-Policy directive 'webrtc'.
+csp                      blob       child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=LEAK turn-tls=reach peer-udp=LEAK peer-tcp=LEAK stun-dns=DNS turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+preload                  sandboxed  direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+preload                  sandboxed  child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  srcdoc     direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+preload                  srcdoc     child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  data       direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+preload                  data       child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  blob       direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+preload                  blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+preload                  blob       child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+engine: Chrome 156.0.8078.80 headless, pref webrtc.ip_handling_policy = disable_non_proxied_udp
+pref · policy            sandboxed  direct       api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy            sandboxed  child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            srcdoc     direct       api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy            srcdoc     child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            data       direct       api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy            data       child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            blob       direct       api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy            blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy            blob       child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=LEAK turn-tls=reach peer-udp=· peer-tcp=LEAK stun-dns=· turn-dns=DNS+LEAK ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref · policy+preload    sandboxed  direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy+preload    sandboxed  child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    srcdoc     direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy+preload    srcdoc     child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    data       direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy+preload    data       child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    blob       direct       api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+pref · policy+preload    blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref · policy+preload    blob       child-srcdoc api=gone stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok
+engine: Chrome 156.0.8078.80 headless
+proxy · proxy            sandboxed  direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+proxy · proxy            sandboxed  child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            srcdoc     direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+proxy · proxy            srcdoc     child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            data       direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+proxy · proxy            data       child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            blob       direct       api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+proxy · proxy            blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+proxy · proxy            blob       child-srcdoc api=yes  stun=reach turn-udp=LEAK turn-tcp=proxy turn-tls=proxy peer-udp=LEAK peer-tcp=proxy stun-dns=DNS turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+engine: Chrome 156.0.8078.80 headless, pref webrtc.ip_handling_policy = disable_non_proxied_udp
+pref + proxy · policy+proxy sandboxed  direct       api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy sandboxed  child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref + proxy · policy+proxy sandboxed  child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy srcdoc     direct       api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy srcdoc     child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref + proxy · policy+proxy srcdoc     child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy data       direct       api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy data       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref + proxy · policy+proxy data       child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy blob       direct       api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+pref + proxy · policy+proxy blob       child-blank  api=Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin "null" from accessing a cross-origin frame. stun=· turn-udp=· turn-tcp=· turn-tls=· peer-udp=· peer-tcp=· stun-dns=· turn-dns=· ice-dns=· ice-tcp-dns=· own=ok bridge=ok errors=["api: Failed to read a named property 'RTCPeerConnection' from 'Window': Blocked a frame with origin \"null\" from accessing a cross-origin frame."]
+pref + proxy · policy+proxy blob       child-srcdoc api=yes  stun=· turn-udp=· turn-tcp=proxy turn-tls=proxy peer-udp=· peer-tcp=proxy stun-dns=· turn-dns=DNS+proxy ice-dns=DNS ice-tcp-dns=DNS own=ok bridge=ok
+exit 0
