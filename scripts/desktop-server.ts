@@ -27,9 +27,11 @@ const data = join(root, ".oriel", "desktop");
 mkdirSync(data, { recursive: true, mode: 0o700 });
 const secret = randomBytes(32).toString("hex");
 
-// Only what the shell would give it: never this terminal's own environment.
+// Only what the shell gives it (packages/desktop/shell/main.ts,
+// serverEnvironment): never this terminal's own environment. Without USER and
+// LOGNAME, Claude Code can't find its sign-in in the Keychain.
 const env: Record<string, string> = {};
-for (const name of ["HOME", "TMPDIR", "LANG", "PATH"]) {
+for (const name of ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "PATH"]) {
   const value = process.env[name];
   if (value !== undefined) env[name] = value;
 }
