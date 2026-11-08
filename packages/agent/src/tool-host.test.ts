@@ -10,6 +10,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { WriteStalled } from "@oriel/core";
 import { ProviderError } from "./provider.ts";
+import { reopening } from "./server-calls.ts";
 import { HostRefused, openToolHost, type ToolHostOptions } from "./tool-host.ts";
 
 const fakeCli = fileURLToPath(new URL("./fake-claude.ts", import.meta.url));
@@ -26,7 +27,7 @@ function setup(fake: Record<string, unknown> = {}, over: Partial<ToolHostOptions
     args: [fakeCli],
     env: { FAKE_CLAUDE: JSON.stringify({ journal, servers: [grant], ...fake }) },
     grants: [grant],
-    tools: ["echo", "hang", "crash", "fails"].map((tool) => ({ server: "teams", tool })),
+    tools: ["echo", "hang", "slow", "crash", "fails"].map((tool) => ({ server: "teams", tool })),
     log: (message) => {
       if (message.includes("declined")) out.resolve();
     },
@@ -155,19 +156,21 @@ test("a run that ends mid-call: the call fails as sent, the one queued is never 
   t.done();
 });
 
-test("a queued call whose own run ends fails at once, while the call ahead goes on", async () => {
+test("a queued call whose own run ends is never sent, while the call ahead, and the host, go on", async () => {
   const t = setup();
-  const host = await openToolHost(t.options);
-  const ahead = host.call({ server: "teams", tool: "hang", args: {} });
+  // Through the caller sync and replay use, which keeps a host its calls
+  // share.
+  const calls = reopening("teams", () => openToolHost(t.options));
+  const ahead = calls.call({ tool: "slow", args: {} });
   const run = new AbortController();
-  const queued = host.call({ server: "teams", tool: "echo", args: {} }, run.signal);
+  const queued = calls.call({ tool: "echo", args: { q: "cancelled" } }, run.signal);
   await t.out;
   run.abort();
   assert.ok(unsent(await failed(queued)));
-  const going = failed(ahead);
-  await host.close();
-  assert.ok(mayHaveLanded(await going));
-  assert.deepEqual(t.calls(), ["call hang not-for-model"]);
+  assert.deepEqual((await ahead).content, [{ type: "text", text: "slow" }]);
+  await calls.call({ tool: "echo", args: { q: "next" } });
+  assert.deepEqual(t.calls(), ["call slow not-for-model", "call echo not-for-model"]);
+  calls.close();
   t.done();
 });
 

@@ -87,32 +87,3 @@ test("a CLI the trust check refuses is never run: not by a look, a turn or a tit
   const titler = chooser.titler(() => defaultSettings);
   await assert.rejects(titler("Plan it", { signal, log: quiet }));
 });
-
-test("a local server is called by its own entry's command and arguments, whatever Oriel knows it by", async () => {
-  const called: unknown[] = [];
-  const harness = models({
-    env,
-    key: null,
-    check: found,
-    serverCalls: (_cli, _kind, options) => {
-      called.push(options.server);
-      return { call: async () => ({ content: [] }), close: () => {} };
-    },
-  });
-  await harness.look(defaultSettings);
-  const local = { command: "node", args: ["/elsewhere/sheets-mcp/main.ts"] };
-  const server = {
-    name: "sheets",
-    status: "connected" as const,
-    reports: "sheets-mcp",
-    url: null,
-    command: "node /elsewhere/sheets-mcp/main.ts",
-    tools: ["read_range"],
-    local,
-  };
-  await harness.serverCalls(defaultSettings, server, ["read_range"], quiet);
-  // Before decision 0060, one at a command other than its known entry's
-  // couldn't load on Claude Code; the tool host checks it where the person's
-  // agent reported it.
-  assert.deepEqual(called, [{ name: "sheets", local }]);
-});

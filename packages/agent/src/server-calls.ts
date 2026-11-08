@@ -69,11 +69,12 @@ export function grantOf(server: CalledServer): Grant {
   );
 }
 
-// A tool host that opens on the first call, for one server and `tools`.
-// One that failed a call is closed, and the next call opens another, which
-// checks again before it sends anything.
-export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptions): ServerCalls {
-  const { server } = options;
+// Calls to one server through a tool host that `open` starts on the first
+// call. One that failed a call is closed, and the next call opens another,
+// which checks again before it sends anything; but a call whose own run
+// ended before it was sent leaves the host as it was, so the calls of other
+// runs on it go on. The host's start is no run's, so no run's end stops it.
+export function reopening(server: string, open: () => Promise<ToolHost>): ServerCalls {
   let opened: Promise<ToolHost> | null = null;
   const drop = (at: Promise<ToolHost>) => {
     if (opened === at) opened = null;
@@ -81,19 +82,7 @@ export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptio
   };
   return {
     async call(call, signal) {
-      const at = (opened ??= Promise.resolve().then(() =>
-        claudeCodeToolHost(
-          cli,
-          {
-            grants: [grantOf(server)],
-            tools: options.tools.map((tool) => ({ server: server.name, tool })),
-            dev: "dev" in server ? [server.dev] : [],
-            parent: options.env ?? process.env,
-            log: options.log,
-          },
-          signal,
-        ),
-      ));
+      const at = (opened ??= Promise.resolve().then(open));
       let host: ToolHost;
       try {
         host = await at;
@@ -102,9 +91,9 @@ export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptio
         throw error;
       }
       try {
-        return await host.call({ server: server.name, tool: call.tool, args: call.args }, signal);
+        return await host.call({ server, tool: call.tool, args: call.args }, signal);
       } catch (error) {
-        drop(at);
+        if (!(signal?.aborted && error instanceof WriteStalled)) drop(at);
         throw error;
       }
     },
@@ -114,6 +103,20 @@ export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptio
       void at?.then((host) => host.close()).catch(() => {});
     },
   };
+}
+
+// The person's Claude Code's tool host, for one server and `tools`.
+export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptions): ServerCalls {
+  const { server } = options;
+  return reopening(server.name, () =>
+    claudeCodeToolHost(cli, {
+      grants: [grantOf(server)],
+      tools: options.tools.map((tool) => ({ server: server.name, tool })),
+      dev: "dev" in server ? [server.dev] : [],
+      parent: options.env ?? process.env,
+      log: options.log,
+    }),
+  );
 }
 
 // What Codex reports of a thread's servers: only the one Oriel named is on,

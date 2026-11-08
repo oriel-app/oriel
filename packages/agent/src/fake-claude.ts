@@ -42,12 +42,16 @@ const error = (id: unknown, said: string) =>
   out({ type: "control_response", response: { subtype: "error", request_id: id, error: said } });
 const textAnswer = (text: string) => ({ content: [{ type: "text", text }] });
 let asked = 0;
+// A `slow` call, answered once Oriel has answered the fake's question.
+let slow: unknown = null;
 
 createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line) as Message;
   if (message.type === "control_response") {
     const response = message.response as Message;
     journal(`answered ${String(response.subtype)}`);
+    if (slow !== null) ok(slow, textAnswer("slow"));
+    slow = null;
     return;
   }
   if (message.type !== "control_request" || fake.silentStart) return;
@@ -80,7 +84,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (tool === "echo") return ok(id, textAnswer(JSON.stringify(request.arguments)));
   // A call that never answers. It asks Oriel something first, which Oriel
   // declines, so a test knows the call is out.
-  if (tool === "hang")
+  if (tool === "slow") slow = id;
+  if (tool === "hang" || tool === "slow")
     return out({
       type: "control_request",
       request_id: `cli-${++asked}`,

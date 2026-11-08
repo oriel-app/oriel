@@ -1014,7 +1014,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       });
       // No AI to run the server through: that, in plain words, since
       // trying again won't help until one runs.
-      const problem = error instanceof NoAgentRuns ? error.message : each.opened.problem(error);
+      // Nor when Oriel refused the agent's process, such as for hooks its
+      // settings run: its reason says what to change.
+      const problem =
+        error instanceof NoAgentRuns || (error instanceof Error && error.name === "HostRefused")
+          ? error.message
+          : each.opened.problem(error);
       problems.set(each.connection.id, problem);
       return problem;
     }
