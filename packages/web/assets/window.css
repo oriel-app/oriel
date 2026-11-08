@@ -4623,6 +4623,100 @@ a.replies:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   color: var(--text);
+  /* Leaving: a fade and a slight shrink, quicker than it came, and no
+     longer clickable. Its origin is where it opened (menu.tsx). */
+  opacity: 0;
+  transform: scale(0.96);
+  pointer-events: none;
+  --exit: calc(var(--duration-quick) * 2 / 3);
+  transition:
+    opacity var(--exit) var(--ease-out),
+    transform var(--exit) var(--ease-out),
+    overlay var(--exit) allow-discrete,
+    display var(--exit) allow-discrete;
+}
+
+/* Opening: it grows from where it opened, the pointer or its control. */
+.context-menu:popover-open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-duration: var(--duration-quick);
+}
+
+@starting-style {
+  .context-menu:popover-open {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* An item's card while it's dragged (drag-card.ts): its key and title,
+   lifted, leaning the way it's pulled. The script moves it by its
+   transform, one frame at a time, the pointer at its left edge. */
+.drag-card {
+  position: fixed;
+  inset: 0 auto auto 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: visible;
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.drag-card-face {
+  display: flex;
+  max-width: 18rem;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--text-md);
+  white-space: nowrap;
+  translate: calc(-1 * var(--space-4)) -50%;
+}
+
+.drag-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Dropped: set down where the pointer let go, level, a touch smaller, and
+   gone; the one move allowed past 200ms. */
+.drag-card[data-settle="dropped"] {
+  transition:
+    transform calc(var(--duration-move) * 4 / 3) var(--ease-spring),
+    opacity calc(var(--duration-move) * 4 / 3) var(--ease-out);
+}
+
+/* Dropped nowhere: back to its row, fading as it gets there. */
+.drag-card[data-settle="back"] {
+  transition:
+    transform var(--duration-move) var(--ease-out),
+    opacity var(--duration-quick) var(--ease-out) var(--duration-quick);
+}
+
+/* What the browser draws in place of the row it drags: nothing, out of
+   sight (drag-card.ts). */
+.drag-blank {
+  position: fixed;
+  top: calc(-1 * var(--space-4));
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+/* The row it was lifted from, while its card is away. */
+[data-lifted] {
+  opacity: 0.45;
 }
 
 /* A control's tooltip: in the top layer, above the control or below it,
@@ -5164,6 +5258,43 @@ a.replies:hover {
 @keyframes panel-fade {
   from {
     opacity: 0;
+  }
+}
+
+/* Something that arrives in place, as a new thread's workstream, picked,
+   shows what it holds: a fade and a few pixels' rise. Among siblings that
+   arrive together, each starts a beat after the one before, up to the
+   sixth, so a long list is never slow to show. */
+.arrive {
+  --beat: 0;
+  animation: arrive var(--duration-move) var(--ease-out)
+    calc(var(--beat) * var(--duration-quick) / 5) backwards;
+}
+
+.arrive:nth-child(2) {
+  --beat: 1;
+}
+
+.arrive:nth-child(3) {
+  --beat: 2;
+}
+
+.arrive:nth-child(4) {
+  --beat: 3;
+}
+
+.arrive:nth-child(5) {
+  --beat: 4;
+}
+
+.arrive:nth-child(n + 6) {
+  --beat: 5;
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    translate: 0 var(--space-1);
   }
 }
 
@@ -7473,8 +7604,21 @@ a.button.primary {
     transition: none;
   }
 
-  .item-panel {
+  .item-panel,
+  .drag-card[data-settle],
+  .context-menu {
     transition-property: opacity;
+  }
+
+  .context-menu,
+  .context-menu:popover-open {
+    transform: none;
+  }
+
+  /* Arrivals fade, all at once, without the rise. */
+  .arrive {
+    animation-name: panel-fade;
+    animation-delay: 0s;
   }
 
   .state-dot:is([data-waiting="agent"], [data-waiting="apply"]),

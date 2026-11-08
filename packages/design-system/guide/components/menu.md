@@ -169,6 +169,10 @@ A row that swipes left shows its actions behind it, each 76px wide (`actionWidth
 </ul>
 ```
 
+## Motion
+
+A menu comes from where it opened (`Menu` in `packages/web/src/menu.tsx` sets its `transform-origin` at the pointer, or at the control the keyboard opened it from, wherever the viewport's edges put the menu). It grows from 96% and fades in at `--duration-quick` with `--ease-out`, and leaves quicker than it came, in two thirds of that, fading and shrinking back, no longer clickable as it goes. It keeps its last items while it fades out. The open and close are on `.context-menu` and `.context-menu:popover-open`, with `@starting-style`, so every menu built on `Menu` gets them, the drop on the Workstreams heading's too. Under reduced motion it only fades. See [Motion](/foundations/motion#menus).
+
 ## States
 
 ```html specimen id=state-hover-focus title="The pointer on Mark done, the keyboard on Delete…: both lit, and nothing says which Enter acts on" state=focus-visible height=150

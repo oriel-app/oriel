@@ -1,12 +1,14 @@
 ---
 title: Motion
 order: 40
-summary: Two durations and one easing. Quick for a state, move for a place, and a spring for the bead's shape. One pulse for work in progress, and one reduced-motion block that stills every move.
+summary: Three durations and two easings. Quick for a state, move for a place, morph and the spring for a flourish. When things move and when they never do, how a drag, a menu and an arrival move, one pulse for work in progress, and one reduced-motion block that stills every move.
 ---
 
 # Motion
 
 Oriel moves little. A dense tool read all day shouldn't make people wait for it, or pull their eye to something that isn't news. Motion says one of two things: a state changed here, or something arrived from somewhere. A third, the pulse, says work is going on.
+
+The bar is "a little life, never obnoxious" (2026-11-08): nothing takes over 200ms but a drop's settle and the bead's flourish, no overshoot you'd notice the tenth time, and nothing delays a click.
 
 ## The tokens
 
@@ -16,6 +18,8 @@ Oriel moves little. A dense tool read all day shouldn't make people wait for it,
 - `--duration-move` (180ms): **a place**. Something travels or arrives: the window chat arrives, the sidebar folds, the drawer opens, a swiped row slides.
 - `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`): how a move settles, fast then gentle. Use it for anything that arrives.
 - `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a small flourish** (decision 0056). Only [the bead](/components/bead) uses them, for its count's pop and its caught-up mark. Its shape moves on springs of its own, in script (see below).
+
+Shorter and longer steps are written from these, never as new numbers: a menu leaves in two thirds of quick (`calc(var(--duration-quick) * 2 / 3)`, 80ms), a drop settles in four thirds of move (240ms), and arrivals stagger by a fifth of quick (24ms).
 
 They're shared: no theme changes them. A rule may not write a duration as a literal, since Oriel's theme check fails it. Keyframe durations are the exception: the pulse's is the shared `--pulse` (1.6s), and the spinner's and the install bar's are literals. See [Drift](#drift).
 
@@ -34,6 +38,9 @@ tokens motion
 - **Chevrons** turn 90° when their disclosure opens, at quick speed.
 - **The switch** (`.switch` in `window.css`) slides its knob and fills its track, at quick speed with `--ease-out`.
 - **The bead** is the one thing moved by script, on springs (`advance` in `packages/web/src/bead-motion.ts`; decision 0056, amended): it drops from the frame's band as a small bead, spreads to its note's width, and its words fade in, unblurring; height leads with a little overshoot, width follows, softer. A new note reflows it and swaps its words. Leaving, its words go first, it narrows back, and the band takes it back. At rest it's still, but for its swell under the pointer, and no animation frame runs. The springs step in whole ticks, so they land in the same place at any frame rate. All caught up plays its one flourish once: the mark draws, its panes light, and a glint crosses it, in about 1.6s. See [The bead](/components/bead#motion).
+- **A dragged item** rides on a card (`.drag-card` in `window.css`, `lift` in `packages/web/src/drag-card.ts`), the one other thing moved by script. See [Drag](#drag).
+- **Menus** grow from where they opened and leave quicker. See [Menus](#menus).
+- **Arrivals** (`.arrive` in `window.css`): something that shows up in place, as what a new thread's workstream holds once it's picked, fades in and rises `--space-1`, at move speed with `--ease-out`. Siblings that arrive together stagger, each a fifth of quick after the one before, up to the sixth, so a long list is never slow to show. A list that reloads in place doesn't arrive: only what's new to the person does.
 - **Fades:** a hidden row action appearing, Browse's clusters dimming to 0.55 while a grouping loads, and Needs you's background flashing the accent tint once when the overview's count points at it.
 
 Entries use `@starting-style`: the panel and the chat are drawn at their start (transparent, offset) for their first frame, then transition to rest. There's no script, but for the bead. An engine without `@starting-style` (Safari before 17.5, Firefox before 129) just shows them at rest, which is fine.
@@ -43,6 +50,28 @@ Every transition and animation in window.css now:
 ```live
 motion
 ```
+
+## Drag
+
+An item dragged to a workstream (see [Drag to move](/patterns/drag-to-move)) is on a card of its own, so it can move as a held thing does:
+
+- **It leans with the pull.** About 3°, never more than 4° (`leanStep` in `drag-card.ts`), clockwise as it's pulled right, as a card held at its left edge trails. It eases back to level when the pointer stops. The pull and the lean follow on short exponential lags (50ms and 100ms), stepped by real time, so they look the same at any frame rate.
+- **It's cheap.** A dragover only notes where the pointer is; one animation frame moves the card by its `transform`, and nothing reads layout but at the start. It's in the top layer (a manual popover), so nothing clips it, and the pointer passes through it.
+- **Dropped, it's set down.** It comes level, shrinks to 94% and fades, in 240ms on `--ease-spring`, the one tiny overshoot.
+- **Dropped nowhere, it goes back.** It slides to its row at move speed and fades as it gets there; the row, dimmed while it was away, comes back.
+
+## Menus
+
+[Context menus](/components/menu#motion), and a menu a drop opens, come from where they opened: `transform-origin` at the pointer or the control, a scale from 96% and a fade, at quick speed with `--ease-out`. They close quicker, in 80ms, and can't be clicked while they go. It's on `.context-menu` once, so every `Menu` has it.
+
+The browser draws a `<select>`'s list itself (see [Select](/components/select)), so its list doesn't move, and that's fine.
+
+## What never moves
+
+- Text as you read it: a page's contents don't slide or fade when you open the page, and a list that reloads holds still.
+- Anything under a pointer or a finger that's acting on it, but the swipe and the drag, which follow it at once.
+- Something waiting on the person: it's the accent and holds still (see the pulse below).
+- A settled screen. Every animation ends; the shots take their pictures with animations finished, and motion must never change one.
 
 ## The one pulse
 
@@ -105,6 +134,8 @@ The block is the last thing in `window.css`, so it wins over every rule above it
 
 The bead (decision 0056, amended) reads the same query in script (`reducedMotion` in `packages/web/src/undo-stack.tsx`): it only fades. It arrives at its size, swaps its words at once, and fades out where it is, with no drop or spread. The block shows its marks drawn and its panes lit, with no glint.
 
+The drag card follows the pointer level, with no lean (`reduced` in `drag-card.ts`); dropped, it only fades, and dropped nowhere it goes back to its row at once. Menus only fade, with no scale (`.context-menu` in the block). Arrivals fade, all together, with no rise or stagger (`.arrive`, which takes `panel-fade`).
+
 Two gaps:
 
 - The window chat is listed for `transition: none`, so under reduced motion it loses its fade too, while the item panel keeps its own. The block's comment promises the fade for "the panel". Giving `.window-chat` the panel's `transition-property: opacity` would match them.
@@ -119,6 +150,8 @@ Two gaps:
 
 - **Do** use `--duration-quick` for a state changing in place, and `--duration-move` with `--ease-out` for something arriving.
 - **Do** add anything that moves to the one reduced-motion block.
+- **Do** make a menu come from where it opened, and leave quicker than it came.
+- **Do** move by `transform` and `opacity` only, and read layout before a drag or an animation, never during it.
 - **Do** keep the pulse for work in progress that the person is waiting on.
 - **Don't** animate to get attention. Something waiting on the person is the accent, and holds still.
 - **Don't** write a literal duration in a transition.
