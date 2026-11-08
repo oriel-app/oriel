@@ -3,7 +3,7 @@ title: Connection and provider rows
 status: drifting
 group: Rows
 order: 52
-classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, provider-path-open, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open, provider-path, provider-path-label
+classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, hidden-email, provider-path-open, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open, provider-path, provider-path-label
 summary: One thing Oriel uses or reads, as a row with its mark, name, what it is, its state and the one thing to do next. Settings' providers and connections and the first run draw it; four hand copies today.
 ---
 
@@ -351,8 +351,11 @@ Downloaded 112 MB of 310 MB</pre>
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Ready</span
         ><span
-          >· Pro · amara.okafor@example.com ·
-          <button type="button" class="link-action">Not this account?</button></span
+          >· Pro ·
+          <button type="button" class="hidden-email" aria-label="Hidden email">
+            mrgy4.d4cbje@rky6ef2.6ff
+          </button>
+          · <button type="button" class="link-action">Not this account?</button></span
         ></span
       >
     </div>
@@ -379,6 +382,8 @@ Downloaded 112 MB of 310 MB</pre>
 
 The app gives the unpicked mark the same `aria-label="Picked"` as the picked one (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`), so a screen reader hears "Picked" on both. The specimen says "Not picked"; see Drift.
 
+A signed-in row's email starts hidden (`HiddenEmail` in `packages/web/src/hidden-email.tsx`, `.hidden-email`): in its place, a blurred string of the same length and punctuation whose letters aren't the email's, so a screenshot or a screen share gives none of it away, blurred or not. A click shows the email, and another hides it again; each row starts hidden. Its tooltip says which: "Click to show email", "Click to hide email". The plan stays plain. Under `pnpm desktop:try` the server sends a placeholder account instead (OA-308), so a try's screenshot names nobody even shown.
+
 A ready row signed in with a personal plan says one more line under its status: the plan may let its vendor train on the person's chats, with a link to the setting (`.cli-training`). Oriel can't read that setting, so the line says "may" and never says training is off. There's none for a Team, Business, Enterprise or Edu plan, or an API key (`trainingNotice` in `packages/web/src/training.ts`).
 
 ```html specimen id=cli-training title="Ready on a personal plan: the training line"
@@ -393,7 +398,12 @@ A ready row signed in with a personal plan says one more line under its status: 
       <span class="provider-status"
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Ready</span
-        ><span>· Pro · amara.okafor@example.com</span></span
+        ><span
+          >· Pro ·
+          <button type="button" class="hidden-email" aria-label="Hidden email">
+            mrgy4.d4cbje@rky6ef2.6ff
+          </button></span
+        ></span
       >
       <p class="cli-training">
         Your plan may let Anthropic train on your chats.
@@ -864,6 +874,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 - A running step is `role="status"`. A connection's problem and a provider's failure are `role="alert"`. What a change set is `role="status"`, or `role="alert"` when it carries a problem (`Said` in `packages/web/src/connections-page.tsx`).
 - Disconnect's question is `role="alertdialog"` with `aria-label="Disconnect {name}?"`, in the row, not a modal.
 - Show details sets `aria-expanded`.
+- A hidden email is a button named "Hidden email", so a screen reader never reads the scrambled letters; shown, its name is the email.
 - Each Settings section is a `<section aria-labelledby>` on its `.settings-title`. The sections nav is `<nav aria-label="Settings">` with `aria-current="page"` on the open one.
 
 ## Content
@@ -883,6 +894,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 - Claude Code and Codex: `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`; the waiting line, `Waiting` in `packages/web/src/cli-row.tsx`; the failure box, `Failed` in `packages/web/src/cli-row.tsx`. Placed in Settings by `Providers` in `packages/web/src/settings-page.tsx`, and in the first run by `YourAi` in `packages/web/src/setup-page.tsx`.
 - Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; picked through a source server, `ServerPicks` in `packages/web/src/connections-page.tsx`, and its mapping beside them, `MappingOption` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
 - First run: `SourceRow`, `connected` and `ready` in `packages/web/src/setup-page.tsx`.
+- A hidden email: `HiddenEmail` in `packages/web/src/hidden-email.tsx`; CSS `.hidden-email` in `window.css`.
 - The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path: `CliPath` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-path` and `.provider-path-label` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
 - Settings frame, its sections and body: `SettingsPage` in `packages/web/src/settings-page.tsx`; a section head with its action, `Providers` in `packages/web/src/settings-page.tsx`.
 - CSS: `.provider-rows`, `.provider-row`, `.provider-main`, `.provider-name`, `.provider-badge`, `.provider-preview`, `.provider-status`, `.provider-uses`, `.switch` and `.settings-field` in `window.css`; the status line's colours, `.provider-row[data-status="ready"] .provider-mark` and `.provider-row:is([data-status="checking"], [data-off]) .provider-mark` in `window.css`; connections, `.connection-options`, `.connection-row .provider-side`, `.connection-report` and `.connection-said` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`. The rest of the shell is in the first-run block: `.provider-icon`, `.provider-about`, `.provider-side`, `.provider-row[data-picked]` and `.provider-status[data-connected] .provider-mark` in `window.css`; the CLI pieces, `.cli-picked`, `.cli-line`, `.cli-waiting`, `.cli-note`, `.cli-size`, `.cli-box`, `.cli-actions`, `.cli-log`, `.cli-progress`, `.cli-bar` and `.spinner` in `window.css`. The Settings frame: `.settings`, `.settings-sections`, `.settings-body`, `.settings-section`, `.settings-head`, `.settings-title` and `.settings-lede` in `window.css`.

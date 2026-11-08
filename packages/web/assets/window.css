@@ -7267,6 +7267,26 @@ html:has(.settings-page) {
   cursor: pointer;
 }
 
+/* An account's email, scrambled and blurred until clicked (hidden-email.tsx). */
+.hidden-email {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hidden-email:not([data-shown]) {
+  filter: blur(3px);
+  user-select: none;
+}
+
+.hidden-email:hover {
+  color: var(--text);
+}
+
 .link-action:disabled {
   opacity: 0.5;
   cursor: default;

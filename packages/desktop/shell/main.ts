@@ -36,13 +36,14 @@
 //   brings it forward on its own (rules.ts, raises), so a launch from a
 //   script never covers what the person is doing. Clicking the Dock icon
 //   shows it. Secrets are kept in memory, never in the OS's store
-//   (rules.ts, secretsInMemory).
+//   (rules.ts, secretsInMemory), and every account shows as a placeholder
+//   (serverArguments), so a screenshot names nobody.
 // - `--launch-file`, for development: each time the server starts, the
 //   shell writes its URL, the launch cookie and the shell's PID to
 //   `Shell/launch.json` in the data folder, readable by its owner only, so
 //   a script can reach the server's API, as `pnpm desktop:try` does. Its
 //   secrets are kept in memory too, so that cookie reaches none of the
-//   person's.
+//   person's, and its accounts show as a placeholder.
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
@@ -90,6 +91,7 @@ import {
   refusedArguments,
   restartUrl,
   secretsInMemory,
+  serverArguments,
   serverPath,
   storageProblem,
   switchName,
@@ -367,7 +369,7 @@ function start() {
   void serverEnvironment().then((env) => {
     if (quitting || server) return;
     const secret = randomBytes(32).toString("hex");
-    const child = utilityProcess.fork(main, ["--desktop", "--data", where.data], {
+    const child = utilityProcess.fork(main, serverArguments(process.argv, where.data), {
       cwd: where.data,
       env,
       stdio: ["ignore", "pipe", "pipe"],

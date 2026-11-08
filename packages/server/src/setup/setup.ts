@@ -82,7 +82,15 @@ export type SetupOptions = {
   testTurn?: (cli: ClaudeCode, kind: Cli, model: string) => Promise<TestTurn>;
   // Brings the window to the front, through the shell.
   front?: () => Promise<void>;
+  // Every account shows as `placeholderAccount` instead of its own email
+  // and plan: the desktop app started by a script (`pnpm desktop:try`),
+  // whose screenshots may be published (OA-308).
+  placeholder?: boolean;
 };
+
+// Who an account shows as when `placeholder` is on. Whether its plan is a
+// personal one stays, since that says nothing about who it is.
+export const placeholderAccount = { email: "you@example.com", plan: "Placeholder plan" };
 
 export class SetupRefused extends Error {}
 
@@ -262,16 +270,24 @@ export function setupService(deps: {
             ? at.status
             : "missing";
     const signedIn = state === "ready" || state === "no-plan";
+    const shown = !signedIn
+      ? null
+      : kind === "codex"
+        ? at.status === "ready"
+          ? (at.account ?? null)
+          : null
+        : account;
     return {
       state,
       version,
-      account: !signedIn
-        ? null
-        : kind === "codex"
-          ? at.status === "ready"
-            ? (at.account ?? null)
-            : null
-          : account,
+      account:
+        shown && options.placeholder
+          ? {
+              email: shown.email && placeholderAccount.email,
+              plan: shown.plan && placeholderAccount.plan,
+              personal: shown.personal,
+            }
+          : shown,
       running: mine && {
         command: mine.command,
         phase: mine.phase,

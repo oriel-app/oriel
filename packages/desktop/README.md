@@ -14,6 +14,8 @@ The only way to launch the app on a machine someone is working at. It builds the
 | `sign-in-fails` | a stand-in, signed out; its sign-in fails                                     |
 | `too-old`       | a stand-in at 2.1.0, signed in; its update works                              |
 
+In every scenario, `fresh` included, the window shows each signed-in account as `you@example.com` on a "Placeholder plan", never the person's own email or plan, so a screenshot from a try names nobody. The server makes the swap before anything reaches the window (`--placeholder-account`, which the shell passes when a script launched it: see `packages/server/src/desktop/PROTOCOL.md`).
+
 Every scenario but `fresh` gives the server a throwaway home, and points Settings' Claude Code and Codex paths into it. The stand-in (`scripts/stand-in-claude.ts`) answers the first run, its test turn included. A thread's turn runs one script that never ends, until the sandbox's wall time stops it, so a try can see a run and what quitting or a crash does to it.
 
 It prints the URL, the PID, and a `curl` line for the API. `-H @<folder>/headers` sends the launch cookie and the Origin a change needs. `pnpm desktop:try stop` stops that PID, and only it, and removes the folder.
