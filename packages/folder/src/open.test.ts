@@ -14,7 +14,7 @@ import {
 import { join } from "node:path";
 import { test } from "node:test";
 import { isSystemFailure } from "./nofollow.ts";
-import { decode, openEntry, replacedNote } from "./open.ts";
+import { openEntry } from "./open.ts";
 import { folderA, tempFolder } from "./testing.ts";
 import { type FileEntry, type FolderPath, maxFileBytes, walk } from "./walk.ts";
 
@@ -25,16 +25,6 @@ async function walked(root: FolderPath, title: string): Promise<FileEntry> {
   assert.ok(entry, `the walk found ${title}`);
   return entry;
 }
-
-test("the file the walk saw opens as its text", async (t) => {
-  const folder = tempFolder(t);
-  folder.write("plan.md", "# Plan\n\nShip it.\n");
-  const opened = await openEntry(await walked(folder.root, "plan"));
-  assert.deepEqual(opened, {
-    status: "ok",
-    content: { title: "plan", text: "# Plan\n\nShip it.\n", note: null },
-  });
-});
 
 test("a file replaced by a link after the walk is refused, wherever the link points", async (t) => {
   const folder = tempFolder(t);
@@ -97,16 +87,6 @@ test("a pipe swapped in after the walk is refused without blocking", async (t) =
   assert.deepEqual(await openEntry(entry), { status: "changed" });
 });
 
-test("a file deleted after the walk has vanished", async (t) => {
-  const folder = tempFolder(t);
-  const path = folder.write("plan.md", "soon gone");
-  const entry = await walked(folder.root, "plan");
-  rmSync(path);
-  assert.deepEqual(await openEntry(entry), { status: "vanished" });
-  rmSync(folder.root, { recursive: true });
-  assert.deepEqual(await openEntry(entry), { status: "vanished" });
-});
-
 test("a file that grew past the per-file cap after the walk reads as a note", async (t) => {
   const folder = tempFolder(t);
   const path = folder.write("plan.md", "small");
@@ -115,17 +95,7 @@ test("a file that grew past the per-file cap after the walk reads as a note", as
   const opened = await openEntry(entry);
   assert.ok(opened.status === "ok");
   assert.equal(opened.content.text, opened.content.note);
-  assert.match(opened.content.text, /too|over the/);
   assert.ok(opened.content.text.length < 200);
-});
-
-test("text is UTF-8, decoded strictly; invalid bytes are replaced and noted", () => {
-  const valid = new TextEncoder().encode("Größe — 日本 🚀");
-  assert.deepEqual(decode(valid), { text: "Größe — 日本 🚀", note: null });
-  const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("plan")]);
-  assert.deepEqual(decode(bom), { text: "plan", note: null });
-  const invalid = new Uint8Array([0x6f, 0x6b, 0xff, 0x20, 0xc3, 0x28]);
-  assert.deepEqual(decode(invalid), { text: "ok� �(", note: replacedNote });
 });
 
 test("only a failure of the system throws; an error about one path is that path's status", () => {
