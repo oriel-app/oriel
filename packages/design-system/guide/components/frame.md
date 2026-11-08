@@ -121,5 +121,5 @@ None of its own. The sidebar, the bar and the bead write on it, in the page's te
 ## Where the app uses it
 
 - `App` in `packages/web/src/app.tsx` and `SetupPage` in `packages/web/src/setup-page.tsx`.
-- CSS: `.shell`, `.shell-main`, `.frame`, `.bar` and `.setup-page` in `window.css`. Tokens: `--frame`, `--frame-shade`, `--frame-corner` and `--frame-corner-narrow` in each theme; `--frame-band`, `--frame-curve`, `--frame-top`, `--frame-shadow`, `--frame-reach`, `--frame-room` and `--layer-frame` on `html`; `--frame-end-curve` on `.shell`.
+- CSS: `.shell`, `.shell-main`, `.frame`, `.bar` and `.setup-page` in `window.css`. Tokens: `--frame`, `--frame-shade`, `--frame-corner` and `--frame-corner-narrow` in each theme; `--frame-band`, `--frame-curve`, `--frame-top`, `--frame-shadow`, `--frame-reach`, `--frame-room`, `--frame-end-curve`, `--frame-end-past`, `--frame-shadow-end` and `--layer-frame` on `html`.
 - The bead that grows from it: [The bead](/components/bead).

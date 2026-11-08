@@ -62,6 +62,11 @@ html {
   /* The same, on a panel at the window's right edge: shifted off that
      edge, so it draws no line down it. */
   --frame-shadow-end: inset 2px 2px 3px -1px var(--frame-shade);
+  /* The column's top-right corner: square at the window's edge, curved
+     when the panel sits beside it. At the edge, the band's box runs past
+     it, so its shade never draws a line down the window's edge. */
+  --frame-end-curve: 0px;
+  --frame-end-past: var(--space-4);
   /* How far the frame's colour reaches out from the column's edge. */
   --frame-reach: 100vmax;
   /* What dims the page under the drawer and a dialog: the ink, or in the
@@ -452,11 +457,6 @@ a {
   /* The panel's width, and the room it takes beside the page. */
   --panel: 30rem;
   --beside: 0rem;
-  /* The column's top-right corner: square at the window's edge, curved
-     when the panel sits beside it. At the edge, the band's box runs past
-     it, so its shade never draws a line down the window's edge. */
-  --frame-end-curve: 0px;
-  --frame-end-past: var(--space-4);
   /* The room the bead keeps clear of on its right. */
   --bead-beside: var(--beside);
   transition: grid-template-columns var(--duration-move) ease;
