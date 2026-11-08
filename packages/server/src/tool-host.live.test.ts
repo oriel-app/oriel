@@ -104,7 +104,12 @@ async function world(t: TestContext, script: Script) {
 test("sync, read, diff and replay through the tool host on the stand-ins", { skip }, async (t) => {
   const rename: Script = async () => ({
     value: null,
-    writes: [["jira.setSummary", ["jira:SYN-10", "Checkout through the tool host"]]],
+    writes: [
+      ["jira.setSummary", ["jira:SYN-10", "Checkout through the tool host"]],
+      ["jira.setStatus", ["jira:SYN-10", "In Progress"]],
+      // Its ID is found among the issue's comments, read before and after.
+      ["jira.addComment", ["jira:SYN-10", "Renamed through the tool host."]],
+    ],
   });
   const it = await world(t, rename);
   await it.timed("jira sync (turned on)", () => it.turnOn("jira", "atlassian"));
@@ -134,9 +139,12 @@ test("sync, read, diff and replay through the tool host on the stand-ins", { ski
     const approved = await it.post(`/api/change-sets/${entry.changeSetId}/approve`, {
       hash: diff.hash,
     });
-    assert.equal(approved.status, 200);
+    assert.equal(json<{ changeSet: { status: string } }>(approved).changeSet.status, "applied");
     await it.app.settled();
   });
+  const applied = json<DiffView>(await it.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  const comment = applied.lines.at(-1)?.fields.map((field) => field.name);
+  assert.match(comment?.[0] ?? "", /^comment:\d+$/, "the new comment's ID was found");
   // Written by the replay's host, and read back through the sync's.
   const after = json<{ title?: string }>(await it.get("/api/items/jira%3ASYN-10"));
   assert.equal(after.title, "Checkout through the tool host");
