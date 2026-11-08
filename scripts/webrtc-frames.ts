@@ -641,13 +641,15 @@ async function chrome(switches: string[], proxied: boolean, policyPref: boolean)
       ? [`--proxy-server=http://127.0.0.1:${proxyPort}`, "--proxy-bypass-list=<-loopback>"]
       : []),
   ];
-  const options = () => ({
-    channel: "chrome",
-    headless: true,
-    chromiumSandbox: true,
-    args: args(),
-  });
-  const browser = policyPref ? null : await chromium.launch(options());
+
+  const browser = policyPref
+    ? null
+    : await chromium.launch({
+        channel: "chrome",
+        headless: true,
+        chromiumSandbox: true,
+        args: args(),
+      });
   let version = browser?.version() ?? "";
   const open = async () => {
     if (browser) return browser.newContext();
@@ -657,7 +659,12 @@ async function chrome(switches: string[], proxied: boolean, policyPref: boolean)
       join(profile, "Default/Preferences"),
       JSON.stringify({ webrtc: { ip_handling_policy: "disable_non_proxied_udp" } }),
     );
-    const context = await chromium.launchPersistentContext(profile, options());
+    const context = await chromium.launchPersistentContext(profile, {
+      channel: "chrome",
+      headless: true,
+      chromiumSandbox: true,
+      args: args(),
+    });
     version = context.browser()?.version() ?? version;
     return context;
   };
