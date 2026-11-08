@@ -1,7 +1,8 @@
 // Ending a workstream (decision 0028): its page's header buttons, its menu
-// and swipe in a list, and, once for the app, the question deleting asks and
+// and swipe in a list, which also renames it in place, and, once for the app, the question deleting asks and
 // what was done, with its Undo, as a note in the one stack of Undos.
 import type { ComponentChildren } from "preact";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Confirm } from "./close-thread.tsx";
 import {
   deleteWarning,
@@ -28,7 +29,9 @@ const endings = (workstream: Ended, done: boolean, send: (msg: EndingMsg) => voi
 ];
 
 // A workstream's row with its menu, and with `swipe`, a swipe left that
-// shows the same actions.
+// shows the same actions. Rename, first, swaps the row for its name in a
+// field: Enter or leaving it saves, as on the workstream's page; Escape, or
+// a name left empty, keeps the old one.
 export function WorkstreamMenu(props: {
   workstream: Ended;
   done: boolean;
@@ -37,11 +40,75 @@ export function WorkstreamMenu(props: {
   class?: string;
   children: ComponentChildren;
 }) {
-  const items = endings(props.workstream, props.done, sender(props.dispatch));
+  const { workstream, dispatch } = props;
+  const [naming, setNaming] = useState(false);
+  const items: MenuItem[] = [
+    { label: "Rename", onSelect: () => setNaming(true) },
+    ...endings(workstream, props.done, sender(dispatch)),
+  ];
+  // Ended by a key, focus goes back to the row's link, once it's back.
+  const finish = (name: string | null, refocus: HTMLElement | null) => {
+    setNaming(false);
+    if (name !== null) dispatch({ type: "workstreamRenamed", id: workstream.id, name });
+    if (refocus) requestAnimationFrame(() => refocus.querySelector<HTMLElement>("a")?.focus());
+  };
+  const shown = naming ? (
+    <NameField name={workstream.name} onDone={finish} />
+  ) : props.swipe ? (
+    <Swipeable actions={items}>{props.children}</Swipeable>
+  ) : (
+    props.children
+  );
   return (
-    <ContextMenu label={`Actions for ${props.workstream.name}`} items={items} class={props.class}>
-      {props.swipe ? <Swipeable actions={items}>{props.children}</Swipeable> : props.children}
+    // While naming, the field's own menu, for paste, is the browser's.
+    <ContextMenu
+      label={`Actions for ${workstream.name}`}
+      items={naming ? [] : items}
+      class={props.class}
+    >
+      {shown}
     </ContextMenu>
+  );
+}
+
+// The name being edited in place, focused and selected as it shows.
+// `onDone` gets the name to save, or null to keep the old one, and, when a
+// key ended it, where the field was, to focus the row in once it's back.
+function NameField(props: {
+  name: string;
+  onDone(name: string | null, refocus: HTMLElement | null): void;
+}) {
+  const field = useRef<HTMLInputElement>(null);
+  // Enter or Escape ends it, and the blur that follows mustn't again.
+  const done = useRef(false);
+  useLayoutEffect(() => {
+    field.current?.focus();
+    field.current?.select();
+  }, []);
+  const end = (byKey: boolean, keep: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    const name = field.current?.value.trim() ?? "";
+    const where = byKey ? (field.current?.parentElement ?? null) : null;
+    props.onDone(keep || name === "" || name === props.name ? null : name, where);
+  };
+  return (
+    <input
+      ref={field}
+      class="rename-field"
+      defaultValue={props.name}
+      aria-label="Workstream name"
+      maxLength={120}
+      onBlur={() => end(false, false)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") end(true, false);
+        else if (event.key === "Escape") end(true, true);
+        else return;
+        event.preventDefault();
+        // Escape here closes nothing else, such as the drawer.
+        event.stopPropagation();
+      }}
+    />
   );
 }
 

@@ -54,7 +54,7 @@ import {
   updateMoving,
 } from "./moving.ts";
 import { type Connectors, connectorsReplied, loadConnectors, noConnectors } from "./connectors.ts";
-import { type Effect, get, type Replied, report, type Tag } from "./http.ts";
+import { type Effect, errorOf, get, post, type Replied, report, type Tag } from "./http.ts";
 import { samePage, withItem } from "./nav.ts";
 import {
   type ConnectionsModel,
@@ -277,6 +277,9 @@ export type Msg =
   // The person regrouped a pivot block in the window (decision 0053). The
   // window only tells: the grids were Oriel's already.
   | { type: "pivotRegrouped" }
+  // A workstream renamed in place, in a list, from its menu: through the
+  // same rename its page makes.
+  | { type: "workstreamRenamed"; id: string; name: string }
   // A link inside the app was followed.
   | { type: "linkClicked"; route: Route }
   // The page changed: after a link, or back and forward.
@@ -690,6 +693,18 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [ending, effects] = updateEnding(model.ending, msg.msg);
       return [{ ...model, ending }, effects];
     }
+    case "workstreamRenamed": {
+      const name = msg.name.trim();
+      const before = model.workstreams?.find((each) => each.id === msg.id);
+      if (!name || !before || name === before.name) return [model, []];
+      // The list shows the new name at once; the answer, or a reload, settles it.
+      const workstreams =
+        model.workstreams?.map((each) => (each.id === msg.id ? { ...each, name } : each)) ?? null;
+      return [
+        { ...model, workstreams },
+        [post(`/api/workstreams/${msg.id}/rename`, { name }, { kind: "renamed", id: msg.id })],
+      ];
+    }
     case "moving": {
       const [moving, effects] = updateMoving(model.moving, msg.msg);
       // Undoing a new workstream deletes it: its page, if on screen, gives
@@ -1010,15 +1025,25 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "workstreamChanged":
     case "restored":
     case "workstreamSynced":
-    case "renamed":
     case "threadOpened": {
       if (model.workstream === null) return [model, []];
       const [workstream, effects] = workstreamReplied(model.workstream, msg);
-      const moved =
-        msg.tag.kind === "renamed" ||
-        msg.tag.kind === "workstreamChanged" ||
-        msg.tag.kind === "restored";
+      const moved = msg.tag.kind === "workstreamChanged" || msg.tag.kind === "restored";
       return [{ ...model, workstream }, moved ? [...effects, loadWorkstreams] : effects];
+    }
+    // From its page or from a list: its page, if on screen, takes the new
+    // name, and every page shows it, or, refused, the old one back. A list
+    // has no notice of its own, so a refusal there says why with the
+    // window's other workstream failures.
+    case "renamed": {
+      const shown = model.workstream?.id === msg.tag.id ? model.workstream : null;
+      const [workstream, effects] = shown ? workstreamReplied(shown, msg) : [null, []];
+      const ending =
+        msg.ok || shown ? model.ending : { ...model.ending, problem: errorOf(msg.body) };
+      return [
+        { ...model, workstream: workstream ?? model.workstream, ending },
+        [...effects, ...workspaceChanged(model)],
+      ];
     }
     // Each step of a move, and its Undo, changes a workstream: every page
     // hears it as it hears any change to the workspace.

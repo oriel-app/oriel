@@ -768,6 +768,22 @@ button.sidebar-search-open {
   min-width: 0;
 }
 
+/* A workstream's name, renamed in place in its row from its menu: the
+   row's height, framed and ringed as the sidebar's search is, since it only
+   shows focused. */
+.rename-field {
+  width: 100%;
+  min-height: 1.875rem;
+  padding: 0 var(--space-2);
+  border: var(--border-thin) solid var(--focus);
+  border-radius: var(--radius);
+  outline: none;
+  background: var(--surface);
+  box-shadow: 0 0 0 var(--border-thin) var(--focus);
+  color: var(--text);
+  font: inherit;
+}
+
 .nav-disclose {
   display: inline-grid;
   flex: none;
