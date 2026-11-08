@@ -2,15 +2,17 @@
 // Oriel knows it by, and the parser, both ways. The parser is a transport:
 // each REST request the source, its boards and the writer make becomes one
 // call of the server's tools, and the tool's answer becomes the REST body
-// they already check, so everything they do, revert included, works the
-// same through it. A request with no tool to answer it is refused before
-// anything is sent.
+// they already check, so everything they do works the same through it. A
+// request with no tool to answer it is refused before anything is sent.
 //
-// Atlassian documents its tools' names, not their arguments or answers.
-// Where it doesn't show an answer's shape, this reads the REST shape the
-// tool wraps, and the paged shape its search answers with, and anything else
-// it can't read stops the sync, naming the server (`ServerUnreadable`): the
-// index stays as it was.
+// At the address Atlassian's own instructions give, the server lists a few
+// Jira tools flat, and reaches the rest by name through `executeRead` and
+// `executeWrite` (`discover` names them; Oriel's are fixed, below). Its
+// answers are JSON under `data`, in the "full" view, with rich text as
+// Markdown and custom fields by their labels; a failed one says so under
+// `error`, with REST's status. What isn't so stops the sync, naming the
+// server (`ServerUnreadable`): the index stays as it was. Recorded from the
+// real server in fixtures/jira-mcp/real.json.
 // https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/
 import {
   answerText,
@@ -20,7 +22,9 @@ import {
   type ToolAnswer,
   type ToolCall,
   type ToolCaller,
+  WriteStalled,
 } from "@oriel/core";
+import { adfToText, textToAdf } from "./adf.ts";
 import {
   type JiraRequest,
   type JiraResponse,
@@ -36,6 +40,20 @@ export const atlassianTools = {
   search: "searchJiraIssuesUsingJql",
   issue: "getJiraIssue",
   comments: "listJiraIssueComments",
+  executeRead: "executeRead",
+  create: "createJiraIssue",
+  edit: "editJiraIssue",
+  transition: "transitionJiraIssue",
+  comment: "addOrEditJiraIssueComment",
+  executeWrite: "executeWrite",
+} as const;
+
+// The operations Oriel runs through `executeRead` and `executeWrite`, by
+// what each does: only these, each through its own, so the read side can
+// run no write, and nothing runs `executeDestructive`, which Oriel never
+// loads. Atlassian's server has no operation to delete an issue, a comment
+// or a link, so a revert that would is refused before anything is sent.
+export const atlassianOperations = {
   links: "listJiraIssueRemoteIssueLinks",
   boards: "listJiraBoards",
   board: "getJiraBoardConfig",
@@ -43,39 +61,47 @@ export const atlassianTools = {
   transitions: "listJiraIssueTransitions",
   me: "getJiraCurrentUser",
   projects: "listJiraProjects",
-  create: "createJiraIssue",
-  edit: "editJiraIssue",
-  transition: "transitionJiraIssue",
-  comment: "addOrEditJiraIssueComment",
-  link: "createJiraIssueRemoteIssueLink",
-  deleteIssue: "deleteJiraIssue",
-  deleteComment: "deleteJiraComment",
 } as const;
+export const atlassianWriteOperations = { link: "createJiraIssueRemoteIssueLink" } as const;
+
+type ReadOperation = (typeof atlassianOperations)[keyof typeof atlassianOperations];
+type WriteOperation = (typeof atlassianWriteOperations)[keyof typeof atlassianWriteOperations];
+const readOperations: readonly string[] = Object.values(atlassianOperations);
+const writeOperations: readonly string[] = Object.values(atlassianWriteOperations);
 
 const t = atlassianTools;
+const o = atlassianOperations;
 
-// Atlassian's MCP server, as Oriel knows it. Its address is v2's, which
-// lists every tool flat only with `?tools=all` (its other tools are found
-// through `discover`); an address compares without its query. What it
-// reports in its handshake isn't documented, so it's known by its address.
+// The view every read asks for: the default leaves out fields Oriel asks
+// for, such as an issue's parent and description.
+const view = "full";
+
+// One run of an operation by its name, as `executeRead` or `executeWrite`
+// takes it, with the site it's on.
+export const operationCall = (
+  cloudId: string,
+  name: ReadOperation | WriteOperation,
+  inputs: Record<string, unknown>,
+): ToolCall => {
+  // Checked at run time too, so a cast can't run another operation.
+  const tool = writeOperations.includes(name)
+    ? t.executeWrite
+    : readOperations.includes(name)
+      ? t.executeRead
+      : null;
+  if (!tool) throw new Error(`refusing an operation Oriel doesn't run: ${name}`);
+  return { tool, args: { cloudId, name, inputs } };
+};
+
+// Atlassian's MCP server, as Oriel knows it: at its address, whatever it
+// lists beyond Oriel's tools, and an address compares without its query,
+// so one added with `?tools=all` is it too.
 export const atlassianServer: SourceServer = {
   name: "Atlassian's Rovo MCP server",
-  reports: "atlassian-rovo-mcp-server",
+  reports: "atlassian-mcp-server",
   at: { url: "https://mcp.atlassian.com/v2/mcp" },
-  reads: [
-    t.resources,
-    t.search,
-    t.issue,
-    t.comments,
-    t.links,
-    t.boards,
-    t.board,
-    t.types,
-    t.transitions,
-    t.me,
-    t.projects,
-  ],
-  writes: [t.create, t.edit, t.transition, t.comment, t.link, t.deleteIssue, t.deleteComment],
+  reads: [t.resources, t.search, t.issue, t.comments, t.executeRead],
+  writes: [t.create, t.edit, t.transition, t.comment, t.executeWrite],
   instructions:
     "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
   // The project a connection reads, from those the server lists on its site.
@@ -93,16 +119,15 @@ export const atlassianServer: SourceServer = {
         // Page by page, as REST's project search pages, at most 10 pages.
         const projects: ReturnType<typeof projectChoicesOf> = [];
         for (let page = 0; page < 10; page++) {
-          const answer = await read({
-            tool: t.projects,
-            args: {
-              cloudId: site.cloudId,
+          const answer = await read(
+            operationCall(site.cloudId, o.projects, {
+              expand: "insight",
               ...(projects.length ? { startAt: projects.length } : {}),
-            },
-          });
+            }),
+          );
           const listed = projectChoicesOf(answer);
           projects.push(...listed);
-          const body = bodyOf(t.projects, answer).body;
+          const body = bodyOf(o.projects, answer).body;
           if (!listed.length || !isObject(body) || body.isLast !== false) break;
         }
         return narrowed(
@@ -121,8 +146,6 @@ export { ServerUnreadable };
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const textOf = answerText;
-
 // A failed tool's words as the status REST would have answered, so the
 // source reads a missing issue as gone and the writer a refusal as nothing
 // changed. Only words that say so are a refusal: a write that failed for a
@@ -139,21 +162,42 @@ function statusOf(words: string, write: boolean): number {
   return write ? 502 : 400;
 }
 
-// A tool's answer as a REST response: its structured content, or the JSON
-// of its text, or, for a failed one, the status its words mean.
+// A failure as the server gives one: `{"error": true, "message", "statusCode"}`.
+function failedWith(words: string, write: boolean): JiraResponse {
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(words) as unknown;
+  } catch {
+    // Words alone.
+  }
+  const given = isObject(parsed) ? parsed.statusCode : undefined;
+  const message = isObject(parsed) && typeof parsed.message === "string" ? parsed.message : words;
+  const status =
+    typeof given === "number" && Number.isInteger(given) && given >= 400 && given <= 599
+      ? given
+      : statusOf(message, write);
+  return { status, body: { errorMessages: [message.slice(0, 300)] } };
+}
+
+// A tool's answer as a REST response: what its text gives under `data`, or,
+// for a failed one, the status it names. Its structured content, where an
+// agent passes it on, isn't read: it holds another shape than the text, and
+// Claude Code passes on the text alone.
 export function bodyOf(tool: string, answer: ToolAnswer, write = false): JiraResponse {
   if (!isObject(answer) || !Array.isArray(answer.content))
     throw new ServerUnreadable(`${tool} answered with no content`);
-  const words = textOf(answer);
-  if (answer.isError === true)
-    return { status: statusOf(words, write), body: { errorMessages: [words.slice(0, 300)] } };
-  if (answer.structuredContent !== undefined && answer.structuredContent !== null)
-    return { status: 200, body: answer.structuredContent };
+  const words = answerText(answer);
+  if (answer.isError === true) return failedWith(words, write);
+  let parsed: unknown;
   try {
-    return { status: 200, body: JSON.parse(words) as unknown };
+    parsed = JSON.parse(words) as unknown;
   } catch {
     throw new ServerUnreadable(`${tool} answered with text that isn't JSON`);
   }
+  if (isObject(parsed) && parsed.error === true) return failedWith(words, write);
+  if (!isObject(parsed) || !("data" in parsed))
+    throw new ServerUnreadable(`${tool} answered without its data`);
+  return { status: 200, body: parsed.data };
 }
 
 // A list a tool may answer as itself or inside an object, as REST's `values`.
@@ -164,35 +208,69 @@ const listOf = (body: unknown, key: string): unknown[] | null =>
       ? (body[key] as unknown[])
       : null;
 
+// Rich text as the server gives it, Markdown, as the plain text it holds:
+// a line break as a newline, and each mark it escaped as itself.
+export const fromMarkdown = (markdown: string): string =>
+  markdown.replace(/ {2}\n/g, "\n").replace(/\\([\\`*_{}[\]()#+\-.!|~<>=])/g, "$1");
+
+// Plain text as the server's Markdown takes it, so it lands as the text the
+// person approved: every mark escaped, and a line break as Markdown's.
+export const toMarkdown = (text: string): string =>
+  text
+    .replace(/[\\`*_{}[\]()#+\-.!|~<>=]/g, (mark) => `\\${mark}`)
+    .replace(/([^\n])\n(?=[^\n])/g, "$1  \n");
+
+// Rich text as REST gives it, a document, from the server's Markdown.
+const docOf = (value: unknown): unknown =>
+  typeof value === "string" ? textToAdf(fromMarkdown(value)) : value;
+
+// An issue as REST gives it: its description a document, and each custom
+// field under its ID, as the server gives them by their labels.
+function restIssue(tool: string, raw: unknown): unknown {
+  if (!isObject(raw) || !isObject(raw.fields)) return raw;
+  const { customFields, description, ...fields } = raw.fields;
+  const custom: Record<string, unknown> = {};
+  if (customFields !== undefined) {
+    if (!isObject(customFields))
+      throw new ServerUnreadable(`${tool} gave custom fields it can't read`);
+    for (const each of Object.values(customFields)) {
+      if (!isObject(each) || typeof each.id !== "string" || !/^customfield_[0-9]+$/.test(each.id))
+        throw new ServerUnreadable(`${tool} gave a custom field without its ID`);
+      custom[each.id] = each.value ?? null;
+    }
+  }
+  return {
+    ...raw,
+    fields: {
+      ...fields,
+      ...custom,
+      ...(description === undefined ? {} : { description: docOf(description) }),
+    },
+  };
+}
+
+// A comment as REST gives it, its body a document.
+const restComment = (raw: unknown): unknown =>
+  isObject(raw) && "body" in raw ? { ...raw, body: docOf(raw.body) } : raw;
+
 // The search's answer as REST's: its issues, and the token for the next
-// page, or none on the last. It may answer as REST does, or as a page of
-// `nodes` with `pageInfo`. One that says more remain but gives no way to
+// page, or none on the last. One that says more remain but gives no way to
 // them can't be read: a sweep that stopped there would take the rest away.
 export function searchBody(body: unknown): unknown {
-  if (!isObject(body)) throw new ServerUnreadable(`${t.search} answered with no issues`);
+  if (!isObject(body) || !Array.isArray(body.issues))
+    throw new ServerUnreadable(`${t.search} answered with no issues`);
   const more = () =>
     new ServerUnreadable(`${t.search} said more issues remain, with no way to them`);
-  if (Array.isArray(body.issues)) {
-    const given = body.nextPageToken;
-    if (given !== undefined && given !== null && (typeof given !== "string" || given === ""))
-      throw more();
-    const token = typeof given === "string" ? given : null;
-    if (token === null && body.isLast === false) throw more();
-    return { issues: body.issues, nextPageToken: token, isLast: token === null };
-  }
-  const page = isObject(body.issues) ? body.issues : null;
-  if (!page || !Array.isArray(page.nodes) || !isObject(page.pageInfo))
-    throw new ServerUnreadable(`${t.search} answered with no issues`);
-  const info = page.pageInfo;
-  if (typeof info.hasNextPage !== "boolean")
-    throw new ServerUnreadable(`${t.search} didn't say whether more issues remain`);
-  const token =
-    info.hasNextPage && typeof info.endCursor === "string" && info.endCursor !== ""
-      ? info.endCursor
-      : null;
-  const remaining = typeof page.remainingCount === "number" ? page.remainingCount : 0;
-  if (token === null && (info.hasNextPage || remaining > 0)) throw more();
-  return { issues: page.nodes, nextPageToken: token, isLast: token === null };
+  const given = body.nextPageToken;
+  if (given !== undefined && given !== null && (typeof given !== "string" || given === ""))
+    throw more();
+  const token = typeof given === "string" ? given : null;
+  if (token === null && body.isLast === false) throw more();
+  return {
+    issues: body.issues.map((each) => restIssue(t.search, each)),
+    nextPageToken: token,
+    isLast: token === null,
+  };
 }
 
 const issuePath = /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/[a-z]+(?:\/[0-9]+)?)?$/;
@@ -203,13 +281,18 @@ const partsOf = (path: string) => {
   return { path: url.pathname, query: url.searchParams };
 };
 
-// A REST body's `fields` as the server's edit takes them: an assignee as
-// its account, everything else as REST has it.
-const fieldsOf = (body: unknown): Record<string, unknown> =>
-  isObject(body) && isObject(body.fields) ? body.fields : {};
+// A REST body's `fields` as the server's edit takes them: a description as
+// Markdown, everything else as REST has it.
+const fieldsOf = (body: unknown): Record<string, unknown> => {
+  const fields = isObject(body) && isObject(body.fields) ? body.fields : {};
+  return "description" in fields
+    ? { ...fields, description: toMarkdown(adfToText(fields.description)) }
+    : fields;
+};
 
-// The page size Oriel asks a listing for, where REST's request names none.
-const listMost = 100;
+// The page size Oriel asks a comment listing for: the most the full view
+// gives.
+const commentPage = 20;
 
 // What answers a request no tool does: as Jira refuses a request it can't
 // take, with nothing sent.
@@ -240,10 +323,13 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
     write: boolean,
   ): Promise<JiraResponse> => {
     if (!caller) throw new Error(`refusing a write on the read side: ${call.tool}`);
-    return bodyOf(call.tool, await caller(call), write);
+    const name = typeof call.args.name === "string" ? call.args.name : call.tool;
+    return bodyOf(name, await caller(call), write);
   };
   const read = (tool: string, args: Record<string, unknown>) =>
     ask(options.read, { tool, args: { cloudId, ...args } }, false);
+  const run = (name: ReadOperation, inputs: Record<string, unknown>) =>
+    ask(options.read, operationCall(cloudId, name, inputs), false);
   const write = (tool: string, args: Record<string, unknown>) =>
     ask(options.write, { tool, args: { cloudId, ...args } }, true);
   // A read whose answer is reshaped into REST's, unless it failed.
@@ -266,11 +352,12 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
       const page = await read(t.comments, {
         issueIdOrKey: key,
         startAt: all.length,
-        maxResults: listMost,
+        maxResults: commentPage,
         orderBy: "created",
+        view,
       });
       if (page.status !== 200) return page;
-      const listed = list(t.comments, "comments")(page.body);
+      const listed = list(t.comments, "comments")(page.body).map(restComment);
       all.push(...listed);
       const total =
         isObject(page.body) && typeof page.body.total === "number" ? page.body.total : 0;
@@ -286,6 +373,10 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
       ? { status: 404, body: { errorMessages: [`No ${what} ${id}`] } }
       : { status: 200, body: match };
   };
+  // A write the server has no operation for: nothing is sent.
+  const cannot = (what: string): never => {
+    throw new WriteStalled(`Atlassian's server has no tool to ${what}`);
+  };
 
   return async (request: JiraRequest): Promise<JiraResponse> => {
     const { path, query } = partsOf(request.path);
@@ -297,6 +388,7 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
           jql: asked.jql,
           fields: asked.fields,
           maxResults: asked.maxResults,
+          view,
           ...(typeof asked.nextPageToken === "string"
             ? { nextPageToken: asked.nextPageToken }
             : {}),
@@ -304,18 +396,18 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
         searchBody,
       );
     }
-    if (method === "GET" && path === "/rest/api/3/myself") return read(t.me, {});
+    if (method === "GET" && path === "/rest/api/3/myself") return run(o.me, {});
     if (method === "GET" && path === "/rest/agile/1.0/board")
       return reshaped(
-        read(t.boards, { projectKeyOrId: query.get("projectKeyOrId") ?? "" }),
-        (listed) => ({ values: list(t.boards, "values")(listed) }),
+        run(o.boards, { projectKeyOrId: query.get("projectKeyOrId") ?? "" }),
+        (listed) => ({ values: list(o.boards, "values")(listed) }),
       );
     const board = /^\/rest\/agile\/1\.0\/board\/([0-9]+)\/configuration$/.exec(path);
-    if (method === "GET" && board) return read(t.board, { boardId: Number(board[1]) });
+    if (method === "GET" && board) return run(o.board, { boardId: Number(board[1]) });
     const types = /^\/rest\/api\/3\/issue\/createmeta\/([A-Z][A-Z0-9_]*)\/issuetypes$/.exec(path);
     if (method === "GET" && types)
-      return reshaped(read(t.types, { projectIdOrKey: types[1] }), (listed) => {
-        const issueTypes = listOf(listed, "issueTypes") ?? list(t.types, "values")(listed);
+      return reshaped(run(o.types, { projectIdOrKey: types[1] }), (listed) => {
+        const issueTypes = list(o.types, "issueTypes")(listed);
         for (const type of issueTypes)
           if (isObject(type) && typeof type.id === "string" && typeof type.name === "string")
             typeNames.set(type.id, type.name);
@@ -330,9 +422,9 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
         return { status: 400, body: { errorMessages: [`No issue type ${typeId} listed`] } };
       return write(t.create, {
         projectKey: isObject(project) ? project.key : undefined,
-        issueTypeName: typeName,
+        issueType: typeName,
         summary,
-        ...(description === undefined ? {} : { description, contentFormat: "adf" }),
+        ...(description === undefined ? {} : { description, contentFormat: "markdown" }),
         ...(isObject(parent) ? { parent: parent.key } : {}),
         ...(Object.keys(more).length ? { additional_fields: more } : {}),
       });
@@ -350,11 +442,15 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
       case "GET ": {
         const fields = query.get("fields");
         const expand = query.get("expand");
-        return read(t.issue, {
-          issueIdOrKey,
-          ...(fields ? { fields: fields.split(",") } : {}),
-          ...(expand ? { expand } : {}),
-        });
+        return reshaped(
+          read(t.issue, {
+            issueIdOrKey,
+            ...(fields ? { fields: fields.split(",") } : {}),
+            ...(expand ? { expand } : {}),
+            view,
+          }),
+          (found) => restIssue(t.issue, found),
+        );
       }
       case "PUT ": {
         const fields = fieldsOf(body);
@@ -362,12 +458,12 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
           write(t.edit, {
             issueIdOrKey,
             fields,
-            ...("description" in fields ? { contentFormat: "adf" } : {}),
+            ...("description" in fields ? { contentFormat: "markdown" } : {}),
           }),
         );
       }
       case "DELETE ":
-        return done(write(t.deleteIssue, { issueIdOrKey }));
+        return cannot("delete an issue");
       case "PUT assignee": {
         const account = isObject(body) ? body.accountId : null;
         return done(
@@ -378,12 +474,12 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
         );
       }
       case "GET transitions":
-        return reshaped(read(t.transitions, { issueIdOrKey }), (listed) => ({
-          transitions: list(t.transitions, "transitions")(listed),
+        return reshaped(run(o.transitions, { issueIdOrKey }), (listed) => ({
+          transitions: list(o.transitions, "transitions")(listed),
         }));
       case "POST transitions": {
         const way = isObject(body) && isObject(body.transition) ? body.transition.id : undefined;
-        return done(write(t.transition, { issueIdOrKey, transition: { id: way } }));
+        return done(write(t.transition, { issueIdOrKey, transitionId: String(way) }));
       }
       case "GET comment": {
         const all = await comments(key);
@@ -399,25 +495,33 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
       case "POST comment":
         return write(t.comment, {
           issueIdOrKey,
-          commentBody: isObject(body) ? body.body : undefined,
-          contentFormat: "adf",
+          commentBody: toMarkdown(adfToText(isObject(body) ? body.body : undefined)),
+          contentFormat: "markdown",
         });
       case "DELETE comment/id":
-        return done(write(t.deleteComment, { issueIdOrKey, commentId: id }));
+        return cannot("delete a comment");
       case "GET remotelink":
-        return reshaped(read(t.links, { issueIdOrKey }), list(t.links, "values"));
+        return reshaped(run(o.links, { issueIdOrKey }), list(o.links, "values"));
       case "GET remotelink/id":
         return one(
-          await reshaped(read(t.links, { issueIdOrKey }), list(t.links, "values")),
+          await reshaped(run(o.links, { issueIdOrKey }), list(o.links, "values")),
           id,
           "link",
         );
       case "POST remotelink": {
         const object = isObject(body) && isObject(body.object) ? body.object : {};
-        return write(t.link, { issueIdOrKey, url: object.url, title: object.title });
+        return ask(
+          options.write,
+          operationCall(cloudId, atlassianWriteOperations.link, {
+            issueIdOrKey,
+            url: object.url,
+            ...(object.title === undefined ? {} : { title: object.title }),
+          }),
+          true,
+        );
       }
       case "DELETE remotelink/id":
-        return noTool("remove a link");
+        return cannot("remove a link");
       default:
         return noTool(`answer ${method} ${path}`);
     }
@@ -437,29 +541,32 @@ export function siteOf(
   answer: ToolAnswer,
   site: string | null,
 ): { cloudId: string; url: string; name: string } | null {
-  const listed = listOf(bodyOf(t.resources, answer).body, "values");
+  const response = bodyOf(t.resources, answer);
+  if (response.status !== 200)
+    throw new ServerUnreadable(`${t.resources} failed: ${response.status}`);
+  const listed = listOf(response.body, "resources");
   if (!listed) throw new ServerUnreadable(`${t.resources} answered with no sites`);
   const sites = listed.flatMap((each) =>
     isObject(each) &&
-    typeof each.id === "string" &&
+    typeof each.cloudId === "string" &&
     typeof each.url === "string" &&
     URL.canParse(each.url) &&
     new URL(each.url).protocol === "https:"
       ? [
           {
-            cloudId: each.id,
+            cloudId: each.cloudId,
             url: new URL(each.url).origin,
-            name: typeof each.name === "string" ? each.name : new URL(each.url).host,
+            name: new URL(each.url).host,
             jira:
-              !Array.isArray(each.scopes) ||
-              each.scopes.some((scope) => typeof scope === "string" && scope.includes("jira")),
+              Array.isArray(each.products) &&
+              each.products.some((product) => isObject(product) && product.id === "jira"),
           },
         ]
       : [],
   );
   const found =
     site === null ? sites.find((each) => each.jira) : sites.find((each) => each.url === site);
-  return found ? { cloudId: found.cloudId, url: found.url, name: found.name } : null;
+  return found?.jira ? { cloudId: found.cloudId, url: found.url, name: found.name } : null;
 }
 
 // The projects the server lists, by key, in its order.
@@ -471,10 +578,10 @@ export const projectsOf = (answer: ToolAnswer): string[] =>
 export function projectChoicesOf(
   answer: ToolAnswer,
 ): { key: string; name: string; count: number | null; updatedAt: string | null }[] {
-  const response = bodyOf(t.projects, answer);
+  const response = bodyOf(o.projects, answer);
   if (response.status !== 200) return [];
   const listed = listOf(response.body, "values");
-  if (!listed) throw new ServerUnreadable(`${t.projects} answered with no projects`);
+  if (!listed) throw new ServerUnreadable(`${o.projects} answered with no projects`);
   return listed.flatMap((each) => {
     if (!isObject(each) || typeof each.key !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(each.key))
       return [];

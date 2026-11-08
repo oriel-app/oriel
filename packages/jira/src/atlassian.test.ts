@@ -11,7 +11,13 @@ import type {
   ToolCaller,
   ToOpen,
 } from "@oriel/core";
-import { atlassianServer, atlassianTransport, searchBody, ServerUnreadable } from "./atlassian.ts";
+import {
+  atlassianServer,
+  atlassianTransport,
+  bodyOf,
+  searchBody,
+  ServerUnreadable,
+} from "./atlassian.ts";
 import { loadCalls, replayCalls } from "./calls-cassette.ts";
 import { openJira } from "./open-connection.ts";
 
@@ -57,39 +63,71 @@ const listAll = async (read: ToolCaller) => {
 // One recorded answer changed: the one to `tool`.
 const altered = (tool: string, change: (answer: ToolAnswer) => ToolAnswer): ToolCaller => {
   const replay = replayCalls(synced.calls);
-  return async (call) => {
-    const answer = await replay(call);
-    return call.tool === tool ? change(answer) : answer;
-  };
+  // A call the recording doesn't hold is changed from nothing.
+  return async (call) =>
+    call.tool === tool ? change(await replay(call).catch(() => ({ content: [] }))) : replay(call);
 };
 
-test("a search that says more remain with no way to them fails closed, as Atlassian's has done", () => {
-  // As the server's search has answered: five issues, the rest unreachable.
-  const capped = {
-    issues: {
-      totalCount: 85,
-      nodes: [1, 2, 3, 4, 5],
-      remainingCount: 80,
-      pageInfo: { hasNextPage: false, endCursor: null },
-    },
-  };
-  assert.throws(() => searchBody(capped), ServerUnreadable);
+test("what Atlassian's own server answered, recorded, syncs SYN whole, with each issue's fields", async () => {
+  const real = loadCalls("real-sync.json");
+  const opened = await openJira(
+    { ...connection, options: { project: "SYN" } },
+    via(replayCalls(real.calls)),
+  );
+  const records: IndexRecord[] = [];
+  for await (const page of opened.source.sync(null)) records.push(...page.records);
+  assert.ok(records.length >= 100, `${records.length} issues`);
+  // Its epics, from each issue's parent, and its points, from the custom
+  // field the server gives by its label.
+  assert.ok(records.some((record) => record.facets?.container));
+  assert.ok(records.some((record) => typeof record.facets?.estimate === "number"));
+});
+
+test("a search that says more remain with no way to them fails closed", () => {
   assert.throws(() => searchBody({ issues: [], isLast: false }), ServerUnreadable);
   assert.throws(() => searchBody({ results: [] }), ServerUnreadable);
-  // A page that doesn't say whether more remain, or an empty cursor.
-  assert.throws(() => searchBody({ issues: { nodes: [], totalCount: 85 } }), ServerUnreadable);
+  assert.throws(() => searchBody({ issues: [1], nextPageToken: "" }), ServerUnreadable);
+  // The search's structured content, which Claude Code doesn't pass on, is
+  // another shape: never read for the text's.
   assert.throws(
-    () => searchBody({ issues: { nodes: [1], pageInfo: { hasNextPage: true, endCursor: "" } } }),
+    () => searchBody({ issues: { nodes: [], pageInfo: { hasNextPage: false } } }),
     ServerUnreadable,
   );
-  assert.throws(() => searchBody({ issues: [1], nextPageToken: "" }), ServerUnreadable);
+});
+
+test("an answer without its data, or a custom field without its ID, stops the sync", async () => {
+  const answer = (value: unknown): ToolAnswer => ({
+    content: [{ type: "text", text: JSON.stringify(value) }],
+  });
+  assert.throws(() => bodyOf("t", answer({ issues: [] })), ServerUnreadable);
+  assert.throws(
+    () => bodyOf("t", { content: [{ type: "text", text: "Done." }] }),
+    ServerUnreadable,
+  );
+  // A failure says REST's status, as the server gives it.
+  assert.equal(
+    bodyOf("t", {
+      ...answer({ error: true, message: "Issue not found", statusCode: 404 }),
+      isError: true,
+    }).status,
+    404,
+  );
+  const unlabelled = altered("searchJiraIssuesUsingJql", (given) => {
+    const body = JSON.parse((given.content[0] as { text: string }).text) as {
+      data: { issues: { fields: Record<string, unknown> }[] };
+    };
+    const first = body.data.issues[0];
+    if (first) first.fields.customFields = { "Story Points": { value: 3 } };
+    return answer(body);
+  });
+  await assert.rejects(listAll(unlabelled), ServerUnreadable);
 });
 
 test("a listed issue in a shape it can't read stops the sync, where REST's skips it", async () => {
   const broken = altered("searchJiraIssuesUsingJql", (answer) => {
     const text = (answer.content[0] as { text: string }).text;
-    const body = JSON.parse(text) as { issues: { nodes: { fields: Record<string, unknown> }[] } };
-    const first = body.issues.nodes[0];
+    const body = JSON.parse(text) as { data: { issues: { fields: Record<string, unknown> }[] } };
+    const first = body.data.issues[0];
     if (first) delete first.fields.status;
     return { content: [{ type: "text", text: JSON.stringify(body) }] };
   });
@@ -120,8 +158,8 @@ test("the project picker reads a server's list as text it can show, and no more 
     { name: "No key" },
     ...Array.from({ length: 250 }, (_, i) => ({ key: `P${i}`, name: `Project ${i}` })),
   ];
-  const many = altered("listJiraProjects", () => ({
-    content: [{ type: "text", text: JSON.stringify({ values }) }],
+  const many = altered("executeRead", () => ({
+    content: [{ type: "text", text: JSON.stringify({ data: { values } }) }],
   }));
   const listed = await projectPick?.list(many, "", connection);
   assert.equal(listed?.more, true);
@@ -129,7 +167,9 @@ test("the project picker reads a server's list as text it can show, and no more 
   assert.equal(listed?.choices[0]?.name.length, 200);
   assert.equal(listed?.choices[0]?.count, null);
   assert.ok(!listed?.choices.some((each) => each.name === "Dropped" || each.name === "No key"));
-  const broken = altered("listJiraProjects", () => ({ content: [{ type: "text", text: "{}" }] }));
+  const broken = altered("executeRead", () => ({
+    content: [{ type: "text", text: '{"data":{}}' }],
+  }));
   await assert.rejects(
     projectPick?.list(broken, "", connection) ?? Promise.resolve(),
     ServerUnreadable,

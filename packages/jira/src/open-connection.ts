@@ -11,8 +11,10 @@ import {
   type ToOpen,
 } from "@oriel/core";
 import {
+  atlassianOperations,
   atlassianTools,
   atlassianTransport,
+  operationCall,
   projectsOf,
   ServerUnreadable,
   siteOf,
@@ -95,9 +97,7 @@ async function openThrough(
   if (!site) throw new Error(`${server.known.name} reaches no Jira site Oriel can read`);
   const project =
     jiraProject(connection.options) ||
-    projectsOf(
-      await server.read({ tool: atlassianTools.projects, args: { cloudId: site.cloudId } }),
-    )[0];
+    projectsOf(await server.read(operationCall(site.cloudId, atlassianOperations.projects, {})))[0];
   if (!project) throw new Error(`${server.known.name} lists no Jira project`);
   const transport = readOnly(atlassianTransport({ cloudId: site.cloudId, read: server.read }));
   const boards = jiraBoards({ transport, projects: [project], log: via.log });

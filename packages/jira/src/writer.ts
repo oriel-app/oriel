@@ -543,8 +543,16 @@ export function jiraWriterOf(writes: JiraWrites, log: Log): SourceWriter<"jira">
     ...(writes.boards ? { boards: writes.boards } : {}),
     log,
   });
-  // Atlassian's server has no tool to remove a link (atlassian.ts).
+  // Atlassian's server has no tool to delete an issue, a comment or a link
+  // (atlassian.ts).
   return through
-    ? { ...writer, unsendable: { removeLink: "A link added to a Jira issue can't be taken back" } }
+    ? {
+        ...writer,
+        unsendable: {
+          deleteItem: "A Jira issue Oriel made can't be deleted",
+          removeComment: "A comment on a Jira issue can't be taken back",
+          removeLink: "A link added to a Jira issue can't be taken back",
+        },
+      }
     : writer;
 }

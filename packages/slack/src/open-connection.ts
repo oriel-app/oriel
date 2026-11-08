@@ -18,7 +18,7 @@ import { slackAttrs, slackAttrsOf } from "./attrs.ts";
 import { connectSlack, slackPerson } from "./connect.ts";
 import type { SlackContext } from "./namespace.ts";
 import type { SlackScope } from "./references.ts";
-import { slackServerReads } from "./slack-mcp.ts";
+import { searchChannel, slackServerReads } from "./slack-mcp.ts";
 import { maxChannels, slackSource } from "./source.ts";
 
 // What a Slack connection's writer is built from, by its line in
@@ -110,9 +110,27 @@ async function openThrough(
   const named = URL.canParse(connection.identity) ? new URL(connection.identity).origin : null;
   if (named !== null && named !== new URL(workspace.url).origin)
     throw new OptionsUnfit(`${server.known.name} reads another Slack workspace than this one`);
-  if (workspace.missing.length)
+  // A picked public channel the person isn't in: by its name, as the
+  // server's search finds it in this workspace, or by its ID, as its
+  // history names it.
+  const missing: string[] = [];
+  for (const want of workspace.missing) {
+    if (/^[CG][A-Z0-9]{2,20}$/.test(want)) {
+      const found = await api("conversations.info", { channel: want }).catch(() => null);
+      const channel = found as { channel?: { id: string; name: string } } | null;
+      if (channel?.channel) workspace.channels.push(channel.channel);
+      else missing.push(want);
+      continue;
+    }
+    const found = (await searchChannel(server.read, want)).filter(
+      (each) => each.workspace === workspace.url,
+    );
+    if (found.length === 1 && found[0]) workspace.channels.push(found[0]);
+    else missing.push(want);
+  }
+  if (missing.length)
     throw new OptionsUnfit(
-      `${server.known.name} lists no channel of yours named ${workspace.missing.map((name) => `#${name}`).join(", ")}`,
+      `${server.known.name} finds no public channel named ${missing.map((name) => `#${name}`).join(", ")}`,
     );
   if (!workspace.channels.length)
     throw new OptionsUnfit(`${server.known.name} lists no Slack channel you're in`);

@@ -111,12 +111,15 @@ export const callerPrompt =
 // What the model is shown of a call's input: its shape, with every text
 // that could be a source's, such as a summary, a description or a page's
 // cursor, in place of a placeholder, so no source content reaches it.
-// Oriel's permission answer gives the server the input Oriel asked for.
+// Every text in a list is one, however plain: a list holds what was looked
+// up, such as a channel's name a search is for. Oriel's permission answer
+// gives the server the input Oriel asked for.
 export const textPlaceholder = "<text>";
 const plain = /^[A-Za-z0-9_.:-]{1,64}$/;
 export function shapeOf(value: unknown): unknown {
   if (typeof value === "string") return plain.test(value) ? value : textPlaceholder;
-  if (Array.isArray(value)) return value.map(shapeOf);
+  if (Array.isArray(value))
+    return value.map((each) => (typeof each === "string" ? textPlaceholder : shapeOf(each)));
   if (isObject(value))
     return Object.fromEntries(Object.entries(value).map(([key, each]) => [key, shapeOf(each)]));
   return value;

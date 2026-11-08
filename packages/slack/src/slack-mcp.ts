@@ -5,14 +5,13 @@
 // body they already check, so everything they do works the same through it.
 // A call with no tool to answer it is refused before anything is sent.
 //
-// Slack documents its tools' names and arguments, not their answers. Where
-// it doesn't show an answer's shape, this reads the Web API's shape the tool
-// wraps, under the names its documented answers use, and anything else it
-// can't read stops the sync, naming the server (`ServerUnreadable`): the
-// index stays as it was. packages/standin-mcp/README.md lists what's assumed.
+// Slack's tools answer with Markdown meant for a model, under a key of a
+// JSON object, with no structured content and no option for any. Each
+// tool's answer is read by its own reader (`slack-answers.ts`), and
+// anything it doesn't recognise stops the sync, naming the server
+// (`ServerUnreadable`): the index stays as it was.
 // https://docs.slack.dev/ai/slack-mcp-server/
 import {
-  answerJson,
   answerText,
   narrowed,
   type SourceServer,
@@ -22,6 +21,15 @@ import {
   WriteStalled,
 } from "@oriel/core";
 import { type ReadMethod, readMethods, type SlackApi, SlackError } from "./api.ts";
+import {
+  channelsOf,
+  conciseAgrees,
+  historyOf,
+  justAfter,
+  profileOf,
+  searchedChannelsOf,
+  threadOf,
+} from "./slack-answers.ts";
 import { maxChannels } from "./source.ts";
 
 // Its tools Oriel calls, by what each does.
@@ -30,6 +38,7 @@ export const slackTools = {
   channels: "slack_list_user_channels",
   history: "slack_read_channel",
   thread: "slack_read_thread",
+  search: "slack_search_channels",
   send: "slack_send_message",
 } as const;
 
@@ -37,12 +46,13 @@ const t = slackTools;
 
 // Slack's MCP server, as Oriel knows it, by its address: its default
 // tools, ours among them, are all listed there; more need more scopes, not
-// another address.
+// another address. `slack_search_channels` gives a channel's link, which
+// is the only place it says which workspace it reads.
 export const slackServer: SourceServer = {
   name: "Slack's MCP server",
   reports: "Slack MCP",
   at: { url: "https://mcp.slack.com/mcp" },
-  reads: [t.profile, t.channels, t.history, t.thread],
+  reads: [t.profile, t.channels, t.history, t.thread, t.search],
   writes: [t.send],
   instructions: "https://docs.slack.dev/ai/slack-mcp-server/",
   // The channels a connection reads, from those the person is in, as the
@@ -81,7 +91,6 @@ export const slackServer: SourceServer = {
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-const text = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 // Slack's error codes the source and the writer act on, as a failed tool
 // names them. Any other failure of a read stops it; of a write, may have
@@ -108,8 +117,9 @@ const known = new Set([
   "mcp_externally_shared_channel_restricted",
 ]);
 
-// The code a failed tool's words name, if one Oriel knows. A sign-in that
-// lapsed may say so in words, not a code.
+// The code a failed tool's words name, if one Oriel knows, such as
+// "execution_failed: thread_not_found". A sign-in that lapsed may say so in
+// words, not a code.
 function codeOf(words: string): string | null {
   for (const [code] of words.matchAll(/\b[a-z]+(?:_[a-z]+)*\b/g)) if (known.has(code)) return code;
   if (/\b(unauthori[sz]ed|not authenticated|sign(ed)? ?in)\b/i.test(words)) return "not_authed";
@@ -117,103 +127,42 @@ function codeOf(words: string): string | null {
   return null;
 }
 
-// A tool's answer as JSON, or, for a failed one, Slack's error for it: as
-// the Web API answers `ok: false`. A read that failed for a reason it
-// doesn't name stops; a write that did may have landed, so it's no refusal.
+// A tool's answer as its JSON object, or, for a failed one, Slack's error
+// for it: as the Web API answers `ok: false`. A read that failed for a
+// reason it doesn't name stops; a write that did may have landed, so it's
+// no refusal.
 function bodyOf(method: string, tool: string, answer: ToolAnswer, write: boolean): unknown {
   if (!isObject(answer) || !Array.isArray(answer.content))
     throw new ServerUnreadable(`${tool} answered with no content`);
+  const words = answerText(answer);
   if (answer.isError === true) {
-    const code = codeOf(answerText(answer));
+    const code = codeOf(words);
     if (code) throw new SlackError(method, code);
     if (write) throw new Error(`${tool} failed, and didn't say whether it posted`);
     throw new SlackError(method, "failed");
   }
-  return answerJson(tool, answer);
+  try {
+    return JSON.parse(words) as unknown;
+  } catch {
+    // A write's answer is read for its message's link, if it gives one.
+    if (write) return { text: words };
+    throw new ServerUnreadable(`${tool} answered with text that isn't JSON`);
+  }
 }
 
-// A list an answer gives as itself or under `key`.
-function listOf(tool: string, body: unknown, key: string): unknown[] {
-  if (Array.isArray(body)) return body;
-  if (isObject(body) && Array.isArray(body[key])) return body[key] as unknown[];
-  throw new ServerUnreadable(`${tool} answered with no ${key}`);
-}
-
-// The cursor to an answer's next page, or "" on the last: Slack's
-// `response_metadata.next_cursor`, or a `next_cursor` beside its list. One
-// that says more remain but gives no way to them can't be read: a sweep
-// that stopped there would take the rest away.
-function nextOf(tool: string, body: unknown): string {
-  if (!isObject(body)) return "";
-  const { response_metadata, has_more } = body;
-  if (
-    (response_metadata !== undefined &&
-      response_metadata !== null &&
-      !isObject(response_metadata)) ||
-    (has_more !== undefined && has_more !== null && typeof has_more !== "boolean")
-  )
-    throw new ServerUnreadable(`${tool} said where its next page is in a way Oriel can't read`);
-  const meta = isObject(response_metadata) ? response_metadata : {};
-  const given = meta.next_cursor ?? body.next_cursor;
-  if (given !== undefined && given !== null && typeof given !== "string")
-    throw new ServerUnreadable(`${tool} gave a cursor Oriel can't read`);
-  const cursor = given ?? "";
-  if (cursor === "" && body.has_more === true)
-    throw new ServerUnreadable(`${tool} said more remain, with no way to them`);
-  return cursor;
-}
-
-// A message as the Web API gives it, under the names Slack's tools answer
-// with where those differ (`message_ts`, `user_id`). What it holds is the
-// source's to check.
-function messageOf(tool: string, raw: unknown): unknown {
-  if (!isObject(raw)) throw new ServerUnreadable(`${tool} listed a message that isn't one`);
-  const { message_ts, user_id, ...rest } = raw;
-  return {
-    ...(message_ts !== undefined && rest.ts === undefined ? { ts: message_ts } : {}),
-    ...(user_id !== undefined && rest.user === undefined ? { user: user_id } : {}),
-    ...rest,
-  };
-}
-
-// A person's profile, flat or under `profile` or `user`, and who they are.
-function profileOf(tool: string, body: unknown) {
-  if (!isObject(body)) throw new ServerUnreadable(`${tool} answered with no profile`);
-  const user = isObject(body.user) ? body.user : {};
-  const profile = isObject(body.profile)
-    ? body.profile
-    : isObject(user.profile)
-      ? user.profile
-      : { ...user, ...body };
-  return {
-    id: text(body.user_id) ?? text(body.id) ?? text(user.id),
-    team: text(body.team_id) ?? text(user.team_id) ?? "",
-    url: text(body.workspace_url) ?? text(body.team_url) ?? text(body.url),
-    real_name: text(profile.real_name),
-    display_name: text(profile.display_name),
-  };
-}
-
-// A workspace's address as `auth.test` gives one, such as
-// "https://example.slack.com/": only one of Slack's own, as items link
-// into it.
-function workspaceOf(url: string | undefined): string {
-  const parsed = url && URL.canParse(url) ? new URL(url) : null;
-  if (parsed?.protocol !== "https:" || !parsed.hostname.endsWith(".slack.com"))
-    throw new ServerUnreadable(`${t.profile} didn't say which Slack workspace it reads`);
-  return `${parsed.origin}/`;
-}
-
-// A posted message's `ts`, as the answer gives it, or from its link.
-function postedTs(body: unknown): string | undefined {
+// A posted message's `ts`, as Slack's send tool answers: its
+// `message_context`, in the channel posted to, or else its `message_link`
+// there. Nothing else in the answer, which may repeat the text posted.
+function postedTs(body: unknown, channel: string): string | undefined {
   if (!isObject(body)) return undefined;
   const context = isObject(body.message_context) ? body.message_context : {};
-  const message = isObject(body.message) ? body.message : {};
-  const given = text(context.message_ts) ?? text(body.ts) ?? text(message.ts);
-  if (given) return given;
-  const link = text(body.message_link) ?? text(body.permalink);
-  const p = link ? /\/p([0-9]{10})([0-9]{6})(?:[?#]|$)/.exec(link) : null;
-  return p ? `${p[1]}.${p[2]}` : undefined;
+  const ts = context.message_ts;
+  if (context.channel_id === channel && typeof ts === "string" && /^[0-9]{10}\.[0-9]{6}$/.test(ts))
+    return ts;
+  const link = typeof body.message_link === "string" ? body.message_link : "";
+  const p =
+    /^https:\/\/[a-z0-9-]+\.slack\.com\/archives\/([A-Z0-9]+)\/p([0-9]{10})([0-9]{6})$/.exec(link);
+  return p && p[1] === channel ? `${p[2]}.${p[3]}` : undefined;
 }
 
 // A message's text as Slack's send tool takes it, in markdown: every mark
@@ -228,7 +177,7 @@ export const plainMarkdown = (text: string): string =>
       /^[0-9]/.test(mark) ? `${space}${mark}\\` : `${space}\\${mark}`,
     );
 
-// The most a page asks of each listing tool, as Slack's docs give them.
+// The most a page asks of each listing tool, as Slack's tools give them.
 const most = { history: 100, thread: 1000, channels: 200 };
 const limit = (asked: string | undefined, cap: number) =>
   Math.min(Math.max(Number(asked) || cap, 1), cap);
@@ -242,7 +191,8 @@ export type SlackServerOptions = {
 // The Web API answered through Slack's server: reads through `read`, a
 // post through `write`. A channel's name comes from the person's channels
 // as the server lists them, listed once until `forget`, which the source
-// calls before each sync and read, so a renamed one shows on the next.
+// calls before each sync and read, so a renamed one shows on the next; one
+// they aren't in, from its history's own heading.
 export function slackServerApi(options: SlackServerOptions): SlackApi<string> & {
   forget(): void;
 } {
@@ -253,21 +203,19 @@ export function slackServerApi(options: SlackServerOptions): SlackApi<string> & 
 
   // One page of the person's public channels, as `conversations.list`.
   const channels = async (method: string, params: Record<string, string>) => {
-    const body = await ask(method, t.channels, {
-      channel_types: "public_channel",
-      limit: limit(params.limit, most.channels),
-      ...(params.cursor ? { cursor: params.cursor } : {}),
-    });
-    const listed = listOf(t.channels, body, "channels").map((each) => {
-      if (!isObject(each) || typeof each.id !== "string" || typeof each.name !== "string")
-        throw new ServerUnreadable(`${t.channels} listed a channel without its ID and name`);
-      return { id: each.id, name: each.name, is_archived: each.is_archived === true };
-    });
+    const { channels: listed, next } = channelsOf(
+      t.channels,
+      await ask(method, t.channels, {
+        types: "public_channel",
+        limit: limit(params.limit, most.channels),
+        ...(params.cursor ? { cursor: params.cursor } : {}),
+      }),
+    );
     return {
       ok: true,
       // Archived ones are listed too, unless asked not to.
       channels: listed.filter((each) => !each.is_archived),
-      response_metadata: { next_cursor: nextOf(t.channels, body) },
+      response_metadata: { next_cursor: next },
     };
   };
   // Every channel's name, by its ID, page by page.
@@ -290,49 +238,80 @@ export function slackServerApi(options: SlackServerOptions): SlackApi<string> & 
     });
     return listing;
   };
-  // A page of messages, as `conversations.history` and `.replies` answer.
-  const page = (tool: string, body: unknown) => ({
-    ok: true,
-    messages: listOf(tool, body, "messages").map((each) => messageOf(tool, each)),
-    response_metadata: { next_cursor: nextOf(tool, body) },
-  });
+  // A channel's history, one page, as the server lists it.
+  const history = async (method: string, channel: string, params: Record<string, unknown>) =>
+    historyOf(t.history, await ask(method, t.history, { channel_id: channel, ...params }), channel);
 
   const api = async (method: string, params: Record<string, string>): Promise<unknown> => {
     switch (method) {
       case "auth.test": {
+        // Who the person is, from their profile; which workspace, from the
+        // link of the first channel they're in, as the server finds it by
+        // name: the profile doesn't say.
         const me = profileOf(t.profile, await ask(method, t.profile, {}));
-        if (!me.id) throw new ServerUnreadable(`${t.profile} didn't say who you are`);
-        return { ok: true, url: workspaceOf(me.url), team_id: me.team, user_id: me.id };
+        const first = [...(await names())][0];
+        const found = first ? await searchChannel(options.read, first[1]) : [];
+        const url = found.find((each) => each.id === first?.[0])?.workspace;
+        if (!url)
+          throw new ServerUnreadable(`${t.search} didn't say which Slack workspace it reads`);
+        return { ok: true, url, team_id: "", user_id: me.id };
       }
       case "users.profile.get": {
         const them = profileOf(t.profile, await ask(method, t.profile, { user_id: params.user }));
+        if (them.id !== params.user)
+          throw new ServerUnreadable(`${t.profile} answered for another person`);
         return {
           ok: true,
-          profile: {
-            ...(them.real_name === undefined ? {} : { real_name: them.real_name }),
-            ...(them.display_name === undefined ? {} : { display_name: them.display_name }),
-          },
+          profile: { real_name: them.real_name, display_name: them.display_name },
         };
       }
       case "conversations.list":
         return channels(method, params);
       case "conversations.info": {
         const id = params.channel ?? "";
-        const name = (await names()).get(id);
-        if (name === undefined) throw new SlackError(method, "channel_not_found");
+        const name = (await names()).get(id) ?? (await history(method, id, { limit: 1 })).name;
         return { ok: true, channel: { id, name } };
       }
-      case "conversations.history":
-        return page(
-          t.history,
-          await ask(method, t.history, {
-            channel_id: params.channel,
-            limit: limit(params.limit, most.history),
-            ...(params.cursor ? { cursor: params.cursor } : {}),
+      case "conversations.history": {
+        const channel = params.channel ?? "";
+        const page = await history(method, channel, {
+          limit: limit(params.limit, most.history),
+          ...(params.cursor ? { cursor: params.cursor } : {}),
+        });
+        // The same messages again, concise, which must agree with the
+        // page's headers: a message's text can't make up another.
+        const newest = page.messages[0]?.ts;
+        if (newest)
+          conciseAgrees(
+            t.history,
+            await ask(method, t.history, {
+              channel_id: channel,
+              latest: justAfter(newest),
+              limit: Math.min(page.messages.length, most.history),
+              response_format: "concise",
+            }),
+            channel,
+            page.heads,
+          );
+        // A thread whose latest reply is in a zone the page doesn't give, a
+        // clock change away: its latest reply's own `ts`, from the thread,
+        // whose last page is its latest replies.
+        const messages = await Promise.all(
+          page.messages.map(async (each) => {
+            if (!each.reply_count || each.latest_reply) return each;
+            const thread = threadOf(
+              t.thread,
+              await ask(method, t.thread, { channel_id: channel, message_ts: each.ts, limit: 1 }),
+              each.ts,
+            );
+            const latest = thread.messages.at(-1)?.ts;
+            return latest && latest !== each.ts ? { ...each, latest_reply: latest } : each;
           }),
         );
-      case "conversations.replies":
-        return page(
+        return { ok: true, messages, response_metadata: { next_cursor: page.next } };
+      }
+      case "conversations.replies": {
+        const page = threadOf(
           t.thread,
           await ask(method, t.thread, {
             channel_id: params.channel,
@@ -340,7 +319,10 @@ export function slackServerApi(options: SlackServerOptions): SlackApi<string> & 
             limit: limit(params.limit, most.thread),
             ...(params.cursor ? { cursor: params.cursor } : {}),
           }),
+          params.ts ?? "",
         );
+        return { ok: true, messages: page.messages, response_metadata: { next_cursor: page.next } };
+      }
       case "chat.postMessage": {
         if (!options.write) throw new Error(`refusing a write on the read side: ${method}`);
         const args = {
@@ -349,7 +331,7 @@ export function slackServerApi(options: SlackServerOptions): SlackApi<string> & 
           ...(params.thread_ts ? { thread_ts: params.thread_ts } : {}),
         };
         const body = bodyOf(method, t.send, await options.write({ tool: t.send, args }), true);
-        const ts = postedTs(body);
+        const ts = postedTs(body, params.channel ?? "");
         return { ok: true, channel: params.channel, ...(ts ? { ts } : {}) };
       }
       case "chat.delete":
@@ -364,6 +346,20 @@ export function slackServerApi(options: SlackServerOptions): SlackApi<string> & 
       listing = null;
     },
   });
+}
+
+// Public channels named `name`, with the workspace each is in, as the
+// server's search finds them: exactly that name, never one like it.
+export async function searchChannel(
+  read: ToolCaller,
+  name: string,
+): Promise<{ id: string; name: string; workspace: string }[]> {
+  const answer = await read({
+    tool: t.search,
+    args: { keywords: [name], natural_language_query: "", limit: 20 },
+  });
+  const found = searchedChannelsOf(t.search, bodyOf("conversations.list", t.search, answer, false));
+  return found.filter((each) => each.name === name);
 }
 
 // The read side of it: no writer, and read methods only, checked at run

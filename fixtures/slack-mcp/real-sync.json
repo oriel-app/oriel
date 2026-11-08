@@ -1,0 +1,227 @@
+{
+  "recorded": "From Slack's MCP server, through Claude Code 2.1.319, in our test workspace.",
+  "calls": [
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {}
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON003\\nUsername: Person 1\\nDisplay Name: \\nReal Name: Person 2\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: Yes\\nOwner: Yes\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_list_user_channels",
+        "args": {
+          "types": "public_channel",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"## My Channels (showing 3 of 3 total)\\n\\n### #new-channel\\n- **ID:** C0CDCM2D02K\\n- **Type:** Public Channel\\n- **Purpose:** This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\n- **Archived:** No\\n\\n### #social\\n- **ID:** C0CDMRE5PAP\\n- **Type:** Public Channel\\n- **Purpose:** Other channels are for work. This one’s just for fun. Get to know your teammates and show your lighter side. 🎈\\n- **Archived:** No\\n\\n### #all-oriel\\n- **ID:** C0CDS3SP5E2\\n- **Type:** Public Channel\\n- **Purpose:** Share announcements and updates about company news, upcoming events, or teammates who deserve some kudos. ⭐\\n- **Archived:** No\\n\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_search_channels",
+        "args": {
+          "keywords": [
+            "new-channel"
+          ],
+          "natural_language_query": "",
+          "limit": 20
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"results\":\"# Search Results for: \\n\\n## Channels (1 results)\\n### Result 1 of 1\\nName: #new-channel\\nCreator: Person 2 (<@U0PERSON003)\\nCreated: 2026-10-31 10:42:41 PDT\\nPurpose: This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\nPermalink: [link](https://oriel-test.slack.com/archives/C0CDCM2D02K)\\nIs Archived: false\\nChannel Type: public_channel\\n\\n---\\n\\n\",\"pagination_info\":\"End of results - No more pages available.\\\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_list_user_channels",
+        "args": {
+          "types": "public_channel",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"## My Channels (showing 3 of 3 total)\\n\\n### #new-channel\\n- **ID:** C0CDCM2D02K\\n- **Type:** Public Channel\\n- **Purpose:** This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\n- **Archived:** No\\n\\n### #social\\n- **ID:** C0CDMRE5PAP\\n- **Type:** Public Channel\\n- **Purpose:** Other channels are for work. This one’s just for fun. Get to know your teammates and show your lighter side. 🎈\\n- **Archived:** No\\n\\n### #all-oriel\\n- **ID:** C0CDS3SP5E2\\n- **Type:** Public Channel\\n- **Purpose:** Share announcements and updates about company news, upcoming events, or teammates who deserve some kudos. ⭐\\n- **Archived:** No\\n\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_search_channels",
+        "args": {
+          "keywords": [
+            "oriel-team"
+          ],
+          "natural_language_query": "",
+          "limit": 20
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"results\":\"# Search Results for: \\n\\n## Channels (1 results)\\n### Result 1 of 1\\nName: #oriel-team\\nCreator: Person 4 (<@U0PERSON005)\\nCreated: 2026-10-31 13:38:15 PDT\\nPermalink: [link](https://oriel-test.slack.com/archives/C0CDP98AKA9)\\nIs Archived: false\\nChannel Type: public_channel\\n\\n---\\n\\n\",\"pagination_info\":\"End of results - No more pages available.\\\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_list_user_channels",
+        "args": {
+          "types": "public_channel",
+          "limit": 200
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"## My Channels (showing 3 of 3 total)\\n\\n### #new-channel\\n- **ID:** C0CDCM2D02K\\n- **Type:** Public Channel\\n- **Purpose:** This channel is for everything #new-channel. Hold meetings, share docs, and make decisions together with your team.\\n- **Archived:** No\\n\\n### #social\\n- **ID:** C0CDMRE5PAP\\n- **Type:** Public Channel\\n- **Purpose:** Other channels are for work. This one’s just for fun. Get to know your teammates and show your lighter side. 🎈\\n- **Archived:** No\\n\\n### #all-oriel\\n- **ID:** C0CDS3SP5E2\\n- **Type:** Public Channel\\n- **Purpose:** Share announcements and updates about company news, upcoming events, or teammates who deserve some kudos. ⭐\\n- **Archived:** No\\n\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_channel",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "limit": 1
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"Channel: #oriel-team (C0CDP98AKA9)\\n\\n=== Message from Person 4 <person@example.com> (U0PERSON005) at 2026-10-31 13:39:04 PDT === \\nMessage TS: 1793479144.818789\\nWeek wrap: OA-33 is in review, OA-23 is sized at 7, the slow window on big boards is found and written up, and empty groups moved up. Anything I missed?\\nThread: 4 replies (latest: 2026-10-31 13:39:10 PDT)\",\"pagination_info\":\"There are more messages available. To view the next page, use cursor: `bmV4dF90czoxNzkzNDc5MTQwNzQ4MjQ5`\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_channel",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "limit": 100
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"Channel: #oriel-team (C0CDP98AKA9)\\n\\n=== Message from Person 4 <person@example.com> (U0PERSON005) at 2026-10-31 13:39:04 PDT === \\nMessage TS: 1793479144.818789\\nWeek wrap: OA-33 is in review, OA-23 is sized at 7, the slow window on big boards is found and written up, and empty groups moved up. Anything I missed?\\nThread: 4 replies (latest: 2026-10-31 13:39:10 PDT)\\n\\n=== Message from Person 4 <person@example.com> (U0PERSON005) at 2026-10-31 13:39:00 PDT === \\nMessage TS: 1793479140.748249\\nCustomer call recap: they love that nothing is written to Jira until they approve. Next, they want to see the Slack conversations about a Jira item next to it. That's OA-23 and then OA-24.\\nThread: 2 replies (latest: 2026-10-31 13:39:03 PDT)\\n\\n=== Message from Person 6 <person@example.com> (U0PERSON009) at 2026-10-31 13:38:58 PDT === \\nMessage TS: 1793479138.009419\\nOA-33 mock v2 is up. An undo of a delete now hides empty fields instead of showing a dash and an arrow.\\nThread: 1 replies (latest: 2026-10-31 13:38:59 PDT)\\n\\n=== Message from Person 6 <person@example.com> (U0PERSON009) at 2026-10-31 13:38:53 PDT === \\nMessage TS: 1793479133.912479\\nQuestion for the room: should the sidebar show empty groups at all? I have six \\\"New group\\\"s from clicking New thread and then leaving.\\nThread: 2 replies (latest: 2026-10-31 13:38:56 PDT)\\n\\n=== Message from Person 7 <person@example.com> (U0PERSON010) at 2026-10-31 13:38:47 PDT === \\nMessage TS: 1793479127.089899\\nProfiled the slow window with 4,000 items. The grouping recomputes its clusters on every open. Caching them per region version would fix most of it.\\nThread: 4 replies (latest: 2026-10-31 13:38:52 PDT)\\n\\n=== Message from Person 7 <person@example.com> (U0PERSON010) at 2026-10-31 13:38:44 PDT === \\nMessage TS: 1793479124.371679\\nOA-23 sizing: 5 points to read channels and threads, plus 2 for the synthetic fixture and evals. Linking across sources is OA-24, separately.\\nThread: 1 replies (latest: 2026-10-31 13:38:45 PDT)\\n\\n=== Message from Person 8 <person@example.com> (U0PERSON011) at 2026-10-31 13:38:37 PDT === \\nMessage TS: 1793479117.579009\\nDifferent topic: a customer with about 4,000 issues says the window takes forever to open. That's the third one this month.\\nThread: 4 replies (latest: 2026-10-31 13:38:42 PDT)\\n\\n=== Message from Person 6 <person@example.com> (U0PERSON009) at 2026-10-31 13:38:30 PDT === \\nMessage TS: 1793479110.781809\\nDiff mock for OA-33: new items are cards, edits mark only the changed words, deletes are struck through. Thoughts?\\nThread: 4 replies (latest: 2026-10-31 13:38:36 PDT)\\n\\n=== Message from Person 8 <person@example.com> (U0PERSON011) at 2026-10-31 13:38:22 PDT === \\nMessage TS: 1793479102.556999\\nHeads up: two customers this morning approved a change set that created a story, then saw \\\"Not in the index\\\" where the story should be. Both thought it had failed.\\nThread: 5 replies (latest: 2026-10-31 13:38:29 PDT)\\n\\n=== Message from Person 4 <person@example.com> (U0PERSON005) at 2026-10-31 13:38:17 PDT === \\nMessage TS: 1793479097.061399\\nMorning all. Plan for the week: make the change set diff readable (OA-33) and start reading Slack (OA-23). <@U0PERSON010|Person 7>, can you size OA-23 by Wednesday?\\nThread: 3 replies (latest: 2026-10-31 13:38:21 PDT)\\n\\n=== Message from Person 8 <person@example.com> (U0PERSON011) at 2026-10-31 13:38:16 PDT === \\nMessage TS: 1793479096.791839\\n<@U0PERSON011|Person 8> has joined the channel\\n\\n=== Message from Person 6 <person@example.com> (U0PERSON009) at 2026-10-31 13:38:16 PDT === \\nMessage TS: 1793479096.597569\\n<@U0PERSON009|Person 6> has joined the channel\\n\\n=== Message from Person 7 <person@example.com> (U0PERSON010) at 2026-10-31 13:38:16 PDT === \\nMessage TS: 1793479096.365729\\n<@U0PERSON010|Person 7> has joined the channel\\n\\n=== Message from Person 4 <person@example.com> (U0PERSON005) at 2026-10-31 13:38:16 PDT === \\nMessage TS: 1793479096.001169\\n<@U0PERSON005|Person 4> has joined the channel\",\"pagination_info\":\"There are no more messages available.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_channel",
+        "args": {
+          "channel_id": "C0CDP98AKA9",
+          "latest": "1793479144.818790",
+          "limit": 14,
+          "response_format": "concise"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"messages\":\"Channel: #oriel-team (C0CDP98AKA9)\\n\\nPerson 4 <person@example.com>: Week wrap: OA-33 is in review, OA-23 is sized at 7, the slow window on big boards is found and written up, and empty groups moved up. Anything I missed? [2026-10-31 13:39:04 PDT]\\n\\nPerson 4 <person@example.com>: Customer call recap: they love that nothing is written to Jira until they approve. Next, they want to see the Slack conversations about a Jira item next to it. That's OA-23 and then OA-24. [2026-10-31 13:39:00 PDT]\\n\\nPerson 6 <person@example.com>: OA-33 mock v2 is up. An undo of a delete now hides empty fields instead of showing a dash and an arrow. [2026-10-31 13:38:58 PDT]\\n\\nPerson 6 <person@example.com>: Question for the room: should the sidebar show empty groups at all? I have six \\\"New group\\\"s from clicking New thread and then leaving. [2026-10-31 13:38:53 PDT]\\n\\nPerson 7 <person@example.com>: Profiled the slow window with 4,000 items. The grouping recomputes its clusters on every open. Caching them per region version would fix most of it. [2026-10-31 13:38:47 PDT]\\n\\nPerson 7 <person@example.com>: OA-23 sizing: 5 points to read channels and threads, plus 2 for the synthetic fixture and evals. Linking across sources is OA-24, separately. [2026-10-31 13:38:44 PDT]\\n\\nPerson 8 <person@example.com>: Different topic: a customer with about 4,000 issues says the window takes forever to open. That's the third one this month. [2026-10-31 13:38:37 PDT]\\n\\nPerson 6 <person@example.com>: Diff mock for OA-33: new items are cards, edits mark only the changed words, deletes are struck through. Thoughts? [2026-10-31 13:38:30 PDT]\\n\\nPerson 8 <person@example.com>: Heads up: two customers this morning approved a change set that created a story, then saw \\\"Not in the index\\\" where the story should be. Both thought it had failed. [2026-10-31 13:38:22 PDT]\\n\\nPerson 4 <person@example.com>: Morning all. Plan for the week: make the change set diff readable (OA-33) and start reading Slack (OA-23). <@U0PERSON010|Person 7>, can you size OA-23 by Wednesday? [2026-10-31 13:38:17 PDT]\\n\\nPerson 8 <person@example.com>: <@U0PERSON011|Person 8> has joined the channel [2026-10-31 13:38:16 PDT]\\n\\nPerson 6 <person@example.com>: <@U0PERSON009|Person 6> has joined the channel [2026-10-31 13:38:16 PDT]\\n\\nPerson 7 <person@example.com>: <@U0PERSON010|Person 7> has joined the channel [2026-10-31 13:38:16 PDT]\\n\\nPerson 4 <person@example.com>: <@U0PERSON005|Person 4> has joined the channel [2026-10-31 13:38:16 PDT]\",\"pagination_info\":\"There are no more messages available.\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON005"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON005\\nUsername: Person 12\\nDisplay Name: Person 4\\nReal Name: Person 4\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON009"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON009\\nUsername: Person 13\\nDisplay Name: Person 6\\nReal Name: Person 6\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON010"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON010\\nUsername: Person 14\\nDisplay Name: Person 7\\nReal Name: Person 7\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "tool": "slack_read_user_profile",
+        "args": {
+          "user_id": "U0PERSON011"
+        }
+      },
+      "answer": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"result\":\"User ID: U0PERSON011\\nUsername: Person 15\\nDisplay Name: Person 8\\nReal Name: Person 8\\nPronouns: \\nTitle: \\nEmail: person@example.com\\nOrganization Name: \\nPhone: \\nStatus:  \\nTimezone: \\nAdmin: No\\nOwner: No\\nBot: No\\nRestricted: No\\n\"}"
+          }
+        ]
+      }
+    }
+  ]
+}
