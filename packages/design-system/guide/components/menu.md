@@ -3,7 +3,7 @@ title: Context menu
 status: stable
 group: Overlays
 order: 51
-classes: context-menu, context-menu-item, swipe, swipe-actions, swipe-action, swipe-row
+classes: context-menu, context-menu-item, member-menu, swipe, swipe-actions, swipe-action, swipe-row
 summary: The actions on a thread or workstream row, opened by right-click, the Menu key or Shift+F10, with a swipe to show the same actions on touch and trackpads.
 ---
 
@@ -17,10 +17,14 @@ It's a `popover="auto"` with `role="menu"`, in the top layer, so "neither the si
 
 Its touch twin is the **swipe** (`Swipeable` in `packages/web/src/swipe.tsx`): swipe a row left, on a touch screen or with two fingers on a trackpad, and the same actions show behind it as filled buttons. "The same actions are in the row's context menu, which is how a keyboard reaches them."
 
-Two menus exist, and both are about ending something (decision 0028):
+Two menus are about ending something (decision 0028), and two about moving an item ([Drag to move](/patterns/drag-to-move)):
 
 - **ThreadMenu**, "Actions for {title}": Mark done (left out once the thread is done), and Delete… (`ThreadMenu` in `packages/web/src/close-thread.tsx`).
 - **WorkstreamMenu**, "Actions for {name}": Mark done or Reopen, and Delete… (`WorkstreamMenu` in `packages/web/src/end-workstream.tsx`).
+- **An item's row on a workstream's page**, "Move {key}": Move to “{name}” for each other open workstream, then Move to a new workstream (`movingOf` in `packages/web/src/workstream-page.tsx`). Its wrapper is `.member-menu`, `display: contents`, so the row's cells stay the row's grid.
+- **The drop menu**, opened where an item dragged onto the sidebar's Workstreams heading was let go: Create new workstream, and Cancel (`Workstreams` in `packages/web/src/sidebar.tsx`).
+
+The last opens with no right-click, so it is the menu alone: `Menu` in `packages/web/src/menu.tsx`, open at a point while `at` isn't null. `ContextMenu` is that same `Menu`, opened by a right-click or the keyboard.
 
 ## When to use it
 

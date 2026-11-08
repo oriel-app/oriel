@@ -5,7 +5,7 @@
 // gives focus back, and choosing an item closes it, then does what the item
 // does. It is a popover, in the top layer, so neither the sidebar's scroll
 // nor the drawer's slide clips or moves it.
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, Ref } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
 export type MenuItem = { label: string; onSelect(): void; danger?: boolean };
@@ -20,11 +20,11 @@ export function ContextMenu(props: {
   class?: string;
   children: ComponentChildren;
 }) {
-  const menu = useRef<HTMLDivElement>(null);
   // Where it opens, in viewport pixels, while it's open.
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   // What had focus when it opened, which gets it back on a keyboard close.
   const opener = useRef<HTMLElement | null>(null);
+  const menu = useRef<HTMLDivElement>(null);
 
   const open = (x: number, y: number, from: EventTarget | null) => {
     if (props.items.length === 0) return;
@@ -33,36 +33,6 @@ export function ContextMenu(props: {
         ? (from.closest<HTMLElement>("a, button, [tabindex]") ?? from)
         : null;
     setAt({ x, y });
-  };
-  const close = (refocus: boolean) => {
-    if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
-    setAt(null);
-    if (refocus && opener.current?.isConnected) opener.current.focus();
-  };
-
-  // Shown, kept on screen, and focused before paint.
-  useLayoutEffect(() => {
-    const element = menu.current;
-    if (!element || at === null) return;
-    if (!element.matches(":popover-open")) element.showPopover();
-    const { width, height } = element.getBoundingClientRect();
-    element.style.left = `${Math.max(edge, Math.min(at.x, innerWidth - width - edge))}px`;
-    element.style.top = `${Math.max(edge, Math.min(at.y, innerHeight - height - edge))}px`;
-    element.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-  }, [at]);
-
-  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
-  const step = (by: number | "first" | "last") => {
-    const all = items();
-    const now = all.indexOf(document.activeElement as HTMLElement);
-    // With none focused, down goes to the first and up to the last.
-    const next =
-      by === "first" || (by === 1 && now === -1)
-        ? 0
-        : by === "last" || now === -1
-          ? all.length - 1
-          : (now + by + all.length) % all.length;
-    all[next]?.focus();
   };
 
   return (
@@ -89,60 +59,122 @@ export function ContextMenu(props: {
       }}
     >
       {props.children}
-      <div
-        ref={menu}
-        popover="auto"
-        role="menu"
-        aria-label={props.label}
-        class="context-menu"
-        // Closed by a click outside it, too.
-        onToggle={(event) => {
-          if (event.newState === "closed") setAt(null);
+      <Menu
+        menuRef={menu}
+        label={props.label}
+        items={props.items}
+        at={at}
+        onClose={(refocus) => {
+          setAt(null);
+          if (refocus && opener.current?.isConnected) opener.current.focus();
         }}
-        onKeyDown={(event) => {
-          switch (event.key) {
-            case "ArrowDown":
-              step(1);
-              break;
-            case "ArrowUp":
-              step(-1);
-              break;
-            case "Home":
-              step("first");
-              break;
-            case "End":
-              step("last");
-              break;
-            // Closing the menu, and nothing else, such as the drawer.
-            case "Escape":
-            case "Tab":
+      />
+    </div>
+  );
+}
+
+// The menu itself, open at `at` while that isn't null, as a context menu
+// opens it or as a drop opens one where the pointer let go. `onClose`: it
+// closed, by a choice, Escape or Tab (`refocus`), or a click outside it.
+export function Menu(props: {
+  label: string;
+  items: readonly MenuItem[];
+  at: { x: number; y: number } | null;
+  onClose(refocus: boolean): void;
+  menuRef?: Ref<HTMLDivElement>;
+}) {
+  const own = useRef<HTMLDivElement>(null);
+  const { at } = props;
+  const setRef = (element: HTMLDivElement | null) => {
+    own.current = element;
+    const { menuRef } = props;
+    if (typeof menuRef === "function") menuRef(element);
+    else if (menuRef) menuRef.current = element;
+  };
+  const close = (refocus: boolean) => {
+    if (own.current?.matches(":popover-open")) own.current.hidePopover();
+    props.onClose(refocus);
+  };
+
+  // Shown, kept on screen, and focused before paint.
+  useLayoutEffect(() => {
+    const element = own.current;
+    if (!element || at === null) return;
+    if (!element.matches(":popover-open")) element.showPopover();
+    const { width, height } = element.getBoundingClientRect();
+    element.style.left = `${Math.max(edge, Math.min(at.x, innerWidth - width - edge))}px`;
+    element.style.top = `${Math.max(edge, Math.min(at.y, innerHeight - height - edge))}px`;
+    element.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+  }, [at]);
+
+  const items = () => [...(own.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+  const step = (by: number | "first" | "last") => {
+    const all = items();
+    const now = all.indexOf(document.activeElement as HTMLElement);
+    // With none focused, down goes to the first and up to the last.
+    const next =
+      by === "first" || (by === 1 && now === -1)
+        ? 0
+        : by === "last" || now === -1
+          ? all.length - 1
+          : (now + by + all.length) % all.length;
+    all[next]?.focus();
+  };
+
+  return (
+    <div
+      ref={setRef}
+      popover="auto"
+      role="menu"
+      aria-label={props.label}
+      class="context-menu"
+      // Closed by a click outside it, too.
+      onToggle={(event) => {
+        if (event.newState === "closed" && at !== null) props.onClose(false);
+      }}
+      onKeyDown={(event) => {
+        switch (event.key) {
+          case "ArrowDown":
+            step(1);
+            break;
+          case "ArrowUp":
+            step(-1);
+            break;
+          case "Home":
+            step("first");
+            break;
+          case "End":
+            step("last");
+            break;
+          // Closing the menu, and nothing else, such as the drawer.
+          case "Escape":
+          case "Tab":
+            close(true);
+            break;
+          default:
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      {at !== null &&
+        props.items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            class="context-menu-item"
+            data-danger={item.danger || undefined}
+            onClick={() => {
               close(true);
-              break;
-            default:
-              return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        {at !== null &&
-          props.items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              class="context-menu-item"
-              data-danger={item.danger || undefined}
-              onClick={() => {
-                close(true);
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-      </div>
+              item.onSelect();
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
     </div>
   );
 }

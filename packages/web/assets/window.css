@@ -4599,6 +4599,31 @@ a.replies:hover {
   font-weight: var(--weight-strong);
 }
 
+/* Moving an item between workstreams (moving.ts): a workstream's item row
+   and a Browse row drag; a workstream in the sidebar, and the Workstreams
+   heading, take the drop, drawn as the veil is while one is over them. The
+   row's menu lays its cells out as the row does. */
+.member[data-movable],
+.item[draggable="true"] {
+  cursor: grab;
+}
+
+.member-menu {
+  display: contents;
+}
+
+:is(.nav-workstream-row, .fold-head)[data-drop-over] {
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 var(--border-thick) var(--accent);
+  color: var(--accent);
+}
+
+:is(.nav-workstream-row, .fold-head)[data-drop-over] :is(.nav-link, .fold-toggle) {
+  background: none;
+  color: inherit;
+}
+
 /* A context menu, such as a thread row's: in the top layer, where it opens. */
 .context-menu {
   inset: auto;

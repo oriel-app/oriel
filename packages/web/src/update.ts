@@ -417,7 +417,7 @@ export function pickedName(model: Model): string {
   );
   if (epic && selected.length > 1) return cut(epic.label, maxNameChars);
   const title = first?.title ?? null;
-  if (title !== null && selected.length === 1) return cut(title, maxNameChars);
+  if (title !== null && selected.length === 1) return oneItemName(title);
   const more = ` and ${selected.length - 1} more`;
   if (title !== null) return `${cut(title, maxNameChars - more.length)}${more}`;
   return selected.length === 1 ? "1 item" : `${selected.length} items`;
@@ -440,6 +440,9 @@ function pickedFrom(window: WindowView | null, id: string): Picked | null {
 
 // The server's cap on a workstream's name, in characters.
 const maxNameChars = 120;
+
+// A new workstream's name for one item, as picking it alone names one.
+export const oneItemName = (title: string): string => cut(title, maxNameChars);
 
 // At most `max` characters, the last an ellipsis when the text was cut.
 const cut = (text: string, max: number): string => {

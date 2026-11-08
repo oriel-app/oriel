@@ -25,6 +25,12 @@ export type Tag =
   // undone (decision 0028).
   | { kind: "ended"; id: string; how: Ending["kind"] | "undone"; name: string }
   | { kind: "threadOpened"; workstreamId: string }
+  // An item moved by a drag or its row's menu (moving.ts): it joined, or a
+  // new workstream was made of it; it left where it came from; or one of
+  // those undone.
+  | { kind: "moveJoined" }
+  | { kind: "moveLeft" }
+  | { kind: "moveUndone"; action: string }
   | { kind: "threadStarted"; draft: number }
   // `statuses`: how many statuses the thread's stream had sent when it was
   // asked for, when any had.

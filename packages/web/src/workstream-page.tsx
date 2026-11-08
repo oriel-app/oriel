@@ -22,7 +22,10 @@ import {
   Stamp,
 } from "./parts.tsx";
 import type { UndoNote, Undos } from "./undos.ts";
+import type { MenuItem } from "./menu.tsx";
+import type { Carried, MovingMsg } from "./moving.ts";
 import type {
+  MemberView,
   WorkstreamChangeView,
   WorkstreamSummary,
   WorkstreamView,
@@ -36,6 +39,8 @@ import type {
 // the one stack.
 export function WorkstreamPage(props: {
   model: WorkstreamModel;
+  // Every workstream, for the open ones an item can move to.
+  workstreams: WorkstreamSummary[] | null;
   threads: ThreadSummaryView[];
   ending: EndingModel;
   added: Undos;
@@ -199,6 +204,7 @@ export function WorkstreamPage(props: {
                     key={member.ref.id}
                     member={member}
                     onRemove={() => remove(member.ref.id)}
+                    moving={movingOf(member, workstream, props.workstreams, dispatch)}
                   />
                 ))}
               </ul>
@@ -212,6 +218,38 @@ export function WorkstreamPage(props: {
       </main>
     </DropZone>
   );
+}
+
+// A row's move: the item as it's carried, from this workstream, and its
+// menu, which moves it as a drag onto the sidebar does: to each other open
+// workstream, or to a new one.
+function movingOf(
+  member: MemberView,
+  workstream: WorkstreamSummary,
+  workstreams: WorkstreamSummary[] | null,
+  dispatch: Dispatch,
+): { item: Carried; menu: MenuItem[] } {
+  const { ref, row } = member;
+  const item: Carried = {
+    id: ref.id,
+    key: ref.key,
+    title: row?.title ?? ref.title ?? null,
+    from: { id: workstream.id, name: workstream.name },
+  };
+  const move = (msg: MovingMsg) => dispatch({ type: "moving", msg });
+  const others = (workstreams ?? []).filter(
+    (other) => other.done === null && other.id !== workstream.id,
+  );
+  return {
+    item,
+    menu: [
+      ...others.map((other) => ({
+        label: `Move to “${other.name}”`,
+        onSelect: () => move({ type: "dropped", item, to: { id: other.id, name: other.name } }),
+      })),
+      { label: "Move to a new workstream", onSelect: () => move({ type: "newClicked", item }) },
+    ],
+  };
 }
 
 // Who marked it done, when it wasn't the user.

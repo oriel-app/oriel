@@ -9,6 +9,9 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import { WorkstreamMenu } from "./end-workstream.tsx";
+import { useItemDrop } from "./drag-item.ts";
+import { Menu } from "./menu.tsx";
+import { type Carried, type MovingModel, type MovingMsg, movesTo } from "./moving.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { changeSetStateNames, stateNames } from "./chip.ts";
 import {
@@ -102,7 +105,7 @@ export function Sidebar(props: {
       {!searching(model.search) && (
         <>
           <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
-          <Workstreams where={where} dispatch={dispatch} />
+          <Workstreams where={where} moving={model.moving} dispatch={dispatch} />
           <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
         </>
       )}
@@ -310,8 +313,24 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
 export const needsYouId = "needs-you";
 
 // The user's workstreams, under a heading that folds them, which this
-// browser remembers; open until the user folds them.
-function Workstreams({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
+// browser remembers; open until the user folds them. An item dragged onto
+// one moves there; onto the heading, a menu asks whether to make a new
+// workstream of it (moving.ts).
+function Workstreams({
+  where,
+  moving,
+  dispatch,
+}: {
+  where: Nav;
+  moving: MovingModel;
+  dispatch: Dispatch;
+}) {
+  const move = (msg: MovingMsg) => dispatch({ type: "moving", msg });
+  const heading = useItemDrop(
+    () => true,
+    (item, at) => move({ type: "droppedOnHeading", item, at }),
+  );
+  const { asking } = moving;
   const [shown, toggleShown] = useFold("oriel.sidebar.workstreams", true);
   // Workstreams the user opened or closed by hand. Any other is open while it's
   // the current one, and arriving at a workstream opens it whatever was set.
@@ -334,9 +353,31 @@ function Workstreams({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
     );
   return (
     <nav class="sidebar-workstreams" aria-label="Workstreams">
-      <FoldHead open={shown} onToggle={toggleShown} controls="nav-workstreams">
+      <FoldHead
+        open={shown}
+        onToggle={toggleShown}
+        controls="nav-workstreams"
+        drop={heading.props}
+        over={heading.over}
+      >
         Workstreams
       </FoldHead>
+      <Menu
+        label={asking ? `Move ${asking.item.key}` : "Move"}
+        items={
+          asking
+            ? [
+                {
+                  label: "Create new workstream",
+                  onSelect: () => move({ type: "newClicked", item: asking.item }),
+                },
+                { label: "Cancel", onSelect: () => move({ type: "askCancelled" }) },
+              ]
+            : []
+        }
+        at={asking?.at ?? null}
+        onClose={() => move({ type: "askCancelled" })}
+      />
       {shown && where.workstreams !== null && where.workstreams.length === 0 && (
         <p class="rail-empty">Pick items in the window, or make a workstream from a cluster.</p>
       )}
@@ -349,6 +390,13 @@ function Workstreams({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
               open={isOpen(entry)}
               thread={where.thread}
               onToggle={() => toggle(entry)}
+              onDrop={(item) =>
+                move({
+                  type: "dropped",
+                  item,
+                  to: { id: entry.workstream.id, name: entry.workstream.name },
+                })
+              }
               dispatch={dispatch}
             />
           ))}
@@ -363,16 +411,22 @@ function WorkstreamEntry(props: {
   open: boolean;
   thread: string | null;
   onToggle(): void;
+  onDrop(item: Carried): void;
   dispatch: Dispatch;
 }) {
   const { entry, dispatch } = props;
   const { workstream, threads } = entry;
+  // Not where the item came from: dropped there, it stays.
+  const target = useItemDrop(
+    (item) => movesTo(item, workstream.id),
+    (item) => props.onDrop(item),
+  );
   const open = props.open && threads.length > 0;
   const busy = threads.filter((thread) => thread.waitingOn === "agent").length;
   const listId = `nav-threads-${workstream.id}`;
   return (
     <li class="nav-workstream" data-current={entry.current || undefined}>
-      <div class="nav-workstream-row">
+      <div class="nav-workstream-row" data-drop-over={target.over || undefined} {...target.props}>
         {threads.length > 0 ? (
           <button
             type="button"
@@ -527,9 +581,12 @@ function FoldHead(props: {
   children: ComponentChildren;
   // Beside the heading, at its end: what it says folded, or its actions.
   after?: ComponentChildren;
+  // What a drop on it does, and whether one it takes is over it now.
+  drop?: ReturnType<typeof useItemDrop>["props"];
+  over?: boolean;
 }) {
   return (
-    <div class="fold-head">
+    <div class="fold-head" data-drop-over={props.over || undefined} {...props.drop}>
       <h2 class="rail-title">
         <button
           type="button"
