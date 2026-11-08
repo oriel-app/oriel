@@ -107,7 +107,9 @@ async function round(
   step: URL,
 ): Promise<{ code: number; results: CaseResult[]; usd: number }> {
   mkdirSync(step, { recursive: true });
-  const code = await main(command, { ...repoIo, ...io, rounds: step });
+  // Rounds log to stderr: a grade's detail can quote the model, which reads
+  // planted injections, so stdout carries only the summary the PR pastes.
+  const code = await main(command, { ...repoIo, log: console.error, ...io, rounds: step });
   const [id] = readdirSync(step);
   if (id === undefined) return { code, results: [], usd: 0 };
   const dir = new URL(`${id}/`, step);
