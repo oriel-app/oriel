@@ -3393,6 +3393,9 @@ const scenes: Scene[] = [
       dismissing.site.outage("offline");
       if (await dismiss.isVisible()) await dismiss.click();
       await ended.waitFor();
+      // What may have landed showed once, beside Dismiss, and went with it.
+      const left = await page.locator(".may-have-landed, .change-set-problem, .line-error").count();
+      if (left) throw new Error(`Dismissed, it still shows ${left} warnings or errors`);
     },
   },
   {

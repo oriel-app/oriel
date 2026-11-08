@@ -650,7 +650,20 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         const stableId = wanted.get(item)?.stableId ?? null;
         const now = live.get(item);
         if (stableId === null || now === undefined || now === "gone") return;
-        if (now === "unread") return void checked.set(m.id, later);
+        // After an earlier change of the same kind to the item, its state
+        // then isn't its state now.
+        const earlier = set.mutations.some(
+          (e) => e.seq < m.seq && e.status === "pending" && e.op === m.op && itemOf(e) === item,
+        );
+        if (now === "unread" || earlier) {
+          checked.set(
+            m.id,
+            earlier
+              ? { later: `${name} checks this when it's applied, after the change above.` }
+              : later,
+          );
+          return;
+        }
         const why = await writer.check(m.op, item, stableId, m.args).catch(() => undefined);
         if (why === undefined) checked.set(m.id, later);
         else if (why !== null) checked.set(m.id, { refused: why });
