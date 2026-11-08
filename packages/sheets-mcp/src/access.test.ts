@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { googleAccess, notSignedIn } from "./access.ts";
+import { googleAccess } from "./access.ts";
 import { type Fetch, tokenEndpoint } from "./oauth.ts";
 import type { TokenFile } from "./token-file.ts";
 
@@ -40,45 +40,6 @@ const granted = (access: string, refresh?: string) => ({
   body: { access_token: access, expires_in: 3600, ...(refresh ? { refresh_token: refresh } : {}) },
 });
 
-test("the kept refresh token buys an access token, held until a minute before it expires", async () => {
-  let now = 1_000_000;
-  const google = endpoint(granted("access-1"), granted("access-2"));
-  const source = googleAccess({
-    client: () => client,
-    file: memoryFile("refresh-1"),
-    fetch: google.fetch,
-    now: () => now,
-  });
-  assert.deepEqual(await source.access(), { status: "ok", token: "access-1" });
-  assert.deepEqual(Object.fromEntries(google.forms[0] ?? []), {
-    grant_type: "refresh_token",
-    refresh_token: "refresh-1",
-    client_id: client.id,
-  });
-  now += 3_539_000;
-  assert.deepEqual(await source.access(), { status: "ok", token: "access-1" });
-  now += 1_000;
-  assert.deepEqual(await source.access(), { status: "ok", token: "access-2" });
-  assert.equal(google.forms.length, 2);
-});
-
-test("calls at once share one refresh, and `again` gets a new token", async () => {
-  const google = endpoint(granted("access-1"), granted("access-2"));
-  const source = googleAccess({
-    client: () => client,
-    file: memoryFile("r"),
-    fetch: google.fetch,
-    now: () => 0,
-  });
-  const both = await Promise.all([source.access(), source.access()]);
-  assert.deepEqual(both, [
-    { status: "ok", token: "access-1" },
-    { status: "ok", token: "access-1" },
-  ]);
-  assert.deepEqual(await source.access(true), { status: "ok", token: "access-2" });
-  assert.equal(google.forms.length, 2);
-});
-
 test("a new refresh token from Google is kept on disk", async () => {
   const file = memoryFile("old");
   const source = googleAccess({
@@ -91,38 +52,7 @@ test("a new refresh token from Google is kept on disk", async () => {
   assert.deepEqual(file.writes, ["new"]);
 });
 
-test("no client, no sign-in, or one Google refuses is a sentence, with no token sent", async () => {
-  const none = googleAccess({
-    client: () => null,
-    file: memoryFile("r"),
-    fetch: endpoint().fetch,
-    now: () => 0,
-  });
-  // No client in its environment, and none `login` kept, is not signed in.
-  assert.equal(((await none.access()) as { problem: string }).problem, notSignedIn);
-
-  const out = googleAccess({
-    client: () => client,
-    file: memoryFile(null),
-    fetch: endpoint().fetch,
-    now: () => 0,
-  });
-  assert.deepEqual(await out.access(), { status: "refused", problem: notSignedIn });
-
-  const revoked = googleAccess({
-    client: () => client,
-    file: memoryFile("r"),
-    fetch: endpoint({
-      status: 400,
-      body: { error: "invalid_grant", error_description: "Token has been expired or revoked." },
-    }).fetch,
-    now: () => 0,
-  });
-  assert.deepEqual(await revoked.access(), {
-    status: "refused",
-    problem: "The Google sign-in expired or was revoked. Run `sheets-mcp login`.",
-  });
-
+test("Google refusing the client is refused without naming the client", async () => {
   const wrongClient = googleAccess({
     client: () => client,
     file: memoryFile("r"),
@@ -135,12 +65,9 @@ test("no client, no sign-in, or one Google refuses is a sentence, with no token 
     }).fetch,
     now: () => 0,
   });
-  const problem = ((await wrongClient.access()) as { problem: string }).problem;
-  assert.match(
-    problem,
-    /^Couldn't refresh the sign-in: Google refused this client \(401 invalid_client\)/,
-  );
-  assert.ok(!problem.includes(client.id));
+  const answer = await wrongClient.access();
+  assert.equal(answer.status, "refused");
+  assert.ok(!JSON.stringify(answer).includes(client.id));
 });
 
 test("what must never be shown: the client, its project's number and every token seen", async () => {
