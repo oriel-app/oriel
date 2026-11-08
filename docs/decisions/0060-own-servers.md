@@ -11,7 +11,7 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
 ### Words (SPEC §2)
 
 - An **own server** is an MCP server in the user's own Claude Code or Codex that Oriel doesn't know, which a person has turned on for Oriel's agent. Its tools are **reads** or **writes**, as the person's settings for it say.
-- A **source server** (0059) is still a server Oriel knows, which Oriel reads a source through. It keeps all of 0059: items, Browse, pickers, its connector's parser, its op specs. It is never an own server. Oriel reserves it by what 0059's lookup matches on, its address, command or reported name, even when it lacks a tool its connector needs. Then it's a problem naming the missing tool, never an own server. The agent reaches its source only through its connector's bindings and mutations, which keep the region, the person's picks and the connector's checks, such as Sheets' formula guard.
+- A **source server** (0059) is still a server Oriel knows, which Oriel reads a source through. It keeps all of 0059: items, Browse, pickers, its connector's parser, its op specs. It is never an own server. Oriel reserves it by what 0059's lookup matches on, its address, command or reported name, even when it lacks a tool its connector needs. Then it's a problem naming the missing tool, never an own server. Atlassian's server is the case in point: at its documented address it reports `atlassian-mcp-server` but lists only some tools flat (found by the hub through the maintainer's Claude Code, 2026-11-08). The agent reaches its source only through its connector's bindings and mutations, which keep the region, the person's picks and the connector's checks, such as Sheets' formula guard.
 - A **call** is a mutation that sends one write tool of an own server, with arguments the agent chose. A person approves it like any mutation.
 
 ### Oriel makes every call itself, with no model
@@ -59,6 +59,10 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
   - **Writes (each one asks you first).** Every other tool, including one with no marks at all, which most tools have.
   - A person can move any tool between the lists, and can turn single tools off.
   - A tool that shows up later, or whose marks change, starts as a write until the person looks.
+- **Dispatcher tools.** Some servers put most of their tools behind a few that name another tool in their arguments. Atlassian's `executeRead`, `executeWrite` and `executeDestructive`, beside `discover`, which takes a `query`, are an example.
+  - On an own server, a dispatcher is classed by its own name and marks, like any tool. Granting a read dispatcher grants every read behind it, now and later, and Settings says so beside it.
+  - A caller's list names a dispatched call as the pair: dispatcher and inner tool. The guard checks both, so replay's list for a Jira edit allows `executeWrite` only with that one inner tool.
+  - What `discover` returns, including the schemas of the tools behind it, is a read's answer. It reaches the agent only in a run's result, never in a prompt or a `.d.ts`.
 - **A server's marks are its word, and only start a default.** A server that marks a write read-only by mistake would let the agent send that write without a person's approval. For a server the person installed, that's the residual risk. The person accepts it by turning the server on, and every tool the agent will call without asking is listed in front of them first. A mark can't come from synced content, so an attacker who only edits content can't move a tool.
 
 ### How the agent reaches them
@@ -85,6 +89,11 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
 - **A read never writes.** A read's answer can lead the agent to propose a write, which waits for a person like any other. Writes are on no list but replay's.
 
 ### Untrusted reads
+
+- **Servers answer for models, not programs.** Slack's server answers in Markdown inside `{"result": "## My Channels…\n- **ID:** C0…"}`, with no `structuredContent` (the hub, 2026-11-08). So:
+  - **On an own server,** Oriel promises nothing about an answer's shape and parses nothing in it. The text goes to the agent, a model, which is who it was written for. This is why an own server's records aren't items.
+  - **On a source server,** the connector's parser reads whatever the server gives, Markdown included. It's checked against fixtures recorded from the real server, and fails closed when the vendor rewords (0059's `ServerUnreadable`). Oriel promises a known server's items only as far as its parser and fixtures go.
+  - A call with no model takes the model out of making the call, not out of reading the answer. The Haiku press never read answers either: Oriel already parsed them from the stream. So the shape doesn't change the choice of how to call.
 
 - **An own server's answer is source content,** attacker-controlled like a Jira description:
   - It reaches the model only inside a run's result.
@@ -215,4 +224,4 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
   3. `servers()` and `call()` for reads: caps, deadlines, the run record, the thread's list of calls.
   4. Call mutations: capture, the diff and the review link, apply, no Revert.
   5. The two evals above.
-- **Revisit** when Claude Code reports tools' schemas (issue #380), when `mcp_call` gets a public SDK method or changes, and when a person asks for a drafted mapping of an own server's records to items (0051).
+- **Revisit** when Claude Code reports tools' schemas (issue #380), when a known server starts giving `structuredContent` (its parser should read that instead), when `mcp_call` gets a public SDK method or changes, and when a person asks for a drafted mapping of an own server's records to items (0051).
