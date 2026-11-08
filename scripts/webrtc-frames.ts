@@ -369,45 +369,48 @@ function probe(win: any, c: any, say: (o: any) => void) {
 }
 
 function main(c: any) {
+  // The browser's globals, through globalThis: the scripts' tsconfig has no
+  // DOM library, and this source runs only in the frame.
+  const w: any = globalThis;
+  const own = () => (w.__reports = w.__reports || []);
   const say = (o: any) => {
     o.mark = c.mark;
     o.where = c.nested ? "child-srcdoc" : "frame";
-    if (top === self) ((self as any).__reports = (self as any).__reports || []).push(o);
+    if (w.top === w.self) own().push(o);
     else
       try {
-        top!.postMessage({ probe: o }, "*");
+        w.top.postMessage({ probe: o }, "*");
       } catch {}
   };
   // A top-level app (the partition kind) collects its nested frame's reports.
-  if (!c.nested && top === self)
-    addEventListener("message", (e) => {
-      if (e.data && e.data.probe)
-        ((self as any).__reports = (self as any).__reports || []).push(e.data.probe);
+  if (!c.nested && w.top === w.self)
+    w.addEventListener("message", (e: any) => {
+      if (e.data && e.data.probe) own().push(e.data.probe);
     });
   if (!c.nested) {
     fetch(c.own).then(
       (r) => r.text().then((t) => say({ ch: "own-fetch", ok: t === "own" })),
       (e) => say({ ch: "own-fetch", err: String(e) }),
     );
-    if (top !== self) {
-      addEventListener("message", (e) => {
+    if (w.top !== w.self) {
+      w.addEventListener("message", (e: any) => {
         if (e.data && e.data.bridged === c.mark)
           say({ ch: "bridge", ok: e.data.body === "bridged" });
       });
-      top!.postMessage({ bridge: c.mark }, "*");
+      w.top.postMessage({ bridge: c.mark }, "*");
     }
   }
-  if (c.variant === "direct" || c.nested) probe(window, c, say);
+  if (c.variant === "direct" || c.nested) probe(w, c, say);
   else if (c.variant === "child-blank") {
-    const f = document.createElement("iframe");
-    document.body.appendChild(f);
+    const f = w.document.createElement("iframe");
+    w.document.body.appendChild(f);
     probe(f.contentWindow, c, say);
   } else if (c.variant === "child-srcdoc") {
-    const g = document.createElement("iframe");
+    const g = w.document.createElement("iframe");
     const child = JSON.stringify(Object.assign({}, c, { nested: true }));
     const tag = "scr" + "ipt";
     g.srcdoc = "<" + tag + ">var C=" + child + ";" + c.src + ";main(C)</" + tag + ">";
-    document.body.appendChild(g);
+    w.document.body.appendChild(g);
   }
 }
 
@@ -908,7 +911,7 @@ async function measure(
     `${config.padEnd(24)} ${kind.padEnd(10)} ${variant.padEnd(12)} api=${row.api.padEnd(4)} ${channels.map((c) => `${c}=${cells[c]}`).join(" ")} own=${row.own} bridge=${row.bridge}${row.errors.length ? ` errors=${JSON.stringify(row.errors)}` : ""}${row.permissions.length ? ` asked=${row.permissions.join(",")}` : ""}`,
   );
 }
-let featuresSeen: string[] | null = null;
+let featuresSeen = null as string[] | null;
 
 const out = realpathSync(mkdtempSync(join(tmpdir(), "oriel-webrtc-frames-")));
 const only = values.only ? new RegExp(values.only) : null;
