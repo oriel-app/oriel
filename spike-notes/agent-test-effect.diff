@@ -1,0 +1,229 @@
+diff --git a/packages/agent/src/tool-host/contract.ts b/packages/agent/src/tool-host/contract.ts
+index 56369475..e6dcf2c3 100644
+--- a/packages/agent/src/tool-host/contract.ts
++++ b/packages/agent/src/tool-host/contract.ts
+@@ -28,6 +28,8 @@ export type ToolHostOptions = {
+   startMs: number;
+   callMs: number;
+   graceMs: number;
++  // At most this many calls out at once; the rest queue in order. Default 1.
++  concurrency?: number;
+ };
+ 
+ export type ToolHost = {
+@@ -142,5 +144,9 @@ export function capped(response: Message): ToolAnswer {
+   return { content, ...(result.isError === true ? { isError: true } : {}) };
+ }
+ 
++// The CLI's refusal of a call to a server the person hasn't signed in to.
++export const needsAuth = (error: string) => error.startsWith("needs-auth");
++export const signIn = (server: string) => `${server} needs signing in, in your own Claude Code`;
++
+ export const messageOf = (error: unknown) =>
+   error instanceof Error ? error.message : String(error);
+diff --git a/packages/agent/src/tool-host/effect.ts b/packages/agent/src/tool-host/effect.ts
+index 613a68d7..0a3d4fc2 100644
+--- a/packages/agent/src/tool-host/effect.ts
++++ b/packages/agent/src/tool-host/effect.ts
+@@ -1,5 +1,5 @@
+ // SPIKE: decision 0060's tool host in Effect 4: the process and its reader
+-// live in a Scope, calls queue on a one-permit Semaphore, a run ending is a
++// live in a Scope, calls queue on a Semaphore of `concurrency` permits, a run ending is a
+ // fiber's interruption, and a deadline is `timeoutOrElse`. `openToolHost` at
+ // the bottom is the edge: plain callers get the same promises as plain.ts.
+ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+@@ -18,6 +18,8 @@ import {
+   HostRefused,
+   isObject,
+   type Message,
++  needsAuth,
++  signIn,
+   onList,
+   type OpenToolHost,
+   type ToolCall,
+@@ -72,9 +74,19 @@ export const makeToolHost = (options: ToolHostOptions): Effect.Effect<ToolHostE,
+   Effect.gen(function* () {
+     const scope = yield* Scope.make();
+     let closed = false;
++    // One close, which every caller waits for: a second `close()` while a
++    // failed call's close runs in the background still returns only once
++    // the process is dead and its folder gone.
++    let closing = false;
++    const stopped = Deferred.makeUnsafe<void>();
+     const close = Effect.suspend(() => {
+       closed = true;
+-      return Scope.close(scope, Exit.void);
++      if (closing) return Deferred.await(stopped);
++      closing = true;
++      return Scope.close(scope, Exit.void).pipe(
++        Effect.ensuring(Deferred.succeed(stopped, undefined)),
++        Effect.uninterruptible,
++      );
+     });
+     return yield* Effect.gen(function* () {
+       const process = yield* start(options);
+@@ -155,7 +167,9 @@ export const makeToolHost = (options: ToolHostOptions): Effect.Effect<ToolHostE,
+       const closeSoon = Effect.sync(() => {
+         closed = true;
+       }).pipe(Effect.andThen(Effect.forkDetach(close)), Effect.asVoid);
+-      const lock = yield* Semaphore.make(1);
++      // FIFO: a freed permit goes to the earliest waiter, so calls queue in
++      // order.
++      const lock = yield* Semaphore.make(Math.max(1, Math.floor(options.concurrency ?? 1)));
+       const unsent = (why: string) => Effect.fail(new CallFailed(why, false));
+       const call = (call: ToolCall, onSent?: () => void) =>
+         !onList(options, call)
+@@ -172,12 +186,20 @@ export const makeToolHost = (options: ToolHostOptions): Effect.Effect<ToolHostE,
+                         new CallFailed(`${call.tool} took longer than ${options.callMs} ms`, true),
+                       ),
+                   }),
++                  // The CLI refused it before it reached the server: unsent,
++                  // and the host still closes below.
+                   Effect.mapError((error) =>
+-                    error instanceof CallFailed ? error : new CallFailed(error.message, true),
++                    error instanceof CallFailed
++                      ? error
++                      : needsAuth(error.message)
++                        ? new CallFailed(signIn(call.server), false)
++                        : new CallFailed(error.message, true),
+                   ),
+                   Effect.map(capped),
+                   // A call in flight can only be stopped by ending its
+-                  // process.
++                  // process. `closed` is set before this call's permit goes
++                  // back, so no queued call is sent after a failure; other
++                  // calls out fail as sent when the process ends.
+                   Effect.onExit((exit) => (Exit.isFailure(exit) ? closeSoon : Effect.void)),
+                 );
+               }),
+diff --git a/packages/agent/src/tool-host/tool-host.test.ts b/packages/agent/src/tool-host/tool-host.test.ts
+index b2fd3811..e639ea9b 100644
+--- a/packages/agent/src/tool-host/tool-host.test.ts
++++ b/packages/agent/src/tool-host/tool-host.test.ts
+@@ -23,7 +23,10 @@ function setup(fake: Record<string, unknown> = {}, over: Partial<ToolHostOptions
+     args: [fakeCli],
+     env: { FAKE_CLI: JSON.stringify({ journal, servers: [grant], ...fake }) },
+     grants: [grant],
+-    tools: ["echo", "hang", "crash", "big", "elicits"].map((tool) => ({ server: "teams", tool })),
++    tools: ["echo", "hang", "crash", "big", "elicits", "auth"].map((tool) => ({
++      server: "teams",
++      tool,
++    })),
+     startMs: 5_000,
+     callMs: 5_000,
+     graceMs: 300,
+@@ -193,3 +196,114 @@ for (const [name, open] of [
+       t.done();
+     });
+   });
++
++// Concurrency and sign-in refusals: the Effect version only.
++describe("tool host (effect): concurrency and sign-in", () => {
++  const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
++
++  test("at most `concurrency` calls are out; the rest queue in order and go as slots free", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await effectHost(t.options);
++    const hang = failed(host.call({ server: "teams", tool: "hang", args: {} }));
++    const order: number[] = [];
++    const echoes = [1, 2, 3, 4].map((n) =>
++      host.call({ server: "teams", tool: "echo", args: { n } }).then((answer) => {
++        order.push(n);
++        return answer;
++      }),
++    );
++    const answers = await Promise.all(echoes);
++    assert.deepEqual(order, [1, 2, 3, 4]);
++    assert.deepEqual(
++      answers.map((answer) => answer.content),
++      [1, 2, 3, 4].map((n) => [{ type: "text", text: `{"n":${n}}` }]),
++    );
++    await host.close();
++    const gone = await hang;
++    assert.ok(gone instanceof CallFailed && gone.sent, String(gone));
++    assert.deepEqual(t.calls(), ["call hang", ...Array(4).fill("call echo")]);
++    t.done();
++  });
++
++  test("with every slot out, a queued call isn't sent; its run ending fails it unsent; a call out ending closes the host", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await effectHost(t.options);
++    const first = new AbortController();
++    const third = new AbortController();
++    const out1 = failed(host.call({ server: "teams", tool: "hang", args: {} }, first.signal));
++    const out2 = failed(host.call({ server: "teams", tool: "hang", args: {} }));
++    const queued3 = failed(host.call({ server: "teams", tool: "echo", args: {} }, third.signal));
++    const queued4 = failed(host.call({ server: "teams", tool: "echo", args: {} }));
++    await t.until(2);
++    await settle(50);
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    let at = performance.now();
++    third.abort();
++    const unsent = await queued3;
++    assert.ok(unsent instanceof CallFailed && !unsent.sent, String(unsent));
++    assert.ok(performance.now() - at < 100, "the queued call failed at once");
++    at = performance.now();
++    first.abort();
++    const [a, b, c] = await Promise.all([out1, out2, queued4]);
++    assert.ok(a instanceof CallFailed && a.sent, String(a));
++    assert.ok(b instanceof CallFailed && b.sent, String(b));
++    assert.ok(c instanceof CallFailed && !c.sent, String(c));
++    assert.ok(performance.now() - at < 1_000, "the host closed promptly");
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    await host.close();
++    assert.equal(alive(host.pid), false);
++    t.done();
++  });
++
++  test("a call out past its deadline closes the host: other calls out fail as sent, queued ones unsent", async () => {
++    const t = setup({}, { concurrency: 2, callMs: 150 });
++    const host = await effectHost(t.options);
++    const out1 = failed(host.call({ server: "teams", tool: "hang", args: {} }));
++    const out2 = failed(host.call({ server: "teams", tool: "hang", args: {} }));
++    const queued = failed(host.call({ server: "teams", tool: "echo", args: {} }));
++    const [a, b, c] = await Promise.all([out1, out2, queued]);
++    assert.ok(a instanceof CallFailed && a.sent, String(a));
++    assert.ok(b instanceof CallFailed && b.sent, String(b));
++    assert.ok(c instanceof CallFailed && !c.sent, String(c));
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    await host.close();
++    assert.equal(alive(host.pid), false);
++    t.done();
++  });
++
++  test("a server that needs signing in fails the call unsent, and closes the host", async () => {
++    const t = setup();
++    const host = await effectHost(t.options);
++    const refused = failed(host.call({ server: "teams", tool: "auth", args: {} }));
++    const queued = failed(host.call({ server: "teams", tool: "echo", args: {} }));
++    const error = await refused;
++    assert.ok(error instanceof CallFailed && !error.sent, String(error));
++    assert.equal(error.message, "teams needs signing in, in your own Claude Code");
++    const behind = await queued;
++    assert.ok(behind instanceof CallFailed && !behind.sent, String(behind));
++    const later = await failed(host.call({ server: "teams", tool: "echo", args: {} }));
++    assert.ok(later instanceof CallFailed && !later.sent, String(later));
++    assert.deepEqual(t.calls(), ["call auth"]);
++    await host.close();
++    assert.equal(alive(host.pid), false);
++    assert.equal(existsSync(host.dir), false);
++    t.done();
++  });
++
++  test("a sign-in refusal with other calls out: they fail as sent, nothing queued is sent", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await effectHost(t.options);
++    const out = failed(host.call({ server: "teams", tool: "hang", args: {} }));
++    await t.until(1);
++    const refused = failed(host.call({ server: "teams", tool: "auth", args: {} }));
++    const queued = failed(host.call({ server: "teams", tool: "echo", args: {} }));
++    const [a, b, c] = await Promise.all([out, refused, queued]);
++    assert.ok(a instanceof CallFailed && a.sent, String(a));
++    assert.ok(b instanceof CallFailed && !b.sent, String(b));
++    assert.equal(b.message, "teams needs signing in, in your own Claude Code");
++    assert.ok(c instanceof CallFailed && !c.sent, String(c));
++    assert.deepEqual(t.calls(), ["call hang", "call auth"]);
++    await host.close();
++    t.done();
++  });
++});

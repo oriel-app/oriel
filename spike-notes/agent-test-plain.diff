@@ -1,0 +1,259 @@
+diff --git a/packages/agent/src/tool-host/contract.ts b/packages/agent/src/tool-host/contract.ts
+index 56369475..606129d4 100644
+--- a/packages/agent/src/tool-host/contract.ts
++++ b/packages/agent/src/tool-host/contract.ts
+@@ -28,6 +28,8 @@ export type ToolHostOptions = {
+   startMs: number;
+   callMs: number;
+   graceMs: number;
++  // How many calls may be out at once (default 1); the rest queue in order.
++  concurrency?: number;
+ };
+ 
+ export type ToolHost = {
+diff --git a/packages/agent/src/tool-host/plain.ts b/packages/agent/src/tool-host/plain.ts
+index 8eb1d451..97c17c32 100644
+--- a/packages/agent/src/tool-host/plain.ts
++++ b/packages/agent/src/tool-host/plain.ts
+@@ -42,6 +42,10 @@ function bounded<T>(
+   });
+ }
+ 
++// The CLI answered a request with an error: it refused it, so for an
++// `mcp_call` the CLI says whether anything reached the server.
++class CliRefused extends Error {}
++
+ export const openToolHost: OpenToolHost = async (options, signal) => {
+   const dir = mkdtempSync(join(tmpdir(), "oriel-host-"));
+   const child = spawn(options.command, [...options.args], {
+@@ -83,7 +87,7 @@ export const openToolHost: OpenToolHost = async (options, signal) => {
+     pending.delete(id);
+     if (response.subtype === "success")
+       waiting.resolve(isObject(response.response) ? response.response : {});
+-    else waiting.reject(new Error(String(response.error ?? "Claude Code refused")));
++    else waiting.reject(new CliRefused(String(response.error ?? "Claude Code refused")));
+   });
+   const request = (body: Message): Promise<Message> => {
+     if (ended) return Promise.reject(ended);
+@@ -127,8 +131,11 @@ export const openToolHost: OpenToolHost = async (options, signal) => {
+     throw error instanceof HostRefused ? error : new HostRefused(messageOf(error));
+   }
+ 
+-  // One call at a time. `queue` settles when the call ahead of this one has.
+-  let queue: Promise<unknown> = Promise.resolve();
++  // At most `limit` calls out at once; the rest wait in `waiting`, in order.
++  const asked = Math.floor(options.concurrency ?? 1);
++  const limit = asked >= 1 ? asked : 1;
++  let out = 0;
++  const waiting: (() => void)[] = [];
+   const unsent = (why: string) => new CallFailed(why, false);
+ 
+   const once = async (call: ToolCall, callSignal: AbortSignal | undefined): Promise<ToolAnswer> => {
+@@ -144,12 +151,21 @@ export const openToolHost: OpenToolHost = async (options, signal) => {
+       );
+       return capped(response);
+     } catch (error) {
+-      // A call in flight can only be stopped by ending its process.
++      // A call in flight can only be stopped by ending its process; and a
++      // server that needs signing in will refuse whatever comes after, so
++      // the host closes either way and nothing queued is sent.
+       void close();
++      if (error instanceof CliRefused && error.message.startsWith("needs-auth"))
++        throw unsent(`${call.server} needs signing in, in your own Claude Code`);
+       throw error instanceof CallFailed ? error : new CallFailed(messageOf(error), true);
+     }
+   };
+ 
++  // Sends the calls at the head of the queue while there is room.
++  const pump = () => {
++    while (out < limit && waiting.length) waiting.shift()!();
++  };
++
+   return {
+     pid: child.pid ?? -1,
+     dir,
+@@ -157,23 +173,30 @@ export const openToolHost: OpenToolHost = async (options, signal) => {
+     call(call, callSignal) {
+       if (!onList(options, call))
+         return Promise.reject(unsent(`${call.server} ${call.tool} isn't on this caller's list`));
+-      let started = false;
+-      const turn = queue.then(() => {
+-        started = true;
+-        return once(call, callSignal);
+-      });
+-      queue = turn.catch(() => {});
+-      if (!callSignal) return turn;
+-      // A queued call fails as soon as its run ends, not when the call ahead
+-      // settles; `once` then sees the abort and sends nothing. A call already
+-      // out is failed by `once`'s own bound.
+       return new Promise<ToolAnswer>((resolve, reject) => {
++        // A queued call fails as soon as its run ends, not when a call ahead
++        // settles, and leaves the queue so it is never sent. A call already
++        // out is failed by `once`'s own bound.
+         const onAbort = () => {
+-          if (!started) reject(unsent("the run ended before this call was sent"));
++          const at = waiting.indexOf(start);
++          if (at < 0) return;
++          waiting.splice(at, 1);
++          reject(unsent("the run ended before this call was sent"));
+         };
+-        if (callSignal.aborted) onAbort();
+-        callSignal.addEventListener("abort", onAbort, { once: true });
+-        turn.then(resolve, reject).finally(() => callSignal.removeEventListener("abort", onAbort));
++        function start() {
++          callSignal?.removeEventListener("abort", onAbort);
++          out += 1;
++          once(call, callSignal)
++            .then(resolve, reject)
++            .finally(() => {
++              out -= 1;
++              pump();
++            });
++        }
++        waiting.push(start);
++        if (callSignal?.aborted) return onAbort();
++        callSignal?.addEventListener("abort", onAbort, { once: true });
++        pump();
+       });
+     },
+   };
+diff --git a/packages/agent/src/tool-host/tool-host.test.ts b/packages/agent/src/tool-host/tool-host.test.ts
+index b2fd3811..5f11ce87 100644
+--- a/packages/agent/src/tool-host/tool-host.test.ts
++++ b/packages/agent/src/tool-host/tool-host.test.ts
+@@ -23,7 +23,10 @@ function setup(fake: Record<string, unknown> = {}, over: Partial<ToolHostOptions
+     args: [fakeCli],
+     env: { FAKE_CLI: JSON.stringify({ journal, servers: [grant], ...fake }) },
+     grants: [grant],
+-    tools: ["echo", "hang", "crash", "big", "elicits"].map((tool) => ({ server: "teams", tool })),
++    tools: ["echo", "hang", "crash", "big", "elicits", "auth"].map((tool) => ({
++      server: "teams",
++      tool,
++    })),
+     startMs: 5_000,
+     callMs: 5_000,
+     graceMs: 300,
+@@ -193,3 +196,123 @@ for (const [name, open] of [
+       t.done();
+     });
+   });
++
++// Only the plain host takes `concurrency` and names a server that needs
++// signing in.
++describe("tool host (plain): concurrency and signing in", () => {
++  const echo = (n: number) => ({ server: "teams", tool: "echo", args: { n } });
++  const hang = { server: "teams", tool: "hang", args: {} };
++
++  test("at most `concurrency` calls are out; the rest go in order as room frees", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await plainHost(t.options);
++    const ahead = failed(host.call(hang));
++    const settled: number[] = [];
++    const answers = await Promise.all(
++      [1, 2, 3].map((n) =>
++        host.call(echo(n)).then((answer) => {
++          settled.push(n);
++          return answer.content;
++        }),
++      ),
++    );
++    assert.deepEqual(settled, [1, 2, 3]);
++    assert.deepEqual(
++      answers,
++      [1, 2, 3].map((n) => [{ type: "text", text: `{"n":${n}}` }]),
++    );
++    assert.deepEqual(t.calls(), ["call hang", "call echo", "call echo", "call echo"]);
++    await host.close();
++    const gone = await ahead;
++    assert.ok(gone instanceof CallFailed && gone.sent);
++    t.done();
++  });
++
++  test("a queued call whose run ends fails at once and unsent while the calls out go on", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await plainHost(t.options);
++    const first = failed(host.call(hang));
++    const second = failed(host.call(hang));
++    const run = new AbortController();
++    const queued = host.call(echo(1), run.signal);
++    const behind = failed(host.call(echo(2)));
++    await t.until(2);
++    run.abort();
++    const error = await failed(queued);
++    assert.ok(error instanceof CallFailed && !error.sent, String(error));
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    await host.close();
++    const [a, b, c] = await Promise.all([first, second, behind]);
++    assert.ok(a instanceof CallFailed && a.sent);
++    assert.ok(b instanceof CallFailed && b.sent);
++    assert.ok(c instanceof CallFailed && !c.sent, String(c));
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    t.done();
++  });
++
++  test("a call out whose run ends closes the host: the other out fail as sent, the queued as unsent", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await plainHost(t.options);
++    const run = new AbortController();
++    const first = failed(host.call(hang, run.signal));
++    const second = failed(host.call(hang));
++    const queued = [failed(host.call(echo(1))), failed(host.call(echo(2)))];
++    await t.until(2);
++    run.abort();
++    const [a, b, ...rest] = await Promise.all([first, second, ...queued]);
++    assert.ok(a instanceof CallFailed && a.sent, String(a));
++    assert.ok(b instanceof CallFailed && b.sent, String(b));
++    for (const each of rest) assert.ok(each instanceof CallFailed && !each.sent, String(each));
++    await host.close();
++    assert.equal(alive(host.pid), false);
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    t.done();
++  });
++
++  test("a call out past its deadline fails as sent, and nothing queued is sent", async () => {
++    const t = setup({}, { concurrency: 2, callMs: 150 });
++    const host = await plainHost(t.options);
++    const out = [failed(host.call(hang)), failed(host.call(hang))];
++    const queued = failed(host.call(echo(1)));
++    const [a, b, c] = await Promise.all([...out, queued]);
++    assert.ok(a instanceof CallFailed && a.sent && /longer than 150/.test(a.message), String(a));
++    assert.ok(b instanceof CallFailed && b.sent, String(b));
++    assert.ok(c instanceof CallFailed && !c.sent, String(c));
++    assert.deepEqual(t.calls(), ["call hang", "call hang"]);
++    await host.close();
++    t.done();
++  });
++
++  test("a server that needs signing in fails the call unsent, names the server, and closes the host", async () => {
++    const t = setup();
++    const host = await plainHost(t.options);
++    await host.call(echo(1));
++    const auth = host.call({ server: "teams", tool: "auth", args: {} });
++    const queued = failed(host.call(echo(2)));
++    const error = await failed(auth);
++    assert.ok(error instanceof CallFailed && !error.sent, String(error));
++    assert.equal(error.message, "teams needs signing in, in your own Claude Code");
++    const behind = await queued;
++    assert.ok(behind instanceof CallFailed && !behind.sent, String(behind));
++    const later = await failed(host.call(echo(3)));
++    assert.ok(later instanceof CallFailed && !later.sent);
++    await host.close();
++    assert.equal(alive(host.pid), false);
++    assert.deepEqual(t.calls(), ["call echo", "call auth"]);
++    t.done();
++  });
++
++  test("signing in needed while another call is out: that call fails as sent", async () => {
++    const t = setup({}, { concurrency: 2 });
++    const host = await plainHost(t.options);
++    const out = failed(host.call(hang));
++    await t.until(1);
++    const error = await failed(host.call({ server: "teams", tool: "auth", args: {} }));
++    assert.ok(error instanceof CallFailed && !error.sent);
++    assert.equal(error.message, "teams needs signing in, in your own Claude Code");
++    const gone = await out;
++    assert.ok(gone instanceof CallFailed && gone.sent, String(gone));
++    await host.close();
++    t.done();
++  });
++});

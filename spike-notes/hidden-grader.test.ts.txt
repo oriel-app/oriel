@@ -1,0 +1,147 @@
+// Hidden grader for the agent test: run against one version.
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { CallFailed, type ToolHostOptions } from "./contract.ts";
+import { openToolHost as open } from "./VERSION.ts";
+
+const fakeCli = fileURLToPath(new URL("./fake-cli.ts", import.meta.url));
+const grant = { name: "teams", url: "https://teams.example/mcp" };
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function setup(over: Record<string, unknown> = {}) {
+  const folder = mkdtempSync(join(tmpdir(), "oriel-hidden-"));
+  const journal = join(folder, "journal");
+  const options = {
+    command: process.execPath,
+    args: [fakeCli],
+    env: { FAKE_CLI: JSON.stringify({ journal, servers: [grant] }) },
+    grants: [grant],
+    tools: ["echo", "hang", "auth"].map((tool) => ({ server: "teams", tool })),
+    startMs: 5_000,
+    callMs: 5_000,
+    graceMs: 300,
+    ...over,
+  } as ToolHostOptions;
+  const calls = () =>
+    existsSync(journal)
+      ? readFileSync(journal, "utf8").split("\n").filter((l) => l.startsWith("call "))
+      : [];
+  const until = async (n: number) => {
+    while (calls().length < n) await sleep(5);
+  };
+  return { options, calls, until, done: () => rmSync(folder, { recursive: true, force: true }) };
+}
+const failed = async (work: Promise<unknown>) => {
+  try {
+    await work;
+  } catch (error) {
+    return error;
+  }
+  assert.fail("expected a failure");
+};
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const hang = { server: "teams", tool: "hang", args: {} };
+const echo = { server: "teams", tool: "echo", args: {} };
+
+test("H1 concurrency 2: two out, third waits; run end fails both out as sent, third unsent", { timeout: 4000 }, async () => {
+  const t = setup({ concurrency: 2 });
+  const host = await open(t.options);
+  const run = new AbortController();
+  const all = [host.call(hang, run.signal), host.call(hang, run.signal), host.call(echo, run.signal)].map(failed);
+  await t.until(2);
+  await sleep(100);
+  assert.deepEqual(t.calls(), ["call hang", "call hang"]);
+  const at = performance.now();
+  run.abort();
+  const [a, b, c] = await Promise.all(all);
+  assert.ok(performance.now() - at < 150, "prompt");
+  assert.ok(a instanceof CallFailed && a.sent, String(a));
+  assert.ok(b instanceof CallFailed && b.sent, String(b));
+  assert.ok(c instanceof CallFailed && !c.sent, String(c));
+  await host.close();
+  assert.deepEqual(t.calls(), ["call hang", "call hang"]);
+  assert.equal(alive(host.pid), false);
+  t.done();
+});
+
+test("H2 concurrency 2: a queued call whose own run ends fails at once, unsent", { timeout: 4000 }, async () => {
+  const t = setup({ concurrency: 2 });
+  const host = await open(t.options);
+  const out = [host.call(hang), host.call(hang)].map(failed);
+  const run = new AbortController();
+  const queued = failed(host.call(echo, run.signal));
+  await t.until(2);
+  const at = performance.now();
+  run.abort();
+  const q = await queued;
+  assert.ok(performance.now() - at < 150, "prompt");
+  assert.ok(q instanceof CallFailed && !q.sent, String(q));
+  await host.close();
+  for (const e of await Promise.all(out)) assert.ok(e instanceof CallFailed && e.sent, String(e));
+  assert.deepEqual(t.calls(), ["call hang", "call hang"]);
+  t.done();
+});
+
+test("H3 concurrency 2: a deadline on one call out closes the host; the other out fails sent, the queued unsent", { timeout: 4000 }, async () => {
+  const t = setup({ concurrency: 2, callMs: 200 });
+  const host = await open(t.options);
+  const all = [host.call(hang), host.call(hang), host.call(echo)].map(failed);
+  const [a, b, c] = await Promise.all(all);
+  assert.ok(a instanceof CallFailed && a.sent, String(a));
+  assert.ok(b instanceof CallFailed && b.sent, String(b));
+  assert.ok(c instanceof CallFailed && !c.sent, String(c));
+  await host.close();
+  assert.deepEqual(t.calls(), ["call hang", "call hang"]);
+  t.done();
+});
+
+test("H4 default concurrency is still one at a time", { timeout: 4000 }, async () => {
+  const t = setup();
+  const host = await open(t.options);
+  const out = [host.call(hang), host.call(echo)].map(failed);
+  await t.until(1);
+  await sleep(100);
+  assert.deepEqual(t.calls(), ["call hang"]);
+  await host.close();
+  await Promise.all(out);
+  t.done();
+});
+
+test("H5 needs-auth: fails unsent, names the server, and closes the host", { timeout: 4000 }, async () => {
+  const t = setup();
+  const host = await open(t.options);
+  const e = await failed(host.call({ server: "teams", tool: "auth", args: {} }));
+  assert.ok(e instanceof CallFailed && !e.sent, String(e));
+  assert.equal(e.message, "teams needs signing in, in your own Claude Code");
+  const next = await failed(host.call(echo));
+  assert.ok(next instanceof CallFailed && !next.sent, String(next));
+  assert.deepEqual(t.calls(), ["call auth"]);
+  await host.close();
+  assert.equal(alive(host.pid), false);
+  t.done();
+});
+
+test("H6 needs-auth with a call queued behind: the queued one is never sent", { timeout: 4000 }, async () => {
+  const t = setup();
+  const host = await open(t.options);
+  const [a, b] = await Promise.all([
+    failed(host.call({ server: "teams", tool: "auth", args: {} })),
+    failed(host.call(echo)),
+  ]);
+  assert.ok(a instanceof CallFailed && !a.sent);
+  assert.ok(b instanceof CallFailed && !b.sent, String(b));
+  assert.deepEqual(t.calls(), ["call auth"]);
+  await host.close();
+  t.done();
+});

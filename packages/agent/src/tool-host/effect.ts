@@ -72,10 +72,17 @@ export const makeToolHost = (options: ToolHostOptions): Effect.Effect<ToolHostE,
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     let closed = false;
-    const close = Effect.suspend(() => {
-      closed = true;
-      return Scope.close(scope, Exit.void);
-    });
+    // One close, however many ask (from the agent test: without
+    // `cached`, a second close() while a failed call's close ran in the
+    // background returned before the process was dead).
+    const close = yield* Effect.cached(
+      Effect.uninterruptible(
+        Effect.suspend(() => {
+          closed = true;
+          return Scope.close(scope, Exit.void);
+        }),
+      ),
+    );
     return yield* Effect.gen(function* () {
       const process = yield* start(options);
       yield* Scope.addFinalizer(scope, stop(process, options.graceMs));
