@@ -21,6 +21,11 @@ export type SourceFixture<C = unknown, R = unknown, W = unknown> = {
   // `open` would the source itself. `via.fetch`, when a test gives one, is
   // a stand-in it made, so it can act in the source as others do.
   open: (connection: ToOpen, via: OpenVia) => Promise<Opened<C, R, W>>;
+  // Opens a connection over an in-memory site of the source that a test, a
+  // shot or a timing made, by its own `fetch`, read and written through
+  // the source's own shapes as Oriel once read the source itself, with no
+  // credential and no network (decision 0059). Absent where none is made.
+  memory?: (connection: ToOpen, via: OpenVia & { fetch: typeof fetch }) => Promise<Opened<C, R, W>>;
   // Its declaration's preview over the same stand-in, for a connector that
   // declares one (decision 0051).
   preview?: (connection: ToOpen, via: OpenVia, ask?: PreviewAsk) => Promise<PreviewTable[]>;
@@ -29,6 +34,11 @@ export type SourceFixture<C = unknown, R = unknown, W = unknown> = {
   // its region holds its items, or when it asks in the window chat, so a new
   // connector changes no other case's recording.
   everyCase?: true;
+  // Whether a window chat's case connects it unless the case turns it off,
+  // as cases recorded while it had a connection of its own did (decision
+  // 0059). Otherwise a window case connects it only where it says it's on
+  // through its source server, as a person turns it on.
+  windowCase?: true;
 };
 
 // A named set of a fixture's items, which an eval case's region or a window

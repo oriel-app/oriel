@@ -16,7 +16,7 @@ type Acted = { changeSet: ChangeSetView; error?: string; revert?: string };
 
 async function proposed(t: TestContext) {
   const app = await testApp(t, {
-    live: true,
+    memory: true,
     plan: () => [{ run: "comment" }],
     scripts: { comment },
   });

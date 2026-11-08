@@ -1,5 +1,5 @@
-// Recorded REST exchanges, replayed in tests and evals so they run without the
-// network. `scripts/record-jira.ts` records them from the live SYN.
+// Recorded REST exchanges, replayed in tests so they run without the
+// network, as recorded from the live SYN (recorded.ts).
 import { array, type Infer, literal, number, object, string, union, unknown } from "@oriel/core";
 import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
 

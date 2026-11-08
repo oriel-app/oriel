@@ -52,7 +52,41 @@ export type ServerPick = {
     query: string,
     connection: { identity: string; options: Readonly<Record<string, unknown>> },
   ): Promise<{ choices: PickChoice[]; more: boolean }>;
+  // Where the option holds more than the values picked, as Sheets'
+  // spreadsheets hold how each one's tabs read: the values picked, from a
+  // connection's options; and the option with `values` picked, from the
+  // options it has, which keeps what each one kept has beside its value.
+  // Absent, the option is the value picked, or the values.
+  picked?(options: Readonly<Record<string, unknown>>): string[];
+  into?(options: Readonly<Record<string, unknown>>, values: readonly string[]): unknown;
 };
+
+// The values a connection's options pick, by one of its server's picks.
+export function pickedOf(pick: ServerPick, options: Readonly<Record<string, unknown>>): string[] {
+  if (pick.picked) return pick.picked(options);
+  const value = options[pick.name];
+  if (typeof value === "string") return value === "" ? [] : [value];
+  return Array.isArray(value) ? value.filter((each) => typeof each === "string") : [];
+}
+
+// Options a person set through a server's picks, as its kind checks them:
+// a pick whose option holds more than its values (`into`), given as the
+// values picked, is written into the option from the options a connection
+// has; anything else is as given, as an Undo's options are.
+export function pickedInto(
+  picks: readonly ServerPick[],
+  options: Readonly<Record<string, unknown>>,
+  given: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(given).map(([name, value]) => {
+      const pick = picks.find((each) => each.name === name);
+      const values =
+        Array.isArray(value) && value.every((each) => typeof each === "string") ? value : null;
+      return [name, pick?.into && values ? pick.into(options, values) : value];
+    }),
+  );
+}
 
 // The most a pick's list shows, and the longest name it shows of one: a
 // server's answer is source content, which a picker draws as text.

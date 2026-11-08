@@ -1,6 +1,6 @@
 # 0050 Google Sheets is the next source: only the spreadsheets a person picks, and a row is an item under a mapping they approve
 
-Accepted 2026-11-03. Follows 0049; how Oriel drafts the first mapping is 0051. Amends 0036: its release environment also holds Google's desktop client. Changes SPEC §4, §5 and §8, and the security reviewer's checklist. Amended by 0059: Sheets is read through a source server (ours is `packages/sheets-mcp`), and Oriel's Google client and Picker go.
+Accepted 2026-11-03. Follows 0049; how Oriel drafts the first mapping is 0051. Amends 0036: its release environment also holds Google's desktop client. Changes SPEC §4, §5 and §8, and the security reviewer's checklist. Amended by 0059: Sheets is read through a source server (ours is `packages/sheets-mcp`), and Oriel's Google client and Picker go. Superseded in part by 0059 (OA-280): Signing in, Google's Picker, Oriel's Google client and its tokens go, with OA-219's and OA-224's amendments; Sheets is read through `packages/sheets-mcp`, whose spreadsheets are picked in Settings.
 
 Adds: none
 

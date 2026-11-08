@@ -137,7 +137,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 ```html specimen id=state-busy title="Busy: the label says what's happening" state=busy
 <div class="ws-row">
   <button type="button" class="button danger" disabled>Deleting…</button>
-  <button type="button" class="button primary" disabled>Connecting…</button>
+  <button type="button" class="button primary" disabled>Reading…</button>
   <button type="button" class="button" disabled>Checking…</button>
 </div>
 ```
@@ -145,7 +145,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 - **Rest, hover, focus-visible, disabled** are styled. Hover is guarded by `:not(:disabled)` on `.button` and `.quiet-action`.
 - **Active** isn't styled anywhere in window.css. A press shows nothing beyond hover. That's acceptable for a dense tool, but see the drift report.
 - **Disabled** is `opacity: 0.5` on `.button`, `.quiet-action` and `.link-action`. The `.undo-action` has no disabled look, so a disabled Undo looks live (last specimen in its row above).
-- **Busy** is a disabled button whose label becomes the verb with "…": Delete → Deleting…, Connect → Connecting…, Check again → Checking…. No button sets `aria-busy`; the region that's busy does (a change set, a thread).
+- **Busy** is a disabled button whose label becomes the verb with "…": Delete → Deleting…, Add → Reading…, Check again → Checking…. No button sets `aria-busy`; the region that's busy does (a change set, a thread).
 - **Error** and **empty** don't apply to a button. A failed action says so in the line under it (see [Empty, loading and error](/components/states)).
 
 ## Keyboard and ARIA
@@ -166,7 +166,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 
 ## Where the app uses it
 
-- `.button` and `.button.primary` in `window.css`. The change set's steps: `ChangeSet` in `packages/web/src/thread-page.tsx`. The chat input's Send, Ask and Stop, plain until something is written: `ChatInput` in `packages/web/src/chat-input.tsx`. The ask bar's Ask: `AskBar` in `packages/web/src/window-chat-view.tsx`. Connect steps: `FieldsStep` in `packages/web/src/connect-steps.tsx`.
+- `.button` and `.button.primary` in `window.css`. The change set's steps: `ChangeSet` in `packages/web/src/thread-page.tsx`. The chat input's Send, Ask and Stop, plain until something is written: `ChatInput` in `packages/web/src/chat-input.tsx`. The ask bar's Ask: `AskBar` in `packages/web/src/window-chat-view.tsx`. Connect steps: `FolderStep` in `packages/web/src/connect-steps.tsx`.
 - `.button.danger` in `window.css`. The confirm: `Confirm` in `packages/web/src/close-thread.tsx`. Disconnect: `Disconnect` in `packages/web/src/connections-page.tsx`.
 - `.quiet-action` in `window.css`. Mark done: `ThreadPage` in `packages/web/src/thread-page.tsx`. Share review link: `ChangeSet` in `packages/web/src/thread-page.tsx`. Open as a thread and New chat: `WindowChat` in `packages/web/src/window-chat-view.tsx`.
 - `.link-action` in `window.css`. The first run's `link()`: `link` in `packages/web/src/setup-page.tsx`; the CLI row's `quiet()`: `ClaudeCodeRow` in `packages/web/src/cli-row.tsx`.
@@ -177,7 +177,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 
 Status **drifting**. The kinds are sound; what drifts is which kind an action gets:
 
-- "Try again" is a `.button`, a `.button.primary` and a `.quiet-action` in different places (`Body` in `packages/web/src/window-page.tsx`, `Failed` in `packages/web/src/setup-page.tsx`, `OverviewPage` in `packages/web/src/overview-page.tsx`). "Cancel" is `.button`, `.quiet-action` and `.link-action`.
+- "Try again" is a `.button`, a `.button.primary` and a `.quiet-action` in different places (`Body` in `packages/web/src/window-page.tsx`, `ReviewStep` in `packages/web/src/connect-steps.tsx`, `OverviewPage` in `packages/web/src/overview-page.tsx`). "Cancel" is `.button`, `.quiet-action` and `.link-action`.
 - `.button.danger` in `window.css` sits beside the context menu, not with the other buttons.
 - `.undo-action` has no disabled look, and its hover isn't guarded.
 - `cli-row.tsx` has a helper called `quiet()` that draws a `.link-action`, twice over (once each in `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`).

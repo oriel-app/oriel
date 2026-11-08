@@ -1,37 +1,25 @@
-// A Google Sheets connection, opened (decision 0049): its options are the
-// spreadsheets the person picked and each one's mapped tabs, and whether it
-// is read-only, and its secret is Google's tokens. What identifies it is the
-// Google account, by Drive's `permissionId`.
+// A Google Sheets connection, opened (decision 0049) through sheets-mcp in
+// the person's agent (decision 0059): its options are the spreadsheets the
+// person picked and each one's mapped tabs, and whether it is read-only.
 //
 // It may propose changes unless its `readOnly` option is on (decision 0049):
 // then it gives no writes, so no writer is built and a write is
 // unreachable, and its namespace offers nothing. A spreadsheet the person
-// can only view is read-only either way.
-//
-// Reading needs the access token while it lasts. Then it is refreshed with
-// Oriel's Google client, as the composition root gives it, and kept anew;
-// one Google refuses to refresh, or with no client to refresh it with,
-// reads as signed out. A mapped column gone from a tab's header row stops
-// that tab, and the connection waits for options that fit (decision 0051).
+// can only view is read-only either way. A mapped column gone from a tab's
+// header row stops that tab, and the connection waits for options that fit
+// (decision 0051).
 import {
-  type Credential,
   type IndexRecord,
-  number,
-  object,
   type Opened,
   type OpenVia,
   readOnlyOf,
-  optional,
-  refine,
-  string,
   readWhole,
   ServerUnreadable,
   type ToolCaller,
   type ToOpen,
 } from "@oriel/core";
 import { sheetsAttrs, sheetsAttrsOf } from "./attrs.ts";
-import { googleReads, SecretRefused, SheetsError } from "./google.ts";
-import { googleClientOf, refresh, type Tokens } from "./oauth.ts";
+import { googleReads, SheetsError } from "./google.ts";
 import { type SheetsPicks, sheetsPicks } from "./mapping.ts";
 import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
 import { reportLines } from "./report.ts";
@@ -47,17 +35,15 @@ export type SheetsWrites = {
   picks: SheetsPicks;
   // Its connection's prefix, which its items' IDs carry.
   prefix: string;
-} & (
-  | {
-      credential: Credential;
-      // How requests reach Google: the global fetch unless given, as the
-      // fixture's stand-in gives one.
-      fetch?: typeof fetch;
-    }
-  // Through sheets-mcp (decision 0059): its reads and its writes, each from
-  // its own process.
-  | { server: { read: ToolCaller; write: ToolCaller } }
-);
+} &
+  // A fixture's stand-in of Google in memory, which a test, a shot or a
+  // timing made, as its own fetch: nothing signs in to it.
+  (
+    | { memory: typeof fetch }
+    // Through sheets-mcp (decision 0059): its reads and its writes, each from
+    // its own process.
+    | { server: { read: ToolCaller; write: ToolCaller } }
+  );
 
 export type OpenedSheets = Opened<SheetsContext, unknown, SheetsWrites> & { source: SheetsSource };
 
@@ -65,127 +51,47 @@ export type OpenedSheets = Opened<SheetsContext, unknown, SheetsWrites> & { sour
 // connector's `readOnly` option.
 export { readOnlyOf };
 
-// A token is printable ASCII, so a header can't refuse it and quote it.
-const token = refine(string, (text) => /^[\x21-\x7e]+$/.test(text), "expected a token");
-const tokensShape = object({ access: token, refresh: optional(string), expiresAt: number });
-
 // The picks a connection's options hold, or none when they aren't picks.
 export function picksOf(options: Readonly<Record<string, unknown>>): SheetsPicks {
   const read = sheetsPicks(options);
   return read.ok ? read.value : { spreadsheets: [] };
 }
 
-// A connection's tokens, as its secret keeps them, or null when they aren't;
-// a fixture's has no refresh token, and lasts. JSON.parse's own message
-// quotes the text, which holds the tokens, so it's never passed on.
-export type KeptTokens = Omit<Tokens, "refresh"> & { refresh?: string };
-export function tokensOf(secret: string | null): KeptTokens | null {
-  let parsed: unknown = null;
-  try {
-    parsed = JSON.parse(secret ?? "null") as unknown;
-  } catch {
-    parsed = null;
-  }
-  const tokens = tokensShape(parsed);
-  if (!tokens.ok) return null;
-  const { access, refresh: refreshToken, expiresAt } = tokens.value;
-  return { access, expiresAt, ...(refreshToken === undefined ? {} : { refresh: refreshToken }) };
-}
+// What the person sees when the fixture's stand-in can't be read.
+export const memoryProblem = (): string =>
+  "Google didn't answer, so Oriel couldn't read the spreadsheets.";
 
-// Refreshed this long before Google says the access token ends, so a read
-// started just before then doesn't fail.
-const marginMs = 60_000;
-
-// Its access token, refreshed once it has run out, by one refresh at a time
-// however many reads ask. A refresh that worked is kept as the connection's
-// secret for its next start.
-function credentialOf(
-  secret: string | null,
-  via: OpenVia,
-): { credential: Credential; refused: () => boolean } {
-  let tokens = tokensOf(secret);
-  let refused = false;
-  const now = () => Date.parse(via.now());
-  const client = googleClientOf(via.client);
-  let refreshing: Promise<void> | null = null;
-  const renew = async (refreshToken: string, google: NonNullable<typeof client>) => {
-    const refreshed = await refresh(google, refreshToken, { fetch: via.fetch ?? fetch, now });
-    if (refreshed.status === "signed-out") {
-      tokens = null;
-      refused = true;
-      return;
-    }
-    if (refreshed.status === "failed") {
-      if (refreshed.needsSecret) {
-        via.log("sheets: Google refused the token's refresh without the client's secret", {
-          problem: refreshed.problem,
-        });
-        throw new SecretRefused();
-      }
-      via.log("sheets: the token's refresh failed", { problem: refreshed.problem });
-      throw new SheetsError("Google didn't answer a refresh", 0);
-    }
-    tokens = refreshed.tokens;
-    await via
-      .keep?.(JSON.stringify(tokens))
-      .catch(() => via.log("sheets: the refreshed token couldn't be kept", {}));
-  };
-  const credential: Credential = {
-    headers: async () => {
-      const held = tokens;
-      if (held?.refresh && client && held.expiresAt - marginMs <= now()) {
-        refreshing ??= renew(held.refresh, client).finally(() => (refreshing = null));
-        await refreshing;
-      }
-      const current = tokens;
-      if (!current || current.expiresAt <= now())
-        throw new SheetsError("Google Sheets needs signing in again", 401);
-      return { Authorization: `Bearer ${current.access}` };
-    },
-  };
-  return { credential, refused: () => refused };
-}
-
-export function sheetsProblem(error: unknown): string {
-  if (error instanceof SecretRefused)
-    return "Google refused to refresh the sign-in because this copy of Oriel has no client secret for Google, so Oriel couldn't read the spreadsheets.";
-  if (error instanceof SheetsError && error.status === 401)
-    return "Google Sheets needs signing in again before Oriel can read the spreadsheets.";
-  return "Google didn't answer, so Oriel couldn't read the spreadsheets.";
-}
-
-// How a connection reads Google, with its credential.
-export function googleOf(connection: ToOpen, via: OpenVia) {
-  const { credential, refused } = credentialOf(connection.secret, via);
-  const google = googleReads({
-    fetch: via.fetch ?? fetch,
-    credential,
+// The fixture's stand-in of Google in memory, read as Google's APIs answer,
+// with no sign-in. Only a fixture gives `via.fetch`.
+const memoryOf = (via: OpenVia): typeof fetch => {
+  if (!via.fetch) throw new Error("Sheets opens only through its source server");
+  return via.fetch;
+};
+export function memoryGoogle(via: OpenVia) {
+  return googleReads({
+    fetch: memoryOf(via),
     wait: (ms) => new Promise((done) => setTimeout(done, ms)),
     random: Math.random,
     waiting: (ms) => via.log("sheets: Google asked Oriel to wait", { ms }),
   });
-  return { credential, google, refused };
 }
 
 // What reads a connection's spreadsheets, and what its writer writes with:
-// Google, with its sign-in, or, while Sheets is on through sheets-mcp
-// (decision 0059), the server, which has no sign-in of Oriel's.
-function readerOf(connection: ToOpen, via: OpenVia) {
+// sheets-mcp, while Sheets is on through it (decision 0059), or the
+// fixture's stand-in in memory.
+function readerOf(via: OpenVia) {
   const server = via.server;
   if (server)
     return {
       google: serverGoogle(server.read),
       with: { server: { read: server.read, write: server.write } },
-      refused: () => false,
       problem: (error: unknown) => sheetsServerProblem(error, server.known.name),
       through: `, through ${server.known.name}`,
     };
-  const { credential, google, refused } = googleOf(connection, via);
   return {
-    google,
-    with: { credential, ...(via.fetch ? { fetch: via.fetch } : {}) },
-    refused,
-    problem: sheetsProblem,
+    google: memoryGoogle(via),
+    with: { memory: memoryOf(via) },
+    problem: memoryProblem,
     through: "",
   };
 }
@@ -202,8 +108,8 @@ export function sheetsServerProblem(error: unknown, server: string): string {
 
 export async function openSheets(connection: ToOpen, via: OpenVia): Promise<OpenedSheets> {
   const picks = picksOf(connection.options);
-  const reader = readerOf(connection, via);
-  const { google, refused } = reader;
+  const reader = readerOf(via);
+  const { google } = reader;
   const count = picks.spreadsheets.length;
   const readOnly = readOnlyOf(connection.options);
   const context = sheetsContextOf(picks);
@@ -237,7 +143,6 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
     // costs one request and isn't read again.
     incremental: true,
     problem: reader.problem,
-    signedOut: refused,
     unfit: () => unfitOf(source.report()),
     names: sheetsNames,
     viewOnly: viewOnlyOf,

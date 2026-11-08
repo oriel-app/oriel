@@ -33,8 +33,8 @@
 //   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/batchUpdate
 // Any other method is refused.
 //
-// Every request needs its access token, as Google does, and each is kept in
-// `calls`, so a test can count them.
+// Nothing signs in to it (decision 0059): each request is kept in `calls`,
+// so a test can count them.
 import {
   type A1Range,
   type Bounds,
@@ -60,14 +60,14 @@ import {
   valueOf,
   within,
 } from "./fixture.ts";
-import { spreadsheetType } from "./oauth.ts";
 
 export const driveOrigin = "https://www.googleapis.com";
 export const sheetsOrigin = "https://sheets.googleapis.com";
 
+// What Drive calls a spreadsheet.
+export const spreadsheetType = "application/vnd.google-apps.spreadsheet";
+
 export type StandInOptions = {
-  // The access token every request must carry.
-  token?: string;
   // Answers `spreadsheets.get` with every tab even when `ranges` names
   // some, the other way Google's reference leaves open, so a test can show
   // a reader keeps only the tabs it asked for.
@@ -78,8 +78,6 @@ export type StandInOptions = {
 
 // A write's call keeps its body too.
 export type StandInCall = { method: string; url: string; body?: unknown };
-
-export const standInToken = "fixture-access-token";
 
 // Google's error bodies. Drive's keeps the older shape, with `errors`; the
 // Sheets API's has a `status`.
@@ -389,7 +387,6 @@ const commentsMost = 100;
 export type StandIn = ReturnType<typeof fixtureGoogle>;
 
 export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = {}) {
-  const token = options.token ?? standInToken;
   const calls: StandInCall[] = [];
   const copy = structuredClone(fixture);
   const files = new Map(copy.spreadsheets.map((s) => [s.id, { spreadsheet: s, next: 0 }]));
@@ -554,14 +551,6 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
     const isDrive = url.origin === driveOrigin && url.pathname.startsWith("/drive/v3/");
     const isSheets = url.origin === sheetsOrigin && url.pathname.startsWith("/v4/");
     if (!isDrive && !isSheets) return new Response("not found", { status: 404 });
-    if (request.headers.get("authorization") !== `Bearer ${token}`)
-      return isDrive
-        ? driveError(401, "Invalid Credentials", {
-            reason: "authError",
-            location: "Authorization",
-            locationType: "header",
-          })
-        : sheetsError(401, "Request had invalid authentication credentials.");
     if (isSheets && request.method === "POST") return written(url.pathname, body);
     if (request.method !== "GET")
       return isDrive

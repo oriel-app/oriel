@@ -174,6 +174,6 @@ Status **drifting**, as part of "pick one of a few" (cms:B1 in [the drift report
 - One `.tabs` rule styles two controls, buttons and links, by element (`.tabs button`, `.tabs a`), with no class of their own.
 - The padding is a raw `0.25rem` (`.tabs button` in `window.css`), like `.button`'s.
 - Settings' section list is the same idea with the sidebar's look, shadow included, and turns from a column into a wrapped row at 760px.
-- Radios are drawn two more ways (`.choices` and `.choice-rows`), and the first run fakes a third picked look (`.cli-picked`).
+- Radios are drawn another way (`.choices`), and the first run fakes a second picked look (`.cli-picked`).
 
 **Until it's consolidated:** for a view of the same page, copy `Tabs` (buttons with `aria-pressed` in a labelled `role="group"`). For sibling pages, copy `ViewTabs` (links with `aria-current` in a labelled `nav`). For a saved setting, copy `Choices`. The proposal splits `.tabs` into a `Segmented` control and a `TabNav`, and folds the radio lists into one `RadioList`.

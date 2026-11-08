@@ -4,9 +4,9 @@
 // bindings. Requests go through the same handler and guard as in production.
 // With `writes`, change sets write to SYN as a Jira site in memory, through
 // the writer @oriel/changeset builds; nothing here holds a writer. With
-// `live`, the app also syncs from that site, as from a live one. With
-// `connect`, Jira starts unconnected, and the window connects it to SYN in
-// memory, which answers only `account`.
+// `memory`, the app also syncs from that site, so a test can act in Jira as
+// others do. With `jira: false`, no flag makes Jira's connection: it's off
+// until it turns on through its source server (decision 0059).
 import type { Models } from "./model.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { Notify } from "./notify.ts";
@@ -14,6 +14,9 @@ import type { SetupOptions } from "./setup/setup.ts";
 import {
   type Bindings,
   type CapturedMutation,
+  type FoundServer,
+  type ToolCall,
+  type ToolCaller,
   type Instant,
   instant,
   type ProxiedRead,
@@ -23,13 +26,23 @@ import {
 } from "@oriel/core";
 import type { JiraFixture } from "@oriel/jira";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
-import { loadJiraFixture } from "@oriel/jira";
+import { atlassianServer, loadJiraFixture } from "@oriel/jira";
+import { fixtureGoogle, loadSheetsFixture, sheetsMcpMain, sheetsServer } from "@oriel/sheets";
+import { fixtureServer } from "@oriel/sheets/fake";
+import { atlassianStandIn, standInCaller } from "@oriel/jira/standin";
+import { loadSlackFixture, slackServer } from "@oriel/slack";
+import {
+  slackStandIn,
+  standInCaller as slackStandInCaller,
+  standInWorkspace,
+} from "@oriel/slack/standin";
 import type { Titler } from "@oriel/agent";
 import type { ConnectionsView, ConnectionView } from "@oriel/web/view";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { type App, type AppOptions, createApp, limits, type SourceMode } from "./app.ts";
-import type { LegacyJira, Secrets } from "./connection.ts";
+import type { OldSecrets } from "./connection.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
+import { fakeAgent } from "./servers/testing.ts";
 import { handler, type Reply, type Request } from "./site.ts";
 
 export const port = 4310;
@@ -128,15 +141,33 @@ export type TestOptions = {
   // Change sets write to SYN in memory instead of being read-only.
   writes?: boolean;
   // Jira is SYN in memory, synced through its API and written to.
-  live?: boolean;
+  memory?: boolean;
+  // No flag makes Jira's connection: it's off until it turns on through
+  // its source server.
+  jira?: false;
   // A database file, so a second app can open what the first left.
   db?: string;
-  // Jira is connected from the window, and its connection's secret kept in
-  // `secrets`, in memory when absent; `legacy` is a connection saved before
-  // connections, which the start moves.
-  connect?: { secrets?: Secrets; legacy?: LegacyJira };
+  // What `pnpm dev` kept of connections' secrets before decision 0059, which
+  // the start retires.
+  retire?: OldSecrets;
+  // Kinds turned on at start through their source servers (`--on`).
+  on?: AppOptions["on"];
+  // Atlassian's server in the person's agent, its stand-in answering over
+  // SYN in memory, which `site` is: Jira turns on through it, as a person
+  // turns it on in Settings, with `turnOn("jira")` (decision 0059).
+  atlassian?: true;
+  // Slack's server in the person's agent, its stand-in answering over the
+  // Slack fixture's workspace: Slack turns on through it with
+  // `turnOn("slack")`.
+  slackServer?: true;
+  // sheets-mcp in the person's agent, reading the Sheets fixture's
+  // spreadsheets from its stand-in for Google, `sheets`, which a test
+  // changes as a person would: Sheets turns on through it with
+  // `turnOn("sheets")`.
+  sheetsMcp?: true;
   // SYN's issues as its site in memory has them, with no edits; all of them
-  // by default. Only that site serves them, so this needs `connect` or `live`.
+  // by default. Only that site serves them, so this needs `memory` or
+  // `writes`.
   issues?: (syn: JiraFixture["issues"]) => JiraFixture["issues"];
   // Slack, off when absent.
   slack?: SourceMode;
@@ -154,12 +185,8 @@ export type TestOptions = {
   pickFolder?: (prompt: string) => Promise<string | null>;
   // The desktop app's first run, with stand-ins for what runs.
   setup?: SetupOptions;
-  // Any Jira Cloud site may be connected, as on the desktop app.
-  anySite?: boolean;
   // What calls a connection's sync every few minutes, in place of a timer.
   every?: AppOptions["every"];
-  // Oriel's own clients of sources, such as Google's.
-  clients?: AppOptions["clients"];
   // What Noticed's pass runs on (decision 0052); nothing, when absent.
   noticer?: AppOptions["noticer"];
   // The person's agent's MCP servers, and the ones Oriel knows (decision
@@ -169,9 +196,6 @@ export type TestOptions = {
   // How a sync or a replay calls one of them; nothing, when absent.
   callServer?: AppOptions["callServer"];
 };
-
-// The account SYN in memory answers when the window connects it.
-export const account = { email: "pm@example.com", token: "memory-site-secret-value" };
 
 export type Logged = { message: string; fields: Record<string, unknown> };
 
@@ -185,33 +209,122 @@ export async function testApp(
   const syn = loadJiraFixture();
   const served = options.issues ? { ...syn, issues: options.issues(syn.issues), edits: [] } : syn;
   const board = options.estimates === false ? { estimates: false as const } : {};
-  const site = options.connect
-    ? memorySite(served, now(), { account, ...board })
-    : options.writes || options.live
-      ? memorySite(served, now(), board)
-      : null;
-  const jira: SourceMode = options.connect
-    ? { mode: "window", ...(site ? { fetch: site.fetch } : {}) }
-    : site
-      ? options.live
-        ? {
-            mode: "live",
-            identity: memorySiteOrigin,
-            options: { project: "SYN" },
-            secret: JSON.stringify({ email: "", token: "" }),
-            fetch: site.fetch,
-          }
-        : { mode: "fixture", fetch: site.fetch }
-      : { mode: "fixture" };
+  const site =
+    options.writes || options.memory || options.atlassian ? memorySite(served, now(), board) : null;
+  // The person's agent's source servers, as it lists them, and a process of
+  // the agent calling one's tools, only those it's allowed: Atlassian's,
+  // its stand-in over the site in memory, and sheets-mcp, a fake of its read
+  // tools over the Sheets fixture's stand-in for Google.
+  const sheetsGoogle = options.sheetsMcp ? fixtureGoogle(loadSheetsFixture()) : null;
+  const sheetsReads =
+    sheetsGoogle &&
+    fixtureServer(
+      sheetsGoogle,
+      loadSheetsFixture().spreadsheets.map((each) => each.id),
+    );
+  const atlassian = options.atlassian && site ? standInCaller(atlassianStandIn(site)) : null;
+  const slackFixture = options.slackServer ? loadSlackFixture() : null;
+  const slackTools =
+    slackFixture && slackStandInCaller(slackStandIn(slackFixture, standInWorkspace(slackFixture)));
+  const listed: FoundServer[] = [
+    ...(slackTools
+      ? [
+          {
+            name: "slack",
+            status: "connected" as const,
+            reports: "Slack MCP",
+            url: "https://mcp.slack.com/mcp",
+            command: null,
+            tools: [...slackServer.reads, ...slackServer.writes],
+            transport: "http" as const,
+          },
+        ]
+      : []),
+    ...(atlassian
+      ? [
+          {
+            name: "atlassian",
+            status: "connected" as const,
+            reports: null,
+            url: "https://mcp.atlassian.com/v2/mcp",
+            command: null,
+            tools: [...atlassianServer.reads, ...atlassianServer.writes],
+            transport: "http" as const,
+          },
+        ]
+      : []),
+    ...(sheetsReads
+      ? [
+          {
+            name: "sheets",
+            status: "connected" as const,
+            reports: "sheets-mcp",
+            url: null,
+            command: `node ${sheetsMcpMain}`,
+            tools: [...sheetsServer.reads, ...sheetsServer.writes],
+            local: { command: "node", args: [sheetsMcpMain] },
+          },
+        ]
+      : []),
+  ];
+  const tools = (server: FoundServer): ToolCaller | null =>
+    server.name === "atlassian"
+      ? atlassian
+      : server.name === "slack"
+        ? slackTools
+        : server.name === "sheets"
+          ? (sheetsReads?.read ?? null)
+          : null;
+  const servers =
+    listed.length > 0
+      ? {
+          discover: fakeAgent(() => listed).discover,
+          callServer: async (server: FoundServer, allowed: readonly string[]) => ({
+            agent: { id: "codex", name: "Codex", kind: "codex" as const },
+            calls: {
+              call: async (call: ToolCall) => {
+                const calls = tools(server);
+                if (!calls || !allowed.includes(call.tool))
+                  throw new Error(`${call.tool} isn't allowed`);
+                return calls(call);
+              },
+              spent: () => ({
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+                costUsd: 0,
+                turns: 0,
+              }),
+              close: () => {},
+            },
+          }),
+        }
+      : {};
+  const jira: SourceMode | null =
+    options.jira === false || options.atlassian
+      ? null
+      : site
+        ? options.memory
+          ? {
+              mode: "memory",
+              identity: memorySiteOrigin,
+              options: { project: "SYN" },
+              fetch: site.fetch,
+            }
+          : { mode: "fixture", fetch: site.fetch }
+        : { mode: "fixture" };
   const logged: Logged[] = [];
   const app: App = await createApp({
     db: options.db ?? ":memory:",
-    sources: { jira, ...(options.slack ? { slack: options.slack } : {}), ...options.sources },
-    ...(options.connect?.legacy ? { legacyJira: options.connect.legacy } : {}),
-    ...(options.anySite ? { anywhere: true } : {}),
-    ...(options.clients ? { clients: options.clients } : {}),
+    sources: {
+      ...(jira ? { jira } : {}),
+      ...(options.slack ? { slack: options.slack } : {}),
+      ...options.sources,
+    },
+    ...(options.retire ? { retire: options.retire } : {}),
+    ...(options.on ? { on: options.on } : {}),
     ...(options.every ? { every: options.every } : {}),
-    ...(options.connect?.secrets ? { secrets: options.connect.secrets } : {}),
     reviewBase: new URL(`${origin}/review/`),
     sketchBase: new URL(`${sketchOrigin}/sketches/`),
     limits: { ...limits, ...options.limits },
@@ -232,6 +345,7 @@ export async function testApp(
     ...(options.titler ? { titler: options.titler } : {}),
     // No pass runs unless a test gives what it runs on.
     noticer: options.noticer ?? (async () => null),
+    ...servers,
     ...(options.discover ? { discover: options.discover } : {}),
     ...(options.knownServers ? { knownServers: options.knownServers } : {}),
     ...(options.callServer ? { callServer: options.callServer } : {}),
@@ -266,6 +380,10 @@ export async function testApp(
   return {
     app,
     site,
+    // The Sheets fixture's stand-in for Google behind sheets-mcp, and every
+    // call of its tools, with `sheetsMcp`.
+    sheets: sheetsGoogle,
+    sheetsCalls: sheetsReads?.calls ?? [],
     logged,
     handle,
     body,
@@ -274,8 +392,16 @@ export async function testApp(
     connections,
     connection,
     // Connects a kind through its steps, with what the person gave them, as
-    // the window does.
+    // the window does the folder.
     connect: (kind: string, given: unknown) => post("/api/connections", { kind, given }),
+    // Turns a kind on through the first server the person's agent lists
+    // for it, as a person does in Settings, once its first sync ends.
+    async turnOn(kind: string) {
+      await post("/api/servers/look");
+      const on = await post("/api/actions/source.on", { kind });
+      await app.settled();
+      return on;
+    },
     // A Sync of a kind's connection, as the sidebar's; a 404 when it has none.
     async sync(kind: string) {
       return post(`/api/connections/${(await connection(kind))?.id ?? "0".repeat(26)}/sync`);

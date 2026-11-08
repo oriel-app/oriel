@@ -22,7 +22,7 @@ const runs = Number(values.runs);
 
 const cleanups: (() => Promise<void>)[] = [];
 const start = () =>
-  testApp({ after: (fn) => cleanups.push(fn) }, { live: true, issues: bigWorld(total) });
+  testApp({ after: (fn) => cleanups.push(fn) }, { memory: true, issues: bigWorld(total) });
 
 type Row = { route: string; bytes: number; coldMs: number; warmMs: number };
 

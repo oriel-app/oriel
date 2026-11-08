@@ -1,11 +1,8 @@
-// The seam between Jira's REST shapes and how they are fetched. The source only
-// ever calls a `ReadTransport`, and the writer a `Transport`. `restTransport`
-// sends requests over HTTPS behind a `Credential`; a cassette replays recorded
-// ones; an MCP-backed implementation could answer the same requests without
-// touching either. Only `@oriel/jira/writer` exports `restTransport`.
-import { AsyncLocalStorage } from "node:async_hooks";
-import { setTimeout as wait } from "node:timers/promises";
-import { type Credential, requestMs, retryMs, SourceRefused, type WriteLimit } from "@oriel/core";
+// The seam between Jira's REST shapes and how they are answered. The source
+// only ever calls a `ReadTransport`, and the writer a `Transport`. Atlassian's
+// MCP server answers them (`atlassianTransport`, decision 0059); a cassette
+// replays recorded ones; and `memoryTransport` sends them to a fixture's
+// in-memory site, for tests, shots and timings, with no credential.
 
 export type JiraRequest = {
   method: "GET" | "POST" | "PUT" | "DELETE";
@@ -23,35 +20,6 @@ export type ReadRequest =
   | { method: "POST"; path: typeof searchPath; body: unknown };
 export type ReadTransport = (request: ReadRequest) => Promise<JiraResponse>;
 
-// An Atlassian account's email and API token. The token stays in the closure.
-export function basicAuth(email: string, token: string): Credential {
-  const header = `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`;
-  return { headers: async () => ({ Authorization: header }) };
-}
-
-export type RestOptions = {
-  // An https origin, such as "https://oriel.atlassian.net".
-  site: string;
-  credential: Credential;
-  fetch?: typeof fetch;
-  // How a retry waits, and how a request gives up after `ms`; tests pass
-  // ones they control.
-  wait?: (ms: number) => Promise<unknown>;
-  timeout?: (ms: number) => AbortSignal;
-  timeoutMs?: number;
-};
-
-const maxAttempts = 5;
-
-// The limit of the write a request is made for, if it is made for one:
-// whatever makes it, the writer or the boards it shares with the source.
-const writeLimits = new AsyncLocalStorage<WriteLimit>();
-
-// Runs a write with every request made for it, however deep, held to `limit`.
-export function withinLimit<T>(limit: WriteLimit | undefined, write: () => Promise<T>): Promise<T> {
-  return limit ? writeLimits.run(limit, write) : write();
-}
-
 // A site as an https origin with no trailing slash, or a RangeError.
 export function siteOrigin(site: string): string {
   const url = URL.canParse(site) ? new URL(site) : null;
@@ -62,55 +30,26 @@ export function siteOrigin(site: string): string {
   return url.origin;
 }
 
-export function restTransport(options: RestOptions): Transport {
-  const site = new URL(siteOrigin(options.site));
-  const send = options.fetch ?? fetch;
-  const pause = options.wait ?? wait;
-  const timeout = options.timeout ?? AbortSignal.timeout;
-  const timeoutMs = options.timeoutMs ?? 30_000;
+// A fixture's in-memory site, such as `memorySite`'s, at `site`, as Jira's
+// REST API answers: no credential goes with a request, and `fetch` is the
+// site's own, never the network's, so nothing reaches a real site through
+// it.
+export function memoryTransport(site: string, send: typeof fetch): Transport {
+  const origin = new URL(siteOrigin(site));
   return async (request) => {
-    const limit = writeLimits.getStore();
     // "/rest/" keeps a path from naming another host ("//host") or escaping the API.
     if (!request.path.startsWith("/rest/")) throw new RangeError("Jira paths start with /rest/");
-    const url = new URL(request.path, site);
     const hasBody = request.body !== undefined;
-    for (let attempt = 1; ; attempt++) {
-      const ms = requestMs(timeoutMs, limit, "Jira");
-      // Without its credentials the request never goes out. The credential's
-      // own message stays out of it, in case it names a secret.
-      const credentials = await options.credential.headers().catch((error: unknown) => {
-        throw new SourceRefused("Oriel couldn't get its credentials for Jira", {
-          sent: false,
-          cause: error,
-        });
-      });
-      const response = await send(url, {
-        method: request.method,
-        headers: {
-          ...credentials,
-          Accept: "application/json",
-          ...(hasBody ? { "Content-Type": "application/json" } : {}),
-        },
-        ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
-        signal: timeout(ms),
-      });
-      // A 429 was not processed, so any request may retry it; a 503 might
-      // have been, so only reads do.
-      const retry =
-        response.status === 429 || (response.status === 503 && request.method === "GET");
-      if (retry && attempt < maxAttempts) {
-        await response.body?.cancel();
-        await pause(retryMs(response.headers.get("Retry-After"), limit, "Jira"));
-        continue;
-      }
-      return { status: response.status, body: parse(await response.text()) };
-    }
+    const response = await send(new URL(request.path, origin), {
+      method: request.method,
+      headers: {
+        Accept: "application/json",
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
+    });
+    return { status: response.status, body: parse(await response.text()) };
   };
-}
-
-// The read side's transport over HTTPS.
-export function readTransport(options: RestOptions): ReadTransport {
-  return readOnly(restTransport(options));
 }
 
 // Checks the method at run time too, so a cast can't send a write through it.

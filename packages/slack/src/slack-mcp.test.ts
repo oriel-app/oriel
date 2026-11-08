@@ -33,7 +33,6 @@ const connection: ToOpen = {
   prefix: "slack",
   identity: fixture.team.url,
   options: { channels: fixture.picked },
-  secret: null,
 };
 
 const through = (read: ToolCaller, write?: ToolCaller): ThroughServer => ({
@@ -55,7 +54,6 @@ const through = (read: ToolCaller, write?: ToolCaller): ThroughServer => ({
 });
 
 const via = (read: ToolCaller): OpenVia => ({
-  kept: false,
   log: () => {},
   now: () => "2026-11-07T00:00:00.000Z" as never,
   server: through(read),

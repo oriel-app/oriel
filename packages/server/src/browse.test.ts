@@ -8,7 +8,7 @@ import { json, testApp } from "./testing.ts";
 // SYN, with 120 more stories in SYN-1, the checkout epic (cluster 10001).
 const bigger = (t: Parameters<typeof testApp>[0]) =>
   testApp(t, {
-    live: true,
+    memory: true,
     issues: (syn) => {
       const story = syn.find((issue) => issue.epic === "SYN-1" && issue.issueType === "Story");
       assert.ok(story);

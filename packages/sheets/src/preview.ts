@@ -47,7 +47,7 @@ import {
   type TabMapping,
 } from "./mapping.ts";
 import type { TabInfo } from "./google.ts";
-import { googleOf, picksOf } from "./open-connection.ts";
+import { memoryGoogle, picksOf } from "./open-connection.ts";
 import { recentSpreadsheets, serverGoogle } from "./sheets-mcp.ts";
 import { maxTabs } from "./source.ts";
 
@@ -74,7 +74,7 @@ export async function sheetsPreview(
   via: OpenVia,
   ask: PreviewAsk = {},
 ): Promise<PreviewTable[]> {
-  const google = via.server ? serverGoogle(via.server.read) : googleOf(connection, via).google;
+  const google = via.server ? serverGoogle(via.server.read) : memoryGoogle(via);
   const picks = picksOf(connection.options);
   const ids =
     via.server && picks.spreadsheets.length === 0
@@ -506,6 +506,15 @@ function said(
 }
 
 export const sheetsReview = {
+  step: {
+    kind: "review",
+    label: "How Oriel reads your spreadsheets",
+    title: "How Oriel reads them",
+    lede: "Each row becomes an item, under the columns below. Nothing is read until you apply it.",
+    reading: "Reading the headers",
+    ask: "Draft how Oriel should read the spreadsheets just picked.",
+    fix: "Draft a change to how Oriel reads the tab at {at}.",
+  },
   draft: sheetsDraft,
   // Spreadsheets just picked map no tab, as an Undo of the first mapping
   // puts them back: nothing is read from them yet but each one itself.

@@ -1,6 +1,6 @@
 // `pnpm perf`: how fast the window opens on a big world, in the installed
 // Chrome. SYN's fixture plus generated issues, 4,000 in all (`--items`), is
-// served by SYN's Jira site in memory and synced as from a live one into a
+// served by SYN's Jira site in memory and synced as from a source server into a
 // database file in a temporary directory, with `--workstreams` workstreams
 // made from its largest epics, as a user's would be. The server is the real
 // one, on a free port.
@@ -57,10 +57,9 @@ const start = async (): Promise<{ serving: Serving; ms: number }> => {
     db,
     sources: {
       jira: {
-        mode: "live",
+        mode: "memory",
         identity: memorySiteOrigin,
         options: { project: "SYN" },
-        secret: JSON.stringify({ email: "", token: "" }),
         fetch: site.fetch,
       },
     },

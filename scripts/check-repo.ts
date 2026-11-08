@@ -192,13 +192,10 @@ export const exemptRoutes: Record<string, string> = {
   // Decision 0059: what the person's agent lists, which turns nothing on.
   "/servers/look":
     "a look at the person's agent's own servers, which starts them and turns nothing on",
-  // Decision 0049: a connector's pick step, such as Jira's projects.
-  "/connections/pick": "a read of a list to pick from, for the details typed, which keeps nothing",
+  // Decision 0059: what a person picks through a source server, such as
+  // Jira's projects.
   "/connections/:id/pick":
-    "a read of a list to pick from, for a connection's own account, which keeps nothing",
-  // Decision 0050: a browser step's sign-in, on the source's own page.
-  "/connections/browser":
-    "a sign-in begun on the source's page, which keeps nothing until the person's connect",
+    "a read of a list to pick from, through a connection's source server, which keeps nothing",
   // OA-232: a mapping redrawn as the person edits it; applying it dispatches.
   "/connections/:id/review":
     "a draft redrawn from the source with the person's edit, which keeps nothing",

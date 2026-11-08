@@ -1,43 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { type TestContext, test } from "node:test";
-import { pathToFileURL } from "node:url";
-import { recordingEnv, scrub } from "./record-jira.ts";
-
-// A made-up account, and a value beside it the recording never takes.
-const account = {
-  site: "https://oriel.atlassian.net",
-  email: "pm@example.com",
-  token: "fake-jira-token-0123",
-};
-const envText = `JIRA_SITE=${account.site}\nJIRA_EMAIL=${account.email}\nJIRA_API_TOKEN=${account.token}\nANTHROPIC_API_KEY=sk-ant-fake\n`;
-
-const realDir = (t: TestContext) => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "oriel-record-")));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-};
-
-test("--env names the .env to record as, a regular file with one link; else the root's", async (t) => {
-  const dir = realDir(t);
-  const path = join(dir, "main.env");
-  writeFileSync(path, envText);
-  const root = pathToFileURL(join(dir, "missing", ".env"));
-  assert.deepEqual(await recordingEnv(path, root), account);
-  const link = join(dir, "link.env");
-  symlinkSync(path, link);
-  assert.ok("error" in (await recordingEnv(link, root)));
-  assert.ok("error" in (await recordingEnv(join(dir, "none.env"), root)));
-  // Without --env, the root's, as before: none there, or this one.
-  assert.ok("error" in (await recordingEnv(undefined, root)));
-  assert.deepEqual(await recordingEnv(undefined, pathToFileURL(path)), account);
-  // No problem quotes a value from the file.
-  writeFileSync(join(dir, "partial.env"), `JIRA_API_TOKEN=${account.token}\n`);
-  const partial = await recordingEnv(join(dir, "partial.env"), root);
-  assert.ok("error" in partial && !partial.error.includes(account.token));
-});
+import { test } from "node:test";
+import { scrub } from "./recorded.ts";
 
 test("people become placeholders, the same one everywhere, with no email, avatar or zone", () => {
   const amara = {

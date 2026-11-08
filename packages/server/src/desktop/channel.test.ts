@@ -34,10 +34,12 @@ test("a request the protocol doesn't allow is never sent", async () => {
   input.write(`${secret}\n`);
   lines.ready("http://127.0.0.1:4320/");
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "../Jira" }), Error);
-  // Only the names the server keeps: the API key, each connection's by its
-  // ULID, and the Jira connection kept before connections.
+  // Only the name the server keeps: the API key. No connection keeps a
+  // secret since decision 0059, nor does Jira's from before connections.
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "slack" }), Error);
   for (const name of [
+    "jira",
+    "connection.01JC0NNECT10NSST0RED0000AB",
     "connection.01jc0nnect10nsst0red0000ab",
     "connection.01JC0NNECT10NSST0RED0000AB.tmp",
     "connection.01JC0NNECT10NSST0RED0000A",
@@ -50,12 +52,10 @@ test("a request the protocol doesn't allow is never sent", async () => {
     Error,
   );
   await assert.rejects(
-    lines.shell.ask({ kind: "secret.set", name: "jira", secret: "x".repeat(16_385) }),
+    lines.shell.ask({ kind: "secret.set", name: "anthropic-key", secret: "x".repeat(16_385) }),
     Error,
   );
   assert.equal(out.length, 1);
-  lines.shell
-    .ask({ kind: "secret.get", name: "connection.01JC0NNECT10NSST0RED0000AB" })
-    .catch(() => {});
+  lines.shell.ask({ kind: "secret.get", name: "anthropic-key" }).catch(() => {});
   assert.equal(out.length, 2);
 });

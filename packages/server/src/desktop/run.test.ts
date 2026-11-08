@@ -15,7 +15,7 @@ import { scriptedAgent } from "../scripted-agent.ts";
 import type { Serving } from "../serve.ts";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "@oriel/jira";
-import { account, estimate, fakeSandbox, t0, testApp } from "../testing.ts";
+import { estimate, fakeSandbox, t0, testApp } from "../testing.ts";
 import { keyStore } from "../api-key.ts";
 import { models } from "../model.ts";
 import { memorySettings } from "../settings.ts";
@@ -42,11 +42,9 @@ function start(
   const input = new PassThrough();
   const out: ServerLine[] = [];
   const logged: { message: string; fields: Record<string, unknown> }[] = [];
-  // Jira, connected at an earlier launch, to SYN on a site in memory.
-  const site = memorySite(loadJiraFixture(), instant(new Date(t0)), { account });
-  const secrets =
-    given?.secrets ??
-    new Map([["jira", JSON.stringify({ site: memorySiteOrigin, ...account, project: "SYN" })]]);
+  // Jira, as SYN on a site in memory.
+  const site = memorySite(loadJiraFixture(), instant(new Date(t0)));
+  const secrets = given?.secrets ?? new Map<string, string>();
   const signals = new EventEmitter();
   const write = (line: string) => {
     const sent = JSON.parse(line) as ServerLine;
@@ -71,8 +69,15 @@ function start(
     signals,
     firstPort,
     firstDoorPort: 0,
-    jiraFetch: site.fetch,
     app: {
+      sources: {
+        jira: {
+          mode: "memory",
+          identity: memorySiteOrigin,
+          options: { project: "SYN" },
+          fetch: site.fetch,
+        },
+      },
       now: () => instant(new Date(t0)),
       sandbox: fakeSandbox({ estimate }),
       ...(given ? {} : { agent: (deps) => scriptedAgent(deps, () => [{ run: "estimate" }]) }),

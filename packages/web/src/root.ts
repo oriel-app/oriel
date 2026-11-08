@@ -53,11 +53,8 @@ import {
   type ConnectionsModel,
   type ConnectionsMsg,
   connectionsReplied,
-  connectState,
   initConnections,
   loadConnections,
-  offered,
-  standingIn,
   updateConnections,
 } from "./connections.ts";
 import type { Hold } from "./undos.ts";
@@ -501,7 +498,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
 // heading takes focus once it loads.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
   const [next, effects] = focused(
-    ...readingDone(...staying(...standing(msg, ...movedOn(model, msg, ...updated(model, msg))))),
+    ...staying(...standing(msg, ...movedOn(model, msg, ...updated(model, msg)))),
   );
   const moved = effects.some(
     (effect) =>
@@ -528,26 +525,6 @@ function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Mod
 function focused(model: Model, effects: Effect[]): [Model, Effect[]] {
   const [next, focusingIt] = focusing(model);
   return [next, [...effects, ...focusingIt]];
-}
-
-// The first run's last screen opens the overview as soon as one source is
-// read, unless one failed, which waits for the person (decision 0038).
-function readingDone(model: Model, effects: Effect[]): [Model, Effect[]] {
-  const { setup, connections } = model;
-  if (model.route.page !== "setup" || setup.screen !== "reading" || setup.finishing)
-    return [model, effects];
-  const states = offered(model.connectors, connections).map(({ kind }) =>
-    connectState(connections, kind),
-  );
-  // A stand-in on is read, its items Oriel's own (decision 0059), once
-  // nothing else is still reading.
-  const read =
-    states.includes("read") ||
-    (standingIn(model.connectors, connections).length > 0 && !states.includes("reading"));
-  const failed = states.includes("failed");
-  if (!read || failed) return [model, effects];
-  const [finished, finishing] = updateSetup(setup, { type: "finished" });
-  return [{ ...model, setup: finished }, [...effects, ...finishing]];
 }
 
 // Replies whose body is a workstream's whole view: its version and its
@@ -667,20 +644,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     }
     case "connections": {
       const [connections, effects] = updateConnections(model.connections, msg.msg);
-      // The first run shows a connection's first sync as it reads, back
-      // among the sources, where another can be connected meanwhile.
-      const kind = "kind" in msg.msg ? msg.msg.kind : null;
-      const started =
-        kind !== null &&
-        (msg.msg.type === "connectClicked" || msg.msg.type === "browserOpened") &&
-        connections.forms[kind]?.pending === "connecting";
-      if (!started) return [{ ...model, connections }, effects];
-      const [setup, watching] = updateSetup(model.setup, { type: "watched", on: true });
-      const [back, shown] =
-        model.route.page === "setup" && setup.screen === "connect"
-          ? updateSetup(setup, { type: "screenShown", screen: "work" })
-          : [setup, []];
-      return [{ ...model, connections, setup: back }, [...effects, ...watching, ...shown]];
+      return [{ ...model, connections }, effects];
     }
     case "closing": {
       const [closing, effects] = updateClosing(model.closing, msg.msg);
@@ -943,10 +907,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return [{ ...model, newThread }, effects];
     }
     case "connections":
-    case "connectChoices":
     case "connectPicked":
     case "connected":
-    case "browserBegun":
     case "onboarded":
     case "reviewed":
     case "reviewApplied":
@@ -964,16 +926,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
         synced,
         effects = [],
       } = connectionsReplied(model.connections, msg);
-      // The first run stops watching a first sync once its connect has
-      // answered.
-      const [setup, watching] =
-        msg.tag.kind === "connected"
-          ? updateSetup(model.setup, { type: "watched", on: false })
-          : [model.setup, []];
-      const next = { ...model, connections, setup };
-      return synced
-        ? sourceSynced(next, [...watching, ...effects])
-        : [next, [...watching, ...effects]];
+      const next = { ...model, connections };
+      return synced ? sourceSynced(next, effects) : [next, effects];
     }
     case "connectors":
       return [{ ...model, connectors: connectorsReplied(model.connectors, msg) }, []];

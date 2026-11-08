@@ -10,14 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { DiffView, OverviewView, ThreadView, WindowView } from "@oriel/web/view";
-import { account, json, type Script, testApp } from "./testing.ts";
-
-const details = {
-  site: "oriel.atlassian.net",
-  email: account.email,
-  token: account.token,
-  project: "syn",
-};
+import { json, type Script, testApp } from "./testing.ts";
 
 // What the window chat's agent drafts for "plan a small launch".
 const plan: Script = async () => ({
@@ -43,11 +36,12 @@ async function moving(it: Awaited<ReturnType<typeof testApp>>) {
   return { note: note.note, changeSetId: set.changeSetId, threadId: thread.id };
 }
 
-// A window with Jira not connected yet, as the desktop app's first run is.
+// A window with Jira not on yet, as the desktop app's first run is, and
+// Atlassian's server in the person's agent to turn it on through.
 async function fresh(t: TestContext, db?: string) {
   const it = await testApp(t, {
     ...(db ? { db } : {}),
-    connect: {},
+    atlassian: true,
     plan: (input) => (input.text.startsWith("Draft") ? [{ run: "plan" }] : [{ text: "Hello." }]),
     scripts: { plan },
   });
@@ -117,9 +111,9 @@ test("a tracker turning on is offered the stand-in's issues; approved, the stand
       (each) => each.kind,
     );
 
-  // Jira connected: Oriel offers to make the stand-in's issues again in
+  // Jira on: Oriel offers to make the stand-in's issues again in
   // Jira (decision 0059), and both stay until it applies.
-  assert.equal((await it.connect("jira", details)).status, 200);
+  assert.equal((await it.turnOn("jira")).status, 200);
   assert.deepEqual(await kinds(), ["jira", "tracker"]);
   const offer = await moving(it);
   assert.equal((await it.approve(offer.changeSetId)).status, 200);
@@ -129,12 +123,9 @@ test("a tracker turning on is offered the stand-in's issues; approved, the stand
   );
   assert.deepEqual(await kinds(), ["jira"]);
 
-  // Jira disconnected: it's on again, with its issues as they were.
-  const jira = json<{ connections: { id: string; kind: string }[] }>(
-    await it.get("/api/connections"),
-  ).connections.find((each) => each.kind === "jira");
-  assert.ok(jira);
-  assert.equal((await it.post(`/api/connections/${jira.id}/disconnect`)).status, 200);
+  // Jira turned off: it's on again, with its issues as they were.
+  assert.equal((await it.post("/api/actions/source.off", { kind: "jira" })).status, 200);
+  await it.app.settled();
   assert.deepEqual(await it.browse(), [["Spring launch", 3]]);
 });
 
@@ -144,7 +135,7 @@ test("rejected, Oriel's offer to move the stand-in's issues leaves both trackers
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
-  assert.equal((await it.connect("jira", details)).status, 200);
+  assert.equal((await it.turnOn("jira")).status, 200);
   const offer = await moving(it);
   const diff = json<DiffView>(await it.post(`/api/change-sets/${offer.changeSetId}/diff`));
   const rejected = await it.post(`/api/change-sets/${offer.changeSetId}/reject`, {
@@ -168,7 +159,7 @@ test("a move with an issue left out keeps the stand-in on, for the issue still o
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
-  assert.equal((await it.connect("jira", details)).status, 200);
+  assert.equal((await it.turnOn("jira")).status, 200);
   const offer = await moving(it);
   const diff = json<DiffView>(await it.post(`/api/change-sets/${offer.changeSetId}/diff`));
   const last = diff.lines.at(-1)?.mutationId;
@@ -193,7 +184,7 @@ test("a move's revert that deleted nothing in Jira leaves the move as it was", a
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
-  assert.equal((await it.connect("jira", details)).status, 200);
+  assert.equal((await it.turnOn("jira")).status, 200);
   const offer = await moving(it);
   assert.equal((await it.approve(offer.changeSetId)).status, 200);
   it.advance(1000);
@@ -221,7 +212,7 @@ test("a move's revert stopped partway, then retried, gives every workstream back
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
-  assert.equal((await it.connect("jira", details)).status, 200);
+  assert.equal((await it.turnOn("jira")).status, 200);
   const offer = await moving(it);
   assert.equal((await it.approve(offer.changeSetId)).status, 200);
   it.advance(1000);

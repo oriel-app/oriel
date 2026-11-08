@@ -40,8 +40,8 @@ const offer = (over: Partial<ConnectOffer>): ConnectOffer => ({
   ...over,
 });
 
-// How every connector shows, as /api/connectors sends it, with steps in
-// short; packages/server's api test holds its own fields to the
+// How every connector shows, as /api/connectors sends it, with its offer and
+// steps in short; packages/server's api test holds its own fields to the
 // declarations.
 export const connectorViews: ConnectorView[] = [
   {
@@ -52,49 +52,19 @@ export const connectorViews: ConnectorView[] = [
     keysReadAs: null,
     columns: ["assignee", "estimate"],
     writable: true,
-    connect: {
-      steps: [
-        {
-          kind: "fields",
-          label: "Your Jira account",
-          title: "Connect Jira",
-          lede: "Three things.",
-          fields: [
-            { name: "site", label: "Your Jira address", input: "url" },
-            { name: "email", label: "Email", input: "email" },
-            { name: "token", label: "API token", secret: true },
-          ],
-        },
-        {
-          kind: "pick",
-          field: "project",
-          label: "Jira projects",
-          title: "Which Jira project?",
-          lede: "Pick one.",
-          list: "Projects",
-          find: "Find a project",
-          findLabel: "Find a project",
-          none: "None.",
-          noMatch: "No match.",
-          counts: "issue",
-          use: "Use this project",
-        },
-      ],
-      offer: offer({
-        firstRun: 1,
-        mark: "J",
-        title: "Jira",
-        counts: "issue",
-        yours: "your Jira",
-        changes: "Jira",
-        follow: "an epic",
-        invite: { note: "Your epics.", readOnly: "Only reads.", connected: "has no issues yet." },
-      }),
-    },
-    options: [
-      { kind: "pick", name: "project", label: "Project" },
-      { kind: "read-only", name: "readOnly" },
-    ],
+    offer: offer({
+      firstRun: 1,
+      mark: "J",
+      title: "Jira",
+      counts: "issue",
+      yours: "your Jira",
+      changes: "Jira",
+      follow: "an epic",
+      invite: { note: "Your epics.", readOnly: "Only reads.", connected: "has no issues yet." },
+    }),
+    connect: null,
+    review: null,
+    options: [{ kind: "read-only", name: "readOnly" }],
     standIn: null,
   },
   {
@@ -105,6 +75,14 @@ export const connectorViews: ConnectorView[] = [
     keysReadAs: "File",
     columns: [],
     writable: false,
+    offer: offer({
+      firstRun: 2,
+      mark: "F",
+      title: "A folder",
+      counts: "file",
+      yours: "your notes",
+      changes: "your files",
+    }),
     connect: {
       steps: [
         {
@@ -120,15 +98,8 @@ export const connectorViews: ConnectorView[] = [
           note: "Read only.",
         },
       ],
-      offer: offer({
-        firstRun: 2,
-        mark: "F",
-        title: "A folder",
-        counts: "file",
-        yours: "your notes",
-        changes: "your files",
-      }),
     },
+    review: null,
     options: [],
     standIn: null,
   },
@@ -140,7 +111,9 @@ export const connectorViews: ConnectorView[] = [
     keysReadAs: "Message",
     columns: ["replies"],
     writable: true,
+    offer: null,
     connect: null,
+    review: null,
     options: [],
     standIn: null,
   },

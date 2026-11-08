@@ -45,8 +45,6 @@ export const windowRoutes: Record<string, ProgramWay> = {
   "POST /servers/look": {
     not: "Asking the person's agent for its MCP servers starts their own servers: the person does, with Sync (decision 0059).",
   },
-  "POST /connections/pick": { not: connecting },
-  "POST /connections/browser": { not: connecting },
   "POST /connections/:id/pick": { not: connecting },
   "GET /connections/:id/review": { not: connecting },
   "POST /connections/:id/review": { not: connecting },

@@ -1,6 +1,6 @@
 import type { PreviewTable } from "./block.ts";
 import type { DeclaredFacets } from "./change-log.ts";
-import type { ConnectOf, LiveOf, OptionField, PreviewAsk, ReviewOf } from "./connect.ts";
+import type { ConnectOf, ConnectOffer, OptionField, PreviewAsk, ReviewOf } from "./connect.ts";
 import type { StandIn } from "./connector-view.ts";
 import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
@@ -58,8 +58,9 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   budget: number;
   // How it opens a connection: its source, its recognizer's scope, its
   // namespace's context and what its writer is built from, from the
-  // connection's options and its secret (decision 0049). The writer itself
-  // is built only in packages/changeset (decision 0003).
+  // connection's options and the source server its kind is on through
+  // (decisions 0049 and 0059). The writer itself is built only in
+  // packages/changeset (decision 0003).
   open: (connection: ToOpen, via: OpenVia) => Promise<Opened<Given<C>, Given<R>, Given<W>>>;
   // What a person sets per connection, which `source.configure` checks
   // with it: the options its `open` reads. Its checks never quote a value.
@@ -77,14 +78,18 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   review?: ReviewOf;
   // How Settings draws them, those it can.
   optionFields?: readonly OptionField[];
+  // How the window offers it, in the first run and on the overview.
+  offer?: ConnectOffer;
+  // What a connection reads, in a word or two, such as Jira's project or
+  // the folder's name; its identity when absent.
+  reads?(connection: { identity: string; options: Readonly<Record<string, unknown>> }): string;
   // How a person makes a connection of it in the window: its steps and
-  // their server halves. Without it, only a flag makes one.
+  // their server halves, as the folder's, which is on the person's own disk
+  // (decision 0059). Without it, only a flag or a source server makes one.
   connect?: ConnectOf;
-  // How a flag makes a live connection of it under `pnpm dev`, from `.env`.
-  live?: LiveOf;
   // A stand-in's (decision 0059): the kinds whose connection turns it off,
   // and how the window offers it while it's on, in place of them, as a
-  // connector's `connect.offer` does. It is on while none of them is
+  // connector's `offer` does. It is on while none of them is
   // connected, opened over Oriel's own store of its items (`OpenVia.own`),
   // whose index rows are their source of truth, so nothing syncs it; while
   // one is, nothing of it shows, and its items stay, for when it's on again.
@@ -100,8 +105,7 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // The source servers it reads its kind through (decision 0059): how each
   // is recognised among the person's agent's MCP servers, and the tools it
   // must offer. A person turns its kind on through one Oriel finds. None:
-  // its kind turns on only through its connections, until its source
-  // server's story.
+  // its kind turns on only through its connections, as the folder's.
   servers?: readonly SourceServer[];
   // Its synthetic data, which tests, evals and the server's fixture mode
   // connect to. Its connection gives the context its namespace takes; one

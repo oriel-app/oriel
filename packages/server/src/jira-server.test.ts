@@ -11,7 +11,7 @@ import { atlassianServer } from "@oriel/jira";
 import { atlassianStandIn, standInCaller, standInSite } from "@oriel/jira/standin";
 import type { DiffView, ThreadView } from "@oriel/web/view";
 import { fakeAgent } from "./servers/testing.ts";
-import { account, json, type Script, testApp } from "./testing.ts";
+import { json, type Script, testApp } from "./testing.ts";
 
 const { reads, writes } = atlassianServer;
 
@@ -43,7 +43,7 @@ async function world(
   let processes = 0;
   const agent = fakeAgent(options.found ?? (() => [atlassian()]));
   const it = await testApp(t, {
-    connect: {},
+    jira: false,
     discover: agent.discover,
     plan: () => [{ run: "script" }],
     scripts: { script: options.script ?? (async () => ({ value: null })) },
@@ -178,32 +178,4 @@ test("an answer Oriel can't read stops the sync with the server named, and keeps
   assert.equal(synced.status, 502);
   assert.ok((await it.connection("jira"))?.problem);
   assert.deepEqual(it.jiraRows(), before);
-});
-
-// The server's project list with another before SYN, as a site with two
-// has it.
-const twoProjects = (call: ToolCall, answer: unknown) => {
-  if (call.tool !== "listJiraProjects") return answer;
-  const values = [
-    { id: "10001", key: "OPS", name: "Pier operations" },
-    { id: "10000", key: "SYN", name: "Ferrowick" },
-  ];
-  return { content: [{ type: "text", text: JSON.stringify({ isLast: true, values }) }] };
-};
-
-test("a project picked in Jira's own connection carries over when Jira turns on through its server", async (t) => {
-  const it = await world(t, { answer: twoProjects });
-  const made = await it.connect("jira", {
-    site: "oriel.atlassian.net",
-    email: account.email,
-    token: account.token,
-    project: "SYN",
-  });
-  assert.equal(made.status, 200);
-  const own = json<{ connection: { id: string } }>(made).connection;
-  await it.turnOn();
-  const jira = await it.connection("jira");
-  assert.equal(jira?.id, own.id, "the same connection, so its items keep their IDs");
-  assert.equal(jira?.through, "atlassian");
-  assert.deepEqual(jira?.options, { project: "SYN" }, "not the server's first, OPS");
 });

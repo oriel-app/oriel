@@ -27,7 +27,6 @@ const connection: ToOpen = {
   prefix: "jira",
   identity: "",
   options: { project: "SYN" },
-  secret: null,
 };
 
 // Jira through Atlassian's server, a stand-in of it on SYN after `edited`
@@ -37,7 +36,6 @@ async function jira(edited: number, plain: FixtureConnection): Promise<FixtureCo
   const site = memorySite({ ...fixture, edits: fixture.edits.slice(0, edited) }, frozenAt(fixture));
   const tools = standInCaller(atlassianStandIn(site));
   const opened = await openJira(connection, {
-    kept: false,
     log: () => {},
     now: () => frozenAt(fixture),
     server: {
@@ -79,7 +77,6 @@ async function slack(_edited: number, plain: FixtureConnection): Promise<Fixture
       options: { channels: fixture.picked },
     },
     {
-      kept: false,
       log: () => {},
       now: () => "2026-11-07T00:00:00.000Z" as never,
       server: {
@@ -144,7 +141,6 @@ async function sheets(edited: number, plain: FixtureConnection): Promise<Fixture
   const opened = await sources.sheets.open(
     { ...connection, prefix: "sheets", ...sources.sheets.fixture.connection() },
     {
-      kept: false,
       log: () => {},
       now: () => "2026-11-07T00:00:00.000Z" as never,
       server: sheetsThrough(),

@@ -16,11 +16,11 @@ import type { SignalKind } from "./noticed.ts";
 //   onboarding budget, decision 0038): the earliest approving
 //   `changeset.decided` minus `first-run.opened`, or on localhost, where
 //   there is no first run, minus `source.connected`
-// - each phase of the first run: the time between its events, Atlassian's
-//   page included, as the gap before `source.connected`; for Google Sheets
-//   (decision 0051), Google's page as that gap, the draft's turn from its
-//   onboarding `question.asked` to `draft.made`, and the review from there
-//   to `draft.applied`, or to `source.configured` for Oriel's guess
+// - each phase of the first run: the time between its events; for a
+//   connection that waits for its options (decision 0051), the draft's turn
+//   from its onboarding `question.asked` to `draft.made`, and the review
+//   from there to `draft.applied`, or to `source.configured` for Oriel's
+//   guess
 // - time to done: from `thread.opened` to the thread's first
 //   `changeset.applied` or `thread.marked-done`, whichever came first
 // Where the user closed a thread from: its page, or a menu on a list, or a
@@ -36,10 +36,9 @@ export type CloseVia = "page" | "menu" | "swipe" | "new-chat";
 // connection of its kind than the first (decision 0049).
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind; later: boolean }
-  // A connection's options changed, by name, never their values; signed in
-  // again, keeping its number and items; or disconnected (decision 0049).
+  // A connection's options changed, by name, never their values; or
+  // disconnected (decision 0049).
   | { name: "source.configured"; source: SourceKind; later: boolean; options: string[] }
-  | { name: "source.signed-in-again"; source: SourceKind; later: boolean }
   | { name: "source.disconnected"; source: SourceKind; later: boolean }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }

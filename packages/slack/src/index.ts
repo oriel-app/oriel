@@ -1,14 +1,6 @@
 // The read side only. The writer is exported from `@oriel/slack/writer`, and
 // nothing here imports it.
-export {
-  bearer,
-  readMethods,
-  type ReadMethod,
-  type SlackApi,
-  SlackError,
-  webApi,
-  type WebApiOptions,
-} from "./api.ts";
+export { readMethods, type ReadMethod, type SlackApi, SlackError } from "./api.ts";
 export {
   type SlackAttrs,
   slackAttrs,
@@ -27,7 +19,13 @@ export {
 export { connectSlack, slackPerson, type SlackWorkspace } from "./connect.ts";
 export { slackDeclaration } from "./declaration.ts";
 export { slackDeclaredFixture } from "./declared-fixture.ts";
-export { type OpenedSlack, openSlack, serverProblem, type SlackWrites } from "./open-connection.ts";
+export {
+  type OpenedSlack,
+  openMemory,
+  openSlack,
+  serverProblem,
+  type SlackWrites,
+} from "./open-connection.ts";
 export { slackServer, type SlackServerOptions, slackServerReads, slackTools } from "./slack-mcp.ts";
 export { callsDir, loadCalls } from "./calls-cassette.ts";
 export { type SlackScope, slackRecognizer } from "./references.ts";

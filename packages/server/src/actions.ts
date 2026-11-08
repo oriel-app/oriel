@@ -121,10 +121,10 @@ export type ActionDeps = {
   // flag makes, or that isn't open, is an ActionError.
   sources: {
     // `counted`: it emitted `source.connected`, as a connection's first sync
-    // into the workspace does. `signedIn`: a live one signed in again.
+    // into the workspace does.
     connect(
       input: ActionInput<"source.connect">,
-    ): Promise<{ outcome: SourceOutcome; counted: boolean; signedIn: boolean }>;
+    ): Promise<{ outcome: SourceOutcome; counted: boolean }>;
     // `changed`: the options whose values changed, by name; `replaced`: the
     // options it had before, which its Undo puts back. Set, its sync's
     // problem, if that failed, comes with it.
@@ -1075,21 +1075,10 @@ const handlers = {
   },
 
   // Counted as `source.connected` when the connection first syncs into the
-  // workspace, as `source.signed-in-again` when it was live already, and
-  // otherwise, failed or connected again, as itself.
+  // workspace, and otherwise, failed or connected again, as itself.
   "source.connect": async (input, _actor, deps) => {
-    const { outcome, counted, signedIn } = await deps.sources.connect(input);
-    const again =
-      signedIn && "connection" in outcome
-        ? [
-            {
-              name: "source.signed-in-again" as const,
-              source: outcome.connection.kind,
-              later: outcome.connection.number > 1,
-            },
-          ]
-        : [];
-    return { output: outcome, undo: null, changed: null, events: counted ? "counted" : again };
+    const { outcome, counted } = await deps.sources.connect(input);
+    return { output: outcome, undo: null, changed: null, events: counted ? "counted" : [] };
   },
 
   // Its Undo puts back the options it replaced. Which options changed is

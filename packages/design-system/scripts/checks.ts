@@ -21,7 +21,7 @@
 // - proposals: no proposal's class is also window.css's, every rule is
 //   scoped to a class, and none writes a literal Oriel's theme check forbids;
 // - references: every name a page cites (`.connect-actions` in `window.css`,
-//   `FieldsStep` in `packages/web/src/connect-steps.tsx`) is in that file
+//   `FolderStep` in `packages/web/src/connect-steps.tsx`) is in that file
 //   now, as many times as the page says; every file it names is there; and
 //   no page cites a line. The dated reports (DRIFT.md and CONTROLS.md, with
 //   `surveyed:` in their front matter) keep their commit's lines, and are

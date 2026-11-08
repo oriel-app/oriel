@@ -83,7 +83,7 @@ The cost: a specimen's markup can fall behind a component's. Each page names the
 4. Cite Oriel by name, never by line, so a line added above doesn't make the page wrong. Write the name, then `in`, then the file, each as a code span:
 
    - a CSS rule by one of its selectors, as written: `` `.connect-actions` in `window.css` ``, `` `.quiet-action:hover:not(:disabled)` in `window.css` ``; an at-rule, `` `@keyframes pulse` ``, or a token, `` `--accent` ``;
-   - code by a top-level declaration: `` `FieldsStep` in `packages/web/src/connect-steps.tsx` ``;
+   - code by a top-level declaration: `` `FolderStep` in `packages/web/src/connect-steps.tsx` ``;
    - several in one file: `` `.button`, `.button.primary` and `.button.danger` in `window.css` ``;
    - a rule written more than once, with a count the check holds it to: `` `.connection-problem` twice in `window.css` ``.
 

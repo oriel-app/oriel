@@ -30,7 +30,7 @@ The browser draws the list itself, so the open list looks like the system's, in 
 - Not for two to five options a person should see side by side. Those are [radios](/components/checkbox-radio).
 - Not for on or off. That's a [switch](/components/switch).
 - Not for actions. Add to… is an action dressed as a select, and it's the one exception today; a new set of actions is a [menu](/components/menu).
-- Not for a list the person searches. The connector's pick step shows a search field over radio rows instead.
+- Not for a list the person searches. A pick through a source server shows a search field over its radios instead.
 
 ## Anatomy and variants
 

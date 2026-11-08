@@ -34,8 +34,8 @@ type Made = { server: string; process: number; tools: readonly string[]; call: T
 async function world(
   t: TestContext,
   options: {
-    // Slack's own token connection, beside the server.
-    token?: true;
+    // A flag's Slack over its workspace in memory, beside the server.
+    memory?: true;
     script?: Script;
     // Changes an answer on its way back, as a server that changed might.
     answer?: (call: ToolCall, answer: unknown) => unknown;
@@ -51,14 +51,13 @@ async function world(
   let processes = 0;
   const agent = fakeAgent(() => [slack()]);
   const it = await testApp(t, {
-    connect: {},
-    ...(options.token
+    jira: false,
+    ...(options.memory
       ? {
           slack: {
-            mode: "live",
+            mode: "memory",
             identity: fixture.team.url,
             options: { channels: fixture.picked },
-            secret: "xoxp-test",
             fetch: fixtureApi(fixture).fetch,
           },
         }
@@ -204,8 +203,8 @@ test("an answer Oriel can't read stops the sync with the server named, and keeps
 
 const random = "C0FW2RANDOM";
 
-test("the channels Slack's own connection read carry over when Slack turns on through its server", async (t) => {
-  const it = await world(t, { token: true, yours: [weather, random] });
+test("the channels a flag's Slack connection read carry over when Slack turns on through its server", async (t) => {
+  const it = await world(t, { memory: true, yours: [weather, random] });
   const own = await it.connection("slack");
   await it.turnOn();
   const slack = await it.connection("slack");

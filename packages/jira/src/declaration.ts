@@ -2,7 +2,7 @@
 import { issueDeclaredFacets, issueOverview, type SourceDeclaration } from "@oriel/core";
 import { atlassianServer } from "./atlassian.ts";
 import { jiraKeyShape, jiraPresentation } from "./attrs.ts";
-import { jiraConnect, jiraLive, jiraOptionFields, jiraOptions } from "./connecting.ts";
+import { jiraOffer, jiraOptionFields, jiraOptions, jiraReads } from "./connecting.ts";
 import { jiraDeclaredFixture } from "./declared-fixture.ts";
 import { type Estimates, jiraItemDoc, jiraNamespace } from "./namespace.ts";
 import { type JiraWrites, openJira } from "./open-connection.ts";
@@ -38,8 +38,8 @@ export const jiraDeclaration = {
   open: openJira,
   options: jiraOptions,
   optionFields: jiraOptionFields,
-  connect: jiraConnect,
-  live: jiraLive,
+  offer: jiraOffer,
+  reads: jiraReads,
   // Atlassian's own MCP server, which Jira turns on through (decision 0059).
   servers: [atlassianServer],
   takeIssues,

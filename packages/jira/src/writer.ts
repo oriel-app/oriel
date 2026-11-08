@@ -51,16 +51,15 @@ import {
   failure,
   type JiraRequest,
   type JiraResponse,
+  memoryTransport,
   readOnly,
-  restTransport,
   type Transport,
-  withinLimit,
 } from "./transport.ts";
 import type { JiraWrites } from "./open-connection.ts";
 import { atlassianTransport } from "./atlassian.ts";
 
 // Only this entry hands out a transport that can write.
-export { restTransport, type Transport } from "./transport.ts";
+export { memoryTransport, type Transport } from "./transport.ts";
 export type { JiraBoards } from "./boards.ts";
 export type { JiraWrites } from "./open-connection.ts";
 
@@ -503,20 +502,18 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     kind: "jira",
     // A target must come with the stable ID it is expected to have, and a
     // create with none. A failure before the write went out sent nothing.
-    apply: ({ op, target, expectedStableId, args }, limit) =>
-      withinLimit(limit, () =>
-        noteSent(async (sent) => {
-          const send = sender(sent);
-          if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
-          if (target === null) {
-            if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
-            return await write(send, op, null, args);
-          }
-          if (expectedStableId === null)
-            throw new Error(`${op}: no stable ID to check ${target} against`);
-          return await write(send, op, { id: target, stableId: expectedStableId }, args);
-        }),
-      ),
+    apply: ({ op, target, expectedStableId, args }) =>
+      noteSent(async (sent) => {
+        const send = sender(sent);
+        if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
+        if (target === null) {
+          if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
+          return await write(send, op, null, args);
+        }
+        if (expectedStableId === null)
+          throw new Error(`${op}: no stable ID to check ${target} against`);
+        return await write(send, op, { id: target, stableId: expectedStableId }, args);
+      }),
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);
       return found === "gone" ? "gone" : found.values;
@@ -531,19 +528,15 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 // A Jira connection's writer, from what its open gave it: the line
 // packages/changeset/src/writers.ts has for Jira (decision 0049). Through a
 // source server, its writes are the server's write tools, its reads its
-// read tools (decision 0059).
+// read tools (decision 0059); a fixture's, to its in-memory site.
 export function jiraWriterOf(writes: JiraWrites, log: Log): SourceWriter<"jira"> {
-  const { through, credential } = writes;
+  const { through, memory } = writes;
   const transport = through
     ? atlassianTransport(through)
-    : credential
-      ? restTransport({
-          site: writes.site,
-          credential,
-          ...(writes.fetch ? { fetch: writes.fetch } : {}),
-        })
+    : memory
+      ? memoryTransport(writes.site, memory)
       : null;
-  if (!transport) throw new Error("a Jira connection writes with an account or a server");
+  if (!transport) throw new Error("a Jira connection writes through a server");
   const writer = jiraWriter({
     transport,
     project: writes.project,

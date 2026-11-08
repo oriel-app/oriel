@@ -96,7 +96,7 @@ const quiet: (() => Promise<void>)[] = [];
 const it = await testApp(
   { after: (fn) => quiet.push(fn) },
   {
-    connect: {},
+    jira: false,
     models,
     settings,
     knownServers: standIns.known,

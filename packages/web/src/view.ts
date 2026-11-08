@@ -13,8 +13,6 @@ import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view"
 export type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 export type { BrowseColumn, ConnectorIcon, ConnectorView } from "@oriel/core/connector-view";
 export type {
-  ConnectField,
-  ConnectHelp,
   ConnectOffer,
   ConnectStep,
   OptionField,
@@ -153,8 +151,8 @@ export type Choice = { id: string; name: string };
 // often it syncs, in minutes, null for when Oriel starts and when asked; how many items the index has
 // from it, and when it last synced; why its last sync didn't work, and what
 // it left out, a line each; whether it's open, waiting for options that fit
-// its source (decision 0051), or signed out since its source turned it
-// away; whether a flag of `pnpm dev` makes it, so the
+// its source (decision 0051), or shut, as one its source server couldn't
+// open; whether a flag of `pnpm dev` makes it, so the
 // window can't set or disconnect it; and whether it's a stand-in's.
 export type ConnectionView = {
   id: string;
@@ -177,7 +175,7 @@ export type ConnectionView = {
   lastSync: { new: number; changed: number; removed: number };
   problem: string | null;
   report: readonly string[];
-  state: "open" | "waiting" | "signed-out";
+  state: "open" | "waiting" | "shut";
   flagged: boolean;
   // A stand-in's (decision 0059): Oriel keeps it itself, so the window
   // neither sets, syncs nor disconnects it.
@@ -197,6 +195,8 @@ export type ConnectionPick = {
   many: boolean;
   most: number | null;
   unpicked: string;
+  // The values its options pick now, as its server's pick reads them.
+  picked: string[];
 };
 
 // Every connection, which kinds the window may connect now and why not the

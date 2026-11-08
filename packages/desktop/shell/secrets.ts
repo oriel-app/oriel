@@ -8,7 +8,15 @@
 // Under `--background` or `--launch-file`, for development, secrets are kept
 // in memory instead, so a launch from a script never reaches safe storage or
 // the OS's key (rules.ts, secretsInMemory).
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  type Dirent,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { isSecretName } from "./rules.ts";
 
@@ -47,8 +55,25 @@ export function memorySecrets(): SecretStore {
   };
 }
 
+// The names an older Oriel kept a connection's secret under, before
+// decision 0059: Jira's saved connection, `jira`, and each connection's,
+// `connection.<ULID>`. Nothing reads them any more.
+const retired = (name: string) =>
+  name === "jira" || /^connection\.[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(name);
+
 export function secretStore(dir: string, crypt: Crypt): SecretStore {
   const file = (name: string) => join(dir, named(name));
+  // Each secret an older Oriel kept for a connection is deleted as the
+  // store opens, needing no key, and nothing else in the folder is touched.
+  let kept: Dirent[] = [];
+  try {
+    kept = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // No folder yet, so nothing was kept; or one the store's own reads and
+    // writes will say can't be reached, which mustn't stop the app opening.
+  }
+  for (const each of kept)
+    if (each.isFile() && retired(each.name)) rmSync(join(dir, each.name), { force: true });
   const usable = async () => {
     const problem = await crypt.problem();
     if (problem) throw new Error(problem);

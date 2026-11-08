@@ -53,6 +53,8 @@ import {
   type Recognized,
   type ConnectRefusal,
   type PickChoice,
+  pickedInto,
+  pickedOf,
   type SourceServer,
   type ThroughServer,
   type ToolCaller,
@@ -116,9 +118,9 @@ import {
 import type { Outside } from "./mcp/door.ts";
 import { outsideTools } from "./mcp/tokens.ts";
 import { api } from "./api.ts";
-import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
+import type { OldSecrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
-import { connecting, moveLegacy } from "./connecting.ts";
+import { connecting } from "./connecting.ts";
 import { historyRead } from "./history.ts";
 import { flagged, inWindow, type SourceModes } from "./modes.ts";
 import { followAnchors, nameOf } from "./names.ts";
@@ -166,22 +168,18 @@ export type AppOptions = {
   // second server can open it (decision 0036).
   exclusive?: boolean;
   // How each connector's connections are made: by a flag at start, as its
-  // fixture or live, or in the window (decision 0049). A kind left out is
-  // made in the window when its connector declares how, and not otherwise.
+  // fixture or a site in memory, or in the window (decision 0049). A kind
+  // left out is made in the window when its connector declares how, as the
+  // folder's, and otherwise turns on through its source server (decision
+  // 0059).
   sources?: SourceModes;
-  // Any account or site may be connected in the window, as on the desktop
-  // app (decision 0038); otherwise only those Oriel's own tests use.
-  anywhere?: boolean;
-  // Oriel's own clients of sources, by kind, as each connector's `client`
-  // names them, such as Google's from `.env` under `pnpm dev`. A connector
-  // that names one isn't connected in the window without it.
-  clients?: Readonly<Partial<Record<SourceKind, Readonly<Record<string, string>>>>>;
-  // Jira's saved connection from before connections, which the first start
-  // moves into one (decision 0049).
-  legacyJira?: LegacyJira;
-  // Where connections keep their secrets, each under the name made from its
-  // ID (decision 0049); kept only while the server runs when absent.
-  secrets?: Secrets;
+  // What `pnpm dev` kept of connections' secrets before decision 0059,
+  // which the start deletes.
+  retire?: OldSecrets;
+  // Kinds turned on at start through the source server the person's agent
+  // lists for each, as a person's click in Settings does: `pnpm dev`'s
+  // `--on <kind>`, which the maintainer types.
+  on?: readonly SourceKind[];
   // Builds the agent from everything but a model provider: @oriel/agent's,
   // with one, or the scripted dev agent, which is the default.
   agent?: (deps: ServerAgentDeps) => Agent;
@@ -338,7 +336,6 @@ export async function createApp(options: AppOptions): Promise<App> {
   const connections = connectionsOf({
     db,
     index,
-    secrets: options.secrets ?? memorySecrets(),
     workspaceId,
     now,
     newId,
@@ -362,50 +359,38 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (!declaration) throw new Error(`no source declares ${kind}`);
     return declaration;
   };
-  // What a connection is opened or read with: how requests reach its
-  // source, Oriel's client of it, and, for one the window made, where a
-  // refreshed token is kept for its next start.
-  const openVia = (
-    kind: SourceKind,
-    id: Ulid,
-    how: {
-      kept: boolean;
-      fetch?: typeof fetch | undefined;
-      own?: OwnItems;
-      server?: ThroughServer;
-    },
-  ): OpenVia => {
-    const client = options.clients?.[kind];
-    return {
-      kept: how.kept,
-      log,
-      now,
-      ...(how.fetch ? { fetch: how.fetch } : {}),
-      ...(client ? { client } : {}),
-      ...(how.kept ? { keep: (secret: string) => connections.rekey(id, secret) } : {}),
-      ...(how.own ? { own: how.own } : {}),
-      ...(how.server ? { server: how.server } : {}),
-    };
+  // How a connection is opened or read: through its connector's `open`,
+  // through the source server its kind is on through (`server`), or over
+  // Oriel's own store of a stand-in's items (`own`); or through its
+  // fixture's, over the fixture's stand-in, or over a site in memory a test
+  // made (`fetch`), for a flag's.
+  type How = {
+    from?: "fixture" | "memory";
+    fetch?: typeof fetch | undefined;
+    own?: OwnItems;
+    server?: ThroughServer;
   };
-  // Opens a connection through its connector's declaration, or its
-  // fixture's. A source that keeps no prefix of its own reads its items under
-  // its kind, so it opens only its kind's first connection.
-  const openOne = async (
-    kind: SourceKind,
-    connection: ToOpen,
-    how: {
-      fixture: boolean;
-      kept: boolean;
-      fetch?: typeof fetch | undefined;
-      own?: OwnItems;
-      server?: ThroughServer;
-    },
-  ): Promise<Opened> => {
+  const openVia = (how: How): OpenVia => ({
+    log,
+    now,
+    ...(how.fetch ? { fetch: how.fetch } : {}),
+    ...(how.own ? { own: how.own } : {}),
+    ...(how.server ? { server: how.server } : {}),
+  });
+  // Opens a connection as `how` says. A source that keeps no prefix of its
+  // own reads its items under its kind, so it opens only its kind's first
+  // connection.
+  const openOne = async (kind: SourceKind, connection: ToOpen, how: How): Promise<Opened> => {
     const declaration = declared(kind);
-    const via = openVia(kind, connection.id, how);
-    const opened = await (how.fixture
-      ? declaration.fixture.open(connection, via)
-      : declaration.open(connection, via));
+    const via = openVia(how);
+    const memory = declaration.fixture.memory;
+    const opened = await (how.from === "memory"
+      ? memory && how.fetch
+        ? memory(connection, { ...via, fetch: how.fetch })
+        : Promise.reject(new Error(`${kind}'s fixture opens no site in memory`))
+      : how.from === "fixture"
+        ? declaration.fixture.open(connection, via)
+        : declaration.open(connection, via));
     if ((opened.source.prefix ?? opened.source.kind) !== connection.prefix) {
       opened.close?.();
       throw new Error(`${kind} opens only its first connection for now`);
@@ -422,37 +407,32 @@ export async function createApp(options: AppOptions): Promise<App> {
   // which reach connections through this loop, made below, once they ask.
   const windows = connecting({
     modes,
-    anywhere: options.anywhere ?? false,
-    ...(options.clients ? { clients: options.clients } : {}),
-    now,
-    opening: {
-      connections,
-      // One signed out since it opened may be signed in to again.
-      open: (kind) => {
-        const open = openedOf(kind);
-        return open !== null && !open.opened.signedOut?.();
-      },
-      connect: (kind, made, how) => connect(kind, made, how),
-    },
+    opening: { connections, connect: (kind, made) => connect(kind, made) },
     log,
   });
-  // Before any connection opens: Jira's saved connection from before
-  // connections moves into one.
-  if (options.legacyJira && inWindow(modes, "jira"))
-    await moveLegacy(connections, options.legacyJira, log);
-  // Kept connections that didn't open, as one whose account its source
-  // turned away: what the index has of them still shows, but nothing reads
-  // or writes them until a person signs in again.
+  // Before any connection opens: what `pnpm dev` kept of connections'
+  // secrets before decision 0059 is deleted, once. The connections, their
+  // options and items stay, so a kind turned on through its source server
+  // opens its first again (`openThrough`).
+  if (options.retire) {
+    const deleted = options.retire.retire();
+    if (deleted > 0) log("connections: secrets kept before retired", { deleted });
+  }
+  // Kept connections that didn't open, as one whose source server couldn't
+  // open it: what the index has of them still shows, but nothing reads or
+  // writes them until it opens.
   const shut = new Map<string, Connection>();
   // Shut ones whose options no longer fit their source, by prefix, with why
   // (decision 0051): they wait for their options, which opens them again.
   const unfit = new Map<string, string>();
   // Which kinds are on, and what the person's agent has to turn one on with
   // (decision 0059). A kind has a connection of its own while a flag makes
-  // one, or the window made one, open or shut.
-  // A kind's first live connection of its own: not one kept only for the
-  // options a source server reads with (`keptFor`), which reaches nothing
-  // without its server.
+  // one, or, for a kind the window still connects itself, as the folder,
+  // the window made one, open or shut. Any other kind's connection, as one
+  // Jira had before decision 0059, holds only its options and its items'
+  // IDs for when its kind turns on through its server.
+  // A connection kept only for the options a source server reads with
+  // (`keptFor`) identifies nothing in its source.
   const keptFor = (reports: string) => `through:${reports}`;
   // Such a connection as its kind opens it: it identifies nothing in its
   // source, so its server reads the first it reaches, as one never kept does.
@@ -462,16 +442,16 @@ export async function createApp(options: AppOptions): Promise<App> {
   // person's to set through it: a mapping (`keepsOptions`), or picks.
   const keeps = (known: SourceServer) =>
     known.keepsOptions === true || (known.picks?.length ?? 0) > 0;
-  const ownFirst = (kind: string): Connection | null =>
-    connections
-      .list()
-      .find(
-        (each) =>
-          each.kind === kind &&
-          each.disconnectedAt === null &&
-          !each.identity.startsWith(keptFor("")),
-      ) ?? null;
-  const connectedKind = (kind: string) =>
+  // Whether the window connects a kind itself: one whose connector declares
+  // steps and no source server, as the folder's.
+  const ownKind = (kind: SourceKind) =>
+    declared(kind).connect !== undefined && (declared(kind).servers ?? []).length === 0;
+  const ownFirst = (kind: SourceKind): Connection | null =>
+    ownKind(kind)
+      ? (connections.list().find((each) => each.kind === kind && each.disconnectedAt === null) ??
+        null)
+      : null;
+  const connectedKind = (kind: SourceKind) =>
     flags.some((flag) => flag.kind === kind) || ownFirst(kind) !== null;
   const kindStore = sourceKindStore(db);
   // What's on changed, once the start has opened what it does: made below.
@@ -519,30 +499,21 @@ export async function createApp(options: AppOptions): Promise<App> {
           prefix: kind,
           identity: flag.identity,
           options: flag.options,
-          secret: flag.secret,
         },
-        { fixture: flag.fixture, kept: false, fetch: flag.fetch },
+        { from: flag.how, fetch: flag.fetch },
       );
       const connection = connections.flagged(kind, opened.identity ?? flag.identity, flag.options);
       byPrefix.set(connection.prefix, { connection, opened });
       byFlag.add(connection.id);
       return;
     }
-    // One the window made, with its secret, if the window connects its kind.
-    // One that can't open is left shut, so the window asks for it again.
+    // One the window made, if the window connects its kind itself, as the
+    // folder. One that can't open is left shut, so the window asks for it
+    // again.
     const connection = inWindow(modes, kind) ? ownFirst(kind) : null;
     if (!connection) return;
-    const secret = await connections.secret(connection);
-    if (!(await windows.vet(connection, secret))) {
-      shut.set(connection.prefix, connection);
-      return;
-    }
     try {
-      const opened = await openOne(
-        kind,
-        { ...connection, secret },
-        { fixture: false, kept: true, fetch: windows.viaFor(kind).fetch },
-      );
+      const opened = await openOne(kind, connection, {});
       byPrefix.set(connection.prefix, { connection, opened });
     } catch (error) {
       shut.set(connection.prefix, connection);
@@ -629,18 +600,18 @@ export async function createApp(options: AppOptions): Promise<App> {
     return { call, close, agent: () => agent };
   };
   // Opens a kind through its source server: its first connection if it has
-  // one, so its items keep their IDs and its options carry over, as a Jira
-  // connection's project does, else one of the server's own, which nothing
-  // keeps, as what's on is the kind's switch, unless what the server reads
-  // is the person's to set, as Sheets' mapping (`keepsOptions`, OA-279) or
-  // Slack's channels (`picks`): that one is kept, with no secret, so they
-  // last. One that can't open is left shut, with why, naming the server.
+  // one, as one made before decision 0059, so its items keep their IDs and
+  // its options carry over, as a Jira connection's project does, else one of
+  // the server's own, which nothing keeps, as what's on is the kind's switch,
+  // unless what the server reads is the person's to set, as Sheets' mapping
+  // (`keepsOptions`, OA-279) or Slack's channels (`picks`): that one is
+  // kept, so they last. One that can't open is left shut, with why, naming the server.
   const openThrough = async (kind: SourceKind, server: Recognized) => {
     const reads = lazyCalls(server, server.known.reads);
     const writes = lazyCalls(server, server.known.writes);
     let own = connections.first(kind);
     if (!own && keeps(server.known)) {
-      const made = await connections.connect({
+      const made = connections.connect({
         kind,
         identity: keptFor(server.known.reports),
         options: {},
@@ -666,11 +637,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       write: writes.call,
     };
     try {
-      const opened = await openOne(
-        kind,
-        { ...asThrough(connection), secret: null },
-        { fixture: false, kept: false, server: via },
-      );
+      const opened = await openOne(kind, asThrough(connection), { server: via });
       const close = opened.close;
       opened.close = () => {
         close?.();
@@ -794,11 +761,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
       if (open) continue;
       const connection = connections.flagged(kind, "oriel", {});
-      const opened = await openOne(
-        kind,
-        { ...connection, secret: null },
-        { fixture: false, kept: false, own: ownOf(kind, connection.prefix) },
-      );
+      const opened = await openOne(kind, connection, { own: ownOf(kind, connection.prefix) });
       byPrefix.set(connection.prefix, { connection, opened });
       ownConnections.add(connection.id);
     }
@@ -1105,67 +1068,43 @@ export async function createApp(options: AppOptions): Promise<App> {
     syncing = run;
     return run;
   };
-  // A source that tells `heard` how many records each page it lists holds.
-  const counting = (source: Opened["source"], heard: (records: number) => void) => ({
-    ...source,
-    async *sync(cursor: string | null) {
-      for await (const page of source.sync(cursor)) {
-        heard(page.records.length);
-        yield page;
-      }
-    },
-  });
-
   // Connects what a person made in the window, in its kind's turn: opened,
   // synced in full, and kept only once both worked, so one that can't be
-  // read leaves the one before as it was. A walk or a listing that fails
-  // throws before the index sees any of it. Signing in to a live one again
-  // keeps it, its number and its items; one disconnected before comes back
-  // under its ID and number; anything else is new, with the next number.
+  // read leaves the one before as it was, and it takes the place of the
+  // kind's open one, as another folder picked does. A walk or a listing that
+  // fails throws before the index sees any of it. One live already keeps
+  // its number and items; one disconnected before comes back under its ID
+  // and number; anything else is new, with the next number.
   const connect = (
     kind: SourceKind,
-    made: { identity: string; options: Record<string, unknown>; secret?: string; name?: string },
-    how: { replaces?: boolean; counting?: (records: number) => void } = {},
-  ): Promise<
-    | { connection: Connection; signedIn: boolean }
-    | { failed: "open" | "sync" | "keep"; error: unknown }
-  > =>
+    made: { identity: string; options: Record<string, unknown> },
+  ): Promise<{ connection: Connection } | { failed: "open" | "sync" | "keep"; error: unknown }> =>
     inTurn(kind, async () => {
       const current = openedOf(kind);
       // The same thing again keeps its connection, so none of its items' IDs
       // change.
-      // One signed out since it opened is opened again with what was given.
-      if (current?.connection.identity === made.identity && !current.opened.signedOut?.()) {
+      if (current?.connection.identity === made.identity) {
         const problem = await syncOpen(current, true);
         return problem
           ? { failed: "sync" as const, error: new Error(problem) }
-          : { connection: current.connection, signedIn: false };
+          : { connection: current.connection };
       }
       const plan = connections.planned(kind, made.identity);
       const was = "live" in plan ? plan.live : "revives" in plan ? plan.revives : null;
       const number = was?.number ?? ("number" in plan ? plan.number : 1);
-      // Signed in again, it keeps what was set on it, such as read-only,
-      // under what its steps gave.
-      const again = declared(kind).connect?.again;
-      const options =
-        "live" in plan
-          ? (again?.(plan.live.options, made.options) ?? { ...plan.live.options, ...made.options })
-          : made.options;
+      // One live already keeps what was set on it, such as its name, under
+      // what its steps gave.
+      const options = "live" in plan ? { ...plan.live.options, ...made.options } : made.options;
       const toOpen: ToOpen = {
         id: was?.id ?? newId(),
         number,
         prefix: prefixOf(kind, number),
         identity: made.identity,
         options,
-        secret: made.secret ?? null,
       };
       let opened: Opened;
       try {
-        opened = await openOne(kind, toOpen, {
-          fixture: false,
-          kept: true,
-          fetch: windows.viaFor(kind).fetch,
-        });
+        opened = await openOne(kind, toOpen, {});
       } catch (error) {
         return { failed: "open" as const, error };
       }
@@ -1173,7 +1112,6 @@ export async function createApp(options: AppOptions): Promise<App> {
       try {
         first = await syncInto({ kind, number, prefix: toOpen.prefix }, opened, true, {
           announce: false,
-          ...(how.counting ? { source: counting(opened.source, how.counting) } : {}),
         });
       } catch (error) {
         opened.close?.();
@@ -1181,31 +1119,24 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
       try {
         const connection = await betweenSyncs(async () => {
-          if (how.replaces && current) {
-            await connections.disconnect(current.connection);
+          if (current) {
+            connections.disconnect(current.connection);
             unarm(current.connection.id);
             byPrefix.delete(current.connection.prefix);
             current.opened.close?.();
           }
           if ("live" in plan) {
-            if (current?.connection.id === plan.live.id) current.opened.close?.();
-            await connections.signIn(plan.live, { options, secret: made.secret ?? "" });
+            connections.configure(plan.live, options);
             return { ...plan.live, options };
           }
-          const kept = await connections.connect({
+          const kept = connections.connect({
             id: toOpen.id,
             kind,
             identity: made.identity,
             options: made.options,
-            ...(made.secret === undefined ? {} : { secret: made.secret }),
           });
           if ("taken" in kept) throw new Error(`that ${kind} connection is live already`);
-          // Named as its source says, such as by its account's email, unless
-          // the person named it before.
-          if (made.name === undefined || kept.connection.name !== null) return kept.connection;
-          const named = { name: made.name, every: kept.connection.every };
-          connections.settle(kept.connection, named);
-          return { ...kept.connection, ...named };
+          return kept.connection;
         });
         byPrefix.set(connection.prefix, { connection, opened });
         shut.delete(connection.prefix);
@@ -1216,7 +1147,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         sets.rewire(wiring());
         arm(connection);
         if (first) connected(connection);
-        return { connection, signedIn: "live" in plan };
+        return { connection };
       } catch (error) {
         opened.close?.();
         return { failed: "keep" as const, error };
@@ -1286,18 +1217,23 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (!current || current.connection.id !== id)
         throw new ActionError(
           "conflict",
-          `${declaration.name} is signed out. Connect it again in the window first.`,
+          `${declaration.name} isn't open now, so its options can't be set.`,
         );
       const before = current.connection;
+      // What its server's picks set, given as the values picked, as Sheets'
+      // spreadsheets, written into the option that holds them (decision
+      // 0059).
+      const given = pickedInto(
+        throughFor(before)?.known.picks ?? [],
+        before.options,
+        Object.fromEntries(Object.entries(raw).filter(([key]) => !isSetting(key))),
+      );
       // Merged over the options it has now, in its turn, so a change made
       // just before isn't undone. A connector's option given as null goes,
       // as an Undo takes away one that wasn't set before.
       const decoded = declaration.options(
         Object.fromEntries(
-          Object.entries({
-            ...before.options,
-            ...Object.fromEntries(Object.entries(raw).filter(([key]) => !isSetting(key))),
-          }).filter(([, value]) => value !== null),
+          Object.entries({ ...before.options, ...given }).filter(([, value]) => value !== null),
         ),
       );
       if (!decoded.ok) throw invalid(decoded.issues);
@@ -1326,14 +1262,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (options.length > 0) {
         // Set through its source server, it opens through it again.
         const through = setThrough(connection);
-        const secret = through ? null : await connections.secret(before);
         try {
           opened = await openOne(
             connection.kind,
-            { ...(through ? asThrough(before) : before), options: next, secret },
-            through
-              ? { fixture: false, kept: false, server: through }
-              : { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
+            { ...(through ? asThrough(before) : before), options: next },
+            through ? { server: through } : {},
           );
         } catch (error) {
           log("connections: one couldn't open with its options", {
@@ -1486,10 +1419,13 @@ export async function createApp(options: AppOptions): Promise<App> {
         : noOptionsYet)
     );
   };
-  // None of a kind that's off, whose source nothing reads (decision 0059).
+  // None of a kind that's off, whose source nothing reads (decision 0059),
+  // nor one of a kind read only through a source server while it isn't
+  // open through one, as a Sheets connection kept from before.
   const waitingConnections = (): { connection: Connection; why: string }[] =>
     connections.list().flatMap((connection) => {
       if (!kindShows(connection.kind)) return [];
+      if (!ownKind(connection.kind) && !throughFor(connection)) return [];
       const why = whyWaits(connection);
       return why === null ? [] : [{ connection, why }];
     });
@@ -1544,23 +1480,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     const at = Date.parse(now());
     const holds = first.every((place) => had?.tables.some((table) => table.at === place));
     if (!fresh && had?.options === key && at - had.at < 5 * 60_000 && holds) return had.tables;
-    // Through its source server, while it's set through one.
+    // Through its source server, while it's set through one; a flag's over
+    // its fixture's stand-in, or the site in memory it names.
     const through = setThrough(connection);
-    const secret = through ? null : await connections.secret(connection);
-    const via = openVia(
-      connection.kind,
-      connection.id,
-      through
-        ? { kept: false, server: through }
-        : { kept: true, fetch: windows.viaFor(connection.kind).fetch },
-    );
+    const flag = byFlag.has(connection.id)
+      ? flags.find((each) => each.kind === connection.kind)
+      : undefined;
+    const via = openVia(through ? { server: through } : { fetch: flag?.fetch });
     const ask = names ? { names: true as const } : { first };
-    const tables =
-      (await declaration.preview?.(
-        { ...(through ? asThrough(connection) : connection), secret },
-        via,
-        ask,
-      )) ?? [];
+    const preview = flag && !through ? declaration.fixture.preview : declaration.preview;
+    const tables = (await preview?.(through ? asThrough(connection) : connection, via, ask)) ?? [];
     kept.set(connection.id, { options: key, at, tables });
     return tables;
   };
@@ -2420,11 +2349,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         const before = announced;
         const made = await windows.connect(kind, given);
         return "problem" in made
-          ? { outcome: made, counted: false, signedIn: false }
+          ? { outcome: made, counted: false }
           : {
               outcome: { connection: connectionView(made.connection) },
               counted: announced > before,
-              signedIn: made.signedIn,
             };
       },
       configure: async ({ connection: id, options: given }) => {
@@ -2449,7 +2377,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         if (byPrefix.get(connection.prefix)?.connection.id !== id)
           throw new ActionError(
             "conflict",
-            `${declared(connection.kind).name} is signed out. Connect it again in the window first.`,
+            `${declared(connection.kind).name} isn't open now, so Oriel can't sync it.`,
           );
         const problem = await syncAsked(connection);
         return {
@@ -2603,7 +2531,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       name: kept.name ?? declared(kept.kind).name,
       named: kept.name !== null,
       about: open?.connection.id === connection.id ? open.opened.about : kept.identity,
-      reads: declared(kept.kind).connect?.reads(kept) ?? kept.identity,
+      reads: declared(kept.kind).reads?.(kept) ?? kept.identity,
       identity: kept.identity,
       options: kept.options,
       readOnly: readOnlyOf(kept.options),
@@ -2622,17 +2550,14 @@ export async function createApp(options: AppOptions): Promise<App> {
         changed: 0,
         removed: 0,
       },
-      // Open, it still waits while its options don't fit, or it has none,
-      // and is signed out once its source turned its sign-in away.
+      // Open, it still waits while its options don't fit, or it has none;
+      // shut, it couldn't open, as through a server that turned Oriel away.
       state:
-        open?.connection.id === connection.id && open.opened.signedOut?.()
-          ? "signed-out"
-          : whyWaits(kept) !== null ||
-              (open?.connection.id !== connection.id && unfit.has(kept.prefix))
-            ? "waiting"
-            : open?.connection.id === connection.id
-              ? "open"
-              : "signed-out",
+        whyWaits(kept) !== null || (open?.connection.id !== connection.id && unfit.has(kept.prefix))
+          ? "waiting"
+          : open?.connection.id === connection.id
+            ? "open"
+            : "shut",
       flagged: byFlag.has(kept.id),
       own: ownConnections.has(kept.id),
       through: throughFor(kept) ? (throughOpen.get(kept.kind)?.server ?? null) : null,
@@ -2643,6 +2568,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         many: pick.many === true,
         most: pick.most ?? null,
         unpicked: pick.unpicked,
+        picked: pickedOf(pick, kept.options),
       })),
     };
   };
@@ -2780,7 +2706,6 @@ export async function createApp(options: AppOptions): Promise<App> {
     settings,
     store,
     made: () => openWorkstreams().length > 0,
-    reading: windows.reading,
     workspaceId,
     emit,
     now,
@@ -2875,16 +2800,12 @@ export async function createApp(options: AppOptions): Promise<App> {
           .map((each) => each.connection.kind),
         servers: serversView(),
       }),
-      pick: (kind, given, query) => windows.pick(kind, given, query),
       choices: async (id, query, field) => {
-        const connection = live(id as Ulid);
-        return (
-          (await listThrough(connection, query, field ?? null)) ??
-          windows.choices(connection, query)
-        );
+        const listed = await listThrough(live(id as Ulid), query, field ?? null);
+        if (listed === null) throw new ActionError("not-found", "it has no list to pick from");
+        return listed;
       },
       folderStep: (kind) => windows.folderStep(kind),
-      begin: (kind) => windows.begin(kind),
       review: (id, fresh, tab) => review(id as Ulid, fresh, tab),
       redraw: (id, given, edit) => redraw(id as Ulid, given, edit),
       // The words that start a waiting connection's onboarding turn, when the
@@ -2893,10 +2814,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       // agent may draft for the connection (OA-232); null otherwise.
       onboard: async (id, tab) => {
         const connection = live(id as Ulid);
-        const step = declared(connection.kind).connect?.steps.find(
-          (each) => each.kind === "review",
-        );
-        if (step?.kind !== "review" || !drafts()) return null;
+        const step = declared(connection.kind).review?.step;
+        if (!step || !drafts()) return null;
         if (tab !== undefined) {
           const may = draftable().some((each) => each.connection.id === connection.id);
           // Only one of its own tables, so the words name nothing else.
@@ -3014,5 +2933,22 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (db.isOpen) db.close();
     },
   };
+  // `pnpm dev --on <kind>`: each kind turned on at start through the first
+  // server the person's agent lists for it, as the maintainer's click in
+  // Settings would, once the look ends (decision 0059). One the agent
+  // doesn't list stays off, and the log says why.
+  if (options.on?.length) {
+    await switches.look();
+    for (const kind of options.on) {
+      try {
+        await dispatch("source.on", { kind }, { kind: "user" });
+      } catch (error) {
+        log("source servers: --on couldn't turn a kind on", {
+          kind,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
   return built;
 }

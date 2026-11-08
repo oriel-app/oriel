@@ -1,47 +1,18 @@
-// Connecting Google Sheets in the window (decisions 0050 and 0051), against
-// the Sheets fixture's stand-in for Google: what the sign-in gave never
-// reaches the page, signing in again keeps what the connection held, and
-// asking about a tab sends the agent its ID, never the sheet's words.
+// Google Sheets through sheets-mcp in the person's agent (decisions 0050,
+// 0051 and 0059), against the Sheets fixture's stand-in for Google, which a
+// fake of the server's read tools reads: asking about a tab sends the agent
+// its ID, never the sheet's words, and a new row ID column's Undo brings
+// each row's item back.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import { fixtureGoogle, loadSheetsFixture, scope, standInToken } from "@oriel/sheets";
-import type { OptionsReviewView, ReviewRedrawn } from "@oriel/web/view";
+import { loadSheetsFixture } from "@oriel/sheets";
+import type { ConnectionView, OptionsReviewView, ReviewRedrawn } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
-// Made-up values; none is a real client or token.
-const client = {
-  GOOGLE_CLIENT_ID: "fake-client.apps.googleusercontent.com",
-  GOOGLE_CLIENT_SECRET: "fake-secret",
-};
 const fixture = loadSheetsFixture();
 const idOf = (slug: string) => fixture.spreadsheets.find((s) => s.slug === slug)?.id ?? "";
 const tracker = idOf("tracker");
 const raid = idOf("raid");
-
-// Google: the stand-in for Drive and Sheets, and a token endpoint that
-// grants the stand-in's token, for an hour or as `token` says, or refuses
-// a refresh once `token.refuses`.
-function google() {
-  const standIn = fixtureGoogle(fixture);
-  const token = { seconds: 3599, refuses: false };
-  const send: typeof fetch = async (input, init) => {
-    const url = String(input instanceof Request ? input.url : input);
-    if (url === "https://oauth2.googleapis.com/token") {
-      const refreshing =
-        new URLSearchParams(String(init?.body)).get("grant_type") === "refresh_token";
-      if (refreshing && token.refuses)
-        return Response.json({ error: "invalid_grant" }, { status: 400 });
-      return Response.json({
-        access_token: standInToken,
-        expires_in: token.seconds,
-        refresh_token: "fake-refresh-token",
-        scope,
-      });
-    }
-    return standIn.fetch(input, init);
-  };
-  return { standIn, send, token };
-}
 
 // Asked to change a tab of a connection that reads (OA-232): its options,
 // as preview() gives them, by letter, with the tracker's tab changed as
@@ -62,12 +33,11 @@ const fixing: Script = async (bindings) => {
   };
 };
 
-async function sheetsApp(t: TestContext, options: { clients?: false } = {}) {
-  const { standIn, send, token } = google();
+async function sheetsApp(t: TestContext) {
   const turns: string[] = [];
   const it = await testApp(t, {
-    sources: { sheets: { mode: "window", fetch: send } },
-    ...(options.clients === false ? {} : { clients: { sheets: client } }),
+    jira: false,
+    sheetsMcp: true,
     plan: (input) => {
       turns.push(input.text);
       return input.text.startsWith("Draft a change")
@@ -76,66 +46,25 @@ async function sheetsApp(t: TestContext, options: { clients?: false } = {}) {
     },
     scripts: { fix: fixing },
   });
-  return { ...it, standIn, token, turns };
+  await it.app.settled();
+  return { ...it, turns };
 }
 
-// The person's browser, following Google's page back to the redirect.
-async function finish(url: string, picked: string[]) {
-  const authorize = new URL(url);
-  const back = new URL(authorize.searchParams.get("redirect_uri") ?? "");
-  back.searchParams.set("state", authorize.searchParams.get("state") ?? "");
-  back.searchParams.set("code", "4/fake-code");
-  back.searchParams.set("scope", scope);
-  back.searchParams.set("picked_file_ids", picked.join(","));
-  await (await fetch(back)).text();
-}
-
-async function connected(it: Awaited<ReturnType<typeof sheetsApp>>) {
-  const begun = json<{ url: string; attempt: string }>(
-    await it.post("/api/connections/browser", { kind: "sheets" }),
-  );
-  assert.equal(new URL(begun.url).origin, "https://accounts.google.com");
-  assert.equal(JSON.stringify(begun).includes("verifier"), false);
-  const [reply] = await Promise.all([
-    it.connect("sheets", { attempt: begun.attempt }),
-    finish(begun.url, [tracker, raid]),
-  ]);
-  assert.equal(reply.status, 200, String(reply.body));
+// Sheets turned on through sheets-mcp, and the tracker and the RAID log
+// picked there (decision 0059), as the person does in Settings.
+async function connected(it: Awaited<ReturnType<typeof sheetsApp>>): Promise<ConnectionView> {
+  assert.equal((await it.turnOn("sheets")).status, 200);
+  const kept = await it.connection("sheets");
+  assert.ok(kept);
+  const picked = await it.post(`/api/connections/${kept.id}/options`, {
+    options: { spreadsheets: [tracker, raid] },
+  });
+  assert.equal(picked.status, 200, String(picked.body));
+  await it.app.settled();
   const sheets = await it.connection("sheets");
   assert.ok(sheets);
   return sheets;
 }
-
-test("nothing Google's sign-in gave reaches the page, and a sign-in's ID finishes it once", async (t) => {
-  const it = await sheetsApp(t);
-  await connected(it);
-  const listed = JSON.stringify(json(await it.get("/api/connections")));
-  assert.equal(listed.includes(standInToken), false);
-  assert.equal(listed.includes("fake-refresh-token"), false);
-  assert.equal((await it.connect("sheets", { attempt: "0".repeat(32) })).status, 400);
-});
-
-test("a connection Google signs out reads as signed out, and signing in again keeps its mapping and items", async (t) => {
-  const it = await sheetsApp(t);
-  // Tokens that last a minute are refreshed at every read.
-  it.token.seconds = 60;
-  const sheets = await connected(it);
-  const { guess } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
-  await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
-  const mapped = await it.connection("sheets");
-  assert.equal(mapped?.state, "open");
-
-  it.token.refuses = true;
-  assert.notEqual((await it.sync("sheets")).status, 200);
-  assert.equal((await it.connection("sheets"))?.state, "signed-out");
-
-  it.token.refuses = false;
-  const again = await connected(it);
-  assert.deepEqual(
-    [again.id, again.state, again.options, again.items, again.problem],
-    [mapped?.id, "open", mapped?.options, mapped?.items, null],
-  );
-});
 
 test("Ask Oriel about a tab names it by its ID alone: no words of the sheet reach the agent's turn", async (t) => {
   const it = await sheetsApp(t);

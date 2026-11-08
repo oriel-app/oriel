@@ -1,6 +1,9 @@
-// The reads a Sheets connection makes of Google (decision 0050), as few as it
-// can: Drive's `files.get` for a spreadsheet's version, name and whether the
-// person may edit it, its `comments.list`, and the Sheets API's
+// The reads a Sheets connection makes of Google's APIs (decision 0050), as
+// few as it can, in the shapes sheets-mcp's answers are read into
+// (`serverGoogle`, decision 0059), and as the fixture's stand-in in memory
+// answers them (`fixtureGoogle`), with no sign-in: Drive's `files.get` for a
+// spreadsheet's version, name and whether the person may edit it, its
+// `comments.list`, and the Sheets API's
 // `spreadsheets.get`, first for its tabs and then for each mapped tab's grid
 // in chunks of rows. Each asks only the fields it reads.
 //
@@ -11,7 +14,6 @@
 import {
   array,
   boolean,
-  type Credential,
   type Infer,
   number,
   object,
@@ -20,13 +22,13 @@ import {
   type Validator,
 } from "@oriel/core";
 import { columnLetters, quoteTab } from "./a1.ts";
-import type { Fetch } from "./oauth.ts";
 import { driveOrigin, sheetsOrigin } from "./stand-in.ts";
 import type { Cell, Entered, Grid } from "./table.ts";
 
 export type GoogleReads = {
-  fetch: Fetch;
-  credential: Credential;
+  // The fixture's stand-in in memory, or one a test made: never the
+  // network's.
+  fetch: typeof fetch;
   // Waits `ms` before a request goes again; tests pass one that doesn't.
   wait: (ms: number) => Promise<void>;
   // In [0, 1), for the jitter.
@@ -41,15 +43,6 @@ export class SheetsError extends Error {
     super(message);
     this.name = "SheetsError";
     this.status = status;
-  }
-}
-
-// Google refused to refresh the sign-in without the client's secret. Like
-// signed out, it is the whole account's, and no read can work around it.
-export class SecretRefused extends SheetsError {
-  constructor() {
-    super("Google refused to refresh the sign-in without Oriel's client secret", 0);
-    this.name = "SecretRefused";
   }
 }
 
@@ -183,10 +176,7 @@ function enteredOf(value: Infer<typeof enteredValue> | undefined): Entered {
 export function googleReads(io: GoogleReads) {
   const get = async <T>(url: URL, shape: Validator<T>, what: string): Promise<T | "gone"> => {
     for (let attempt = 0; ; attempt++) {
-      const response = await io.fetch(url, {
-        headers: await io.credential.headers(),
-        signal: AbortSignal.timeout(requestMs),
-      });
+      const response = await io.fetch(url, { signal: AbortSignal.timeout(requestMs) });
       if (response.status === 429 && attempt < maxRetries) {
         await response.body?.cancel();
         const ms = Math.min(2 ** attempt * 1000 + Math.floor(io.random() * 1000), maxBackoffMs);

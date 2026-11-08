@@ -87,7 +87,7 @@ A control that's working changes its label to the verb in -ing, with "…" (one 
 | At rest           | Busy           | Where                                                   |
 | ----------------- | -------------- | ------------------------------------------------------- |
 | Delete            | Deleting…      | `Confirm` in `packages/web/src/close-thread.tsx`        |
-| Connect           | Connecting…    | `FieldsStep` in `packages/web/src/connect-steps.tsx`    |
+| Add               | Reading…       | `FolderStep` in `packages/web/src/connect-steps.tsx`    |
 | Disconnect        | Disconnecting… | `Disconnect` in `packages/web/src/connections-page.tsx` |
 | Make a workstream | Making…        | `CandidateRow` in `packages/web/src/overview-page.tsx`  |
 | Check again       | Checking…      | `Providers` in `packages/web/src/settings-page.tsx`     |
@@ -131,7 +131,7 @@ Oriel asks first only when Undo can't bring something back. Most actions just ha
 - **The body says what goes, and what stays:** "Its 3 threads go with it, out of the sidebar, Needs you, the Done page and search. Its items stay in their sources. You can undo this right after." (`deleteWarning` in `packages/web/src/ending.ts`)
 - **What it can't undo, said plainly:** "It made 2 changes in Jira. After deleting the thread you can no longer revert them from Oriel." (`deletionWarning` in `packages/web/src/closing.ts`)
 - **The buttons are Cancel and the verb:** Cancel, then **Delete**. Never "Yes" and "No", never "OK". Cancel has the focus.
-- **Disconnect** leads with the question in bold and says what happens to each thing: "**Disconnect Jira?** Its 214 items leave the window, with what Oriel keeps to sign in to it. Workstreams keep them as items Oriel no longer has, and threads keep what was said. Nothing changes in Jira." (`Disconnect` in `packages/web/src/connections-page.tsx`)
+- **Disconnect** leads with the question in bold and says what happens to each thing: "**Disconnect Folder?** Its 38 items leave the window. Workstreams keep them as items Oriel no longer has, and threads keep what was said. Nothing changes in the folder." (`Disconnect` in `packages/web/src/connections-page.tsx`)
 
 The undo note after says what was done, in the past tense, naming the thing: "Deleted “Gift cards”, with its 3 threads." (`endedText` in `packages/web/src/ending.ts`), "Added SYN-23 to “Checkout v2”." (`addUndos` in `packages/web/src/panel-adds.ts`).
 

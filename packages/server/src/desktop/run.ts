@@ -1,8 +1,8 @@
 // The server's desktop mode (decision 0036): the server as the desktop
 // shell's child. It reads the launch secret and talks to the shell over
 // stdin and stdout (PROTOCOL.md), keeps its database and port in the data
-// folder the shell names, keeps each connection's secret and the API key in
-// the OS secret store through the shell, and quits when the shell is gone (its
+// folder the shell names, keeps the API key in the OS secret store through
+// the shell, and quits when the shell is gone (its
 // stdin ends, on every OS) or sends SIGTERM.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import type { Readable } from "node:stream";
 import type { Log } from "@oriel/core";
 import type { AppOptions } from "../app.ts";
 import type { SetupOptions } from "../setup/setup.ts";
-import { legacySecret, type Secrets } from "../connection.ts";
+import type { Secrets } from "../connection.ts";
 import { type Serving, serve } from "../serve.ts";
 import { channel, type Shell } from "./channel.ts";
 import { doorPorts, keepPort, keptPort, portsFrom } from "./port.ts";
@@ -33,7 +33,7 @@ export type DesktopOptions = {
   firstDoorPort: number;
   // The agent, the titler and, for tests, the sandbox and the clock: as
   // `pnpm dev` builds them.
-  app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now">;
+  app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now" | "sources">;
   // Finds the models the agent can run on, with the person's settings and
   // the shell's secret store, which holds the API key: it runs once the
   // secret is in, and a stop meanwhile doesn't wait for it. The shell
@@ -49,8 +49,6 @@ export type DesktopOptions = {
       setup?: Omit<SetupOptions, "front">;
     }
   >;
-  // How Jira is reached; tests pass a site in memory.
-  jiraFetch?: typeof fetch;
 };
 
 export class Stopped extends Error {
@@ -115,12 +113,10 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
             },
           }
         : {}),
-      secrets,
-      // Every connection is made in the window, to any site or account the
-      // person connects (decision 0038).
-      sources: options.jiraFetch ? { jira: { mode: "window", fetch: options.jiraFetch } } : {},
-      anywhere: true,
-      legacyJira: legacySecret(secrets),
+      // Every source turns on through the person's own agent's servers
+      // (decision 0059), and the folder is connected in the window; tests
+      // give a fixture.
+      sources: options.app?.sources ?? {},
       log,
     },
     {

@@ -122,11 +122,6 @@ export type Reader = {
   search(query: string, limit: number): Promise<Searched[]>;
 };
 
-// Sits behind the API token so OAuth can replace it without touching adapters.
-export interface Credential {
-  headers(): Promise<Record<string, string>>;
-}
-
 // A source's write operations, by name: how to check each one's arguments,
 // and whether it exists only to undo another (a run can't capture those). A
 // source with no catalogue is read-only: its items can be read and discussed,

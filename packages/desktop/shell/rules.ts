@@ -19,16 +19,11 @@ export type Parsed =
   | { id: number; refused: string }
   | { id: null; refused: string };
 
-// The secrets the server keeps, by name (decision 0049): the API key the
-// agent can run on (OA-188), and each connection's, `connection.` and the
-// ULID the server made for it, upper case, so one secret has one file name
-// and none has a `/` or `.` to leave `Secrets/`. `jira`, the Jira connection
-// kept before connections, stays for one release so the server can move it.
-// Any other name is refused.
-export const isSecretName = (name: string): boolean =>
-  name === "anthropic-key" ||
-  name === "jira" ||
-  /^connection\.[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(name);
+// The secrets the server keeps, by name: the API key the agent can run on
+// (OA-188), with no `/` or `.` to leave `Secrets/`. No connection keeps one
+// since decision 0059: a source is read through the person's own agent,
+// which holds its sign-in. Any other name is refused.
+export const isSecretName = (name: string): boolean => name === "anthropic-key";
 const maxSecret = 16_384;
 
 // A line from the server after its first: a request with a positive integer

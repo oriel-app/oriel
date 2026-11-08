@@ -1,126 +1,33 @@
 ---
 title: Connect steps
 order: 50
-summary: One component draws every connector's steps, in the connector's own words, wherever a connection is made: ask for a site and a token, pick a project, add a folder, review a draft. The first run arranges them as screens; Settings opens them under a row.
+summary: One component draws a connector's steps, in the connector's own words, wherever a connection is made in the window, which since decision 0059 is only a folder; and one review step draws a connection's mapping, to apply or edit, in Settings. Everything else comes through the person's own source servers.
 ---
 
 # Connect steps
 
 ## The problem
 
-Each source asks for different things. Jira needs an address, an email and a token, then a project. A folder needs a path. A spreadsheet needs a sign-in on Google's page, then a decision about which columns mean what. Drawn by hand in each place a connection is made, the same step drifts: different labels, different errors, a step that checks here and not there.
+Each source asks for different things. A folder needs a path. A spreadsheet needs a decision about which columns mean what. Drawn by hand in each place, the same step drifts: different labels, different errors, a step that checks here and not there.
+
+Since decision 0059, Oriel asks for nothing to reach a source: Jira, Slack, Linear and Google Sheets come through the MCP servers already in the person's agent, which they turn on from what Oriel found (see [Source servers](/components/source-servers)). No step asks for a site, an email, a sign-in or anything secret. What's left for the window to draw is a folder, which is on the person's disk, and the mapping a spreadsheet needs.
 
 ## The pattern
 
-A connector **declares** its steps once, as data, in its own words (decision 0049). One component, `connect-steps.tsx`, draws each kind of step the same way wherever it shows:
+A connector **declares** its steps once, as data, in its own words (decision 0049). One component, `connect-steps.tsx`, draws each kind the same way wherever it shows:
 
 | Step kind | What it asks                                                              | Its primary                                   | Example                                 |
 | --------- | ------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------- |
-| `fields`  | a few typed values, with help beside them                                 | **Connect** → **Connecting…**                 | Jira's address, email and token         |
-| `pick`    | one from a list the source gives                                          | **Use Synthetic** → **Connecting…**           | a Jira project                          |
 | `folder`  | a folder, from the system's picker or by its typed path                   | **Choose a folder…** / **Add** → **Reading…** | a folder of notes                       |
-| `browser` | a sign-in on the source's own page, in the browser                        | **Continue to Google**                        | Google Sheets                           |
 | `review`  | the options Oriel guessed, or the agent drafted (decision 0051), to apply | **Apply** → **Reading…**                      | which columns a sheet's items come from |
 
-Each step's words are the connector's: its labels, placeholders, hints, help, the list's name, the empty line. A refusal is the server's one sentence, naming the fields at fault (see [Forms](/patterns/forms)). Nothing typed stays once the connection is made.
+Each step's words are the connector's: its labels, placeholders, notes, the waiting line. A refusal is the server's one sentence (see [Forms](/patterns/forms)). Nothing typed stays once the connection is made. A review step is declared on its connector, beside its steps, because a connection through a source server waits for its options too.
 
 Where the steps show:
 
-1. **The first run** (decision 0038): "Connect where your work lives", one row per connector it offers. **Connect** opens the connector's steps one screen at a time, under a step title and lede, with **Back** as a link-shaped action. A folder is chosen right in its row. Once connected, the row reads the source, with progress, and a step to review shows under it.
-2. **Settings › Connections › Add a connection**: every connector as a row; **Connect** opens its steps under its name, with **Cancel** (or **Back** on the pick step) as a quiet action. A connection just made stays open on its review step until it's applied.
-3. **The overview's connect card** (and Browse's): the fields and pick steps only, for a window that has no source to change yet.
-
-### Ask for a site and a token
-
-```html specimen id=fields title="A fields step, in the first run's card"
-<div>
-  <h1 class="setup-title">Connect Jira</h1>
-  <p class="setup-lede">
-    Three things from your Jira account. Oriel keeps them encrypted on this Mac.
-  </p>
-  <div class="setup-card">
-    <form class="connect-details" aria-label="Your Jira account">
-      <div class="connect-fields">
-        <label class="connect-field"
-          ><span class="connect-label">Your Jira address</span
-          ><input
-            class="input"
-            name="site"
-            type="text"
-            autocomplete="url"
-            spellcheck="false"
-            autocapitalize="off"
-            placeholder="yourteam.atlassian.net"
-          /><span class="connect-hint"
-            >The start of the address in your browser when Jira is open.</span
-          ></label
-        >
-        <label class="connect-field"
-          ><span class="connect-label">The email you sign in to Jira with</span
-          ><input
-            class="input"
-            name="email"
-            type="email"
-            autocomplete="email"
-            spellcheck="false"
-            autocapitalize="off"
-            placeholder="you@company.com"
-        /></label>
-        <label class="connect-field"
-          ><span class="connect-label">API token</span
-          ><input
-            class="input"
-            name="token"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            autocapitalize="off"
-            placeholder="Paste it here"
-        /></label>
-      </div>
-      <div class="connect-actions">
-        <button type="button" class="link-action">Back</button
-        ><button type="submit" class="button primary" disabled>Connect</button>
-      </div>
-    </form>
-  </div>
-</div>
-```
-
-The help box under the fields (`.connect-help`, "Atlassian lets you make these for apps like Oriel…") is shown in [Forms](/patterns/forms), with a refusal.
-
-### Pick a project from rows
-
-The source's list as radio rows, the one changed last picked for the person. A search field shows only when the list is longer than one page, or a search is set; it asks the server on Enter or leaving the field, not as they type. The button names what they picked.
-
-```html specimen id=pick title="A pick step"
-<form class="connect-pick" aria-label="Jira projects">
-  <ul class="choice-rows" role="radiogroup" aria-label="Projects">
-    <li data-picked>
-      <label class="choice-row"
-        ><input type="radio" name="jira-project" value="SYN" checked /><span class="choice-text"
-          ><span class="choice-name">Synthetic</span
-          ><span class="choice-detail">SYN · 214 issues · changed Nov 2</span></span
-        ></label
-      >
-    </li>
-    <li>
-      <label class="choice-row"
-        ><input type="radio" name="jira-project" value="PAY" /><span class="choice-text"
-          ><span class="choice-name">Payments platform</span
-          ><span class="choice-detail">PAY · 58 issues · changed Oct 21</span></span
-        ></label
-      >
-    </li>
-  </ul>
-  <div class="connect-actions">
-    <button type="button" class="quiet-action">Back</button
-    ><button type="submit" class="button primary">Use Synthetic</button>
-  </div>
-</form>
-```
-
-Empty, it says why and what to do: "Jira accepted your details, but this account can't see any project. Ask your Jira admin for access, or use another account." A search that finds nothing: "No project matches that."
+1. **The first run** (decisions 0038 and 0059): Your work, one row per source it offers. A folder is chosen right in its row. A source on through its server reads before the row shows it; one with no server on names the server that would turn it on and links to its own instructions.
+2. **Settings › Connections › Add a connection**: each connector the window connects itself, as a row; **Connect** opens its steps under its name, with **Cancel** as a quiet action.
+3. **Settings › Connections**, in a connection's row: its mapping, drawn by the review step. A connection through a source server draws it beside what the person picks through the server, so Google Sheets through sheets-mcp is picked and mapped in the window.
 
 ### Add a folder path
 
@@ -210,127 +117,47 @@ In the app this group is `<div class="connect-review">`; that class has no rules
 
 ### In Settings
 
-```html specimen id=settings title="Settings › Add a connection, Jira opened"
+A connection that waits for its mapping shows the review step in its row, under its picks, once they pick something. Once it reads, the mapping folds to one line a tab, each with **Ask Oriel to fix this** and **Edit by hand** (see [Connection row](/components/connection-row)).
+
+```html specimen id=settings title="Settings: Google Sheets through sheets-mcp, waiting for its mapping"
 <ul class="provider-rows">
-  <li class="provider-row">
-    <span class="provider-icon" aria-hidden="true">J</span>
+  <li class="provider-row connection-row">
+    <span class="provider-icon" aria-hidden="true">S</span>
     <div class="provider-main">
-      <span class="provider-name">Jira</span
-      ><span class="provider-about">Epics, stories and their details</span>
-      <form class="connect-pick" aria-label="Jira projects">
-        <ul class="choice-rows" role="radiogroup" aria-label="Projects">
-          <li data-picked>
-            <label class="choice-row"
-              ><input type="radio" name="settings-jira-project" value="SYN" checked /><span
-                class="choice-text"
-                ><span class="choice-name">Synthetic</span
-                ><span class="choice-detail">SYN · 214 issues · changed Nov 2</span></span
-              ></label
-            >
-          </li>
-        </ul>
-        <div class="connect-actions">
-          <button type="button" class="quiet-action">Back</button
-          ><button type="submit" class="button primary">Use Synthetic</button>
-        </div>
-      </form>
-    </div>
-  </li>
-  <li class="provider-row">
-    <span class="provider-icon" aria-hidden="true">F</span>
-    <div class="provider-main">
-      <span class="provider-name">Folder</span
-      ><span class="provider-about"
-        >Notes saved as files on this Mac, and its folders. Oriel only reads them.</span
+      <span class="provider-name">Google Sheets</span
+      ><span class="provider-about">2 spreadsheets</span>
+      <span class="provider-status"
+        ><span class="provider-mark" aria-hidden="true"></span
+        ><span class="provider-state">Waiting for options that fit</span></span
       >
+      <p class="settings-field-about">
+        Oriel reads it through sheets-mcp, a server in your agent. Turn it off under Source servers.
+      </p>
+      <div class="connection-options">
+        <fieldset class="settings-field">
+          <legend class="settings-field-name">Spreadsheets</legend>
+          <span class="settings-field-about"
+            >2 picked. <button type="button" class="quiet-action">Change</button></span
+          >
+        </fieldset>
+      </div>
+      <div class="settings-field connection-mapping">
+        <span class="settings-field-name">How Oriel reads each tab</span
+        ><span class="settings-field-about"
+          >Which columns are an item's ID, title and status, for each tab Oriel reads.</span
+        >
+        <p class="cli-line cli-waiting" role="status">
+          <span class="spinner" aria-hidden="true"></span>Reading the headers
+        </p>
+      </div>
     </div>
-    <div class="provider-side"><button type="button" class="button">Connect</button></div>
   </li>
 </ul>
 ```
 
-### In the window: the card, and a connection that read nothing
+### In the window: a connection that read nothing
 
-While the window may connect a connector it offers, the overview and Browse show a card for it above everything else (`.connect-card`): the step's title as an `h2`, one line on what it brings, then the fields or pick step itself. The card is `--surface`, `--line` bordered, `--radius-lg`, 40rem at most, padded `--space-6`. There's no Cancel: the card stays until the connector is connected. If only read-only connections are open, the line says what connecting this one adds instead.
-
-```html specimen id=window-card title="The overview's card for Jira"
-<section class="connect-card" aria-labelledby="connect-jira-title">
-  <h2 id="connect-jira-title">Connect Jira</h2>
-  <p class="connect-note">
-    Your epics and stories show here. Oriel changes them only when you approve a change.
-  </p>
-  <form class="connect-details" aria-label="Your Jira account">
-    <div class="connect-fields">
-      <label class="connect-field"
-        ><span class="connect-label">Your Jira address</span
-        ><input
-          class="input"
-          name="site"
-          type="text"
-          autocomplete="url"
-          spellcheck="false"
-          autocapitalize="off"
-          placeholder="yourteam.atlassian.net"
-        /><span class="connect-hint"
-          >The start of the address in your browser when Jira is open.</span
-        ></label
-      >
-      <label class="connect-field"
-        ><span class="connect-label">The email you sign in to Jira with</span
-        ><input
-          class="input"
-          name="email"
-          type="email"
-          autocomplete="email"
-          spellcheck="false"
-          autocapitalize="off"
-          placeholder="you@company.com"
-      /></label>
-      <label class="connect-field"
-        ><span class="connect-label">API token</span
-        ><input
-          class="input"
-          name="token"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          autocapitalize="off"
-          placeholder="Paste it here"
-      /></label>
-    </div>
-    <div class="connect-help">
-      <p>
-        Atlassian lets you make these for apps like Oriel. One has your Jira access and no more,
-        Oriel changes Jira only when you approve, and you can delete it on Atlassian's page any
-        time.
-      </p>
-      <ol>
-        <li>
-          <a
-            href="https://id.atlassian.com/manage-profile/security/api-tokens"
-            target="_blank"
-            rel="noreferrer"
-            >Open Atlassian's page for them</a
-          >
-          (it opens in your browser).
-        </li>
-        <li>
-          Click <strong>Create</strong>, name it <strong>Oriel</strong>, pick when it expires (a
-          year is fine), and click <strong>Create</strong>.
-        </li>
-        <li>Click <strong>Copy</strong>, then paste it above. Atlassian shows it only once.</li>
-      </ol>
-    </div>
-    <div class="connect-actions">
-      <button type="submit" class="button primary" disabled>Connect</button>
-    </div>
-  </form>
-</section>
-```
-
-The help's bold words and its link are the connector's own words with a little markup, `**text**` and `[text](https://…)`, drawn by `Inline` in `packages/web/src/connect-steps.tsx`. It reads only a connector's declaration, reviewed code, never anything typed or synced. A connection its source signed out adds a line under the note: "{name} is signed out. Sign in to it again here, or disconnect it in Settings."
-
-Once connected, a connection that read nothing says so in Browse, in the card's place, so the window doesn't look as if it failed (`.connected-empty`): a green dot (`.connected-dot`, `--done`) and "{name} is connected", then what it reads in bold and the connector's sentence for an empty source.
+Once on, a connection that read nothing says so in Browse, above its clusters, so the window doesn't look as if it failed (`.connected-empty`): a green dot (`.connected-dot`, `--done`) and "{name} is connected", then what it reads in bold and the connector's sentence for an empty source.
 
 ```html specimen id=connected-empty title="Browse: Jira connected to a project with no issues yet"
 <section class="connected-empty" aria-labelledby="empty-c1-title">
@@ -347,35 +174,34 @@ Once connected, a connection that read nothing says so in Browse, in the card's 
 ## Do
 
 - Declare a new connector's steps as data, in its words, and let `ConnectSteps` draw them. Use the step kinds there are.
-- Keep each step's primary to its own verb, and its busy label to the -ing form: **Connect** → **Connecting…**, **Apply** → **Reading…**.
-- Pick the likeliest choice for the person (the one changed last), and name it on the button: **Use Synthetic**.
+- Keep each step's primary to its own verb, and its busy label to the -ing form: **Add** → **Reading…**, **Apply** → **Reading…**.
 - Say whose a draft is: Oriel's guess, or the agent's.
-- Keep what was typed when going Back, and drop it once the connection is made.
+- Drop what was typed once the connection is made.
 - Show why a connector can't be connected now, in its row, instead of hiding it.
+- Reach a hosted source through the person's own source server, never through a step of Oriel's.
 
 ## Don't
 
-- Don't draw a step by hand in a new place. Import `FieldsStep`, `PickStep`, `FolderStep`, `BrowserStep` and `ReviewStep`.
+- Don't draw a step by hand in a new place. Import `FolderStep` and `ReviewStep`.
+- Don't ask for a site, an email, a sign-in or a secret. A source server does that in the person's agent (decision 0059).
 - Don't put a connector's copy in the page. It belongs in the declaration, where it's reviewed once.
 - Don't call applying a draft "approving". It's the person's own action (decision 0051); see [Approval](/patterns/approval#where-approve-is-deliberately-absent).
 - Don't check a field's format in the page. The connector's server side says what's wrong.
 
 ## Where Oriel does it
 
-- The steps: `FieldsStep`, `PickStep`, `BrowserStep`, `ReviewStep` and `FolderStep` in `packages/web/src/connect-steps.tsx`. The switch over them is `ConnectSteps`, and the overview's card `ConnectCard`, in the same file.
-- The declarations: Jira's, `jiraConnect` in `packages/jira/src/connecting.ts`; a folder's, `folderConnect` in `packages/folder/src/connecting.ts`; Google Sheets', `sheetsConnect` in `packages/sheets/src/connecting.ts`.
-- The first run's screens: `Connect` in `packages/web/src/setup-page.tsx`, which imports the steps and arranges them itself.
-- Settings: `AddConnection` in `packages/web/src/connections-page.tsx`.
-- The window: a card for each connector it may connect, `ConnectCards` in `packages/web/src/connect-steps.tsx`, on the overview (`OverviewPage` in `packages/web/src/overview-page.tsx`); in Browse, `ConnectNotices` in `packages/web/src/connect-steps.tsx`, the cards and then a `.connected-empty` for each connection that read nothing, placed by `Page` in `packages/web/src/app.tsx`. A help's markup: `Inline` in `packages/web/src/connect-steps.tsx`. CSS: `.connect-card`, `.connect-card h2`, `.connected-empty`, `.connected-empty h2` and `.connected-dot` in `window.css`.
+- The steps: `ReviewStep` and `FolderStep` in `packages/web/src/connect-steps.tsx`. The switch over a connector's steps is `ConnectSteps`, in the same file.
+- The declarations: a folder's, `folderConnect` in `packages/folder/src/connecting.ts`; Google Sheets' review words, `sheetsReview` in `packages/sheets/src/preview.ts`.
+- The first run: `YourWork` in `packages/web/src/setup-page.tsx`, which chooses a folder in its row.
+- Settings: `AddConnection` in `packages/web/src/connections-page.tsx`; a connection's mapping, `MappingOption` in the same file, drawn beside `ServerPicks` for one through a source server.
+- Browse: `ConnectNotices` in `packages/web/src/connect-steps.tsx`, a `.connected-empty` for each connection that read nothing, placed by `Page` in `packages/web/src/app.tsx`. CSS: `.connected-empty`, `.connected-empty h2` and `.connected-dot` in `window.css`.
 - The draft's tables: `ReviewTables` in `packages/web/src/block.tsx`.
-- CSS: `.connect-details`, `.connect-help`, `.connect-actions`, `.choice-rows`, `.path-form` and `.review-tables` in `window.css`.
+- CSS: `.connect-actions`, `.path-form` and `.review-tables` in `window.css`.
 
 ### Drift
 
-- **Three arrangements of one step set.** `ConnectSteps` in Settings; `ConnectCard` on the overview (fields and pick only, no Cancel); and the first run, which arranges the parts itself and never uses `FolderStep` (a folder is a button in its row).
-- **Two pick lists.** Settings' **Change** of a picked option draws a plainer list (`.choices`, drawn by `PickOption` in `packages/web/src/connections-page.tsx`) than the pick step's rows.
-- **Failure shapes differ by place**: a `.connect-problem` line in a step, a `.cli-box[data-tone="danger"]` with Try again, Change and Copy details in the first run, `.connection-problem` in Settings.
-- `.connect-review`, `.connect-browser` and `.connect-consent` have no rules of their own.
-- **Two cards, two frames.** The window's `.connect-card` is a `--surface` card with a `--line` border in every theme; the first run's `.setup-card` follows `--list-frame`, so in Broadsheet one is framed and the other isn't.
+- **Two arrangements of the folder step.** `ConnectSteps` in Settings; the first run never uses `FolderStep` (a folder is a button in its row).
+- **Failure shapes differ by place**: a `.connect-problem` line in a step and in the first run's row, `.connection-problem` in Settings.
+- `.connect-review` has no rules of its own.
 
 Until they're one, copy `ConnectSteps` for a new place a connection is made.

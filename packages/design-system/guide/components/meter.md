@@ -3,23 +3,22 @@ title: Meters and bars
 status: drifting
 group: Display
 order: 42
-classes: status-bar, segment, plan-meter, setup-progress, cli-progress, cli-bar, overview-spark
-summary: Thin bars that show a share or a progress: items by status, how much of the plan is used, a source being read, an install under way, and a workstream's last 14 days.
+classes: status-bar, segment, plan-meter, cli-progress, cli-bar, overview-spark
+summary: Thin bars that show a share or a progress: items by status, how much of the plan is used, an install under way, and a workstream's last 14 days.
 ---
 
 # Meters and bars
 
 ## What it is
 
-A thin horizontal bar, or a small line, that shows an amount at a glance. Oriel has five, each for one job:
+A thin horizontal bar, or a small line, that shows an amount at a glance. Oriel has four, each for one job:
 
-| Bar                             | Shows                                             | Element                                      | Height   | Track           | Fill                             |
-| ------------------------------- | ------------------------------------------------- | -------------------------------------------- | -------- | --------------- | -------------------------------- |
-| **Status bar** (`.status-bar`)  | Items by status category, as counts               | `<span role="img">` of `.segment`s           | 0.375rem | `--todo-soft`   | done, in progress, to do         |
-| **Plan meter** (`.plan-meter`)  | How much of a plan window is used (decision 0046) | `<meter>`                                    | 6px      | `--line`        | in progress, then towards danger |
-| **Reading** (`.setup-progress`) | A source being read in the first run              | `<progress>`                                 | 0.375rem | the browser's   | `accent-color: --accent`         |
-| **Install** (`.cli-bar`)        | Claude Code downloading: going, never how far     | `<span aria-hidden>` with a moving `::after` | 0.375rem | `--accent-soft` | a 35% `--accent` slug            |
-| **Spark** (`.overview-spark`)   | A workstream's changes over the last 14 days      | `<svg role="img">` polyline                  | 17px     | none            | an `--in-progress` line          |
+| Bar                            | Shows                                             | Element                                      | Height   | Track           | Fill                             |
+| ------------------------------ | ------------------------------------------------- | -------------------------------------------- | -------- | --------------- | -------------------------------- |
+| **Status bar** (`.status-bar`) | Items by status category, as counts               | `<span role="img">` of `.segment`s           | 0.375rem | `--todo-soft`   | done, in progress, to do         |
+| **Plan meter** (`.plan-meter`) | How much of a plan window is used (decision 0046) | `<meter>`                                    | 6px      | `--line`        | in progress, then towards danger |
+| **Install** (`.cli-bar`)       | Claude Code downloading: going, never how far     | `<span aria-hidden>` with a moving `::after` | 0.375rem | `--accent-soft` | a 35% `--accent` slug            |
+| **Spark** (`.overview-spark`)  | A workstream's changes over the last 14 days      | `<svg role="img">` polyline                  | 17px     | none            | an `--in-progress` line          |
 
 A bars block in an answer (`.block-bars`, decision 0030) is a chart, not a meter: one bar per row, ranked, each value written beside it. See [Block](/components/block).
 
@@ -27,15 +26,15 @@ A bars block in an answer (`.block-bars`, decision 0030) is a chart, not a meter
 
 - **Status bar:** beside a group of items, to show how far along it is by count: a Browse cluster's head, a workstream's row on the overview. "Its parts are counts, not estimates" (`StatusBar` in `packages/web/src/window-page.tsx`).
 - **Plan meter:** for a fraction of a limit, where more is worse. It's a `<meter>` because it's a measurement, not a task's progress.
-- **Reading:** for a task with a known total, as the first run reads a source: `<progress max value>`. With no total yet, the same element with no `value` is the browser's indeterminate bar.
+- **Progress with a total:** none in Oriel today, since the first run stopped reading a source on its own screen (decision 0059). A new one is a native `<progress max value>`, named.
 - **Spark:** to show whether something is moving, not how much. It has no axis and no numbers; its label says the total.
 
 ## When not to
 
-- Not without the numbers in words nearby. Every bar here sits beside text that says what it shows ("42% used · resets in 2 h", "120 of 400 issues", "12 items"); the bar is a glance, not the only telling.
-- Not a hand-made bar for progress. Use `<progress>` (copy `.setup-progress`); `.cli-bar` exists only because the installer gives no measure.
+- Not without the numbers in words nearby. Every bar here sits beside text that says what it shows ("42% used · resets in 2 h", "12 items"); the bar is a glance, not the only telling.
+- Not a hand-made bar for progress. Use a native `<progress>`; `.cli-bar` exists only because the installer gives no measure.
 - Not `.status-bar` for points or estimates, and not for anything but the three status categories.
-- Not the accent for a meter that isn't the person's move. The plan meter is in progress until it nears the limit, then turns towards danger; the accent bars (reading, install) are the first run's own steps, where the person is waiting on them.
+- Not the accent for a meter that isn't the person's move. The plan meter is in progress until it nears the limit, then turns towards danger; the install bar is the first run's own step, where the person is waiting on them.
 - Not a spinner where a bar fits, or a bar where a word fits. For "Checking…" use a [loading line](/components/states).
 
 ## Anatomy and variants
@@ -172,28 +171,6 @@ A native `<meter>` with `appearance: none` and Oriel's colours on WebKit's pseud
 
 The app also puts `plan-today`, `plan-window-used` and `plan-note` on the lines here (`PlanUsage` in `packages/web/src/settings-page.tsx`). Nothing in window.css styles them, so the specimen leaves them off; `.plan-usage p` and the grid do the work.
 
-### Reading a source
-
-```html specimen id=setup-progress title="Reading, with a total and before the total is known"
-<div class="ws-stack">
-  <span class="setup-reading">
-    <span id="reading-line" class="cli-line" role="status">Reading SYN: 120 of 400 issues</span>
-    <progress
-      class="setup-progress"
-      max="400"
-      value="120"
-      aria-labelledby="reading-line"
-    ></progress>
-  </span>
-  <span class="setup-reading">
-    <span id="reading-line-2" class="cli-line" role="status">Reading SYN: 40 issues</span>
-    <progress class="setup-progress" aria-labelledby="reading-line-2"></progress>
-  </span>
-</div>
-```
-
-`.setup-progress` doesn't reset `appearance`, so it's the browser's own bar, tinted by `accent-color`. That's why it degrades well. It's named with `aria-labelledby`: on Your work, by the `role="status"` line above it (`ReadingLine` in `packages/web/src/setup-page.tsx`); on Reading your work, which has no such line, by its row's name and count (`reading-<kind>-name` and `-about`). A new one is named too.
-
 ### Install
 
 ```html specimen id=cli-bar title="Installing Claude Code: a bar that moves to show it's going"
@@ -217,22 +194,21 @@ The app also puts `plan-today`, `plan-window-used` and `plan-note` on the lines 
 
 - **Rest:** as above. None of these is interactive, so hover, focus, active and disabled don't apply.
 - **Empty:** a status bar with no items is `.status-bar.empty`, hidden but keeping its space. A quiet spark (`data-quiet`) draws a flat `--line-strong` line. The plan meter isn't drawn when the CLI didn't say: "Claude Code didn't say how much of your plan is used. Check again."
-- **Loading:** a `<progress>` with no `value` is indeterminate. The install bar always is.
+- **Loading:** the install bar is always indeterminate.
 - **Warning and error:** only the plan meter has them, by its `low` and `high`: a danger mix from 70%, `--danger` over 90%. A failed read or install says so in a line, not on the bar.
-- **Motion:** `.cli-bar`'s slug moves on a 1.8s loop, and the spinner beside it turns. Under reduced motion the slug holds still (`@media (prefers-reduced-motion: reduce)` in `window.css`). The native indeterminate `<progress>` follows the browser's own reduced-motion handling.
+- **Motion:** `.cli-bar`'s slug moves on a 1.8s loop, and the spinner beside it turns. Under reduced motion the slug holds still (`@media (prefers-reduced-motion: reduce)` in `window.css`).
 
 ## Keyboard and ARIA
 
 - **Status bar:** `role="img"` with an `aria-label` that says the counts in words: "3 done, 2 in progress, 7 to do". The same words are its `title`. Leave out a category with no items.
 - **Plan meter:** a native `<meter>` with `aria-label` "This session (5 hours): 42% used". A screen reader gets its value too.
-- **Reading:** a native `<progress>`. Name it with `aria-labelledby` to its `role="status"` line (the app doesn't yet). The line announces as it changes; the bar doesn't need to.
 - **Install:** `aria-hidden`, with the phase in a `role="status"` line.
 - **Spark:** `role="img"`, `aria-label` and `<title>` both "{n} changes in the last 14 days".
 - No bar here takes focus.
 
 ## Content
 
-- Say the number in words beside the bar, with its unit: "42% used · resets in 2 h", "Reading SYN: 120 of 400 issues", "19 changes in the last 14 days".
+- Say the number in words beside the bar, with its unit: "42% used · resets in 2 h", "19 changes in the last 14 days".
 - Plan windows are "This session (5 hours)" and "This week". The note under them: "Your whole plan, Oriel and everything else, as Claude Code says." With no plan: "This Claude Code isn't on a subscription plan, so it has no plan limits."
 - The install's phases: "Downloading from Anthropic…", "Setting it up…", "Checking it's genuine…", "Updating Claude Code…", each with the time so far ("0:41").
 - A status bar's label uses "done", "in progress" and "to do", lower case, in that order.
@@ -241,17 +217,15 @@ The app also puts `plan-today`, `plan-window-used` and `plan-note` on the lines 
 
 - `.status-bar` in `window.css`, with its segments, `.segment.done`, `.segment.in-progress` and `.segment.todo` in `window.css`. `StatusBar` in `packages/web/src/window-page.tsx` draws it, used by `Cluster` there and by `WorkstreamRow` in `packages/web/src/overview-page.tsx`.
 - `.plan-meter` in `window.css`, laid out by `.plan-usage` in `window.css`; drawn by `PlanUsage` in `packages/web/src/settings-page.tsx`.
-- `.setup-progress` in `window.css`, drawn by `ReadingLine` and `Reading` in `packages/web/src/setup-page.tsx`.
 - `.cli-bar` and its slug, `.cli-bar::after` in `window.css`; drawn by `ClaudeCodeRow` in `packages/web/src/cli-row.tsx`.
 - `.overview-spark` in `window.css`, drawn by `Spark` in `packages/web/src/overview-page.tsx`.
 - `.block-bars` in `window.css`, drawn by `BlockBody` in `packages/web/src/block.tsx`.
 
 ## Drift
 
-Status **drifting**: five bars, each written once, with no shared track, height or colour rule.
+Status **drifting**: four bars, each written once, with no shared track, height or colour rule.
 
-- **Four tracks:** `--todo-soft`, `--line`, `--accent-soft`, and the browser's own. **Three heights:** 0.375rem, 6px and the block's 0.625rem. **Two corners:** `--radius-lg` and `--radius-sm`.
-- **Two indeterminate bars:** the native `<progress>` in the first run, and the hand-made `.cli-bar` on the same page.
+- **Three tracks:** `--todo-soft`, `--line` and `--accent-soft`. **Three heights:** 0.375rem, 6px and the block's 0.625rem. **Two corners:** `--radius-lg` and `--radius-sm`.
 - **Firefox:** the plan meter styles only WebKit's pseudo-elements (no `::-moz-meter-bar`), so Firefox would draw its own. Settings only opens in the desktop app, so this doesn't reach anyone today; don't copy it into a page the review link can reach.
 
-**Until it's consolidated:** for progress, copy `.setup-progress` (`<progress>`, named), with or without a value. For a share of a limit, copy the plan meter's `<meter>` with `low`, `high` and `optimum`. For a group's status, use `StatusBar`. Don't add a new animated bar; if you must, put it in the reduced-motion list by the selector that animates. See [Motion](/foundations/motion) and [the drift report](/drift).
+**Until it's consolidated:** for progress, use a native `<progress>`, named with `aria-labelledby` to its `role="status"` line. For a share of a limit, copy the plan meter's `<meter>` with `low`, `high` and `optimum`. For a group's status, use `StatusBar`. Don't add a new animated bar; if you must, put it in the reduced-motion list by the selector that animates. See [Motion](/foundations/motion) and [the drift report](/drift).

@@ -1,9 +1,8 @@
-// The Google Sheets connector (decisions 0049 and 0050): signing in
-// (Google's OAuth for installed apps, with its Picker), or through
-// packages/sheets-mcp in the person's agent (decision 0059), reading the picked
-// spreadsheets' mapped tabs, its namespace and op specs for writes through
-// approved change sets, and the fixture with its stand-in for Google's
-// APIs. Its writer is the `./writer` export, which only
+// The Google Sheets connector (decisions 0049 and 0050): through
+// packages/sheets-mcp in the person's agent (decision 0059), reading the
+// picked spreadsheets' mapped tabs, its namespace and op specs for writes
+// through approved change sets, and the fixture with its stand-in for
+// Google's APIs. Its writer is the `./writer` export, which only
 // packages/changeset imports.
 export {
   type A1Range,
@@ -33,25 +32,6 @@ export {
   shown,
   valueOf,
 } from "./fixture.ts";
-export { type After, type Loopback, loopback, type Redirect, signInMs } from "./loopback.ts";
-export {
-  authorizeUrl,
-  type Fetch,
-  type GoogleClient,
-  googleClientEnv,
-  googleClientOptional,
-  googleClientOf,
-  pickedFiles,
-  refresh,
-  type Refresh,
-  scope,
-  signIn,
-  type SignIn,
-  type SignInIo,
-  spreadsheetType,
-  type Tokens,
-} from "./oauth.ts";
-export { challengeOf, newState, pkce, type Pkce, type Random } from "./pkce.ts";
 export {
   driveOrigin,
   fixtureGoogle,
@@ -59,7 +39,7 @@ export {
   type StandIn,
   type StandInCall,
   type StandInOptions,
-  standInToken,
+  spreadsheetType,
 } from "./stand-in.ts";
 export {
   maxItemChars,
@@ -78,7 +58,7 @@ export {
   type SpreadsheetContent,
   spreadsheetKey,
 } from "./attrs.ts";
-export { type SignedIn, sheetsConnect } from "./connecting.ts";
+export { sheetsOffer, sheetsReads } from "./connecting.ts";
 export { sheetsDeclaration } from "./declaration.ts";
 export { type SheetsDraft, sheetsDraft, sheetsPreview, sheetsReview } from "./preview.ts";
 export { type SheetsContext, sheetsContextOf, sheetsNamespace } from "./namespace.ts";
@@ -110,13 +90,11 @@ export {
   tabMapping,
 } from "./mapping.ts";
 export {
+  memoryProblem,
   type OpenedSheets,
-  type KeptTokens,
   openSheets,
   picksOf,
-  tokensOf,
   readOnlyOf,
-  sheetsProblem,
   sheetsServerProblem,
   type SheetsWrites,
 } from "./open-connection.ts";

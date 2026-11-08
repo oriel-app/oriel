@@ -4,7 +4,7 @@
 // - in a stylesheet, a selector (`.connect-actions`, `.menu-item:hover`), an
 //   at-rule (`@keyframes pulse`) or a custom property (`--accent`);
 // - in code, a top-level declaration: a component, function, constant, type
-//   or class (`FieldsStep`);
+//   or class (`FolderStep`);
 // - in markdown, a heading's text, or the start of it (`2. Words`).
 //
 // `pnpm -s ds where <name>` prints the lines, for anyone who wants them.

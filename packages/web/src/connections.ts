@@ -2,19 +2,22 @@
 // read once and shared by the sidebar, the first run, the overview and
 // Settings: syncing any of them, or all, on demand; making one through its
 // connector's steps, which the page draws from its declaration, the same way
-// for every connector; and, in Settings, setting one's options and
-// disconnecting it. A connection's review step, its mapping, is the same
-// wherever it shows: the person edits it there, and it applies as their own
-// action (OA-232). A sync that fails keeps what the window had, and says why
-// on its connection until its next sync works. Nothing typed into a
-// connector's steps stays in the page once its connection is made.
+// for every connector, which since decision 0059 only one on this Mac declares;
+// and, in Settings, setting one's options and disconnecting it. A
+// connection's review step, its mapping, shows in Settings: the person edits
+// it there, and it applies as their own action (OA-232). A sync that fails
+// keeps what the window had, and says why on its connection until its next
+// sync works. Nothing typed into a connector's steps stays in the page once
+// its connection is made.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type { Connectors } from "./connectors.ts";
 import type {
+  ConnectionPick,
   ConnectionsView,
   ConnectionView,
   ConnectorView,
   ConnectStep,
+  OptionField,
   OptionsReviewView,
   PickChoiceView,
   ReviewEdit,
@@ -22,33 +25,21 @@ import type {
 } from "./view.ts";
 
 // One connector's steps as the person goes through them: the step showing,
-// by its place; what they typed; the pick step's list once the source gave
-// it, which `more` says is longer, and `query` narrowed; the one picked;
-// what's being asked of the server: the list, the folder picker,
-// or the connection; what the last connect tried, for its progress and Try
-// again; and why the last step didn't work, with the fields it named.
-// `open`: shown in Settings' Add a connection, until it's made or cancelled.
-// `signIn`: a browser step's sign-in, begun, by the source's page and the ID
-// that finishes it. `made`: the connection made, while its review step
-// shows, until its options apply.
+// by its place; what they typed; what's being asked of the server: the
+// folder picker, or the connection; what the last connect tried; and why the
+// last step didn't work. `open`: shown in Settings' Add a connection, until
+// it's made or cancelled.
 export type ConnectForm = {
   open: boolean;
   step: number;
   typed: Readonly<Record<string, string>>;
-  choices: PickChoiceView[] | null;
-  more: boolean;
-  query: string;
-  picked: string | null;
-  signIn: { url: string; attempt: string } | null;
-  made: string | null;
-  pending: "listing" | "choosing" | "starting" | "connecting" | "applying" | null;
+  pending: "choosing" | "connecting" | null;
   tried: string | null;
   problem: string | null;
-  fields: readonly string[];
 };
 
-// One connection in Settings: its name as typed and not yet set; its pick
-// step's list, once asked for; whether a change is on its way, and what the
+// One connection in Settings: its name as typed and not yet set; the list
+// one of its picks lists, once asked for; whether a change is on its way, and what the
 // last one changed, by the option it changed, with its Undo; why it didn't
 // work, or why the options it set don't fit the source; why its review step
 // couldn't read the source; and Disconnect, asked and then answered.
@@ -103,18 +94,9 @@ export type ConnectionsMsg =
   | { type: "syncAllClicked" }
   // A connector's steps, by its kind.
   | { type: "fieldChanged"; kind: string; field: string; value: string }
-  // A fields step is done: the next step's list, or the connection.
+  // A folder step: its path typed, which connects; or the folder picker.
   | { type: "nextClicked"; kind: string; steps: readonly ConnectStep[] }
-  | { type: "queryChanged"; kind: string; steps: readonly ConnectStep[]; query: string }
-  | { type: "choicePicked"; kind: string; value: string }
-  // The pick step's Use, or Try again after a first sync that stopped.
-  | { type: "connectClicked"; kind: string; steps: readonly ConnectStep[] }
-  // A folder step: the folder picker, or the path typed.
   | { type: "chooseClicked"; kind: string }
-  // A browser step showing, which begins its sign-in; and its link to the
-  // source's page followed, which connects once the person finishes there.
-  | { type: "browserShown"; kind: string }
-  | { type: "browserOpened"; kind: string; steps: readonly ConnectStep[] }
   // A review step's draft, read again while the agent drafts; and applied:
   // the agent's, held in its thread, or Oriel's guess.
   | { type: "reviewAsked"; kind: string; connection: string; fresh?: true }
@@ -122,16 +104,14 @@ export type ConnectionsMsg =
   // Oriel in the window chat, by its place (OA-232).
   | { type: "handEditClicked"; kind: string; connection: string; tab: string }
   | { type: "askOrielClicked"; connection: string; tab: string }
-  // In Settings, `beside` names the option it sets, where its Undo shows.
+  // `beside` names the option it sets, where its Undo shows.
   | { type: "reviewApplied"; kind: string; connection: string; beside?: string }
   // A review step edited: begun from what it shows, one change made, which
   // the server draws again, or left as it was.
   | { type: "reviewEditClicked"; connection: string }
   | { type: "reviewEdited"; connection: string; edit: ReviewEdit }
   | { type: "reviewEditCancelled"; connection: string }
-  // Back to the step before, which keeps what was typed; into them in
-  // Settings, or out of them.
-  | { type: "backClicked"; kind: string }
+  // Into a connector's steps in Settings, or out of them.
   | { type: "opened"; kind: string }
   | { type: "closed"; kind: string }
   // Settings, by a connection's ID.
@@ -184,16 +164,9 @@ export const blankForm: ConnectForm = {
   open: false,
   step: 0,
   typed: {},
-  choices: null,
-  more: false,
-  query: "",
-  picked: null,
-  signIn: null,
-  made: null,
   pending: null,
   tried: null,
   problem: null,
-  fields: [],
 };
 
 const blankSetting: ConnectionSetting = {
@@ -252,17 +225,53 @@ export const formOf = (model: ConnectionsModel, kind: string): ConnectForm =>
 export const settingOf = (model: ConnectionsModel, id: string): ConnectionSetting =>
   model.settings[id] ?? blankSetting;
 
-// Whether a fields step has every field typed.
-export const typedAll = (form: ConnectForm, step: ConnectStep): boolean =>
-  step.kind !== "fields" || step.fields.every((field) => (form.typed[field.name] ?? "").trim());
-
 // The step a connector's form is on.
 export const stepOf = (steps: readonly ConnectStep[], form: ConnectForm): ConnectStep | null =>
   steps[Math.min(form.step, steps.length - 1)] ?? null;
 
-// The choice the person picked, as the list showed it.
-export const pickedChoice = (form: ConnectForm): PickChoiceView | null =>
-  form.choices?.find((choice) => choice.value === (form.tried ?? form.picked)) ?? null;
+// What Settings sets on a connection: none on a stand-in's, one a flag
+// makes, or one not open or waiting; on one through a source server, what
+// the person picks through it and, if its connector reads one, its mapping,
+// as a spreadsheet's server's may (decision 0059); on any other, its
+// connector's options. `mappings` are the mapping options drawn beside a
+// source server's picks, once each pick has something picked: before then
+// there's nothing to map.
+export function settableOf(
+  connection: ConnectionView,
+  connector: ConnectorView | undefined,
+): { settable: boolean; mappings: Extract<OptionField, { kind: "mapping" }>[] } {
+  const mappings = (connector?.options ?? []).filter(
+    (field): field is Extract<OptionField, { kind: "mapping" }> => field.kind === "mapping",
+  );
+  const through = connection.through !== null;
+  const settable =
+    (connection.state === "open" || connection.state === "waiting") &&
+    !connection.flagged &&
+    !connection.own &&
+    (!through || connection.picks.length > 0 || mappings.length > 0);
+  const picked = connection.picks.every((pick) => pick.picked.length > 0);
+  return { settable, mappings: settable && through && picked ? mappings : [] };
+}
+
+// What a pick through a source server says it picks now, from the values
+// its server reads in the connection's options, never the options
+// themselves, which may hold more, as a spreadsheet's hold its tabs:
+// the one picked, or how many; and with none, what the connection reads
+// instead.
+export function pickSaid(pick: ConnectionPick): { current: string; none: boolean; said: string } {
+  const current = pick.many ? "" : (pick.picked[0] ?? "");
+  const none = pick.picked.length === 0;
+  return {
+    current,
+    none,
+    said:
+      none && pick.unpicked
+        ? `Reading ${pick.unpicked}; pick yours.`
+        : pick.many
+          ? `${pick.picked.length} picked.`
+          : current,
+  };
+}
 
 // The kinds the window doesn't offer to connect, as another does their
 // work (decision 0059): those a stand-in on now stands in for, and, while
@@ -285,9 +294,9 @@ export const offered = (connectors: Connectors, model: ConnectionsModel): Connec
   const replaced = replacedKinds(connectors, model);
   const off = turnedOff(model);
   return Object.values(connectors)
-    .filter((connector) => connector.connect?.offer.firstRun !== undefined)
+    .filter((connector) => connector.offer?.firstRun !== undefined)
     .filter((connector) => !replaced.has(connector.kind) && !off.includes(connector.kind))
-    .toSorted((a, b) => (a.connect?.offer.firstRun ?? 0) - (b.connect?.offer.firstRun ?? 0));
+    .toSorted((a, b) => (a.offer?.firstRun ?? 0) - (b.offer?.firstRun ?? 0));
 };
 
 // The kinds a person or the agent turned off (decision 0059): nothing of
@@ -305,15 +314,13 @@ export const standingIn = (
     return connector?.standIn ? [{ ...connector, standIn: connector.standIn }] : [];
   });
 
-// What a connector's first run row is doing: read, reading, its options
-// under review, failed, or nothing yet. One with a pick step fails in a box
-// with Try again; another says why in a line.
+// What a connector's first run row is doing: read, reading, failed, or
+// nothing yet.
 export function connectState(
   model: ConnectionsModel,
   kind: string,
-): "read" | "reading" | "review" | "failed" | null {
+): "read" | "reading" | "failed" | null {
   if (openOf(model, kind)) return "read";
-  if (formOf(model, kind).made !== null) return "review";
   const form = formOf(model, kind);
   if (form.pending === "connecting" || form.pending === "choosing") return "reading";
   return form.problem !== null && form.tried !== null ? "failed" : null;
@@ -336,17 +343,6 @@ const withSetting = (
   effects,
 ];
 
-// The given across the steps up to the pick step: what was typed.
-const listing = (kind: string, form: ConnectForm): Effect =>
-  post(
-    "/api/connections/pick",
-    { kind, given: form.typed, query: form.query },
-    {
-      kind: "connectChoices",
-      of: kind,
-    },
-  );
-
 // How often a review step asks again while the agent drafts.
 export const reviewEveryMs = 1500;
 
@@ -360,22 +356,12 @@ const reviewing = (kind: string, connection: string, fresh = false): Effect =>
 // What Settings' Ask Oriel tells a person who has no AI to ask.
 export const noAiToAsk = "Set up your AI to ask Oriel, or edit by hand.";
 
-// A connect's tag, with where its review step is, if it has one, which a
-// connection that waits for its options goes on to.
-const connectedTag = (kind: string, steps: readonly ConnectStep[]) => {
-  const review = steps.findIndex((step) => step.kind === "review");
-  return { kind: "connected" as const, of: kind, ...(review >= 0 ? { review } : {}) };
-};
-
-// What the steps gave, with the pick, connected.
-const connecting = (kind: string, steps: readonly ConnectStep[], form: ConnectForm): Effect => {
-  const pick = steps.find((step) => step.kind === "pick");
-  const given =
-    pick?.kind === "pick" && form.tried !== null
-      ? { ...form.typed, [pick.field]: form.tried }
-      : form.typed;
-  return post("/api/connections", { kind, given }, connectedTag(kind, steps));
-};
+// A connection waiting for options, as one through a spreadsheet's server
+// does once what it reads is picked: its onboarding turn, which drafts them
+// in the window chat (decision 0051). The server starts one at most, and none when
+// the agent can't draft.
+const onboarding = (kind: string, connection: string): Effect =>
+  post(`/api/connections/${connection}/draft`, {}, { kind: "onboarded", of: kind, connection });
 
 export function updateConnections(
   model: ConnectionsModel,
@@ -417,35 +403,19 @@ export function updateConnections(
       return withForm(model, msg.kind, {
         ...form,
         typed: { ...form.typed, [msg.field]: msg.value },
-        fields: form.fields.filter((field) => field !== msg.field),
       });
     }
     case "nextClicked": {
       const form = formOf(model, msg.kind);
-      const step = stepOf(msg.steps, form);
-      if (form.pending || !step || !typedAll(form, step)) return [model, []];
-      const next = msg.steps[form.step + 1];
-      const asked = { ...form, query: "", pending: null, problem: null, fields: [] };
-      if (next?.kind === "pick")
-        return withForm(model, msg.kind, { ...asked, pending: "listing" }, [
-          listing(msg.kind, asked),
-        ]);
-      const tried = { ...asked, pending: "connecting" as const, tried: "" };
-      return withForm(model, msg.kind, tried, [connecting(msg.kind, msg.steps, tried)]);
-    }
-    case "queryChanged": {
-      const form = { ...formOf(model, msg.kind), query: msg.query };
-      return withForm(model, msg.kind, { ...form, pending: "listing", problem: null }, [
-        listing(msg.kind, form),
+      if (form.pending || !stepOf(msg.steps, form)) return [model, []];
+      const tried = { ...form, pending: "connecting" as const, tried: "", problem: null };
+      return withForm(model, msg.kind, tried, [
+        post(
+          "/api/connections",
+          { kind: msg.kind, given: form.typed },
+          { kind: "connected", of: msg.kind },
+        ),
       ]);
-    }
-    case "choicePicked":
-      return withForm(model, msg.kind, { ...formOf(model, msg.kind), picked: msg.value });
-    case "connectClicked": {
-      const form = formOf(model, msg.kind);
-      if (form.pending || form.picked === null) return [model, []];
-      const tried = { ...form, pending: "connecting" as const, tried: form.picked, problem: null };
-      return withForm(model, msg.kind, tried, [connecting(msg.kind, msg.steps, tried)]);
     }
     case "chooseClicked": {
       const form = formOf(model, msg.kind);
@@ -458,46 +428,20 @@ export function updateConnections(
         ),
       ]);
     }
-    case "browserShown": {
-      const form = formOf(model, msg.kind);
-      if (form.pending || form.signIn) return [model, []];
-      return withForm(model, msg.kind, { ...form, pending: "starting", problem: null }, [
-        post(
-          "/api/connections/browser",
-          { kind: msg.kind },
-          { kind: "browserBegun", of: msg.kind },
-        ),
-      ]);
-    }
-    case "browserOpened": {
-      const form = formOf(model, msg.kind);
-      if (form.pending || !form.signIn) return [model, []];
-      const tried = { ...form, pending: "connecting" as const, tried: "", problem: null };
-      return withForm(model, msg.kind, tried, [
-        post(
-          "/api/connections",
-          { kind: msg.kind, given: { attempt: form.signIn.attempt } },
-          connectedTag(msg.kind, msg.steps),
-        ),
-      ]);
-    }
     case "reviewAsked":
       return [model, [reviewing(msg.kind, msg.connection, msg.fresh)]];
     case "reviewApplied": {
-      const form = formOf(model, msg.kind);
       const review = model.reviews[msg.connection];
       const editing = model.edits[msg.connection];
-      // The connect steps' own review step, or Settings' (OA-232).
-      const connecting = form.made === msg.connection;
       const setting = settingOf(model, msg.connection);
-      if ((connecting ? form.pending : setting.pending) || !review) return [model, []];
+      if (setting.pending || !review) return [model, []];
       const tag = {
         kind: "reviewApplied" as const,
         of: msg.kind,
         connection: msg.connection,
         ...(msg.beside ? { beside: msg.beside } : {}),
       };
-      // In Settings, only the option it sets, merged over the rest as they
+      // Only the option it sets, merged over the rest as they
       // are then, so a switch changed meanwhile stays as it was set.
       const options = (options: Record<string, unknown> | null) =>
         post(
@@ -525,10 +469,6 @@ export function updateConnections(
             ? options(review.guess.options)
             : null;
       if (!applying) return [model, []];
-      if (connecting)
-        return withForm(model, msg.kind, { ...form, pending: "applying", problem: null }, [
-          applying,
-        ]);
       const said = msg.beside ? { what: "its mapping", field: msg.beside, undo: null } : null;
       return withSetting(
         model,
@@ -600,16 +540,6 @@ export function updateConnections(
     }
     case "reviewEditCancelled":
       return [withEditing(model, msg.connection, null), []];
-    case "backClicked": {
-      const form = formOf(model, msg.kind);
-      return withForm(model, msg.kind, {
-        ...form,
-        step: Math.max(form.step - 1, 0),
-        choices: null,
-        picked: null,
-        problem: null,
-      });
-    }
     case "opened":
       return withForm(model, msg.kind, { ...formOf(model, msg.kind), open: true });
     case "closed":
@@ -716,32 +646,18 @@ export function connectionsReplied(
 ): { model: ConnectionsModel; synced: boolean; effects?: Effect[] } {
   const { tag } = msg;
   switch (tag.kind) {
-    case "browserBegun": {
-      const form = formOf(model, tag.of);
-      const begun = msg.ok
-        ? { ...form, pending: null, signIn: msg.body as { url: string; attempt: string } }
-        : { ...form, pending: null, problem: errorOf(msg.body) };
-      return { model: withForm(model, tag.of, begun)[0], synced: false };
-    }
     // Its onboarding turn started, or none could: its review asks either way.
     case "onboarded":
       return { model, synced: false, effects: [reviewing(tag.of, tag.connection)] };
     case "reviewed": {
-      if (!msg.ok) {
-        // In its connect steps, or Settings' (OA-232).
-        const form = formOf(model, tag.of);
-        const problem = errorOf(msg.body);
+      if (!msg.ok)
         return {
-          model:
-            form.made === tag.connection
-              ? withForm(model, tag.of, { ...form, problem })[0]
-              : withSetting(model, tag.connection, {
-                  ...settingOf(model, tag.connection),
-                  unread: problem,
-                })[0],
+          model: withSetting(model, tag.connection, {
+            ...settingOf(model, tag.connection),
+            unread: errorOf(msg.body),
+          })[0],
           synced: false,
         };
-      }
       const review = msg.body as OptionsReviewView;
       const reviews = { ...model.reviews, [tag.connection]: review };
       // Asked to edit one table by hand: its editor opens on it, as it reads.
@@ -768,20 +684,21 @@ export function connectionsReplied(
               ...model.settings,
               [tag.connection]: { ...settingOf(model, tag.connection), unread: null },
             };
-      const form = formOf(model, tag.of);
-      // Its options applied elsewhere, as in the window chat: done here too.
-      const done = !review.waits && form.made === tag.connection;
+      // Its options applied elsewhere, as in the window chat, while it
+      // waited: the window reads what it reads now.
+      const done = !review.waits && model.reviews[tag.connection]?.waits === true;
       const next = {
         ...(hand ? withEditing(model, tag.connection, hand) : model),
         reviews,
         settings,
-        ...(done ? { forms: { ...model.forms, [tag.of]: blankForm } } : {}),
       };
       return {
         model: next,
         synced: done,
+        // Asked again while the agent drafts one that waits, so its draft
+        // shows once it holds one.
         effects:
-          review.drafting && form.made === tag.connection
+          review.waits && review.drafting
             ? [
                 {
                   type: "after",
@@ -795,19 +712,15 @@ export function connectionsReplied(
             : [],
       };
     }
+    // It says what it set beside the option, with its Undo, or what went
+    // wrong.
     case "reviewApplied": {
-      const form = formOf(model, tag.of);
-      // The connect steps' own review step, or Settings' (OA-232), which
-      // says what it set beside the option, with its Undo, or what went
-      // wrong.
-      const connecting = form.made === tag.connection;
       const body = (msg.body ?? {}) as {
         connection?: ConnectionView;
         problem?: string;
         undo?: unknown;
       };
       const said = (problem: string | null) => {
-        if (connecting) return withForm(model, tag.of, { ...form, pending: null, problem })[0];
         const setting = settingOf(model, tag.connection);
         const undo =
           msg.ok && setting.said && body.undo ? { ...setting.said, undo: body.undo } : null;
@@ -823,11 +736,10 @@ export function connectionsReplied(
       const applied = withEditing(said(body.problem ?? null), tag.connection, null);
       if (body.problem)
         return { model: applied, synced: true, effects: [reviewing(tag.of, tag.connection)] };
-      const formed = connecting ? withForm(applied, tag.of, blankForm)[0] : applied;
       return {
         model: body.connection
-          ? { ...formed, view: withConnection(formed.view, body.connection) }
-          : formed,
+          ? { ...applied, view: withConnection(applied.view, body.connection) }
+          : applied,
         synced: true,
       };
     }
@@ -895,72 +807,36 @@ export function connectionsReplied(
         };
       return { model: { ...model, syncing }, synced: true };
     }
-    case "connectChoices": {
-      const form = formOf(model, tag.of);
-      if (!msg.ok) {
-        const { fields } = (msg.body ?? {}) as { fields?: string[] };
-        const failed = { ...form, pending: null, problem: errorOf(msg.body), fields: fields ?? [] };
-        return { model: withForm(model, tag.of, failed)[0], synced: false };
-      }
-      const { choices, more } = msg.body as { choices: PickChoiceView[]; more: boolean };
-      // The likeliest is the one changed last, which the list puts first.
-      const picked = choices.some((choice) => choice.value === form.picked)
-        ? form.picked
-        : (choices[0]?.value ?? null);
-      const step = form.choices === null ? form.step + 1 : form.step;
-      return {
-        model: withForm(model, tag.of, { ...form, step, pending: null, choices, more, picked })[0],
-        synced: false,
-      };
-    }
     case "connected":
     case "connectPicked": {
       const form = formOf(model, tag.of);
-      // A sign-in finishes once, so another begins on Try again.
       if (!msg.ok)
         return {
-          model: withForm(model, tag.of, {
-            ...form,
-            pending: null,
-            signIn: null,
-            problem: errorOf(msg.body),
-          })[0],
+          model: withForm(model, tag.of, { ...form, pending: null, problem: errorOf(msg.body) })[0],
           synced: false,
         };
       // Cancelled in the system's picker: nothing changed.
       if (!("connection" in (msg.body as object)))
         return { model: withForm(model, tag.of, { ...form, pending: null })[0], synced: false };
       // Once connected, nothing typed is kept, and the connection shows at
-      // once, until the list loads again. One that waits for its options
-      // goes on to its review step, and its onboarding turn starts.
+      // once, until the list loads again.
       const { connection } = msg.body as { connection: ConnectionView };
-      const review = "review" in tag ? tag.review : undefined;
-      const next =
-        review !== undefined && connection.state === "waiting"
-          ? { ...blankForm, open: form.open, step: review, made: connection.id }
-          : blankForm;
       // What a sync asked for before said is past: this connect read it.
       const { [connection.id]: _past, ...problems } = model.problems;
-      const formed = withForm({ ...model, problems }, tag.of, next)[0];
+      const formed = withForm({ ...model, problems }, tag.of, blankForm)[0];
       return {
         model: { ...formed, view: withConnection(formed.view, connection) },
         synced: true,
-        effects:
-          next.made === null
-            ? []
-            : [
-                post(
-                  `/api/connections/${connection.id}/draft`,
-                  {},
-                  { kind: "onboarded", of: tag.of, connection: connection.id },
-                ),
-              ],
       };
     }
     case "configured":
     case "configureUndone": {
       const setting = settingOf(model, tag.connection);
-      const body = (msg.body ?? {}) as { undo?: unknown; problem?: string };
+      const body = (msg.body ?? {}) as {
+        connection?: ConnectionView;
+        undo?: unknown;
+        problem?: string;
+      };
       if (!msg.ok)
         return {
           model: withSetting(model, tag.connection, {
@@ -986,6 +862,14 @@ export function connectionsReplied(
           problem: body.problem ?? null,
         })[0],
         synced: true,
+        // Picked through its source server, one that now waits for options
+        // that fit has them drafted.
+        effects:
+          tag.kind === "configured" &&
+          body.connection?.state === "waiting" &&
+          body.connection.through !== null
+            ? [onboarding(body.connection.kind, body.connection.id)]
+            : [],
       };
     }
     case "connectionChoices": {

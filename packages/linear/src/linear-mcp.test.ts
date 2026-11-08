@@ -31,12 +31,10 @@ const connection: ToOpen = {
   prefix: "linear",
   identity: "",
   options: {},
-  secret: null,
 };
 
 const open = (read: ToolCaller) =>
   openLinear(connection, {
-    kept: false,
     log: () => {},
     now: () => world.frozen,
     server: { ...standInServer(), read },
@@ -178,7 +176,6 @@ test("a team picked bounds the sync: none of the first team's issues", async () 
   const ops = await openLinear(
     { ...connection, options: { team: "OPS" } },
     {
-      kept: false,
       log: () => {},
       now: () => world.frozen,
       server: { ...standInServer(), read: standInCaller(linearStandIn(world)) },

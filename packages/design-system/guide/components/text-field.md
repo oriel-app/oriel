@@ -3,19 +3,19 @@ title: Text field
 status: drifting
 group: Inputs
 order: 30
-classes: input, connect-field, connect-label, connect-hint, connect-fields, connect-details, connect-problem, provider-path-label, settings-field, path-label, path-note, name-field, held-field, link-field, workstream-title, sidebar-search-field, filter-search
-summary: Where a person types something to keep, such as an address, a name, a path or a reason. About nine looks today; copy the connect step's field. Searches have their own framed field.
+classes: input, connect-field, connect-label, connect-problem, setup-form, provider-path-label, settings-field, path-label, path-note, name-field, held-field, link-field, workstream-title, sidebar-search-field, filter-search
+summary: Where a person types something to keep, such as a name, a path, a key or a reason. About nine looks today; copy the first run's key field. Searches have their own framed field.
 ---
 
 # Text field
 
 ## What it is
 
-An `<input>` or `<textarea>` for something a person types to keep: Jira's address, a connection's name, the path to Claude Code, their name on a review link, a held message's new words. There's no single text-field class. One class, `.input`, changes size with where it sits, and six other fields have classes of their own:
+An `<input>` or `<textarea>` for something a person types to keep: an API key, a connection's name, the path to Claude Code, their name on a review link, a held message's new words. There's no single text-field class. One class, `.input`, changes size with where it sits, and six other fields have classes of their own:
 
 | Field                                     | Where                                          | Height or padding | Border           | Text                |
 | ----------------------------------------- | ---------------------------------------------- | ----------------- | ---------------- | ------------------- |
-| `.input` in a connect step                | Connect Jira, the first run's API key          | 2.25rem           | `--line-strong`  | `--text-md`         |
+| `.input` in the first run                 | the first run's API key                        | 2.25rem           | `--line-strong`  | `--text-md`         |
 | `.input` in Settings                      | a path, an API key, a connection's options     | 1.875rem          | `--line-strong`  | `--text-sm`, mono   |
 | `.path-label input`                       | a folder's path, typed                         | 0.3125rem padding | `--line-strong`  | `--text-sm`, mono   |
 | `.name-field` input and textarea          | the review link page: your name, the reason    | 0.3125rem padding | `--line-strong`  | `--text-sm`         |
@@ -28,9 +28,9 @@ The chat inputs (the ask bar and the composers) are their own component: see [Ch
 
 ## When to use it
 
-- For a value the person types and Oriel keeps: an address, an email, a token, a name, a path, a list of names.
+- For a value the person types and Oriel keeps: a key, a name, a path, a list of names.
 - Use a `<textarea>` where the words may run to lines: a reason, a held message.
-- Use `type="password"` for a secret, `type="email"` for an email, `type="search"` for a search.
+- Use `type="password"` for a key, `type="search"` for a search.
 - Give every field a visible label, except where the field is the heading itself (the workstream's name) or a search with its icon.
 
 ## When not to
@@ -38,65 +38,44 @@ The chat inputs (the ask bar and the composers) are their own component: see [Ch
 - Not for asking the agent. That's a [chat input](/components/chat-input): it asks, it doesn't save.
 - Not for picking one of a known set. That's [radios](/components/checkbox-radio) or a [select](/components/select).
 - Not for showing a value to copy as if it were editable. The review link is a read-only `.link-field` with a Copy action beside it; don't make other read-only text look like a field.
-- Not a placeholder in place of a label. A placeholder is an example of the value ("yourteam.atlassian.net", "~/notes"), not its name.
+- Not a placeholder in place of a label. A placeholder is an example of the value ("~/notes", "/opt/homebrew/bin/claude"), not its name.
 
 ## Anatomy and variants
 
-A field is a label, the input, an optional hint, and a problem line when something's wrong. In the connect step, which is the most complete, that's:
+A field is a label, the input, an optional note, and a problem line when something's wrong. In the first run's API key, which is the most complete, that's:
 
 - `<label class="connect-field">` wrapping it all, so clicking the words focuses the field.
 - `<span class="connect-label">`: the field's name, strong.
-- `<input class="input">`: 2.25rem tall, `--radius`, `--surface`.
-- `<span class="connect-hint">`: one line of help under it, faint, `--text-xs`.
-- `<p class="connect-problem" role="alert">`: what's wrong, under the fields, in `--danger`.
+- `<input class="input">`: 2.25rem tall, `--radius`, `--surface`, inside a `.setup-form`.
+- `<p class="connect-problem" role="alert">`: what's wrong, under the field, in `--danger`.
+- A `.cli-note` under that, where to get the value, which stays after a refusal.
 
-```html specimen id=connect title="A connect step's fields: Connect Jira"
-<form class="connect-details" aria-label="Your Jira account">
-  <div class="connect-fields">
+```html specimen id=connect title="The first run's API key field"
+<form class="setup-form">
+  <div class="setup-card">
     <label class="connect-field">
-      <span class="connect-label">Your Jira address</span>
+      <span class="connect-label">API key</span>
       <input
         class="input"
-        name="site"
-        type="text"
-        autocomplete="url"
-        spellcheck="false"
-        placeholder="yourteam.atlassian.net"
-      />
-      <span class="connect-hint">The start of the address in your browser when Jira is open.</span>
-    </label>
-    <label class="connect-field">
-      <span class="connect-label">The email you sign in to Jira with</span>
-      <input
-        class="input"
-        name="email"
-        type="email"
-        autocomplete="email"
-        spellcheck="false"
-        placeholder="you@company.com"
-      />
-    </label>
-    <label class="connect-field">
-      <span class="connect-label">API token</span>
-      <input
-        class="input"
-        name="token"
         type="password"
-        autocomplete="off"
-        spellcheck="false"
+        name="key"
         placeholder="Paste it here"
+        spellcheck="false"
+        autocomplete="off"
       />
     </label>
-  </div>
-  <div class="connect-actions">
-    <button type="submit" class="button primary" disabled>Connect</button>
+    <p class="cli-note">
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer"
+        >Get a key from Anthropic</a
+      >: make an account there, add a card, click <strong>Create Key</strong>, and copy it.
+    </p>
   </div>
 </form>
 ```
 
 ### In Settings
 
-Settings' fields are `.input` too, at 1.875rem and in the mono face, because most of them hold a path or a key. A connection's options set the font back to the inherited one (`.settings :is(.connection-options, .connect-details, .connect-pick) .input` in `window.css`). The label is either `.provider-path-label` (a span over the input) or `.settings-field` (a name and an about line over it). These rules only apply inside `.settings`, so the specimen draws the page around them.
+Settings' fields are `.input` too, at 1.875rem and in the mono face, because most of them hold a path or a key. A connection's options set the font back to the inherited one (`.settings .connection-options .input` in `window.css`). The label is either `.provider-path-label` (a span over the input) or `.settings-field` (a name and an about line over it). These rules only apply inside `.settings`, so the specimen draws the page around them.
 
 ```html specimen id=settings title="Settings › Connections: a name, and a list of names"
 <div class="settings">
@@ -234,10 +213,12 @@ The wallet button should sit above the card form, not below it.</textarea>
 
 ```html specimen id=state-focus title="Focus visible: a ring 2px out, but 0 out in Settings, and a border alone on the workstream's name" state=focus-visible
 <div class="ws-stack">
-  <label class="connect-field">
-    <span class="connect-label">Your Jira address</span>
-    <input class="input ws-focus-visible" placeholder="yourteam.atlassian.net" />
-  </label>
+  <form class="setup-form">
+    <label class="connect-field">
+      <span class="connect-label">API key</span>
+      <input class="input ws-focus-visible" type="password" placeholder="Paste it here" />
+    </label>
+  </form>
   <label class="path-label">
     A folder of markdown files, by its path
     <input class="ws-focus-visible" placeholder="~/notes" />
@@ -270,33 +251,15 @@ The wallet button should sit above the card form, not below it.</textarea>
 </header>
 ```
 
-```html specimen id=state-error title="Error: the fields the connector names turn red, and one line says why" state=error
-<form class="connect-details" aria-label="Your Jira account">
-  <div class="connect-fields">
-    <label class="connect-field">
-      <span class="connect-label">Your Jira address</span>
-      <input class="input" name="site" type="text" value="syn-ferries.atlassian.net" />
-      <span class="connect-hint">The start of the address in your browser when Jira is open.</span>
-    </label>
-    <label class="connect-field">
-      <span class="connect-label">The email you sign in to Jira with</span>
-      <input
-        class="input"
-        name="email"
-        type="email"
-        value="amara@syn-ferries.example"
-        aria-invalid="true"
-      />
-    </label>
-    <label class="connect-field">
-      <span class="connect-label">API token</span>
-      <input class="input" name="token" type="password" value="ATATT3xFfGF0" aria-invalid="true" />
-    </label>
-    <p class="connect-problem" role="alert">
-      Jira didn't accept these two together. Check the email is the one you sign in to Jira with. If
-      it is, make a new one (step 2) and paste it here.
-    </p>
-  </div>
+```html specimen id=state-error title="Error: the field turns red, and one line says why" state=error
+<form class="setup-form">
+  <label class="connect-field">
+    <span class="connect-label">API key</span>
+    <input class="input" name="key" type="password" value="not-a-real-key" aria-invalid="true" />
+  </label>
+  <p class="connect-problem" role="alert">
+    Anthropic doesn't accept that key. Copy it again from Anthropic's page, and paste it here.
+  </p>
 </form>
 ```
 
@@ -319,22 +282,21 @@ The wallet button should sit above the card form, not below it.</textarea>
 - **Active:** not styled.
 - **Disabled:** not styled anywhere. A connection's name and list are disabled while a change saves, and a held field while it sends; each looks like the browser's default disabled input.
 - **Read-only:** `.link-field` is muted text in a `--line` border. There's no `:read-only` rule.
-- **Busy:** the field's form says it, not the field: the submit button's label ("Connecting…", "Checking…", "Reading…"), or a status line beside it ("Setting its name…").
-- **Error:** `aria-invalid="true"` turns an `.input`'s border `--danger` (`.input[aria-invalid]` in `window.css`). Only connect steps and the first run's API key set it. Every other field shows its problem in a line somewhere near it, as below.
+- **Busy:** the field's form says it, not the field: the submit button's label ("Checking it with Anthropic…", "Reading…"), or a status line beside it ("Setting its name…").
+- **Error:** `aria-invalid="true"` turns an `.input`'s border `--danger` (`.input[aria-invalid]` in `window.css`). Only the first run's API key sets it. Every other field shows its problem in a line somewhere near it, as below.
 - **Empty:** the placeholder, in the browser's own colour. Only the searches style `::placeholder`.
 
 ### Where errors go
 
-| Field                  | What shows the problem                                                          | On the field                                  | Tied to it            |
-| ---------------------- | ------------------------------------------------------------------------------- | --------------------------------------------- | --------------------- |
-| Connect step           | `.connect-problem` under the fields, `role="alert"`                             | `aria-invalid` on each the connector names    | no `aria-describedby` |
-| First run's API key    | `.connect-problem` under it, `role="alert"`                                     | `aria-invalid`                                | no                    |
-| Folder path            | `.connect-problem` under the form, `role="alert"`                               | nothing, though the connector names the field | no                    |
-| Settings path or key   | `.settings-problem` at the **top of the page**, away from the field             | nothing                                       | no                    |
-| A connection's options | `.connection-problem` beside the option, inside a `role="alert"` line           | nothing                                       | no                    |
-| Review page, your name | "Type your name first." in `.change-set-problem` under the card, `role="alert"` | nothing                                       | no                    |
-| Held message, draft    | `.composer-notice` at the foot of the thread                                    | nothing                                       | no                    |
-| Workstream's name      | `.notice[data-tone="error"]` under the page's Ask box                           | nothing                                       | no                    |
+| Field                  | What shows the problem                                                          | On the field                                  | Tied to it |
+| ---------------------- | ------------------------------------------------------------------------------- | --------------------------------------------- | ---------- |
+| First run's API key    | `.connect-problem` under it, `role="alert"`                                     | `aria-invalid`                                | no         |
+| Folder path            | `.connect-problem` under the form, `role="alert"`                               | nothing, though the connector names the field | no         |
+| Settings path or key   | `.settings-problem` at the **top of the page**, away from the field             | nothing                                       | no         |
+| A connection's options | `.connection-problem` beside the option, inside a `role="alert"` line           | nothing                                       | no         |
+| Review page, your name | "Type your name first." in `.change-set-problem` under the card, `role="alert"` | nothing                                       | no         |
+| Held message, draft    | `.composer-notice` at the foot of the thread                                    | nothing                                       | no         |
+| Workstream's name      | `.notice[data-tone="error"]` under the page's Ask box                           | nothing                                       | no         |
 
 No field anywhere is tied to its hint or its problem with `aria-describedby`. A screen reader hears an alert when the problem shows, but not again on returning to the field.
 
@@ -342,21 +304,21 @@ No field anywhere is tied to its hint or its problem with `aria-describedby`. A 
 
 - Every field has an accessible name. Most get it from a wrapping `<label>`. The workstream's name, a held field and the review link have only `aria-label` ("Workstream name", "Edit Amara Okafor's reason", "Review link").
 - Enter in a single-line field submits its form. The workstream's name and a connection's name save on Enter or on leaving the field (blur); there's no Save button.
-- A `.settings-field`'s about line and a `.connect-hint` sit inside the `<label>`, so they become part of the field's name rather than its description. Keep them short.
-- `aria-invalid` is set only while the connector says that field is wrong, and cleared on the next try.
+- A `.settings-field`'s about line sits inside the `<label>`, so they become part of the field's name rather than its description. Keep them short.
+- `aria-invalid` is set only while the server says the field is wrong, and cleared as the person types.
 - Use `spellcheck="false"` on addresses, paths, keys and lists of names, and `autocomplete` for what the browser can fill: `url`, `email`, `name`, or `off` for a secret.
 
 ## Content
 
-- A label is what to type, in sentence case, as a phrase: "Your Jira address", "The email you sign in to Jira with", "Path to Claude Code".
-- A placeholder is an example, not an instruction: "yourteam.atlassian.net", "you@company.com", "~/notes". "Paste it here" is the one instruction, for a token no one types.
-- A hint is one sentence on where to find the value: "The start of the address in your browser when Jira is open."
+- A label is what to type, in sentence case, as a phrase: "API key", "Path to Claude Code", "A folder of markdown files, by its path".
+- A placeholder is an example, not an instruction: "~/notes", "/opt/homebrew/bin/claude". "Paste it here" is the one instruction, for a key no one types.
+- A note is one sentence on where to find the value: "Get a key from Anthropic: make an account there…".
 - Say "(optional)" at the end of an optional field's label: "If you reject it, what's wrong? (optional)".
-- A problem says what's wrong and what to do: "Type your Jira address, like yourteam.atlassian.net." Not "Invalid input".
+- A problem says what's wrong and what to do: "Type the folder's full path, starting with / or ~." Not "Invalid input".
 
 ## Where the app uses it
 
-- Connect step fields and their inputs: `FieldsStep` in `packages/web/src/connect-steps.tsx`. CSS `.connect-field`, `.connect-hint`, `.connect-details .input` and `.input[aria-invalid]` in `window.css`.
+- The first run's API key: `ApiKey` in `packages/web/src/setup-page.tsx`. CSS `.connect-field`, `.connect-field input`, `.setup-form .input` and `.input[aria-invalid]` in `window.css`.
 - The first run's API key: `ApiKey` in `packages/web/src/setup-page.tsx`.
 - Settings: the path `CliPath` in `packages/web/src/settings-page.tsx`, the API key `ApiKey` in `packages/web/src/settings-page.tsx`, a connection's name `Options` in `packages/web/src/connections-page.tsx` and a list option `ListOption` in `packages/web/src/connections-page.tsx`. CSS `.settings :is(.input, .select)`, `.settings .input` and `.settings :is(.input, .select):focus-visible` in `window.css`.
 - Folder path: `FolderStep` in `packages/web/src/connect-steps.tsx`. CSS `.path-label`, `.path-label input`, `.path-actions` and `.path-note` in `window.css`.
@@ -426,19 +388,19 @@ Two searches filter what's on the page and never reach the agent: the sidebar's 
 
 - **The sidebar's**, `ThreadSearch` in `packages/web/src/sidebar.tsx`, is a combobox over a listbox of threads found: ArrowDown and ArrowUp move through them, Enter opens one, Escape clears the field. Under it, a `role="status"` line says "{n} results", "No thread matches that." or "Oriel couldn't search just now. Keep typing to try again."
 - **Browse's** is `type="search"` in a `<form role="search">` with the filters. It asks once typing pauses; Enter doesn't wait.
-- Two more search boxes don't use this frame: a connector's pick step and a connection's option list put a plain `.input type="search"` above their radios (`PickStep` in `packages/web/src/connect-steps.tsx`, `PickOption` in `packages/web/src/connections-page.tsx`).
+- One more search box doesn't use this frame: a pick through a source server puts a plain `.input type="search"` above its list (`PickOption` in `packages/web/src/connections-page.tsx`).
 - Copy `.sidebar-search-field`'s markup for a new search until one `SearchField` replaces both.
 
 ## Drift
 
 Status **drifting**. About nine field looks for one job:
 
-- **Heights:** 2.25rem in connect steps, 1.875rem in Settings and the searches, `--head-row` for the workstream's name, and three padding-only sizes (0.125rem, 0.1875rem, 0.3125rem) elsewhere.
+- **Heights:** 2.25rem in the first run, 1.875rem in Settings and the searches, `--head-row` for the workstream's name, and three padding-only sizes (0.125rem, 0.1875rem, 0.3125rem) elsewhere.
 - **Borders:** `--line` on the searches and the review link, `--line-strong` on the rest.
 - **Focus:** four looks. The global ring 2px out; the ring at 0 offset in Settings; a ringed frame on the searches; a border change alone on the workstream's name, which is the weakest focus of any field.
-- **The input class depends on its ancestor.** Outside `.settings`, `.connect-details`, `.connect-pick` or `.setup-form` it has no box at all. `.connect-field input` in `window.css` is always beaten by `.connect-details .input` in `window.css`, so most of it is dead. `.settings .input` sets the mono face and a later rule undoes it for connections (`.settings :is(.connection-options, .connect-details, .connect-pick) .input` in `window.css`).
+- **The input class depends on its ancestor.** Outside `.settings` or `.setup-form` it has no box at all. `.connect-field input` in `window.css` is beaten by `.setup-form .input` in `window.css` where they differ. `.settings .input` sets the mono face and a later rule undoes it for connections (`.settings .connection-options .input` in `window.css`).
 - **Labels:** five wrappers (`.settings-field`, `.connect-field`, `.provider-path-label`, `.path-label`, `.name-field`) do one job, the last four almost the same rule.
-- **Errors:** only connect steps mark the field. Nothing ties a hint or a problem to its field.
+- **Errors:** only the first run's key marks the field. Nothing ties a hint or a problem to its field.
 - **Searches:** `.sidebar-search-field` and `.filter-search` are copies of each other.
 
-**Until a Field and an Input component land, copy the connect step's field** (`FieldsStep` in `packages/web/src/connect-steps.tsx`): a wrapping `<label class="connect-field">` with `.connect-label`, an `.input` inside a `.connect-details` form, an optional `.connect-hint`, `aria-invalid` on the field that's wrong and one `.connect-problem` line. It has the biggest target, a real label, and the only error state. Inside Settings, use `.settings-field` and `.input` as Settings does. The [drift report](/drift) has the `Field` and `SearchField` proposals, and the [lab](/lab/text-field) shows them in modern CSS.
+**Until a Field and an Input component land, copy the first run's key field** (`ApiKey` in `packages/web/src/setup-page.tsx`): a wrapping `<label class="connect-field">` with `.connect-label`, an `.input` inside a `.setup-form`, `aria-invalid` on the field that's wrong and one `.connect-problem` line. It has the biggest target, a real label, and the only error state. Inside Settings, use `.settings-field` and `.input` as Settings does. The [drift report](/drift) has the `Field` and `SearchField` proposals, and the [lab](/lab/text-field) shows them in modern CSS.

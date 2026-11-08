@@ -134,8 +134,6 @@ export function setupService(deps: {
   store: SettingsStore;
   // Whether the person has a workstream of their own yet.
   made(): boolean;
-  // Jira's first sync, while it reads or where it stopped.
-  reading(): FirstRunView["reading"];
   workspaceId: Ulid;
   emit(event: TelemetryEvent): void;
   now(): Instant;
@@ -293,7 +291,10 @@ export function setupService(deps: {
       steps: { ai: state.steps.ai ?? null, work: state.steps.work ?? null },
       firstRun,
       line: firstRun && !state.dismissed,
-      reading: deps.reading(),
+      // Nothing the window connects reports a first sync's progress since
+      // decision 0059: a source server's first sync reads before the page
+      // shows it.
+      reading: null,
     };
   }
 

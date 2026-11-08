@@ -2,12 +2,14 @@
 // no way to pass one in (decision 0003).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Credential } from "@oriel/core";
 import * as entry from "./index.ts";
 import { buildWriters } from "./writers.ts";
 
-const credential: Credential = { headers: async () => ({}) };
-const jira = { site: "https://oriel.atlassian.net", credential, project: "SYN" };
+// A fixture's in-memory site, which building a writer never reaches.
+const memory: typeof fetch = async () => {
+  throw new Error("building a writer sends nothing");
+};
+const jira = { site: "https://oriel.atlassian.net", memory, project: "SYN" };
 const log = () => {};
 const jiraConfig = (writes: object) => [{ prefix: "jira", kind: "jira", writes }];
 

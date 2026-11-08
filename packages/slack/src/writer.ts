@@ -29,14 +29,7 @@ import {
   type WriteResult,
   WriteStalled,
 } from "@oriel/core";
-import {
-  methodsApi,
-  readMethods,
-  type SlackApi,
-  SlackError,
-  type WebApiOptions,
-  withinLimit,
-} from "./api.ts";
+import { memoryApi, readMethods, type SlackApi, SlackError } from "./api.ts";
 import { slackTitle } from "./attrs.ts";
 import type { SlackWrites } from "./open-connection.ts";
 import { slackServerApi } from "./slack-mcp.ts";
@@ -63,10 +56,11 @@ export const writeMethods = ["chat.postMessage", "chat.delete"] as const;
 export type WriteMethod = (typeof writeMethods)[number];
 export type WriterApi = SlackApi<(typeof readMethods)[number] | WriteMethod>;
 
-// Slack's Web API with the two methods a write sends, beside the reads it
-// makes before and after. Only this entry hands one out.
-export function writeApi(options: WebApiOptions): WriterApi {
-  return methodsApi(options, [...readMethods, ...writeMethods], "the writer");
+// A fixture's in-memory workspace with the two methods a write sends,
+// beside the reads it makes before and after. Only this entry hands one
+// out.
+export function writeApi(send: typeof fetch): WriterApi {
+  return memoryApi(send, [...readMethods, ...writeMethods], "the writer");
 }
 
 export type SlackWriterOptions = {
@@ -309,52 +303,47 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     kind: "slack",
     // A target must come with the stable ID it is expected to have, and a
     // post with none. A failure before the write went out sent nothing.
-    apply: ({ op, target, expectedStableId, args }, limit) =>
-      withinLimit(limit, () =>
-        noteSent(async (sent) => {
-          // The one request that writes. Slack refusing it made no change, and
-          // the API throws what stops it going out (the time left, the
-          // credentials) as sending nothing.
-          const send: Send = async (method, params) => {
-            sent();
-            let body: unknown;
-            try {
-              body = await api(method, params);
-            } catch (error) {
-              // Never sent, or turned away unprocessed: none of it landed.
-              if (error instanceof WriteStalled)
-                throw new SourceRefused(error.message, { sent: false, cause: error });
-              if (error instanceof SlackError)
-                throw new SourceRefused(
-                  refusals[error.code] ?? `Slack refused it (${error.code})`,
-                  {
-                    sent: true,
-                    cause: error,
-                  },
-                );
-              throw error;
-            }
-            if (method === "chat.delete") return "";
-            const made = answered(body);
-            if (!made.ok || !isTs(made.value.ts))
-              throw new Error("chat.postMessage: Slack's answer had no ts");
-            return made.value.ts;
-          };
-          if (!isSlackOp(op)) throw new Error(`not a Slack operation: ${op}`);
-          if ((target === null) !== (expectedStableId === null))
-            throw new Error(
-              `${op}: a target needs the stable ID to check it against, and only one does`,
-            );
-          return await write(
-            send,
-            op,
-            target === null || expectedStableId === null
-              ? null
-              : { id: target, stableId: expectedStableId },
-            args,
+    apply: ({ op, target, expectedStableId, args }) =>
+      noteSent(async (sent) => {
+        // The one request that writes. Slack refusing it made no change, and
+        // the API throws what stops it going out, such as the time left,
+        // as sending nothing.
+        const send: Send = async (method, params) => {
+          sent();
+          let body: unknown;
+          try {
+            body = await api(method, params);
+          } catch (error) {
+            // Never sent, or turned away unprocessed: none of it landed.
+            if (error instanceof WriteStalled)
+              throw new SourceRefused(error.message, { sent: false, cause: error });
+            if (error instanceof SlackError)
+              throw new SourceRefused(refusals[error.code] ?? `Slack refused it (${error.code})`, {
+                sent: true,
+                cause: error,
+              });
+            throw error;
+          }
+          if (method === "chat.delete") return "";
+          const made = answered(body);
+          if (!made.ok || !isTs(made.value.ts))
+            throw new Error("chat.postMessage: Slack's answer had no ts");
+          return made.value.ts;
+        };
+        if (!isSlackOp(op)) throw new Error(`not a Slack operation: ${op}`);
+        if ((target === null) !== (expectedStableId === null))
+          throw new Error(
+            `${op}: a target needs the stable ID to check it against, and only one does`,
           );
-        }),
-      ),
+        return await write(
+          send,
+          op,
+          target === null || expectedStableId === null
+            ? null
+            : { id: target, stableId: expectedStableId },
+          args,
+        );
+      }),
     current: async (id, fields) => {
       const found = await values(id, fields);
       return found === "gone" ? "gone" : found.values;
@@ -394,7 +383,7 @@ function valid<O extends SlackOp>(op: O, args: unknown): SlackArgs<O> {
 // source server, its post is the server's write tool, its reads its read
 // tools (decision 0059).
 export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slack"> {
-  const { through, credential } = writes;
+  const { through, memory } = writes;
   if (through) {
     // Each write, and each look at what it would change, lists the
     // channels' names again, so a renamed one shows by its new name.
@@ -419,9 +408,9 @@ export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slac
       ...(writer.name ? { name: fresh(writer.name) } : {}),
     };
   }
-  if (!credential) throw new Error("a Slack connection writes with a token or a server");
+  if (!memory) throw new Error("a Slack connection writes through a server");
   return slackWriter({
-    api: writeApi({ credential, ...(writes.fetch ? { fetch: writes.fetch } : {}) }),
+    api: writeApi(memory),
     channels: writes.channels,
     log,
   });

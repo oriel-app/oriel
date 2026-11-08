@@ -1,8 +1,18 @@
 // Connections as the server keeps them (decision 0049): a database from
-// before them moves in with every item where it was, and a disconnected
-// connection comes back under its ID, number and items' IDs.
+// before them moves in with every item where it was, a disconnected
+// connection comes back under its ID, number and items' IDs, and what was
+// kept of their secrets before decision 0059 is retired.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
@@ -16,17 +26,9 @@ import {
   open,
 } from "@oriel/db";
 import type { WorkstreamView } from "@oriel/web/view";
-import { fileSecrets, legacySecret, memorySecrets, secretName } from "./connection.ts";
+import { oldSecretFiles } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
-import { account, jiraOf, json, t0, testApp } from "./testing.ts";
-
-const details = {
-  site: "oriel.atlassian.net",
-  email: account.email,
-  token: account.token,
-  project: "syn",
-};
-const synSite = "https://oriel.atlassian.net";
+import { json, t0, testApp } from "./testing.ts";
 
 function scratch(t: TestContext) {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-connections-")));
@@ -52,13 +54,12 @@ const rows = (path: string, sql: string) => {
 const items = (path: string) =>
   rows(path, "select source, stable_id, item_id, gone_at from items order by source, stable_id");
 
-test("a database from before connections moves in: Jira's saved connection, a folder and Slack, with every item and sync state where it was", async (t) => {
+test("a database from before connections moves in: a folder and Slack, with every item and sync state where it was", async (t) => {
   const { top, notes } = scratch(t);
   // Today's items, as the adapters made them: synced into a database of
   // this code's own, and copied into one at today's schema.
   const made = join(top, "made.db");
-  const maker = await testApp(t, { db: made, connect: {}, slack: { mode: "fixture" } });
-  assert.equal((await maker.connect("jira", details)).status, 200);
+  const maker = await testApp(t, { db: made, memory: true, slack: { mode: "fixture" } });
   assert.equal((await maker.connect("folder", { path: notes })).status, 200);
   const workspaceId = maker.app.workspaceId;
   const [folderConnection] = connectionStore(open(made))
@@ -90,9 +91,8 @@ test("a database from before connections moves in: Jira's saved connection, a fo
     .prepare("insert into folders (id, workspace_id, path, connected_at) values (?, ?, ?, ?)")
     .run(folderConnection.id, workspaceId, notes, t0);
   today.exec("detach database made");
-  // A workstream that holds one of each.
+  // A workstream that holds a file and a message.
   const held = [
-    "jira:SYN-1",
     rows(path, "select item_id from items where source = 'folder'")[0]?.item_id,
     rows(path, "select item_id from items where source = 'slack'")[0]?.item_id,
   ];
@@ -104,15 +104,9 @@ test("a database from before connections moves in: Jira's saved connection, a fo
   );
   assert.deepEqual([...new Set(before.map((row) => row.source))], ["folder", "jira", "slack"]);
 
-  // Jira's saved connection, as the desktop app's store kept it.
-  const secrets = memorySecrets(
-    new Map([["jira", JSON.stringify({ site: synSite, ...account, project: "SYN" })]]),
-  );
-  const app = await testApp(t, {
-    db: path,
-    connect: { secrets, legacy: legacySecret(secrets) },
-    slack: { mode: "fixture" },
-  });
+  // Jira, which turns on through its server since decision 0059, is off:
+  // its items stay, for when it's on.
+  const app = await testApp(t, { db: path, jira: false, slack: { mode: "fixture" } });
   const { id: workstreamId } = json<{ id: string }>(
     await app.post("/api/workstreams", { kind: "picked", name: "Mixed", items: held }),
   );
@@ -125,9 +119,11 @@ test("a database from before connections moves in: Jira's saved connection, a fo
 
   // Every item, and every source's sync state, as it was.
   assert.deepEqual(items(path), before);
+  // Every cursor starts over (migration 0025), and the next sync sets it:
+  // Jira's, which is off, once it's on.
   assert.deepEqual(
     rows(path, "select workspace_id, source, cursor, synced_at from sources order by source"),
-    sourcesBefore,
+    sourcesBefore.map((row) => (row.source === "jira" ? { ...row, cursor: null } : row)),
   );
   // Each is a connection, its kind's first; the folder under its own ID, so
   // its keys hash the same.
@@ -137,7 +133,6 @@ test("a database from before connections moves in: Jira's saved connection, a fo
       .map((c) => [c.kind, c.prefix, c.identity, c.options, c.disconnectedAt]),
     [
       ["folder", "folder", notes, {}, null],
-      ["jira", "jira", synSite, { project: "SYN" }, null],
       [
         "slack",
         "slack",
@@ -145,6 +140,8 @@ test("a database from before connections moves in: Jira's saved connection, a fo
         { channels: ["C0FW1WEATHR"] },
         null,
       ],
+      // The stand-in tracker's, on as no tracker is (decision 0059).
+      ["tracker", "tracker", "oriel", {}, null],
     ],
   );
   assert.equal(
@@ -154,99 +151,127 @@ test("a database from before connections moves in: Jira's saved connection, a fo
     folderConnection.id,
   );
   assert.deepEqual(rows(path, "select name from sqlite_master where name = 'folders'"), []);
-  // Jira's secret is its connection's now, and `jira` is gone.
-  const jira = connectionStore(open(path))
-    .list(workspaceId)
-    .find((c) => c.kind === "jira");
-  assert.ok(jira);
-  assert.deepEqual([...secrets.kept.keys()], [secretName(jira.id)]);
-  assert.deepEqual(JSON.parse(secrets.kept.get(secretName(jira.id)) ?? ""), account);
 });
 
-test("Jira disconnected and connected again comes back under its ID and number, with its items' IDs", async (t) => {
-  const { top } = scratch(t);
+test("a folder disconnected and connected again comes back under its ID and number, with its items' IDs", async (t) => {
+  const { top, notes } = scratch(t);
   const path = join(top, "window.db");
-  const secrets = memorySecrets();
-  const first = await testApp(t, { db: path, connect: { secrets } });
-  assert.equal((await first.connect("jira", details)).status, 200);
+  const first = await testApp(t, { db: path, jira: false });
+  assert.equal((await first.connect("folder", { path: notes })).status, 200);
+  const held = first.app
+    .window("epic")
+    .clusters.flatMap((cluster) => cluster.list)
+    .find((row) => row.id.startsWith("folder:"))?.id;
+  assert.ok(held);
   const { id: workstreamId } = json<{ id: string }>(
-    await first.post("/api/workstreams", {
-      kind: "picked",
-      name: "Checkout",
-      items: ["jira:SYN-1"],
-    }),
+    await first.post("/api/workstreams", { kind: "picked", name: "Plan", items: [held] }),
   );
-  const ids = items(path).filter((row) => row.gone_at === null);
+  const ids = items(path).filter((row) => row.gone_at === null && row.source === "folder");
   await first.app.close();
 
-  // Disconnected: its secret, options and items go, and a tombstone stays.
+  // Disconnected: its options and items go, and a tombstone stays.
   const db = open(path);
   let n = 0;
   const connections = connectionsOf({
     db,
     index: indexStore(db),
-    secrets,
     workspaceId: first.app.workspaceId,
     now: () => instant(new Date(Date.parse(t0) + ++n * 60_000)),
     newId: () => ulid(Date.parse(t0) + n, new Uint8Array(10)),
     log: () => {},
   });
-  const connection = connections.first("jira");
+  const connection = connections.first("folder");
   assert.ok(connection);
-  // A second connection to the same site is refused, with the one there is.
+  // A second connection to the same folder is refused, with the one there is.
+  assert.deepEqual(connections.connect({ kind: "folder", identity: notes, options: {} }), {
+    taken: connection,
+  });
+  connections.disconnect(connection);
+  assert.equal(connections.first("folder"), null);
   assert.deepEqual(
-    await connections.connect({ kind: "jira", identity: synSite, options: {}, secret: "{}" }),
-    { taken: connection },
+    items(path).filter((row) => row.source === "folder"),
+    [],
   );
-  assert.deepEqual([...secrets.kept.keys()], [secretName(connection.id)]);
-  await connections.disconnect(connection);
-  assert.deepEqual([...secrets.kept.keys()], []);
-  assert.equal(connections.first("jira"), null);
-  assert.deepEqual(items(path), []);
   db.close();
 
-  const again = await testApp(t, { db: path, connect: { secrets } });
-  assert.deepEqual(await jiraOf(again), {
-    connected: null,
-    connectable: true,
-  });
+  const again = await testApp(t, { db: path, jira: false });
   const gone = json<WorkstreamView>(await again.get(`/api/workstreams/${workstreamId}`));
   assert.deepEqual(
     gone.members.map((m) => [m.ref.id, m.row !== null]),
-    [["jira:SYN-1", false]],
+    [[held, false]],
   );
-  assert.equal((await again.connect("jira", details)).status, 200);
-  // The stand-in tracker's own connection, made while Jira wasn't
-  // connected, stays apart (decision 0059).
+  assert.equal((await again.connect("folder", { path: notes })).status, 200);
   const back = connectionStore(open(path))
     .list(again.app.workspaceId)
-    .filter((c) => c.kind === "jira");
+    .filter((c) => c.kind === "folder");
   assert.deepEqual(
     back.map((c) => [c.id, c.prefix, c.options, c.disconnectedAt]),
-    [[connection.id, "jira", { project: "SYN" }, null]],
+    [[connection.id, "folder", {}, null]],
   );
-  assert.deepEqual([...secrets.kept.keys()], [secretName(connection.id)]);
   assert.deepEqual(
     items(path)
-      .filter((row) => row.gone_at === null)
+      .filter((row) => row.gone_at === null && row.source === "folder")
       .map((row) => [row.item_id, row.stable_id]),
     ids.map((row) => [row.item_id, row.stable_id]),
   );
   const live = json<WorkstreamView>(await again.get(`/api/workstreams/${workstreamId}`));
   assert.deepEqual(
     live.members.map((m) => [m.ref.id, m.row !== null]),
-    [["jira:SYN-1", true]],
+    [[held, true]],
   );
 });
 
-test("a connection's secret is named for its ID alone: no other name reaches the file store", async (t) => {
+test("retiring deletes every database's connection secrets, a fresh one's too, and nothing else", (t) => {
   const { top } = scratch(t);
-  const files = fileSecrets(join(top, "secrets", "window"));
-  for (const name of [
-    "../jira.json",
-    "jira.json",
-    "connection.x",
-    "Connection.01JC0NNECT10NSST0RED0000AB",
-  ])
-    await assert.rejects(files.set(name, "s"), Error, name);
+  const root = join(top, "secrets");
+  const id = ulid(Date.parse(t0), new Uint8Array(10));
+  const window = join(root, "window");
+  const fresh = join(root, "fresh", "pm", "live");
+  for (const dir of [window, fresh]) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `connection.${id}`), "a secret kept before");
+  }
+  writeFileSync(join(root, "jira.json"), "a saved connection");
+  // Neither a name that isn't a ULID's, nor anything else, nor a link.
+  writeFileSync(join(window, "connection.x"), "not a connection's");
+  writeFileSync(join(root, "keep.txt"), "not a connection's");
+  // Nor anything a link leads to, nor a folder of a secret's name.
+  const outside = join(top, "elsewhere");
+  mkdirSync(join(outside, "pm", "live"), { recursive: true });
+  writeFileSync(join(outside, "pm", "live", `connection.${id}`), "not under secrets/");
+  writeFileSync(join(outside, "jira.json"), "not under secrets/");
+  symlinkSync(join(outside, "pm", "live"), join(root, "linked"));
+  const retire = oldSecretFiles(root);
+  assert.equal(retire.retire(), 3);
+  assert.deepEqual(readdirSync(join(outside, "pm", "live")), [`connection.${id}`]);
+  assert.ok(existsSync(join(outside, "jira.json")));
+  rmSync(join(root, "linked"));
+  assert.deepEqual(readdirSync(root).toSorted(), ["fresh", "keep.txt", "window"]);
+  assert.deepEqual(readdirSync(window), ["connection.x"]);
+  assert.deepEqual(readdirSync(join(root, "fresh")), [], "an emptied database folder goes");
+  // Nothing left: nothing to do.
+  assert.equal(retire.retire(), 0);
+});
+
+test("retiring follows no link, not even one where a fresh database's folder would be", (t) => {
+  const { top } = scratch(t);
+  const root = join(top, "secrets");
+  const outside = join(top, "elsewhere");
+  const id = ulid(Date.parse(t0), new Uint8Array(10));
+  mkdirSync(join(outside, "pm", "live"), { recursive: true });
+  writeFileSync(join(outside, "pm", "live", `connection.${id}`), "not under secrets/");
+  writeFileSync(join(outside, "pm", "jira.json"), "not under secrets/");
+  mkdirSync(root);
+  symlinkSync(outside, join(root, "fresh"));
+  // A folder of the saved one's name isn't it.
+  mkdirSync(join(root, "jira.json"));
+  assert.equal(oldSecretFiles(root).retire(), 0);
+  assert.deepEqual(readdirSync(join(outside, "pm", "live")), [`connection.${id}`]);
+  assert.ok(existsSync(join(outside, "pm", "jira.json")));
+  // Nor `secrets/` itself, a link to a folder that looks like one.
+  const linked = join(top, "linked-secrets");
+  symlinkSync(join(outside, "pm"), linked);
+  assert.equal(oldSecretFiles(linked).retire(), 0);
+  assert.deepEqual(readdirSync(join(outside, "pm", "live")), [`connection.${id}`]);
+  assert.ok(existsSync(join(outside, "pm", "jira.json")));
 });

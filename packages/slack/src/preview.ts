@@ -1,19 +1,11 @@
 // What the agent reads to draft a Slack connection's channels, while it
-// waits for its options (decision 0051): the public channels its token can
-// see, each by name with the day it was last active, most lately active
-// first, read live. A channel's name is the workspace's words, so it reaches
+// waits for its options (decision 0051): the public channels the workspace
+// lists, each by name with the day it was last active, most lately active
+// first, read live. Only the fixture's workspace in memory waits so: one
+// through Slack's server reads the person's channels (decision 0059). A channel's name is the workspace's words, so it reaches
 // the agent only as a run's result.
-import {
-  array,
-  maxPreviewRows,
-  object,
-  optional,
-  type OpenVia,
-  type PreviewTable,
-  string,
-  type ToOpen,
-} from "@oriel/core";
-import { bearer, webApi } from "./api.ts";
+import { array, maxPreviewRows, object, optional, type PreviewTable, string } from "@oriel/core";
+import type { SlackApi } from "./api.ts";
 import { tsInstant } from "./source.ts";
 
 const listing = object({
@@ -27,11 +19,7 @@ const latest = object({ messages: array(object({ ts: string })) });
 // lately active of them.
 const maxListed = 100;
 
-export async function slackPreview(connection: ToOpen, via: OpenVia): Promise<PreviewTable[]> {
-  const api = webApi({
-    credential: bearer(connection.secret ?? ""),
-    ...(via.fetch ? { fetch: via.fetch } : {}),
-  });
+export async function slackPreview(api: SlackApi): Promise<PreviewTable[]> {
   const channels: { id: string; name: string }[] = [];
   let cursor = "";
   do {
