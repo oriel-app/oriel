@@ -116,6 +116,10 @@ export type Diff = {
     makes: string | null;
     // The source it writes to, by the name a person knows it by ("Jira").
     source: string;
+    // Before a decision, on a change its source can check ahead
+    // (`SourceWriter.check`): why the source won't take it as it stands, or
+    // that it's only checked when sent, since Oriel couldn't check it now.
+    check?: { refused: string } | { later: string };
     // `createdAbove`: the value names an item an earlier line creates.
     // `titles`: on a field whose values name items (an epic), those items'
     // titles as the change set leaves them.

@@ -206,19 +206,36 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
   // anything is offered, so a change set that would need one offers no
   // Revert. None: it can send every op its catalogue has.
   readonly unsendable?: Readonly<Record<string, string>>;
+  // Whether the source would take an op as it stands, asked before a person
+  // approves it, for an op whose source decides by the item's own state, as
+  // a workflow decides which statuses an item may move to. Null when it
+  // would; when it wouldn't, why, in a person's words. It throws when it
+  // can't tell, as when the item can't be read. `checks` names the ops it
+  // checks; any other is only found out when it's sent.
+  readonly checks?: readonly string[];
+  check?(
+    op: string,
+    target: ItemId<K>,
+    expectedStableId: string,
+    args: unknown,
+  ): Promise<string | null>;
 }
 
 // What `apply` throws when nothing was sent or changed: the write never went
 // out (a read before it, or building the request, failed), or the source
 // answered it and made no change, as Jira does with a 4xx. Nothing landed,
 // so it can be sent again. `sent` says which. Anything else `apply` throws
-// may mean the write landed.
+// may mean the write landed. `final`: the source would refuse it again as
+// approved, whatever the moment, as a workflow refuses a status the item
+// can't move to: trying again can't help.
 export class SourceRefused extends Error {
   readonly sent: boolean;
-  constructor(message: string, options: { sent: boolean; cause?: unknown }) {
+  readonly final: boolean;
+  constructor(message: string, options: { sent: boolean; final?: boolean; cause?: unknown }) {
     super(message, { cause: options.cause });
     this.name = "SourceRefused";
     this.sent = options.sent;
+    this.final = options.final ?? false;
   }
 }
 

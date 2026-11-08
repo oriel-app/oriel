@@ -280,17 +280,78 @@ const finish: Script = async () => ({
   writes: [["jira.setStatus", ["jira:SYN-99", "Done"]]],
 });
 
-test("a revert the workflow has no way back for stops, and moves nothing", async (t) => {
+test("a move the workflow has no way to is flagged in the diff, can't be approved, and moves nothing", async (t) => {
   const app = await proposed(t, finish);
   await app.approve();
   app.site.makeFinal("Done");
   const revertId = (await app.act("revert")).body.revert;
   assert.ok(revertId);
-  const stopped = (await app.approve(revertId)).body.changeSet;
-  assert.equal(stopped.status, "stopped");
-  assert.deepEqual(
-    stopped.errors.map((e) => e.sent),
-    [false],
-  );
+  const [line] = (await app.diff(revertId)).lines;
+  assert.ok(line?.check && "refused" in line.check, "the diff says Jira won't take it");
+  const approved = await app.approve(revertId);
+  assert.equal(approved.status, 409);
   assert.equal(app.site.issue("SYN-99")?.status, "Done");
+});
+
+// Estimates SYN-23, moves SYN-99 to Done, then estimates SYN-104.
+const moveBetween: Script = async () => ({
+  value: null,
+  writes: [
+    ["jira.setEstimate", ["jira:SYN-23", 3]],
+    ["jira.setStatus", ["jira:SYN-99", "Done"]],
+    ["jira.setEstimate", ["jira:SYN-104", 3]],
+  ],
+});
+
+test("a move the workflow refuses once approved stops the set for good: no retry, and dismissing ends it", async (t) => {
+  const app = await proposed(t, moveBetween);
+  const { hash } = await app.diff();
+  // The workflow changed between the diff and the apply.
+  app.site.makeFinal("To Do");
+  const stopped = (await app.act("approve", { hash })).body.changeSet;
+  assert.equal(stopped.status, "partial");
+  assert.equal(app.site.issue("SYN-104")?.points, null, "nothing after it was sent");
+  const kinds = stopped.nextSteps.map((step) => step.kind);
+  assert.ok(!kinds.includes("retry"), "trying again can't help");
+  assert.ok(kinds.includes("remove") && kinds.includes("dismiss"));
+  assert.equal((await app.act("apply")).status, 409);
+  const waiting = async () =>
+    json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads")).threads.find(
+      (each) => each.id === app.threadId,
+    )?.waitingOn;
+  assert.equal(await waiting(), "review");
+  const dismissed = await app.act("dismiss");
+  assert.equal(dismissed.status, 200);
+  assert.equal(dismissed.body.changeSet.decision?.kind, "rejected");
+  assert.deepEqual(
+    dismissed.body.changeSet.nextSteps.map((step) => step.kind),
+    ["revert"],
+  );
+  const lines = (await app.diff()).lines;
+  assert.deepEqual(
+    lines.map((line) => [line.applied, line.dismissed, line.error]),
+    [
+      [true, false, null],
+      [false, true, null],
+      [false, true, null],
+    ],
+  );
+  // It no longer waits on the person's review.
+  assert.notEqual(await waiting(), "review");
+});
+
+test("a set that may have landed partway is dismissed, and shows, while its source can't be read", async (t) => {
+  const app = await proposed(t);
+  app.site.loseAnswers("SYN-99");
+  await app.approve();
+  app.site.outage("offline");
+  const before = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
+  const offered = before?.nextSteps.find((step) => step.kind === "dismiss");
+  assert.ok(offered?.kind === "dismiss" && offered.warnings.length === 1);
+  const dismissed = await app.act("dismiss");
+  assert.equal(dismissed.status, 200);
+  assert.ok(!dismissed.body.changeSet.nextSteps.some((step) => step.kind === "dismiss"));
+  const shown = await app.post(`/api/change-sets/${app.changeSetId}/diff`);
+  assert.equal(shown.status, 200);
+  assert.equal(json<DiffView>(shown).lines.length, 3);
 });
