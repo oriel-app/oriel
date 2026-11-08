@@ -3833,6 +3833,29 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true } }),
     act: (page) => page.locator(".provider-row[data-picked]").waitFor(),
   },
+  // An account's email starts hidden, scrambled and blurred; a click shows
+  // it, and another hides it again.
+  {
+    name: "setup-email-shown",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true } }),
+    act: async (page) => {
+      const email = page.locator("#provider-claude-code .hidden-email");
+      await email.waitFor();
+      if ((await email.innerText()).includes("maya@example.com"))
+        throw new Error("the email shows before a click");
+      await email.click();
+      await page
+        .locator("#provider-claude-code .hidden-email[data-shown]", { hasText: "maya@example.com" })
+        .waitFor();
+      await email.click();
+      await page.locator("#provider-claude-code .hidden-email:not([data-shown])").waitFor();
+      if ((await email.innerText()).includes("maya@example.com"))
+        throw new Error("a second click doesn't hide the email");
+      await email.click();
+      await page.mouse.move(0, 0);
+    },
+  },
   {
     name: "setup-codex-too",
     path: "/setup",

@@ -6,6 +6,7 @@
 // The person's Codex, a preview, has a row like it with only Sign in
 // (decision 0048).
 import type { ComponentChildren } from "preact";
+import { HiddenEmail } from "./hidden-email.tsx";
 import { useStamp } from "./parts.tsx";
 import { ProviderRow } from "./provider-row.tsx";
 import { trainingNotice } from "./training.ts";
@@ -176,7 +177,13 @@ export function ClaudeCodeRow(props: {
     case "no-plan":
       status = (
         <span class="cli-line">
-          Signed in{account?.email ? ` as ${account.email}` : ""}
+          Signed in
+          {account?.email && (
+            <>
+              {" as "}
+              <HiddenEmail email={account.email} />
+            </>
+          )}
           {account?.plan ? ` · ${account.plan}` : ""}
         </span>
       );
@@ -210,8 +217,13 @@ export function ClaudeCodeRow(props: {
           <span class="provider-mark" aria-hidden="true" />
           <span class="provider-state">Ready</span>
           <span>
-            {[account?.plan, account?.email].filter(Boolean).map((part) => `· ${part} `)}·{" "}
-            {quiet("Not this account?", () => send({ type: "anotherClicked", open: true }))}
+            {account?.plan && `· ${account.plan} `}
+            {account?.email && (
+              <>
+                · <HiddenEmail email={account.email} />{" "}
+              </>
+            )}
+            · {quiet("Not this account?", () => send({ type: "anotherClicked", open: true }))}
           </span>
         </span>
       );
@@ -370,9 +382,12 @@ export function CodexRow(props: {
         <span class="provider-status">
           <span class="provider-mark" aria-hidden="true" />
           <span class="provider-state">Ready</span>
-          {[account?.plan, account?.email].filter(Boolean).map((part) => (
-            <span key={part}>· {part}</span>
-          ))}
+          {account?.plan && <span>· {account.plan}</span>}
+          {account?.email && (
+            <span>
+              · <HiddenEmail email={account.email} />
+            </span>
+          )}
         </span>
       );
       if (props.picked !== undefined)
