@@ -7,7 +7,7 @@ import { type Instant, instant, isUlid, ulid } from "@oriel/core";
 import { readEnv } from "../../../scripts/env.ts";
 import { anthropicFetch, anthropicKey, type Fetch, isPriced, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
-import { cassetteDir, cassettes } from "./cassette.ts";
+import { cassetteDir, cassettes, isMissingCassette } from "./cassette.ts";
 import {
   estimate,
   climbCases,
@@ -22,7 +22,15 @@ import {
 } from "./climb.ts";
 import { compareChange, formatChange, noChange, readResults } from "./compare.ts";
 import { loadFixtures } from "./fixtures.ts";
-import { cassettesDir, casesDir, climbsDir, envFile, repoRoot, roundsDir } from "./repo.ts";
+import {
+  cassettesDir,
+  casesDir,
+  climbsDir,
+  envFile,
+  repoRoot,
+  roundsDir,
+  staleFile,
+} from "./repo.ts";
 import { exitCode, formatRound, runRound } from "./runner.ts";
 import { system } from "./system.ts";
 
@@ -45,7 +53,8 @@ export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baselin
        pnpm evals freeze <climb> --cap <dollars> --reps <trials a case> [--cases <id,id,...>]
          writes a climb's plan over the cases as they are now, or those named
        pnpm --filter @oriel/evals evals:ci
-         replays the cassettes; fails on any error and on failed deterministic cases
+         replays the cassettes; fails on any error and on failed deterministic cases;
+         while packages/evals/stale.md exists, a case missing a cassette is stale, not failed
 A round is the ULID naming its directory under .evals/; join rounds of one
 agent with + to pool their trials; a round may be in only one arm, once.`;
 
@@ -200,6 +209,9 @@ export type Io = {
   cassettes: URL;
   rounds: URL;
   envFile: URL;
+  // While it exists, a replay passes a case whose cassettes its requests no
+  // longer match: they wait for the night's recording. Absent: none.
+  stale?: URL;
   network: Fetch;
   // Milliseconds since the epoch, naming the round.
   now: () => number;
@@ -215,6 +227,7 @@ export const repoIo: Io = {
   cassettes: cassettesDir,
   rounds: roundsDir,
   envFile,
+  stale: staleFile,
   network: fetch,
   now: Date.now,
   clock: () => performance.now(),
@@ -351,7 +364,14 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
   );
   io.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
   if (reps > 1) io.log(`${reps} trials a case; each split counts trials`);
-  io.log(formatRound(ran, failing));
+  // Only a missing cassette is stale; any other error still fails.
+  const waitsForNight =
+    command.command === "replay" && io.stale !== undefined && existsSync(io.stale);
+  const stale = waitsForNight ? ran.results.filter((r) => isMissingCassette(r.error)) : [];
+  const graded = ran.results.filter((r) => !stale.includes(r));
+  io.log(formatRound({ ...ran, results: graded }, failing));
+  for (const r of stale)
+    io.log(`stale  ${r.id}: its requests changed; packages/evals/stale.md says it records tonight`);
   io.log(`results: .evals/${id}/`);
   const cost = ran.summary.spend?.usd ?? 0;
   if (plan && climb) {
@@ -360,7 +380,7 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     io.log(`spent ${usd(cost)}; climb ${climb} has spent ${usd(total)} of ${usd(plan.climb.cap)}`);
   } else if (live) io.log(`spent ${usd(cost)}`);
   if (baseline) io.log(formatChange(compareChange(readResults(baseline), ran.results, "better")));
-  return exitCode(ran.results, command.command, failing);
+  return exitCode(graded, command.command, failing);
 }
 
 const usd = (dollars: number) => `$${dollars.toFixed(2)}`;

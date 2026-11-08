@@ -9,7 +9,7 @@
         "key": "B",
         "title": "C",
         "status": "E",
-        "states": { "todo": ["Open"], "in-progress": ["In progress", "Waiting"], "done": ["Closed"] },
+        "states": { "done": ["Closed"] },
         "assignee": "D",
         "estimate": null,
         "link": null,
