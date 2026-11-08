@@ -79,7 +79,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return ok(id, {
       result: {
         content: [
-          { type: "text", text: "x".repeat(150_000) },
+          { type: "text", text: "x".repeat(100_000) },
+          { type: "text", text: "the tail, past the cap" },
           { type: "image", data: "AAAA", mimeType: "image/png" },
         ],
       },

@@ -123,6 +123,7 @@ export function capped(response: Message): ToolAnswer {
   const blocks = Array.isArray(result.content) ? result.content.filter(isObject) : [];
   let left = mostChars;
   let dropped = 0;
+  let cut = false;
   const content: { type: "text"; text: string }[] = [];
   for (const block of blocks) {
     if (block.type !== "text") {
@@ -130,14 +131,13 @@ export function capped(response: Message): ToolAnswer {
       continue;
     }
     const whole = text(block.text);
-    if (left <= 0) continue;
-    const kept = whole.slice(0, left);
+    // A block past the allowance is cut whole, and marked as one cut is.
+    const kept = whole.slice(0, Math.max(left, 0));
     left -= kept.length;
-    content.push({
-      type: "text",
-      text: kept.length < whole.length ? `${kept}\n[cut by Oriel]` : kept,
-    });
+    if (kept.length < whole.length) cut = true;
+    if (kept) content.push({ type: "text", text: kept });
   }
+  if (cut) content.push({ type: "text", text: "[cut by Oriel]" });
   if (dropped) content.push({ type: "text", text: `[Oriel dropped ${dropped} non-text blocks]` });
   return { content, ...(result.isError === true ? { isError: true } : {}) };
 }

@@ -186,9 +186,10 @@ for (const [name, open] of [
       const host = await open(t.options);
       const answer = await host.call({ server: "teams", tool: "big", args: {} });
       const texts = answer.content as { text: string }[];
-      assert.equal(texts.length, 2);
-      assert.ok(texts[0]!.text.endsWith("[cut by Oriel]"));
-      assert.match(texts[1]!.text, /dropped 1/);
+      assert.equal(texts.length, 3);
+      assert.equal(texts[0]!.text.length, 100_000);
+      assert.equal(texts[1]!.text, "[cut by Oriel]");
+      assert.match(texts[2]!.text, /dropped 1/);
       await host.close();
       t.done();
     });
