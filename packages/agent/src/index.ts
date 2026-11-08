@@ -79,6 +79,6 @@ export {
   codexServerCalls,
   type ServerCalls,
   type ServerCallsOptions,
-  type Spent,
 } from "./server-calls.ts";
+export { HostRefused } from "./tool-host.ts";
 export { type DevServer } from "./codex.ts";

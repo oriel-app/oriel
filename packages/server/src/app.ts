@@ -575,8 +575,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   const callServer =
     options.callServer ??
-    ((server: FoundServer, tools: readonly string[], known: SourceServer) =>
-      options.models?.serverCalls(store.get(), server, tools, log, known) ?? Promise.resolve(null));
+    ((server: FoundServer, tools: readonly string[]) =>
+      options.models?.serverCalls(store.get(), server, tools, log) ?? Promise.resolve(null));
   // Calls the server from a process of the person's agent that starts on
   // the first call and stops once it's been quiet a while, with only
   // `tools`: one for reads, another for a change set's writes.
@@ -596,7 +596,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       current = null;
       void was?.then((calling) => calling?.calls.close()).catch(() => {});
     };
-    const call: ToolCaller = async (each) => {
+    const call: ToolCaller = async (each, signal) => {
       if (quiet) clearTimeout(quiet);
       quiet = null;
       active += 1;
@@ -605,7 +605,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         const calling = await at;
         if (!calling) throw new NoAgentRuns(noAgentSaid(server));
         agent = calling.agent.kind;
-        return await calling.calls.call(each);
+        return await calling.calls.call(each, signal);
       } catch (error) {
         // A process that failed a call starts afresh for the next.
         if ((current as Promise<Calling | null> | null) === at && active === 1) close();
@@ -712,10 +712,13 @@ export async function createApp(options: AppOptions): Promise<App> {
         });
         return;
       }
-      // The agent's own words for why its process failed, such as its
-      // plan's limit; never what the server answered.
+      // The agent's own words for why its process failed, or Oriel's for why
+      // it refused one, such as a Claude Code to update; never what the
+      // server answered.
       const why =
-        error instanceof Error && error.name === "ProviderError" ? ` ${error.message}` : "";
+        error instanceof Error && ["ProviderError", "HostRefused"].includes(error.name)
+          ? ` ${error.message}`
+          : "";
       throughProblems.set(
         kind,
         `${declared(kind).name} couldn't open through ${server.known.name}.${why}`,

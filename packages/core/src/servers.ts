@@ -198,7 +198,9 @@ export type ToolAnswer = {
 };
 
 // Calls a source server's tools from one process the person's agent runs.
-export type ToolCaller = (call: ToolCall) => Promise<ToolAnswer>;
+// When `signal` aborts, as when the run that made the call ends, a call
+// still waiting is never sent, and one already out fails (decision 0060).
+export type ToolCaller = (call: ToolCall, signal?: AbortSignal) => Promise<ToolAnswer>;
 
 // How a connection reaches the source server its kind is on through
 // (decision 0059): the server, as the person's agent lists it and as the

@@ -286,14 +286,6 @@ export async function testApp(
                   throw new Error(`${call.tool} isn't allowed`);
                 return calls(call);
               },
-              spent: () => ({
-                inputTokens: 0,
-                outputTokens: 0,
-                cacheReadTokens: 0,
-                cacheWriteTokens: 0,
-                costUsd: 0,
-                turns: 0,
-              }),
               close: () => {},
             },
           }),

@@ -581,17 +581,6 @@ export type SessionOptions = {
   log: Log;
   // With no output from the CLI for this long, it's stopped. Default 5 min.
   idleMs?: number;
-  // In place of `run`'s checks, for a process that calls one of the
-  // person's own MCP servers (decision 0059): why what `system/init`
-  // reports isn't what Oriel started, or null, and Oriel's answer to each
-  // call the CLI asks to make: allowed with exactly Oriel's input, or
-  // denied.
-  // More of the CLI's own settings for the process, beside the turns'.
-  moreEnv?: Readonly<Record<string, string>>;
-  guard?: {
-    init(init: Message): string | null;
-    canUse(tool: string, input: unknown): { allow: unknown } | { deny: string };
-  };
 };
 
 const mcpResult = (content: string, isError: boolean) => ({
@@ -606,7 +595,7 @@ export function startSession(options: SessionOptions): Session {
   const cwd = mkdtempSync(join(tmpdir(), "oriel-claude-"));
   const child = options.spawn(cli.path, options.args, {
     cwd,
-    env: { ...harnessEnv(options.parent, options.maxOutputTokens), ...options.moreEnv },
+    env: harnessEnv(options.parent, options.maxOutputTokens),
   });
   const queue: Message[] = [];
   let wake: (() => void) | null = null;
@@ -675,13 +664,6 @@ export function startSession(options: SessionOptions): Session {
 
   // The CLI's report of what it loaded, checked before the model can act.
   const checkInit = (init: Message) => {
-    if (options.guard) {
-      const why = options.guard.init(init);
-      if (why) return stop(why);
-      ready = true;
-      log("harness.ready", { version: text(init.claude_code_version), model: text(init.model) });
-      return;
-    }
     const tools = Array.isArray(init.tools) ? init.tools : null;
     const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.filter(isObject) : null;
     const plugins = Array.isArray(init.plugins) ? init.plugins.filter(isObject) : [];
@@ -749,16 +731,6 @@ export function startSession(options: SessionOptions): Session {
       if (request.server_name !== harnessServer || !isObject(request.message))
         return refuse(id, "Unknown server.");
       return mcp(id, request.message);
-    }
-    if (request.subtype === "can_use_tool" && options.guard) {
-      if (!ready) return stop("it asked to call a tool before reporting what it loaded");
-      const said = options.guard.canUse(text(request.tool_name), request.input);
-      return respond(
-        id,
-        "allow" in said
-          ? { behavior: "allow", updatedInput: said.allow }
-          : { behavior: "deny", message: said.deny },
-      );
     }
     if (request.subtype === "can_use_tool")
       return respond(
