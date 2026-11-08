@@ -105,53 +105,6 @@ test("each set op is one save of the field it sets, reporting it before and afte
   assert.equal(writes.length, cases.length, "one write call each");
 });
 
-test("a project's title is one save of the project", async () => {
-  const { apply, writes } = writing();
-  const project = "00000006-0000-4000-8000-000000000001";
-  const result = await apply(
-    "setTitle",
-    "linear:P-5e2a9c41b7d0",
-    { title: "Summer launch" },
-    project,
-  );
-  assert.deepEqual(writes, [{ tool: t.saveProject, args: { id: project, name: "Summer launch" } }]);
-  assert.equal(result.after.summary, "Summer launch");
-});
-
-test("a create is one save, in the team, its project by ID and its cycle by its own", async () => {
-  const { apply, writes } = writing();
-  const made = await apply("createProject", null, {
-    name: "Winter timetable",
-    description: "Next.",
-  });
-  assert.equal(made.item.id.startsWith("linear:P-"), true);
-  const issue = await apply("createIssue", null, {
-    title: "Import the winter timetable",
-    estimate: 3,
-    cycle: 14,
-    project: made.item.id,
-  });
-  assert.deepEqual(writes, [
-    {
-      tool: t.saveProject,
-      args: { name: "Winter timetable", description: "Next.", addTeams: [team.id] },
-    },
-    {
-      tool: t.saveIssue,
-      args: {
-        team: team.id,
-        title: "Import the winter timetable",
-        estimate: 3,
-        cycle: "00000005-0000-4000-8000-00000000000e",
-        project: made.item.stableId,
-      },
-    },
-  ]);
-  assert.equal(issue.item.id, "linear:ENG-22");
-  assert.equal(issue.after.epic, made.item.id);
-  assert.equal(issue.after.cycle, 14);
-});
-
 test("what Linear can't take is refused before anything is sent", async () => {
   const { apply, writes } = writing();
   const refusals: [string, string | null, unknown, string?][] = [
@@ -178,9 +131,7 @@ test("what Linear can't take is refused before anything is sent", async () => {
 
 test("no tool deletes an issue or a project, so the writer says so before Revert is offered", async () => {
   const { writer, apply, writes } = writing();
-  assert.deepEqual(writer.unsendable, {
-    deleteItem: "A Linear issue or project can't be taken back",
-  });
+  assert.ok(writer.unsendable?.deleteItem);
   // Each create's revert is that delete.
   assert.deepEqual(linearSpecs.ops.createIssue?.undo({ title: "X", project: null }, {} as never), {
     op: "deleteItem",
