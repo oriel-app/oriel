@@ -24,7 +24,7 @@ const backlog = fileURLToPath(new URL("../../sheets-mcp/fixture/backlog.json", i
 // one start shares that file, so a sync reads what a replay wrote.
 const standIns: Record<string, { reports: string; args: (kept: string) => string[] }> = {
   atlassian: {
-    reports: "atlassian-rovo-mcp-server",
+    reports: "atlassian-mcp-server",
     args: (kept) => [main, "atlassian", "--journal", kept],
   },
   slack: { reports: "Slack MCP", args: (kept) => [main, "slack", "--journal", kept] },
@@ -43,6 +43,14 @@ export function devStandIns(asked: string | undefined): {
   if (!names.length) return null;
   const unknown = names.find((name) => !Object.hasOwn(standIns, name));
   if (unknown) throw new Error(`ORIEL_DEV_STANDINS: no stand-in called ${unknown}`);
+  // A stand-in that matches no known server would leave the real one in
+  // its place, and a dev world meant to write to a stand-in would write to
+  // the person's real source: refuse to start instead.
+  const unmatched = names.find(
+    (name) => !knownServers.some((each) => each.server.reports === standIns[name]?.reports),
+  );
+  if (unmatched)
+    throw new Error(`ORIEL_DEV_STANDINS: the ${unmatched} stand-in matches no server Oriel knows`);
   // One file for this start, which every process's stand-in shares: a
   // journal, or a copy of sheets-mcp's fixture.
   const kept = (name: string) => {
