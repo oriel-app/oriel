@@ -26,6 +26,7 @@ import { atlassianServer } from "../packages/jira/src/atlassian.ts";
 import { atlassianStandIn, standInCaller } from "../packages/jira/src/atlassian-standin.ts";
 import { slackServer } from "../packages/slack/src/slack-mcp.ts";
 import { slackStandIn, standInCaller as slackCaller } from "../packages/slack/src/slack-standin.ts";
+import type { SlackFixture } from "../packages/slack/src/fixture.ts";
 import { standInFound as linearFound } from "../packages/linear/src/declared-fixture.ts";
 import {
   linearStandIn,
@@ -121,6 +122,9 @@ export type FirstRunOptions = {
   // And Slack's MCP server (OA-277), as the stand-in of it answers
   // Ferrowick in memory: found, or Slack on through it.
   slack?: "found" | "on";
+  // The Ferrowick the Slack stand-in answers, in place of a fresh copy, for
+  // a scene to change as it goes, as the channels the person is in.
+  slackFixture?: SlackFixture;
   // And Linear's MCP server (OA-278), as the stand-in of it answers
   // Ferrowick's Linear in memory: found, or Linear on through it.
   linear?: "found" | "on";
@@ -304,7 +308,7 @@ export async function firstRunServer(
   // SYN in memory, as one stand-in of Atlassian's server answers every
   // process: sync's and replay's.
   const atlassianTools = standInCaller(atlassianStandIn());
-  const slackTools = slackCaller(slackStandIn());
+  const slackTools = slackCaller(slackStandIn(options.slackFixture));
   const linearTools = linearCaller(linearStandIn());
   const sheetsTools =
     options.sheetsTabs === undefined

@@ -4,6 +4,7 @@
 // serves is a lookup between the two, with no model call, so nothing a
 // server says of itself, such as its description, can steer it.
 import type { PickChoice } from "./connect.ts";
+import type { IndexRecord } from "./source.ts";
 
 // A source server a connector knows, as its declaration gives it: what a
 // person calls it, how it's recognised (the name it reports, its address or
@@ -59,6 +60,12 @@ export type ServerPick = {
   // Absent, the option is the value picked, or the values.
   picked?(options: Readonly<Record<string, unknown>>): string[];
   into?(options: Readonly<Record<string, unknown>>, values: readonly string[]): unknown;
+  // Where its list marks a picked value it doesn't give (`unlisted`): what
+  // the picker says of one, such as "You're not in this channel", and the
+  // names Oriel last knew of values, by value, from what the connection
+  // indexed, which it shows such a one by.
+  unlisted?: string;
+  known?(records: readonly IndexRecord[]): Iterable<readonly [string, string]>;
 };
 
 // The values a connection's options pick, by one of its server's picks.
@@ -96,27 +103,66 @@ const longestChoice = 200;
 // A list of choices from a server's answer, narrowed by `query` against
 // each one's name and value, in any case, at most `mostChoices` of them; one
 // with no value or no name is left out, and a name is cut to its longest.
+// Given what's `picked`, from a list that's whole, a picked one past the
+// most still shows, and one it doesn't give shows after the rest, by its
+// value, marked `unlisted`, so it can be unpicked: whatever `query` is, as
+// it's named and narrowed by the name Oriel last knew (`unlistedNamed`).
 export function narrowed(
   choices: readonly (Pick<PickChoice, "value" | "name"> & Partial<PickChoice>)[],
   query: string,
+  picked: readonly string[] = [],
 ): { choices: PickChoice[]; more: boolean } {
   const want = query.trim().toLowerCase();
-  const fit = choices
-    .filter((each) => each.value !== "" && each.name.trim() !== "")
-    .filter(
-      (each) =>
-        want === "" ||
-        each.name.toLowerCase().includes(want) ||
-        each.value.toLowerCase().includes(want),
-    );
+  const fits = (each: { value: string; name: string }) =>
+    want === "" ||
+    each.name.toLowerCase().includes(want) ||
+    each.value.toLowerCase().includes(want);
+  const named = choices.filter((each) => each.value !== "" && each.name.trim() !== "");
+  const fit = named.filter(fits);
+  const listed = new Set(named.map((each) => each.value));
+  const shown = [
+    ...fit.slice(0, mostChoices),
+    ...fit.slice(mostChoices).filter((each) => picked.includes(each.value)),
+  ];
+  const unlisted = [...new Set(picked)]
+    .filter((value) => value !== "" && !listed.has(value))
+    .map((value) => ({ value, name: value }));
   return {
-    choices: fit.slice(0, mostChoices).map((each) => ({
-      value: each.value,
-      name: each.name.slice(0, longestChoice),
-      count: each.count ?? null,
-      updatedAt: each.updatedAt ?? null,
-    })),
+    choices: [
+      ...shown.map((each) => ({
+        value: each.value,
+        name: each.name.slice(0, longestChoice),
+        count: each.count ?? null,
+        updatedAt: each.updatedAt ?? null,
+      })),
+      ...unlisted.map((each) => ({
+        ...each,
+        count: null,
+        updatedAt: null,
+        unlisted: true as const,
+      })),
+    ],
     more: fit.length > mostChoices,
+  };
+}
+
+// A list's unlisted choices by the names Oriel last knew of them, from
+// `known`, else by their values, narrowed by `query` as `narrowed` does.
+export function unlistedNamed(
+  listed: { choices: PickChoice[]; more: boolean },
+  query: string,
+  known: ReadonlyMap<string, string>,
+): { choices: PickChoice[]; more: boolean } {
+  const want = query.trim().toLowerCase();
+  return {
+    ...listed,
+    choices: listed.choices.flatMap((each) => {
+      if (!each.unlisted) return [each];
+      const name = (known.get(each.value) ?? each.value).slice(0, longestChoice);
+      const fits =
+        want === "" || name.toLowerCase().includes(want) || each.value.toLowerCase().includes(want);
+      return fits ? [{ ...each, name }] : [];
+    }),
   };
 }
 

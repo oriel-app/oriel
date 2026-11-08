@@ -3,7 +3,7 @@ title: Connection and provider rows
 status: drifting
 group: Rows
 order: 52
-classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, hidden-email, provider-path-open, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open, provider-path, provider-path-label
+classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, choice-unlisted, choice-text, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, hidden-email, provider-path-open, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open, provider-path, provider-path-label
 summary: One thing Oriel uses or reads, as a row with its mark, name, what it is, its state and the one thing to do next. Settings' providers and connections and the first run draw it; four hand copies today.
 ---
 
@@ -164,6 +164,37 @@ A connection through a source server (decision 0059) has no options of its own b
       </div>
       <div class="cli-actions">
         <button type="button" class="button primary">Use these 1</button>
+        <button type="button" class="button">Cancel</button>
+        <span class="settings-field-about">At most 20.</span>
+      </div>
+    </div>
+  </fieldset>
+</div>
+```
+
+A picked value the server's list no longer gives, as a channel the person left, still shows in the list, ticked, by the name Oriel last knew from what it indexed, with why under it in its pick's words (`.choice-unlisted`, `.choice-text`), so it can be unpicked. With none ticked, **Use none** applies where the pick reads something with none.
+
+```html specimen id=server-picks-unlisted title="A picked channel the person left, still in the list"
+<div class="connection-options">
+  <fieldset class="settings-field">
+    <legend class="settings-field-name">Channels</legend>
+    <span class="settings-field-about">2 picked. </span>
+    <div class="pick-list">
+      <div class="choices">
+        <label class="choice"
+          ><input type="checkbox" value="C1" checked />#weather-disruptions</label
+        >
+        <label class="choice choice-unlisted"
+          ><input type="checkbox" value="C2" checked /><span class="choice-text"
+            >#random<span class="settings-field-about"
+              >You're not in this channel. Oriel reads it while Slack lets it; once Slack won't,
+              syncing stops until you unpick it.</span
+            ></span
+          ></label
+        >
+      </div>
+      <div class="cli-actions">
+        <button type="button" class="button primary">Use these 2</button>
         <button type="button" class="button">Cancel</button>
         <span class="settings-field-about">At most 20.</span>
       </div>

@@ -49,7 +49,9 @@ export function slackStandIn(
   workspace = standInWorkspace(fixture),
 ): StandInTool[] {
   const self = fixture.users[0]?.id ?? "";
-  const yours = new Set(fixture.picked);
+  // The channels the person is in: the fixture's picked ones, as they are
+  // at each call, so a scene can take one away, as when the person leaves.
+  const yours = { has: (id: string) => fixture.picked.includes(id) };
   // Through the fixture's own `fetch`, which writes as well as reads.
   const write = async (method: string, params: Record<string, string>) => {
     const response = await workspace.fetch(`https://slack.com/api/${method}`, {
