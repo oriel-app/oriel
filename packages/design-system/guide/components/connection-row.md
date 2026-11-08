@@ -3,7 +3,7 @@ title: Connection and provider rows
 status: drifting
 group: Rows
 order: 52
-classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, provider-path-open, provider-key-actions, provider-key-note, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice
+classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, provider-path-open, provider-key-actions, provider-key-note, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open
 summary: One thing Oriel uses or reads, as a row with its mark, name, what it is, its state and the one thing to do next. Settings' providers and connections and the first run draw it; four hand copies today.
 ---
 
@@ -187,22 +187,40 @@ The path and key fields themselves are on [Text field](/components/text-field#se
 
 ### Picked through a source server
 
-A connection through a source server (decision 0059) has no options of its own but what the person picks through the server: Jira's project, Linear's team, Slack's channels. Each is drawn by `PickOption` in `packages/web/src/connections-page.tsx`, from `ServerPicks`: what the server reads as picked now (one value, or how many) and **Change**, or, with nothing picked yet, what it reads instead ("Reading your first 20 channels; pick yours.") and **Pick**. Its list comes through the server's read tools. One option is a radio list that applies on a click; several are ticks, up to the most the source reads, applied with **Use these N**. A long list scrolls under Find (`.connection-options .choices` in `window.css`). The first run draws the same under what Oriel found, each named by its source ("Jira project"), in `.found-picks`. A connector that reads a mapping, as Google Sheets through sheets-mcp, also draws its mapping beside its picks, in its review step (see [Connect steps](/patterns/connect-steps#settings)): the person picks spreadsheets, then applies or edits how each tab reads.
+A connection through a source server (decision 0059) has no options of its own but what the person picks through the server: Jira's project, Linear's team, Slack's channels. Each is drawn by `PickOption` in `packages/web/src/connections-page.tsx`, from `ServerPicks`: what the server reads as picked now (one value, or how many) and **Change**, or, with nothing picked yet, what it reads instead ("Reading your first 20 channels; pick yours.") and **Pick**. Its list comes through the server's read tools. One option is a radio list that applies on a click; several are ticks, up to the most the source reads, applied with **Use these N**. A long list scrolls between Find and its actions, so **Use these N** and **Cancel** stay in sight under it however long it is (`.pick-list` in `window.css`); a radio list has **Cancel** there too. Listing asks the person's agent, which takes a while: **Pick** or **Change** turns pressed at once, with a spinner and **Listing…**, and takes no second click until the list comes (`.pick-open[aria-pressed="true"]` in `window.css`). The first run draws the same under what Oriel found, each named by its source ("Jira project"), in `.found-picks`. A connector that reads a mapping, as Google Sheets through sheets-mcp, also draws its mapping beside its picks, in its review step (see [Connect steps](/patterns/connect-steps#settings)): the person picks spreadsheets, then applies or edits how each tab reads.
 
 ```html specimen id=server-picks title="Slack's channels, picked through its server"
 <div class="connection-options">
   <fieldset class="settings-field">
     <legend class="settings-field-name">Channels</legend>
     <span class="settings-field-about">Reading your first 20 channels; pick yours. </span>
-    <div class="choices">
-      <label class="choice"><input type="checkbox" value="C1" checked />#weather-disruptions</label>
-      <label class="choice"><input type="checkbox" value="C2" />#random</label>
+    <div class="pick-list">
+      <div class="choices">
+        <label class="choice"
+          ><input type="checkbox" value="C1" checked />#weather-disruptions</label
+        >
+        <label class="choice"><input type="checkbox" value="C2" />#random</label>
+      </div>
       <div class="cli-actions">
         <button type="button" class="button primary">Use these 1</button>
         <button type="button" class="button">Cancel</button>
+        <span class="settings-field-about">At most 20.</span>
       </div>
-      <span class="settings-field-about">At most 20.</span>
     </div>
+  </fieldset>
+</div>
+```
+
+```html specimen id=server-picks-listing title="Pick, while the agent lists the channels"
+<div class="connection-options">
+  <fieldset class="settings-field">
+    <legend class="settings-field-name">Channels</legend>
+    <span class="settings-field-about"
+      >Reading your first 20 channels; pick yours.
+      <button type="button" class="quiet-action pick-open" disabled aria-pressed="true">
+        <span class="spinner" aria-hidden="true"></span>Listing…
+      </button></span
+    >
   </fieldset>
 </div>
 ```

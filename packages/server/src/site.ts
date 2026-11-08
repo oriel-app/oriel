@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { defaultTheme } from "@oriel/web/themes";
-import type { TextSize } from "@oriel/web/view";
+import { settingsSections, type TextSize } from "@oriel/web/view";
 import { hasLaunchSecret, refusal } from "./guard.ts";
 
 // Everything the server serves. Paths are absolute.
@@ -112,7 +112,8 @@ const pagePaths = [
   /^\/$/,
   /^\/browse$/,
   /^\/done$/,
-  /^\/settings(?:\/(?:connections|general|appearance|asking|notifications))?$/,
+  // Providers, the first, is /settings itself.
+  new RegExp(`^/settings(?:/(?:${settingsSections.slice(1).join("|")}))?$`),
   /^\/setup$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),

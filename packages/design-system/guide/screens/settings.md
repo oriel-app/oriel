@@ -8,7 +8,7 @@ summary: Settings open at Appearance, with its section list. Theme and Text size
 
 ## What it shows
 
-Settings, opened at Appearance from the sidebar's foot. Down the left are Settings' six sections, each its own address, with Appearance current. The section has two choices: the theme (Graphite, the default, or Broadsheet) and the text size (Small, Default or Large). Each applies at once; there's no Save. These are the same two choices this workshop's own bar offers as Theme and Text size.
+Settings, opened at Appearance from the sidebar's foot. Down the left are Settings' seven sections, each its own address, with Appearance current. The section has two choices: the theme (Graphite, the default, or Broadsheet) and the text size (Small, Default or Large). Each applies at once; there's no Save. These are the same two choices this workshop's own bar offers as Theme and Text size.
 
 At 390 the sidebar becomes the bar with its menu, and the sections become a wrapping row of links above the choices.
 
@@ -307,6 +307,7 @@ At 390 the sidebar becomes the bar with its menu, and the sections become a wrap
       <div class="settings">
         <nav class="settings-sections" aria-label="Settings">
           <a class="nav-link" href="/settings/providers">Providers</a>
+          <a class="nav-link" href="/settings/usage">Usage</a>
           <a class="nav-link" href="/settings/connections">Connections</a>
           <a class="nav-link" href="/settings/general">General</a>
           <a class="nav-link" href="/settings/appearance" aria-current="page">Appearance</a>

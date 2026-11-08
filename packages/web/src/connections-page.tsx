@@ -662,10 +662,13 @@ function PickOption(props: {
       <span class="settings-field-about">
         {said} {/* Again, while no list came, as when the source didn't give one. */}
         {(!listing || setting.choices === null) && (
+          // Listing asks the person's agent, which takes a while: the button
+          // says so at once, and takes no second click.
           <button
             type="button"
-            class="quiet-action"
-            disabled={setting.pending}
+            class="quiet-action pick-open"
+            disabled={setting.pending || (listing && setting.listing)}
+            aria-pressed={listing && setting.listing ? true : undefined}
             onClick={() => {
               list(true);
               tick(picked);
@@ -674,20 +677,33 @@ function PickOption(props: {
                 connection: connection.id,
                 query: "",
                 field: field.name,
+                opened: true,
               });
             }}
           >
-            {none && field.unpicked ? "Pick" : "Change"}
+            {listing && setting.listing ? (
+              <>
+                <span class="spinner" aria-hidden="true" />
+                Listing…
+              </>
+            ) : none && field.unpicked ? (
+              "Pick"
+            ) : (
+              "Change"
+            )}
           </button>
         )}
       </span>
       {listing && setting.choices !== null && (
-        <div class="choices">
+        // The list scrolls; Find above it and its actions below stay in
+        // sight, however long it is.
+        <div class="pick-list">
           {(setting.more || setting.query !== "") && (
             <input
               class="input"
               type="search"
               value={setting.query}
+              placeholder="Find…"
               aria-label={`Find a ${field.label.toLowerCase()}`}
               onChange={(event) =>
                 send({
@@ -699,45 +715,47 @@ function PickOption(props: {
               }
             />
           )}
-          {setting.choices.map((choice) =>
-            many ? (
-              <label key={choice.value} class="choice">
-                <input
-                  type="checkbox"
-                  value={choice.value}
-                  checked={ticked.includes(choice.value)}
-                  disabled={
-                    setting.pending || (!ticked.includes(choice.value) && ticked.length >= most)
-                  }
-                  onChange={(event) =>
-                    tick(
-                      event.currentTarget.checked
-                        ? [...ticked, choice.value]
-                        : ticked.filter((each) => each !== choice.value),
-                    )
-                  }
-                />
-                {choice.name}
-              </label>
-            ) : (
-              <label key={choice.value} class="choice">
-                <input
-                  type="radio"
-                  name={`connection-${connection.id}-${field.name}`}
-                  value={choice.value}
-                  checked={choice.value === current}
-                  disabled={setting.pending}
-                  onChange={() => {
-                    list(false);
-                    props.onPick(choice.value);
-                  }}
-                />
-                {choice.name} ({choice.value})
-              </label>
-            ),
-          )}
-          {many && (
-            <div class="cli-actions">
+          <div class="choices">
+            {setting.choices.map((choice) =>
+              many ? (
+                <label key={choice.value} class="choice">
+                  <input
+                    type="checkbox"
+                    value={choice.value}
+                    checked={ticked.includes(choice.value)}
+                    disabled={
+                      setting.pending || (!ticked.includes(choice.value) && ticked.length >= most)
+                    }
+                    onChange={(event) =>
+                      tick(
+                        event.currentTarget.checked
+                          ? [...ticked, choice.value]
+                          : ticked.filter((each) => each !== choice.value),
+                      )
+                    }
+                  />
+                  {choice.name}
+                </label>
+              ) : (
+                <label key={choice.value} class="choice">
+                  <input
+                    type="radio"
+                    name={`connection-${connection.id}-${field.name}`}
+                    value={choice.value}
+                    checked={choice.value === current}
+                    disabled={setting.pending}
+                    onChange={() => {
+                      list(false);
+                      props.onPick(choice.value);
+                    }}
+                  />
+                  {choice.name} ({choice.value})
+                </label>
+              ),
+            )}
+          </div>
+          <div class="cli-actions">
+            {many && (
               <button
                 type="button"
                 class="button primary"
@@ -749,14 +767,14 @@ function PickOption(props: {
               >
                 {ticked.length === 0 ? "Use these" : `Use these ${ticked.length}`}
               </button>
-              <button type="button" class="button" onClick={() => list(false)}>
-                Cancel
-              </button>
-            </div>
-          )}
-          {many && Number.isFinite(most) && (
-            <span class="settings-field-about">At most {most}.</span>
-          )}
+            )}
+            <button type="button" class="button" onClick={() => list(false)}>
+              Cancel
+            </button>
+            {many && Number.isFinite(most) && (
+              <span class="settings-field-about">At most {most}.</span>
+            )}
+          </div>
         </div>
       )}
     </fieldset>

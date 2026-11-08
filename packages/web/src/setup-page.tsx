@@ -499,11 +499,11 @@ function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): 
           {servers.problem}
         </p>
       )}
-      {model.connections.switchProblem && (
-        <p class="setup-problem" role="alert">
-          {model.connections.switchProblem}
+      {Object.entries(model.connections.switchProblems).map(([kind, problem]) => (
+        <p key={kind} class="setup-problem" role="alert">
+          {problem}
         </p>
-      )}
+      ))}
       {servers && servers.missing.length > 0 && (
         <ul class="found-missing" aria-label={`Not found in ${agent}`}>
           {servers.missing.map((each) => (
@@ -626,7 +626,7 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
                   <button
                     type="button"
                     class="button"
-                    disabled={model.connections.switching !== null}
+                    disabled={model.connections.switches[connector.kind] !== undefined}
                     onClick={() =>
                       sendConnections({
                         type: "kindSwitched",
@@ -636,7 +636,9 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
                       })
                     }
                   >
-                    Turn on {connector.name}
+                    {model.connections.switches[connector.kind]
+                      ? "Turning on…"
+                      : `Turn on ${connector.name}`}
                   </button>
                 ) : null
               }

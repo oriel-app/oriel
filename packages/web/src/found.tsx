@@ -5,7 +5,12 @@
 // one on. Oriel never adds, removes, signs in or signs out of a server, so
 // nothing here does: a kind with none found names the server that would
 // turn it on, and links to its vendor's own instructions.
-import { type ConnectionsModel, type ConnectionsMsg, turnedOff } from "./connections.ts";
+import {
+  type ConnectionsModel,
+  type ConnectionsMsg,
+  switchedOn,
+  turnedOff,
+} from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
 import type { Dispatch } from "./parts.tsx";
 import { Switch } from "./provider-row.tsx";
@@ -46,13 +51,12 @@ export function FoundRows(props: {
                 {each.known} · turns on {kind}
               </span>
             </span>
-            {each.on ? (
+            {switchedOn(connections, each.kind, each.on) ? (
               <span class="found-on">On</span>
             ) : (
               <button
                 type="button"
                 class="button"
-                disabled={connections.switching !== null}
                 onClick={() =>
                   send({ type: "kindSwitched", kind: each.kind, on: true, server: each.server })
                 }
@@ -108,10 +112,13 @@ export function FoundCard(props: {
             : `${each.server} isn't in ${agent} any more, so ${nameOf(connectors, each.kind)} is off until it's back.`}
         </p>
       ))}
-      {connections.switchProblem && (
-        <p class="connection-problem" role="alert">
-          {connections.switchProblem}
-        </p>
+      {card.appeared.map(
+        (each) =>
+          connections.switchProblems[each.kind] && (
+            <p key={each.kind} class="connection-problem" role="alert">
+              {connections.switchProblems[each.kind]}
+            </p>
+          ),
       )}
       <div class="found-actions">
         <button type="button" class="quiet-action" onClick={() => send({ type: "foundDismissed" })}>
@@ -184,11 +191,6 @@ export function SourceServers(props: {
           {servers.problem}
         </p>
       )}
-      {connections.switchProblem && (
-        <p class="connection-problem" role="alert">
-          {connections.switchProblem}
-        </p>
-      )}
       {rows.length === 0 ? (
         <p class="settings-field-about">
           {servers.looking
@@ -199,25 +201,27 @@ export function SourceServers(props: {
         <ul class="provider-rows">
           {rows.map((row) => {
             const name = nameOf(connectors, row.kind);
+            // As the person last turned it, at once; one refused flips back.
+            const on = switchedOn(connections, row.kind, row.on);
+            const problem = connections.switchProblems[row.kind] ?? row.problem;
             return (
-              <li key={row.kind} class="provider-row" data-status={row.on ? "ready" : undefined}>
+              <li key={row.kind} class="provider-row" data-status={on ? "ready" : undefined}>
                 <span class="provider-icon" aria-hidden="true">
                   {markOf(connectors, row.kind)}
                 </span>
                 <div class="provider-main">
                   <span class="provider-name">{name}</span>
                   <span class="provider-about">{row.about}</span>
-                  {row.problem && (
+                  {problem && (
                     <p class="connection-problem" role="alert">
-                      {row.problem}
+                      {problem}
                     </p>
                   )}
                 </div>
                 <div class="provider-side">
                   <Switch
-                    on={row.on}
-                    label={`${name} ${row.on ? "on" : "off"}`}
-                    disabled={connections.switching !== null}
+                    on={on}
+                    label={`${name} ${on ? "on" : "off"}`}
                     onChange={(on) =>
                       send({
                         type: "kindSwitched",

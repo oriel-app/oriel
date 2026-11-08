@@ -39,7 +39,8 @@ export type ConnectForm = {
 };
 
 // One connection in Settings: its name as typed and not yet set; the list
-// one of its picks lists, once asked for; whether a change is on its way, and what the
+// one of its picks lists, once asked for, and whether one is being asked
+// for, which takes a while, as the server asks the person's agent; whether a change is on its way, and what the
 // last one changed, by the option it changed, with its Undo; why it didn't
 // work, or why the options it set don't fit the source; why its review step
 // couldn't read the source; and Disconnect, asked and then answered.
@@ -48,6 +49,7 @@ export type ConnectionSetting = {
   choices: PickChoiceView[] | null;
   more: boolean;
   query: string;
+  listing: boolean;
   pending: boolean;
   said: { what: string; field: string; undo: unknown } | null;
   problem: string | null;
@@ -83,11 +85,19 @@ export type ConnectionsModel = {
   reviews: Readonly<Record<string, OptionsReviewView>>;
   // Each review step the person is editing, by its connection's ID.
   edits: Readonly<Record<string, ReviewEditing>>;
-  // A kind being turned on or off now, and why the last turning didn't
-  // work (decision 0059).
-  switching: string | null;
-  switchProblem: string | null;
+  // Kinds being turned on or off (decision 0059), by kind, shown as the
+  // person last asked at once; and why a kind's last turning didn't work.
+  switches: Readonly<Record<string, KindSwitch>>;
+  switchProblems: Readonly<Record<string, string>>;
 };
+
+// A kind turned on or off, before the window shows it so: `on`, as the
+// person last asked, which its switch shows; `sent`, what's on its way to
+// the server, one turning a kind at a time, so a later click waits for it
+// and goes next; the server Oriel found for it, to turn it on through; and, once the server has
+// it, how many loads of the list have come since. The list says it within
+// two, so the switch goes then, and the list shows what's on.
+export type KindSwitch = { on: boolean; sent: boolean; server?: string; loads: number | null };
 
 export type ConnectionsMsg =
   | { type: "syncClicked"; connection: string }
@@ -124,7 +134,8 @@ export type ConnectionsMsg =
       what: string;
       field: string;
     }
-  | { type: "choicesAsked"; connection: string; query: string; field?: string }
+  // `opened`: a pick's list opened afresh, so another's list doesn't show.
+  | { type: "choicesAsked"; connection: string; query: string; field?: string; opened?: true }
   | { type: "undoClicked"; connection: string }
   | { type: "disconnectClicked"; connection: string }
   | { type: "disconnectAnswered"; connection: string; yes: boolean }
@@ -155,8 +166,8 @@ export function initConnections(): ConnectionsModel {
     settings: {},
     reviews: {},
     edits: {},
-    switching: null,
-    switchProblem: null,
+    switches: {},
+    switchProblems: {},
   };
 }
 
@@ -174,6 +185,7 @@ const blankSetting: ConnectionSetting = {
   choices: null,
   more: false,
   query: "",
+  listing: false,
   pending: false,
   said: null,
   problem: null,
@@ -363,6 +375,40 @@ export const noAiToAsk = "Set up your AI to ask Oriel, or edit by hand.";
 const onboarding = (kind: string, connection: string): Effect =>
   post(`/api/connections/${connection}/draft`, {}, { kind: "onboarded", of: kind, connection });
 
+// A kind turned on or off, through the server Oriel found for it.
+const turning = (kind: string, wanted: KindSwitch): Effect =>
+  post(
+    `/api/actions/source.${wanted.on ? "on" : "off"}`,
+    { kind, ...(wanted.server ? { server: wanted.server } : {}) },
+    { kind: "kindSwitched", of: kind },
+  );
+
+// Whether a kind is on, as the list says.
+export const kindOn = (view: ConnectionsView | null, kind: string): boolean =>
+  view?.servers.kinds.find((each) => each.kind === kind)?.on ?? false;
+
+// The switches the server has answered, less those the list now shows: it
+// says the same, or it's the second load since, as one asked before the
+// answer may have come after it.
+function settled(
+  switches: ConnectionsModel["switches"],
+  view: ConnectionsView,
+): ConnectionsModel["switches"] {
+  return Object.fromEntries(
+    Object.entries(switches).flatMap(([kind, each]) =>
+      each.loads === null
+        ? [[kind, each]]
+        : kindOn(view, kind) === each.on || each.loads >= 1
+          ? []
+          : [[kind, { ...each, loads: each.loads + 1 }]],
+    ),
+  );
+}
+
+// Whether a kind shows on: as the person last asked, until the list says.
+export const switchedOn = (model: ConnectionsModel, kind: string, listed: boolean): boolean =>
+  model.switches[kind]?.on ?? listed;
+
 export function updateConnections(
   model: ConnectionsModel,
   msg: ConnectionsMsg,
@@ -384,16 +430,27 @@ export function updateConnections(
         [post("/api/servers/dismiss", {}, { kind: "connections" })],
       ];
     case "kindSwitched": {
-      if (model.switching !== null) return [model, []];
-      const input = { kind: msg.kind, ...(msg.server ? { server: msg.server } : {}) };
+      const { [msg.kind]: _past, ...switchProblems } = model.switchProblems;
+      const now = model.switches[msg.kind];
+      const wanted: KindSwitch = {
+        on: msg.on,
+        sent: now?.sent ?? msg.on,
+        ...(msg.server ? { server: msg.server } : {}),
+        loads: null,
+      };
+      const switched = {
+        ...model,
+        switches: { ...model.switches, [msg.kind]: wanted },
+        switchProblems,
+      };
+      // One on its way: this one goes once it's answered.
+      if (now && now.loads === null) return [switched, []];
       return [
-        { ...model, switching: msg.kind, switchProblem: null },
-        [
-          post(`/api/actions/source.${msg.on ? "on" : "off"}`, input, {
-            kind: "kindSwitched",
-            of: msg.kind,
-          }),
-        ],
+        {
+          ...switched,
+          switches: { ...switched.switches, [msg.kind]: { ...wanted, sent: msg.on } },
+        },
+        [turning(msg.kind, wanted)],
       ];
     }
     case "serversSyncPicked":
@@ -571,7 +628,8 @@ export function updateConnections(
       );
     }
     case "choicesAsked": {
-      const setting = { ...settingOf(model, msg.connection), query: msg.query };
+      const asked = { ...settingOf(model, msg.connection), query: msg.query, listing: true };
+      const setting = msg.opened ? { ...asked, choices: null, more: false } : asked;
       return withSetting(model, msg.connection, setting, [
         post(
           `/api/connections/${msg.connection}/pick`,
@@ -777,21 +835,38 @@ export function connectionsReplied(
         synced: false,
       };
     }
-    case "connections":
+    case "connections": {
+      if (!msg.ok) return { model, synced: false };
+      const view = msg.body as ConnectionsView;
+      return { model: { ...model, view, switches: settled(model.switches, view) }, synced: false };
+    }
+    // What's on changed, so what the window shows did, and the list. A
+    // click since, the other way, goes now. One refused flips back, and
+    // says why in its row.
+    case "kindSwitched": {
+      const now = model.switches[tag.of];
+      const { [tag.of]: _done, ...others } = model.switches;
+      if (!msg.ok)
+        return {
+          model: {
+            ...model,
+            switches: others,
+            switchProblems: { ...model.switchProblems, [tag.of]: errorOf(msg.body) },
+          },
+          synced: false,
+          effects: [loadConnections],
+        };
+      if (now && now.on !== now.sent)
+        return {
+          model: { ...model, switches: { ...others, [tag.of]: { ...now, sent: now.on } } },
+          synced: true,
+          effects: [turning(tag.of, now)],
+        };
       return {
-        model: msg.ok ? { ...model, view: msg.body as ConnectionsView } : model,
-        synced: false,
+        model: now ? { ...model, switches: { ...others, [tag.of]: { ...now, loads: 0 } } } : model,
+        synced: true,
       };
-    // What's on changed, so what the window shows did, and the list.
-    case "kindSwitched":
-      return {
-        model: {
-          ...model,
-          switching: null,
-          switchProblem: msg.ok ? null : errorOf(msg.body),
-        },
-        synced: msg.ok,
-      };
+    }
     case "serversSync":
       return { model, synced: false, effects: [loadConnections] };
     case "sourceSynced": {
@@ -876,12 +951,22 @@ export function connectionsReplied(
       const setting = settingOf(model, tag.connection);
       if (!msg.ok)
         return {
-          model: withSetting(model, tag.connection, { ...setting, problem: errorOf(msg.body) })[0],
+          model: withSetting(model, tag.connection, {
+            ...setting,
+            listing: false,
+            problem: errorOf(msg.body),
+          })[0],
           synced: false,
         };
       const { choices, more } = msg.body as { choices: PickChoiceView[]; more: boolean };
       return {
-        model: withSetting(model, tag.connection, { ...setting, choices, more, problem: null })[0],
+        model: withSetting(model, tag.connection, {
+          ...setting,
+          choices,
+          more,
+          listing: false,
+          problem: null,
+        })[0],
         synced: false,
       };
     }
