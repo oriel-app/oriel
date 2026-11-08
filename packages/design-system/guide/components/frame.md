@@ -4,22 +4,21 @@ status: stable
 group: Layout
 order: 59
 classes: shell, shell-main, frame, sidebar, sidebar-head, brand, bar, bar-menu, page, page-title, setup-page, setup-brand, icon
-summary: The window's one material: the sidebar and a band along the page column's top, with the column set into it, its top-left corner curved and running square to the window's right edge. The bead grows from it.
+summary: The window's one material: the sidebar, a band along the page column's top and one down its right, with the column set into it, its top corners curved. The bead grows from it.
 ---
 
 # The frame
 
 ## What it is
 
-The frame (decision 0056, amended) is one material: the sidebar and a 4px band along the top of the page column, both `--frame`. The page column is set into it, on `--bg`. Where the band meets the sidebar, the column's corner takes a long, gentle curve, "like a table's apron running into its leg" (`--frame-corner`, 26px in Graphite). Whichever panel is last on the right, the column or the item panel beside it, runs to the window's edge: its top-right corner is square, and no band or gutter shows beside it (2026-11-08). Its padding there matches the left, on its own paper. The frame casts a slight shadow onto the column (`--frame-shadow`), so the page looks just inset.
+The frame (decision 0056, amended) is one material: the sidebar, a 4px band along the top of the page column, and a 4px band down its right, all `--frame`. The page column is set into it, on `--bg`. Where the band meets the sidebar, the column's corner takes a long, gentle curve, "like a table's apron running into its leg" (`--frame-corner`, 26px in Graphite), and its top-right corner the same, always. What sits on the column's right, the [item panel](/components/item-panel) or, on a wide screen, a thread's [right rail](/components/right-rail), is the sidebar's material too, at the window's edge, so the column sits inset between two bars (2026-11-08). The frame casts a slight shadow onto the column (`--frame-shadow`), so the page looks just inset.
 
 It's CSS, but for [the bead](/components/bead), which is the frame's material growing from the band:
 
 - **The shell** (`.shell` in `window.css`) is `--frame`, the page's whole height, so a long page never shows a gap beside the sidebar. The sidebar is the same colour, with no line between them.
-- **The column** (`.shell-main` in `window.css`) is `--bg`, to the window's right edge, or to the panel when it sits beside the page. Its top-right corner (`--frame-end-curve`) is square at the edge and takes the curve when the panel sits beside it.
-- **Browse's scrollbar room** (`html:has(.window-layout)` in `window.css`) is kept at 761px and up, so switching groupings never moves the page sideways. An overlay scrollbar keeps none, and the room is `--bg` below the band, so nothing marks it.
-- **The [item panel](/components/item-panel)**, beside the page, is the column's sibling in the same frame: the band above it and between it and the column, the column's curve at its top left, paper and shade, and the window's edge on its right.
-- **The band and the corners** (`.frame` in `window.css`) are one fixed box as wide as the column, its top-left corner rounded (and its top-right when the panel sits beside it), with the frame's colour reaching out from it (`--frame-reach`) and cut to the column's top. It stays as the page scrolls under it, and takes no pointer. Its layer is `--layer-frame`: over the page and its sticky parts, under the sidebar's drawer, the panel, the window chat and the bead.
+- **The column** (`.shell-main` in `window.css`) is `--bg`, `--frame-band` in from the right, past the panel when it sits beside the page.
+- **The [item panel](/components/item-panel)**, beside the page, and a thread's [right rail](/components/right-rail) at 1180px and up, are `--frame` at the window's right edge, as the sidebar is at its left: `--beside` is their width, which the column keeps clear of.
+- **The band and the corners** (`.frame` in `window.css`) are one fixed box as wide as the column, its top corners rounded, with the frame's colour reaching out from it (`--frame-reach`) and cut to the column's top. It stays as the page scrolls under it, and takes no pointer. Its layer is `--layer-frame`: over the page and its sticky parts, under the sidebar's drawer, the panel, the window chat and the bead.
 
 ```html specimen id=wide title="Wide: the sidebar, the band and the curve where they meet" height=200 pad=0
 <div class="shell" style="--sidebar: 12rem; min-height: 0; height: 100vh">
@@ -95,7 +94,7 @@ The first run has no sidebar, so it's framed as a narrow screen is, at any width
 ## Anatomy and variants
 
 - **Colour:** `--frame`, set by each theme in light and dark. In light it's a little deeper than the page; in the dark, a little lighter. `--sidebar-bg` is `--frame`.
-- **The band:** `--frame-band`, 4px, and 0 on a narrow screen: along the column's top, and between the column and the item panel beside it. `--frame-top` is where the band's lower edge is: `--bar-height` and the band.
+- **The band:** `--frame-band`, 4px, and 0 on a narrow screen. `--frame-top` is where the band's lower edge is: `--bar-height` and the band.
 - **The corner:** `--frame-corner` on a wide screen and `--frame-corner-narrow` on a narrow one, set by each theme: Graphite's 26px and 18px, Broadsheet's tighter 12px and 8px. `--frame-curve` is the one in use.
 - **The shadow:** `--frame-shadow`, an inset shadow along the column's top, in `--frame-shade`, which each theme sets in light and dark: the dark's is much stronger, so it reads on the deeper page. The bead casts the same shade.
 
@@ -121,5 +120,5 @@ None of its own. The sidebar, the bar and the bead write on it, in the page's te
 ## Where the app uses it
 
 - `App` in `packages/web/src/app.tsx` and `SetupPage` in `packages/web/src/setup-page.tsx`.
-- CSS: `.shell`, `.shell-main`, `.frame`, `.bar` and `.setup-page` in `window.css`. Tokens: `--frame`, `--frame-shade`, `--frame-corner` and `--frame-corner-narrow` in each theme; `--frame-band`, `--frame-curve`, `--frame-top`, `--frame-shadow`, `--frame-reach`, `--frame-room`, `--frame-end-curve`, `--frame-end-past`, `--frame-shadow-end` and `--layer-frame` on `html`.
+- CSS: `.shell`, `.shell-main`, `.frame`, `.bar` and `.setup-page` in `window.css`. Tokens: `--frame`, `--frame-shade`, `--frame-corner` and `--frame-corner-narrow` in each theme; `--frame-band`, `--frame-curve`, `--frame-top`, `--frame-shadow`, `--frame-reach`, `--frame-room` and `--layer-frame` on `html`.
 - The bead that grows from it: [The bead](/components/bead).

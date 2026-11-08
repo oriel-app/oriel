@@ -3,7 +3,7 @@ title: Text field
 status: drifting
 group: Inputs
 order: 30
-classes: input, connect-problem, provider-path-label, settings-field, path-label, path-note, name-field, held-field, link-field, workstream-title, rename-field, sidebar-search-field, filter-search
+classes: input, connect-problem, provider-path-label, settings-field, path-label, path-note, name-field, new-workstream-name, held-field, link-field, workstream-title, rename-field, sidebar-search-field, filter-search
 summary: Where a person types something to keep, such as a name, a path or a reason. About eight looks today; copy the folder step's field. Searches have their own framed field.
 ---
 
@@ -13,16 +13,16 @@ summary: Where a person types something to keep, such as a name, a path or a rea
 
 An `<input>` or `<textarea>` for something a person types to keep: a connection's name, the path to Claude Code, their name on a review link, a held message's new words. There's no single text-field class. One class, `.input`, changes size with where it sits, and six other fields have classes of their own:
 
-| Field                                     | Where                                           | Height or padding | Border            | Text                |
-| ----------------------------------------- | ----------------------------------------------- | ----------------- | ----------------- | ------------------- |
-| `.input` in Settings                      | a path, a connection's options                  | 1.875rem          | `--line-strong`   | `--text-sm`, mono   |
-| `.path-label input`                       | a folder's path, typed                          | 0.3125rem padding | `--line-strong`   | `--text-sm`, mono   |
-| `.name-field` input and textarea          | the review link page: your name, the reason     | 0.3125rem padding | `--line-strong`   | `--text-sm`         |
-| `.held-field` textarea                    | editing a held message or a draft's option      | 0.3125rem padding | `--line-strong`   | inherited           |
-| `.link-field` (read-only)                 | a change set's review link                      | 0.125rem padding  | `--line`          | `--text-xs`, mono   |
-| `.workstream-title`                       | renaming a workstream, in its heading           | `--head-row`      | none until hover  | `--text-xl`, strong |
-| `.rename-field`                           | renaming a workstream in its row, from its menu | 1.875rem          | `--focus`, ringed | inherited           |
-| `.sidebar-search-field`, `.filter-search` | search, framed with an icon ([below](#search))  | 1.875rem          | `--line`          | inherited           |
+| Field                                     | Where                                                                                                 | Height or padding | Border            | Text                |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------- | ----------------- | ------------------- |
+| `.input` in Settings                      | a path, a connection's options                                                                        | 1.875rem          | `--line-strong`   | `--text-sm`, mono   |
+| `.path-label input`                       | a folder's path, typed                                                                                | 0.3125rem padding | `--line-strong`   | `--text-sm`, mono   |
+| `.name-field` input and textarea          | the review link page: your name, the reason; a new thread's Workstream title (`.new-workstream-name`) | 0.3125rem padding | `--line-strong`   | `--text-sm`         |
+| `.held-field` textarea                    | editing a held message or a draft's option                                                            | 0.3125rem padding | `--line-strong`   | inherited           |
+| `.link-field` (read-only)                 | a change set's review link                                                                            | 0.125rem padding  | `--line`          | `--text-xs`, mono   |
+| `.workstream-title`                       | renaming a workstream, in its heading                                                                 | `--head-row`      | none until hover  | `--text-xl`, strong |
+| `.rename-field`                           | renaming a workstream in its row, from its menu                                                       | 1.875rem          | `--focus`, ringed | inherited           |
+| `.sidebar-search-field`, `.filter-search` | search, framed with an icon ([below](#search))                                                        | 1.875rem          | `--line`          | inherited           |
 
 The chat inputs (the ask bar and the composers) are their own component: see [Chat input](/components/chat-input). The proposed single field, in modern CSS, is in the [text field lab](/lab/text-field).
 

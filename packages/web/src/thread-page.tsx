@@ -349,7 +349,6 @@ export function NewThreadPage({
   );
 }
 
-
 // Each workstream in the picker under a name a person can tell apart, never
 // the default's: one a thread from nothing made and nobody named yet goes by
 // its newest thread's title, as the sidebar lists that thread. A name that

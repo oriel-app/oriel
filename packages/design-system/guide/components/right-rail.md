@@ -21,7 +21,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 ## When to use it
 
-- On a thread's page, always, including a new thread before its first message, where it holds the workstream picker and nothing else until a workstream with items is picked.
+- On a thread's page, always, including a new thread before its first message, where it holds the workstream picker, with the new workstream's title under it while the picker is on "New workstream", and the picked workstream's count once one with items is picked.
 - To show which items a question in the thread is about. Each row opens its item in the [item panel](/components/item-panel), with Previous and Next through the rail's list.
 - To say the thread is behind its workstream, and offer Sync now.
 
@@ -225,7 +225,9 @@ There is no generated summary in the rail. It holds the title line, at most one 
 </div>
 ```
 
-**Narrow.** "A narrow page, on a narrow screen or beside the panel: the rails move inline, and rows wrap to two lines. The region moves under the chat before the rows wrap, where a 1180px screen leaves the page beside the sidebar" (`@container page (max-width: 932px)` in `window.css`). Under `@container page (max-width: 932px)` the layout is one column, the rail is no longer sticky, and its rows become a wrapping line of type marks and keys, titles hidden. The workshop's frames are `page` containers too, so any rail specimen narrower than 932px draws this form. The container is `.shell-main`, so opening the [item panel](/components/item-panel) beside the page can move the rail under the chat on a wide screen.
+**Wide.** At 1180px and up (`@media (min-width: 1180px)` in `window.css`) the rail leaves the page: it's fixed at the window's right edge, the window's height, `--rail-beside` wide (the rail and `--space-4` each side), on `--frame`, as the sidebar is on the left, and `.shell:has(.rail)` sets `--beside` to its width, so the page column sits inset between the two and the chat has it to itself (2026-11-08). The [item panel](/components/item-panel) covers it while it's open.
+
+**Narrow.** Below 1180px: "A narrow page, on a narrow screen or beside the panel: the rails move inline, and rows wrap to two lines. The region moves under the chat before the rows wrap, where a 1180px screen leaves the page beside the sidebar" (`@container page (max-width: 932px)` in `window.css`). Under `@container page (max-width: 932px)` the layout is one column, the rail is no longer sticky, and its rows become a wrapping line of type marks and keys, titles hidden. The workshop's frames are `page` containers too, so any rail specimen narrower than 932px draws this form. The container is `.shell-main`, so opening the [item panel](/components/item-panel) beside the page can move the rail under the chat on a wide screen.
 
 ## States
 

@@ -17,7 +17,7 @@ Pick a token by its **role**, never by how it looks in the theme in front of you
 - `--surface-hover`: a row or button under the pointer, or a menu item in focus. It's also the avatar's fill.
 - `--surface-sunk`: half way from `--bg` to `--surface`. Use it for a well inside a surface, such as a read-only field or code.
 - `--list-bg`: behind the overview's lists. Graphite frames its lists on `--surface`. Broadsheet leaves them open, on `--bg`.
-- `--frame`: the window's [frame](/components/frame): the sidebar, the band along the page column's top, the narrow screen's bar, and [the bead](/components/bead) grown from it. A little deeper than `--bg` in light, a little lighter in the dark. `--sidebar-bg` (derived) is `--frame`.
+- `--frame`: the window's [frame](/components/frame): the sidebar, the band along the page column's top and down its right, the item panel and a wide screen's thread rail, the narrow screen's bar, and [the bead](/components/bead) grown from it. A little deeper than `--bg` in light, a little lighter in the dark. `--sidebar-bg` (derived) is `--frame`.
 - `--frame-shade`: the shadow the frame casts onto the column, and the bead's. The dark's is much stronger than the light's, so it reads on the deeper page.
 
 ## Lines
