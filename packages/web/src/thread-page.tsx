@@ -353,14 +353,23 @@ function pickerLabels(
         ? titleOf(workstream.id)
         : workstream.name,
   }));
-  const seen = new Map<string, number>();
-  return new Map(
-    named.map(({ id, name }) => {
-      const nth = (seen.get(name) ?? 0) + 1;
-      seen.set(name, nth);
-      return [id, nth === 1 ? name : `${name} (${nth})`];
-    }),
-  );
+  // The default's label and each name's first holder keep theirs; the rest
+  // take the first "(n)" nobody has.
+  const taken = new Set([blankName]);
+  const labels = new Map<string, string>();
+  for (const { id, name } of named) {
+    if (taken.has(name)) continue;
+    taken.add(name);
+    labels.set(id, name);
+  }
+  for (const { id, name } of named) {
+    if (labels.has(id)) continue;
+    let nth = 2;
+    while (taken.has(`${name} (${nth})`)) nth++;
+    taken.add(`${name} (${nth})`);
+    labels.set(id, `${name} (${nth})`);
+  }
+  return labels;
 }
 
 // The workstreams a new thread can start in: those still open, but the
