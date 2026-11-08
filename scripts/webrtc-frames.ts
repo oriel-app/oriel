@@ -442,13 +442,15 @@ const host = http.createServer((req, res) => {
     return void res.end(appHtml(run, true));
   }
   const blob = run.kind === "blob";
+  const local = blob || run.kind === "data";
   // Oriel's page's own kind of policy (site.ts), framing the app's origin. A
-  // blob: document takes its creator's policy, so for a blob the host must
-  // allow inline script and the app's connect-src.
+  // blob: or data: document takes its creator's policy (measured: a data:
+  // frame's inline script is refused under the host's script-src 'self'), so
+  // for those the host must allow inline script and the app's connect-src.
   const policy = [
     "default-src 'none'",
-    `script-src 'self'${blob ? " 'unsafe-inline'" : ""}`,
-    `connect-src 'self'${blob ? ` ${appOrigin()}` : ""}`,
+    `script-src 'self'${local ? " 'unsafe-inline'" : ""}`,
+    `connect-src 'self'${local ? ` ${appOrigin()}` : ""}`,
     `frame-src ${appOrigin()} data: blob:`,
     "base-uri 'none'",
     ...(run.levers.csp ? ["webrtc 'block'"] : []),
@@ -518,28 +520,46 @@ const commonSwitches = [
   "--disable-component-update",
 ];
 
-async function chrome(switches: string[], proxied: boolean): Promise<Engine> {
-  const browser = await chromium.launch({
-    channel: "chrome",
-    headless: true,
-    chromiumSandbox: true,
-    args: [
-      ...commonSwitches,
-      ...switches,
-      ...(proxied
-        ? [`--proxy-server=http://127.0.0.1:${proxyPort}`, "--proxy-bypass-list=<-loopback>"]
-        : []),
-    ],
-  });
+// Current Chrome has no WebRTC policy switch (--force-webrtc-ip-handling-
+// policy is gone); it reads the policy only from the profile's pref
+// `webrtc.ip_handling_policy`, which extensions and enterprise policy set. So
+// a policy run gets a fresh profile with that pref in its Preferences.
+async function chrome(switches: string[], proxied: boolean, policyPref: boolean): Promise<Engine> {
+  const args = [
+    ...commonSwitches,
+    ...switches,
+    ...(proxied
+      ? [`--proxy-server=http://127.0.0.1:${proxyPort}`, "--proxy-bypass-list=<-loopback>"]
+      : []),
+  ];
+  const options = { channel: "chrome", headless: true, chromiumSandbox: true, args };
+  const browser = policyPref ? null : await chromium.launch(options);
+  let version = browser?.version() ?? "";
+  const open = async () => {
+    if (browser) return browser.newContext();
+    const profile = mkdtempSync(join(tmpdir(), "oriel-webrtc-profile-"));
+    mkdirSync(join(profile, "Default"));
+    writeFileSync(
+      join(profile, "Default/Preferences"),
+      JSON.stringify({ webrtc: { ip_handling_policy: "disable_non_proxied_udp" } }),
+    );
+    const context = await chromium.launchPersistentContext(profile, options);
+    version = context.browser()?.version() ?? version;
+    return context;
+  };
+  if (!browser) await (await open()).close();
   return {
-    name: `Chrome ${browser.version()} headless`,
+    get name() {
+      return `Chrome ${version} headless${policyPref ? ", pref webrtc.ip_handling_policy = disable_non_proxied_udp" : ""}`;
+    },
     async load(run) {
-      const context = await browser.newContext();
+      const context = await open();
       if (run.levers.preload)
         await context.addInitScript(
           `for (const n of ["RTCPeerConnection", "webkitRTCPeerConnection"]) { try { delete globalThis[n]; } catch {} }`,
         );
       const page = await context.newPage();
+      if (process.env["DEBUG"]) page.on("console", (m) => console.log("console:", m.text()));
       await page.goto(`http://127.0.0.1:${hostPort}/host?run=${run.id}`).catch(() => {});
       await page.waitForTimeout(settle);
       const reports = (await page.evaluate("window.reports").catch(() => [])) as any[];
@@ -549,7 +569,9 @@ async function chrome(switches: string[], proxied: boolean): Promise<Engine> {
       await context.close();
       return { reports, permissions: [], features };
     },
-    close: () => browser.close(),
+    close: async () => {
+      await browser?.close();
+    },
   };
 }
 
@@ -750,12 +772,11 @@ type Plan = {
   config: string;
   switches: string[];
   proxied?: boolean;
+  policyPref?: boolean;
   levers: Levers[];
   kinds: readonly Kind[];
   variants: readonly Variant[];
 };
-const allLevers = (names: string) => names;
-void allLevers;
 const label = (l: Levers) =>
   [l.csp && "csp", l.policy && "policy", l.preload && "preload", l.proxy && "proxy"]
     .filter(Boolean)
@@ -811,8 +832,9 @@ const plans: Plan[] = values.desktop
         variants,
       },
       {
-        config: "--force-webrtc-ip-handling-policy",
-        switches: ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+        config: "pref",
+        switches: [],
+        policyPref: true,
         levers: [{ policy: true }, { policy: true, preload: true }],
         kinds: frameKinds,
         variants,
@@ -826,8 +848,9 @@ const plans: Plan[] = values.desktop
         variants,
       },
       {
-        config: "--force-webrtc-ip-handling-policy + proxy",
-        switches: ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+        config: "pref + proxy",
+        switches: [],
+        policyPref: true,
         proxied: true,
         levers: [{ policy: true, proxy: true }],
         kinds: frameKinds,
@@ -848,7 +871,7 @@ for (const plan of plans) {
   if (!wanted) continue;
   const engine = values.desktop
     ? await electron(out, plan.switches)
-    : await chrome(plan.switches, plan.proxied ?? false);
+    : await chrome(plan.switches, plan.proxied ?? false, plan.policyPref ?? false);
   if (!engines.includes(engine.name)) engines.push(engine.name);
   console.log(`engine: ${engine.name}`);
   for (const levers of plan.levers)
