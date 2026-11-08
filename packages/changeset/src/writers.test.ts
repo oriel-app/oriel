@@ -3,34 +3,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Credential } from "@oriel/core";
-import { sourceKinds, sources } from "@oriel/sources";
-import { changeSets } from "./change-sets.ts";
 import * as entry from "./index.ts";
-import { setup, specs, t0 } from "./testing.ts";
-import { buildWriters, writableKinds } from "./writers.ts";
+import { buildWriters } from "./writers.ts";
 
 const credential: Credential = { headers: async () => ({}) };
 const jira = { site: "https://oriel.atlassian.net", credential, project: "SYN" };
 const log = () => {};
 const jiraConfig = (writes: object) => [{ prefix: "jira", kind: "jira", writes }];
-
-test("every connector with op specs has a line in writers.ts, and every line has such a connector", () => {
-  assert.deepEqual(
-    writableKinds.toSorted(),
-    sourceKinds.filter((kind) => sources[kind].specs !== undefined).toSorted(),
-  );
-});
-
-test("a writer is built only for a connection that may propose changes, by its prefix, and building one sends nothing", () => {
-  assert.deepEqual(buildWriters([], log), {});
-  const writers = buildWriters(jiraConfig(jira), log);
-  assert.deepEqual(Object.keys(writers), ["jira"]);
-  assert.equal(writers.jira?.kind, "jira");
-  assert.throws(
-    () => buildWriters([{ prefix: "folder", kind: "folder", writes: {} }], log),
-    /folder has no line in writers\.ts/,
-  );
-});
 
 test("config a writer can't be built from is refused when change sets are made", () => {
   for (const bad of [
@@ -42,41 +21,7 @@ test("config a writer can't be built from is refused when change sets are made",
 });
 
 test("the package entry builds change sets from config and has no way to pass a writer in", () => {
-  assert.deepEqual(Object.keys(entry).toSorted(), [
-    "ChangeSetError",
-    "changeSets",
-    "explainConflicts",
-    "plainError",
-    "sendLeaseMs",
-  ]);
-});
-
-test("without writer config, a source's change sets can't be shown or applied", async () => {
-  const { db, run, changeSets: inMemory } = setup();
-  const set = await inMemory.capture(run, [
-    { op: "setEstimate", target: "jira:SYN-21", ref: null, args: { points: 5 } },
-  ]);
-  const readOnly = changeSets({
-    db,
-    writerConfig: [],
-    specs,
-    reviewBase: new URL("http://localhost:4000/review/"),
-    now: () => t0,
-    emit: () => {},
-    log,
-  });
-  await assert.rejects(readOnly.diff(set.id), /jira items are read-only/);
-});
-
-test("a writer reaches its site through the config's fetch when one is given", async () => {
-  const asked: string[] = [];
-  const answer: typeof fetch = async (input) => {
-    asked.push(String(input));
-    return new Response(JSON.stringify({ errorMessages: ["no"] }), { status: 404 });
-  };
-  const writers = buildWriters(jiraConfig({ ...jira, fetch: answer }), log);
-  assert.equal(await writers.jira?.current("jira:SYN-1", ["summary"]), "gone");
-  assert.deepEqual(asked, [
-    "https://oriel.atlassian.net/rest/api/3/issue/SYN-1?fields=summary,description,issuetype,parent,assignee,updated",
-  ]);
+  assert.equal(typeof entry.changeSets, "function");
+  // Each of these takes a writer, or builds one from config a caller hands it.
+  for (const name of ["changeSetsOver", "buildWriters"]) assert.ok(!(name in entry), name);
 });

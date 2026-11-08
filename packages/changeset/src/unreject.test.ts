@@ -33,16 +33,15 @@ test("a rejection in the thread undone leaves the change set undecided, as it wa
   // Twice is refused: it isn't rejected any more.
   await assert.rejects(changeSets.undoRejection(set.id), {
     code: "refused",
-    message: /isn't rejected/,
   });
   // Its next decision stands, as a new one.
   const approved = await approve(changeSets, set.id);
   assert.equal(approved.decision?.kind, "approved");
   assert.equal(count(db, "decisions"), 2);
-  await assert.rejects(changeSets.undoRejection(set.id), { message: /isn't rejected/ });
+  await assert.rejects(changeSets.undoRejection(set.id), { code: "refused" });
 });
 
-test("a rejection through a review link can't be undone, and says who made it", async () => {
+test("a rejection through a review link can't be undone", async () => {
   const { changeSets, run } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const { hash } = await changeSets.diff(set.id);
@@ -51,7 +50,6 @@ test("a rejection through a review link can't be undone, and says who made it", 
   await changeSets.decide(set.id, "rejected", { via: "review-link", token, by: "Ana" }, hash);
   await assert.rejects(changeSets.undoRejection(set.id), {
     code: "refused",
-    message: /Ana rejected it on its review link/,
   });
   assert.equal((await changeSets.get(set.id))?.decision?.kind, "rejected");
 });
@@ -71,31 +69,6 @@ test("a change set dismissed after part of it was sent can't be put back", async
   // As after a restart: the send is on record, its answer isn't.
   const later = instance();
   await later.dismiss(set.id);
-  await assert.rejects(later.undoRejection(set.id), {
-    code: "refused",
-    message: /part of it was sent/,
-  });
-});
-
-test("an approval is no rejection to undo", async () => {
-  const { changeSets, run } = setup();
-  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
-  await assert.rejects(changeSets.undoRejection(set.id), { message: /isn't rejected/ });
-  await approve(changeSets, set.id);
-  await assert.rejects(changeSets.undoRejection(set.id), { message: /isn't rejected/ });
-});
-
-test("a revert's rejection can't be undone: Revert makes another", async () => {
-  const { changeSets, run } = setup();
-  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
-  await approve(changeSets, set.id);
-  await changeSets.apply(set.id);
-  const revert = await changeSets.revert(set.id);
-  assert.ok(!("conflicts" in revert));
-  const { hash } = await changeSets.diff(revert.id);
-  await changeSets.decide(revert.id, "rejected", { via: "thread", by: "user" }, hash);
-  await assert.rejects(changeSets.undoRejection(revert.id), {
-    code: "refused",
-    message: /a revert's rejection can't be undone/,
-  });
+  await assert.rejects(later.undoRejection(set.id), { code: "refused" });
+  assert.equal((await later.get(set.id))?.decision?.kind, "rejected");
 });

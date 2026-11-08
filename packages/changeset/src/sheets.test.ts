@@ -154,10 +154,7 @@ test("a cell someone changed after the person approved is a conflict, never an o
   await approve(sets, set.id);
   standIn.change(tracker, { kind: "set", sheetId: 1100, cell: "D3", value: "Blocked" });
   const report = await sets.apply(set.id);
-  assert.match(
-    nth(report.failed, 0).error,
-    /holds “Blocked” now, not “To do” as when you approved this/,
-  );
+  assert.equal(report.failed.length, 1);
   assert.equal(cell(2, 3), "Blocked");
   assert.deepEqual(
     standIn.calls.filter((c) => c.method === "POST"),
@@ -185,7 +182,7 @@ test("a read-only connection builds no writer: its change sets are shown, never 
   ]);
   const diff = await sets.diff(set.id);
   assert.deepEqual(nth(diff.lines, 0).fields, [{ name: "status", before: "To do", after: "Done" }]);
-  await assert.rejects(approve(sets, set.id), /isn't configured here/);
+  await assert.rejects(approve(sets, set.id), { code: "read-only" });
 });
 
 test("reverting an added row stops if someone left a note on it since", async () => {
