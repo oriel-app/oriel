@@ -365,9 +365,14 @@ test("disk: the Cache API can't fill the disk", () =>
 const deepLine = (prefix: string, suffix: string) =>
   `const deep = "[".repeat(100_000) + "]".repeat(100_000);\nDeno.stdout.writeSync(new TextEncoder().encode('${prefix}' + deep + '${suffix}\\n'));\nawait new Promise(() => {});`;
 
+// Just past the host's 64-level cap: shallow enough for JSON itself, so only
+// the depth check refuses it.
 test("a deeply nested return value", async () => {
-  const result = await run(deepLine('{"kind":"done","value":', "}"));
+  const result = await run(
+    `const deep = "[".repeat(65) + "]".repeat(65);\nDeno.stdout.writeSync(new TextEncoder().encode('{"kind":"done","value":' + deep + '}\\n'));\nawait new Promise(() => {});`,
+  );
   assert.equal(result.outcome, "threw");
+  assert.equal(errorOf(result.transcript.at(-1)).phase, "runtime");
 });
 
 test("deeply nested write arguments", async () => {

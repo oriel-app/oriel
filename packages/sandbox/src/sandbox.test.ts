@@ -92,6 +92,12 @@ test("the entry file is the shim alone, and the script reaches the guest as data
   assert.ok(!entry.includes("script-marker-93f1"));
 });
 
+test("exiting before returning is a runtime error", async () => {
+  const { result } = await go(`(globalThis as any).Deno.exit(0);`);
+  assert.equal(result.outcome, "threw");
+  assert.equal(errorOf(result.transcript.at(-1)).phase, "runtime");
+});
+
 test("a script over the size cap never starts", async () => {
   const { result } = await go(`return "${"x".repeat(64)}";`, { maxScriptBytes: 32 });
   assert.equal(result.outcome, "limit");
