@@ -225,14 +225,22 @@ const add = (a: Spent, b: Spent): Spent => ({
 // A tool result block from the CLI's stream as MCP's answer. Past a size of
 // its own, Claude Code saves an answer to a file and puts a preview in the
 // block, so the server's whole answer is read from the message's
-// `tool_use_result`, where it keeps it.
+// `tool_use_result`, where it keeps it: the content alone, or the content
+// with the server's structured content beside it.
 function answerOf(block: Message, whole: unknown): ToolAnswer {
+  const kept = isObject(whole) && Array.isArray(whole.content) ? whole : null;
   const content = Array.isArray(whole)
     ? whole
-    : Array.isArray(block.content)
-      ? block.content
-      : [{ type: "text", text: text(block.content) }];
-  return { content, ...(block.is_error === true ? { isError: true } : {}) };
+    : kept
+      ? (kept.content as unknown[])
+      : Array.isArray(block.content)
+        ? block.content
+        : [{ type: "text", text: text(block.content) }];
+  return {
+    content,
+    ...(kept?.structuredContent !== undefined ? { structuredContent: kept.structuredContent } : {}),
+    ...(block.is_error === true ? { isError: true } : {}),
+  };
 }
 
 // A call that went wrong. Where nothing reached the server, as when Oriel

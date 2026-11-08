@@ -28,7 +28,7 @@ Oriel brings nothing of its own to reach a source. The person brings their agent
   - **When:** when Oriel opens and when the person presses sync, by default. Every N minutes is a setting, which on Claude Code says it spends a little of the person's plan.
 - **Writes are change sets** (0003, unchanged in what a person sees). The agent's turns never load a source server: its one tool is still `run`, its writes are captured mutations, and a person approves them. Replay turns each mutation into the server's write call, by the parser:
   - on Codex, by calling it directly;
-  - on Claude Code, by a turn that may call exactly those tools with exactly those arguments, which Oriel's permission answer checks call by call; any other call is denied and fails the replay.
+  - on Claude Code, by a turn that may call exactly those tools, which Oriel's permission answer checks call by call, giving the server Oriel's own arguments whatever the model typed; a call to any other tool, or a second call, is denied and fails the replay. A turn that called nothing sent nothing, and is tried once more.
     Sync and replay never run in the same process, and sync never has a write tool.
 - **No API key in the product.** The first run and Settings offer Claude Code and Codex only. The Messages API with `ANTHROPIC_API_KEY` stays for `pnpm dev` and evals.
 - **What goes,** once its kind passes its evals through a source server: Jira's REST client and its API-token connection, Slack's token, Google Sheets' sign-in through Oriel's own Google Cloud client and Picker, the connection secrets of 0022 and 0042, and the connect steps of 0049 that ask for them. The folder stays as it is: it's on the person's disk, and nothing is hosted.

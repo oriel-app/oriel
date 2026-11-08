@@ -39,7 +39,7 @@ const init = (over: Message = {}): Message => ({
 
 // What the fake model calls, for each message Oriel sends it, in order: one
 // call or more, each with its tool and input.
-type Turn = { tool: string; input: unknown; large?: true }[];
+type Turn = { tool: string; input: unknown; large?: true; structured?: unknown }[];
 
 function child(onLine: (message: Message, emit: (message: Message) => void) => void) {
   const process = new EventEmitter() as EventEmitter & {
@@ -132,7 +132,10 @@ function fakeClaude(turns: Turn[], report: Message = init()) {
                 },
               ],
             },
-            tool_use_result: whole,
+            tool_use_result:
+              call.structured === undefined
+                ? whole
+                : { content: whole, structuredContent: call.structured },
           });
         }
         emit({
@@ -342,6 +345,20 @@ test("an answer Claude Code saved for its size is read whole, not from its previ
   const answer = await calls.call({ tool: "getJiraIssue", args });
   assert.deepEqual(answer, {
     content: [{ type: "text", text: '{"called":"mcp__atlassian__getJiraIssue"}' }],
+  });
+  calls.close();
+});
+
+test("a saved answer with structured content keeps it", async () => {
+  const structured = { values: [["BL-108", "Open"]] };
+  const fake = fakeClaude([
+    [{ tool: "mcp__atlassian__getJiraIssue", input: {}, large: true, structured }],
+  ]);
+  const calls = claudeCodeServerCalls(cli, { ...options, spawn: fake.spawn });
+  const answer = await calls.call({ tool: "getJiraIssue", args: {} });
+  assert.deepEqual(answer, {
+    content: [{ type: "text", text: '{"called":"mcp__atlassian__getJiraIssue"}' }],
+    structuredContent: structured,
   });
   calls.close();
 });
