@@ -78,7 +78,7 @@ The maintainer, 2026-11-08: "the app is getting complex. I think we need to do a
 - `sheets-mcp` (251);
 - `server/servers/tiny-server.ts` (70).
 
-**A new harness reaches 16 files outside packages/agent.** "codex" appears in:
+**A new harness reaches 16 files outside packages/agent,** not counting tests and test helpers. "codex" appears in:
 
 - 7 in server: app, api, model, main, settings, setup and setup/cli;
 - 8 in web;
@@ -237,13 +237,13 @@ It was written twice: in plain TypeScript, and in Effect 4.1.1. Both versions sh
 **packages/agent**
 
 - **`process.ts`, the supervisor: a process's life only.** It owns:
-  - a child in its own process group, in a folder of its own (empty, unless the caller gives one, as an installer needs);
-  - one close however many ask: SIGTERM to the group, then SIGKILL after a grace, then the folder goes;
+  - a child in its own process group, in an empty folder the supervisor makes, or in a working folder the caller lends it, as an installer needs;
+  - one close however many ask: SIGTERM to the group, then SIGKILL after a grace, then the supervisor's own folder goes. A lent folder is never removed;
   - closing every child when Oriel's own process exits;
   - an idle timer and an `AbortSignal`;
   - why it ended, even when a descendant holds the inherited stdio open.
 
-  It's tested with the spike's kill-mid-call test against a fake child, plus a descendant that outlives its parent, a child that ignores SIGTERM, and stdio held by a grandchild.
+  It's tested with the spike's kill-mid-call test against a fake child, plus a descendant that outlives its parent, a child that ignores SIGTERM, stdio held by a grandchild, and a lent folder that is still there after the close.
 
 - **`json-lines.ts`, a protocol adapter above it:**
   - JSON lines in and out;
