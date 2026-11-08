@@ -104,8 +104,7 @@ import type {
   ReviewRedrawn,
   WindowView,
 } from "@oriel/web/view";
-import type { KeyCheck, Provider, Titler } from "@oriel/agent";
-import type { KeyStore } from "./api-key.ts";
+import type { Provider, Titler } from "@oriel/agent";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import {
@@ -158,6 +157,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // The MCP door for outside tools (decision 0058): open where it listens, or
 // closed and why, as when its kept port is taken.
 export type Door = { url: string; port: number } | { closed: string };
+
+// A source server's call with no process of the person's agent to make it:
+// none is picked and runs, or the one picked can't run now (decision 0059).
+class NoAgentRuns extends Error {}
 
 export type AppOptions = {
   // A SQLite file, or ":memory:".
@@ -214,8 +217,6 @@ export type AppOptions = {
   // Whether the page may set where a CLI is: only behind the desktop app's
   // launch secret, since a path set is a program the server runs.
   cliPaths?: boolean;
-  // Where the page may keep an API key: the desktop app's OS secret store.
-  keys?: { store: KeyStore; check?: (key: string) => Promise<KeyCheck> };
   // The desktop app's notifications, through its shell (OA-184).
   notify?: Notify;
   // Tells the desktop app's shell how many threads Oriel is working on, so
@@ -544,7 +545,15 @@ export async function createApp(options: AppOptions): Promise<App> {
   // another server now, or through none, opens again.
   const throughOpen = new Map<
     SourceKind,
-    { key: string; server: string; agent: () => string | null; via: ThroughServer }
+    {
+      key: string;
+      server: string;
+      agent: () => string | null;
+      via: ThroughServer;
+      // Stops its processes once idle, so the next call starts on the agent
+      // that runs now.
+      retire: () => void;
+    }
   >();
   const serverKey = (server: Recognized | null) =>
     server
@@ -555,6 +564,15 @@ export async function createApp(options: AppOptions): Promise<App> {
           [...server.found.tools],
         ])
       : null;
+  // Why no process of the person's agent can call `server`, and the one
+  // place that fixes it.
+  const noAgentSaid = (server: Recognized): string => {
+    const name = declared(server.kind as SourceKind).name;
+    const running = options.models?.choose(store.get()).model;
+    return !running || running.provider.kind === "api"
+      ? `No AI is on to read ${name} through ${server.known.name}. Set up Claude Code or Codex in Settings, under Providers.`
+      : `${running.provider.name} can't run now, so Oriel can't read ${name} through ${server.known.name}. See Settings, under Providers.`;
+  };
   const callServer =
     options.callServer ??
     ((server: FoundServer, tools: readonly string[], known: SourceServer) =>
@@ -568,9 +586,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     let agent: string | null = null;
     // Calls in flight: it stops only once none is.
     let active = 0;
+    // Another agent runs now: the process stops once its calls end.
+    let stale = false;
     const close = () => {
       if (quiet) clearTimeout(quiet);
       quiet = null;
+      stale = false;
       const was = current;
       current = null;
       void was?.then((calling) => calling?.calls.close()).catch(() => {});
@@ -582,7 +603,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       const at = (current ??= callServer(server.found, tools, server.known));
       try {
         const calling = await at;
-        if (!calling) throw new Error(`No agent runs ${server.known.name} now.`);
+        if (!calling) throw new NoAgentRuns(noAgentSaid(server));
         agent = calling.agent.kind;
         return await calling.calls.call(each);
       } catch (error) {
@@ -592,12 +613,19 @@ export async function createApp(options: AppOptions): Promise<App> {
       } finally {
         active -= 1;
         if (active === 0 && (current as Promise<Calling | null> | null) !== null) {
-          quiet = setTimeout(close, 20_000);
-          quiet.unref();
+          if (stale) close();
+          else {
+            quiet = setTimeout(close, 20_000);
+            quiet.unref();
+          }
         }
       }
     };
-    return { call, close, agent: () => agent };
+    const retire = () => {
+      if (active === 0) close();
+      else stale = true;
+    };
+    return { call, close, retire, agent: () => agent };
   };
   // Opens a kind through its source server: its first connection if it has
   // one, as one made before decision 0059, so its items keep their IDs and
@@ -653,6 +681,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         server: server.found.name,
         agent: reads.agent,
         via,
+        retire: () => {
+          reads.retire();
+          writes.retire();
+        },
       });
       problems.delete(connection.id);
     } catch (error) {
@@ -673,6 +705,10 @@ export async function createApp(options: AppOptions): Promise<App> {
           server: server.found.name,
           agent: reads.agent,
           via,
+          retire: () => {
+            reads.retire();
+            writes.retire();
+          },
         });
         return;
       }
@@ -979,7 +1015,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         source: each.connection.prefix,
         error: error instanceof Error ? error.message : String(error),
       });
-      const problem = each.opened.problem(error);
+      // No AI to run the server through: that, in plain words, since
+      // trying again won't help until one runs.
+      const problem = error instanceof NoAgentRuns ? error.message : each.opened.problem(error);
       problems.set(each.connection.id, problem);
       return problem;
     }
@@ -1851,13 +1889,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     models: models ?? null,
     themes: options.themes ?? [defaultTheme],
     cliPaths: options.cliPaths ?? false,
-    ...(options.keys ? { keys: options.keys } : {}),
     notifies: options.notify !== undefined,
     asksBeforeQuitting: options.working !== undefined,
     saved: () => guarding?.changed(),
     picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
-    // Another agent may have other servers, so what's on may change.
-    agentChanged: () => void switches.look(),
+    // Another agent may have other servers, so what's on may change; and a
+    // process of the one before, idle or once its calls end, stops.
+    agentChanged: () => {
+      for (const each of throughOpen.values()) each.retire();
+      void switches.look();
+    },
     synced: () => lookEvery(),
   });
   // What's on changed: a kind that turned on opens and syncs, one that
@@ -2779,7 +2820,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       overview,
       noticed,
-      lookForServers: () => switches.look(),
+      // The providers first, as one may have signed in or out since: the
+      // servers are those of the agent that runs now.
+      lookForServers: async () => {
+        await settings.look();
+        await switches.look();
+      },
       connections: () => ({
         connections: connectionsView(),
         // A kind turned off isn't offered: nothing of it shows (decision 0059).

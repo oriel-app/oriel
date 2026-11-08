@@ -1,12 +1,13 @@
 // Which model the agent and thread titles run on (decisions 0037, 0041 and
-// 0048). Oriel looks for each provider instance Settings lists: an API key,
-// in `.env` or, on the desktop app, in the OS secret store, and the person's
-// own Claude Code and Codex, each installed, a supported version and signed
-// in. Each turn and each title then runs on the provider and model Settings
-// pick, among those found and turned on, so a change in Settings applies at
-// the next turn. With no pick, the key wins, then Claude Code, then Codex, a
-// preview. With none, each turn says how to set one up, naming no
-// credential.
+// 0048). Oriel looks for each provider instance Settings lists: the
+// person's own Claude Code and Codex, each installed, a supported version
+// and signed in. Each turn and each title then runs on the provider and
+// model Settings pick, among those found and turned on, so a change in
+// Settings applies at the next turn. With no pick, Claude Code wins, then
+// Codex, a preview. With none, each turn says how to set one up, naming no
+// credential. There is no API-key way in (decision 0059): `.env`'s key is
+// an instance only under `pnpm dev --agent api`, where it's asked for, and
+// so wins.
 import {
   agent,
   anthropicProvider,
@@ -82,11 +83,9 @@ export const noticedModel = "claude-sonnet-5-5";
 export type Choice = { model: Running | null; title: Running | null; problem: string };
 
 export type ModelsOptions = {
-  // ANTHROPIC_API_KEY from `.env`, or null.
+  // ANTHROPIC_API_KEY from `.env` under `pnpm dev --agent api`, or null:
+  // the only way a key runs anything.
   key: string | null;
-  // On the desktop app, the key kept in the OS secret store, which Settings
-  // can change, in place of `.env`'s. Each look reads it again.
-  kept?: { get(): Promise<string | null> };
   // `--claude-code <path>`; a path set in Settings wins.
   claudeCodePath?: string;
   // Whether Oriel may run the CLI at `path`, asked before each look runs it
@@ -171,9 +170,19 @@ export type Models = {
 
 const checking: Found = { status: "checking" };
 
-// Which instance runs when nothing is picked: the key, then Claude Code,
-// then Codex.
-const order = ["api", "claude-code", "codex"] as const;
+// Which instance runs when nothing is picked: the key, when `--agent api`
+// gave one, then Claude Code, then Codex.
+export const order = ["api", "claude-code", "codex"] as const;
+
+// `.env`'s key as an instance, under `pnpm dev --agent api` only. Settings
+// never lists it, and the desktop app never has one.
+const apiInstance: ProviderSetting = { id: "api", kind: "api", name: "API key", on: true };
+
+// The instances Oriel looks for: Settings', and the key first when given.
+export const instancesOf = (settings: Settings, key: string | null): ProviderSetting[] => [
+  ...(key ? [apiInstance] : []),
+  ...settings.providers.filter((p) => p.kind !== "api"),
+];
 
 // A turn with no model to run it: it says why and how to set one up.
 export function setupAgent(message: string): Agent {
@@ -198,10 +207,8 @@ export function codexDefault(found: Found): string {
 export function models(options: ModelsOptions): Models {
   const env = options.env ?? process.env;
   const check = options.check ?? checkClaudeCode;
-  const { kept } = options;
-  // Where the key comes from, for the words a row and the server's line use.
-  const where = kept ? "store" : "env";
-  let key = kept ? null : options.key;
+  const { key } = options;
+  const instances = (settings: Settings) => instancesOf(settings, key);
   let found = new Map<string, Found>();
   // Agents and titlers by instance, model and CLI, built once each.
   const agents = new Map<string, Agent>();
@@ -212,7 +219,7 @@ export function models(options: ModelsOptions): Models {
   let latest: Promise<void> = Promise.resolve();
 
   // Only the turns and tokens of the person's Claude Code count toward
-  // their plan: an API key bills per question.
+  // their plan: `--agent api`'s key bills per question.
   const counts = options.counts ?? memoryUsage(() => "");
   const providerOf =
     options.provider ??
@@ -265,8 +272,8 @@ export function models(options: ModelsOptions): Models {
     return { name: server.name };
   };
 
-  async function lookFor(provider: ProviderSetting, key: string | null): Promise<Found> {
-    if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
+  async function lookFor(provider: ProviderSetting): Promise<Found> {
+    if (provider.kind === "api") return { status: "ready", cli: null };
     if (provider.kind === "codex") {
       const result = await (options.checkCodex ?? checkCodex)({
         env,
@@ -291,7 +298,7 @@ export function models(options: ModelsOptions): Models {
 
   const foundOf = (id: string) => found.get(id) ?? checking;
   const usable = (settings: Settings) =>
-    settings.providers.filter((p) => p.on && ready(foundOf(p.id)));
+    instances(settings).filter((p) => p.on && ready(foundOf(p.id)));
   // The models an instance offers: Claude's three, or what Codex lists.
   const modelsOf = (provider: ProviderSetting): readonly { id: string; label: string }[] => {
     if (provider.kind !== "codex") return claudeModels;
@@ -313,7 +320,7 @@ export function models(options: ModelsOptions): Models {
     locateCodex(env) !== null;
 
   // The pick, if its instance is usable and offers its model; else the
-  // first usable instance, the key first, then Claude Code, with its default.
+  // first usable instance in `order`, with its default.
   function running(
     settings: Settings,
     pick: ModelPick | null,
@@ -356,7 +363,7 @@ export function models(options: ModelsOptions): Models {
     if (claudeFound.status === "checking")
       return "Oriel is still looking for Claude Code. Try again in a moment.";
     if (options.desktop && claudeFound.status !== "untrusted")
-      return "Oriel has no AI set up yet. Set up Claude Code or Codex in Settings, or add an API key there.";
+      return "Oriel has no AI set up yet. Set up Claude Code or Codex in Settings.";
     // Only Codex is there, and it isn't ready: its own problem.
     const codexProblem = codexFound && "problem" in codexFound ? codexFound.problem : undefined;
     if (claudeFound.status === "missing" && codexProblem && codexFound?.status !== "missing")
@@ -371,15 +378,13 @@ export function models(options: ModelsOptions): Models {
   return {
     look(settings) {
       const look = ++looks;
-      found = new Map(settings.providers.map((p) => [p.id, found.get(p.id) ?? checking]));
+      found = new Map(instances(settings).map((p) => [p.id, found.get(p.id) ?? checking]));
       latest = (async () => {
-        const keyNow = kept ? await kept.get() : key;
         const answers = await Promise.all(
-          settings.providers.map(async (p) => [p.id, await lookFor(p, keyNow)] as const),
+          instances(settings).map(async (p) => [p.id, await lookFor(p)] as const),
         );
         // A later look started meanwhile: wait for its answers, not these.
         if (look !== looks) return latest;
-        key = keyNow;
         found = new Map(answers);
         agents.clear();
         titlers.clear();
@@ -479,7 +484,7 @@ export function models(options: ModelsOptions): Models {
     },
     providers(settings) {
       const { model, title } = choose(settings);
-      return settings.providers.flatMap((provider): ProviderView[] => {
+      return instances(settings).flatMap((provider): ProviderView[] => {
         const at = foundOf(provider.id);
         if (!shown(provider)) return [];
         return [
@@ -489,7 +494,7 @@ export function models(options: ModelsOptions): Models {
             name: provider.name,
             on: provider.on,
             status: at.status,
-            detail: detailOf(provider, at, where),
+            detail: detailOf(provider, at),
             version: ready(at) ? (at.cli?.version ?? null) : null,
             path: provider.path ?? null,
             uses: {
@@ -502,11 +507,11 @@ export function models(options: ModelsOptions): Models {
     },
     async usage(settings) {
       // Codex's, like its row, only once it's installed.
-      const instances = settings.providers.flatMap((p) =>
+      const clis = settings.providers.flatMap((p) =>
         p.kind === "api" || !shown(p) ? [] : [{ ...p, kind: p.kind }],
       );
       return Promise.all(
-        instances.map(async (provider): Promise<UsageView> => {
+        clis.map(async (provider): Promise<UsageView> => {
           const at = foundOf(provider.id);
           const cli = ready(at) ? at.cli : null;
           // A CLI runs only once the trust check passes, as for a turn.
@@ -525,7 +530,7 @@ export function models(options: ModelsOptions): Models {
       const how = (r: Running) =>
         r.cli
           ? `${label(r.provider, r.model)} through ${r.provider.kind === "codex" ? "Codex" : "Claude Code"} ${r.cli.version} at ${r.cli.path}, on its own sign-in`
-          : `${label(r.provider, r.model)} with ${where === "store" ? "the API key in the OS secret store" : "the model key from .env"}`;
+          : `${label(r.provider, r.model)} with the model key from .env, as --agent api asked`;
       return `Agent: ${how(model)}. Thread titles: ${title ? how(title) : "the first message, clipped"}.`;
     },
   };
@@ -533,7 +538,7 @@ export function models(options: ModelsOptions): Models {
 
 // What a row says was found, in the person's words. Never a key. The
 // CLI's own problems say to restart Oriel; Settings can check again instead.
-function detailOf(provider: ProviderSetting, found: Found, where: "env" | "store"): string {
+function detailOf(provider: ProviderSetting, found: Found): string {
   if ("problem" in found && found.problem)
     return found.problem.message
       .replace("then restart Oriel.", "then check again.")
@@ -541,13 +546,9 @@ function detailOf(provider: ProviderSetting, found: Found, where: "env" | "store
   switch (found.status) {
     case "ready":
       if (found.cli) return `Signed in · version ${found.cli.version}`;
-      return where === "store" ? "A key is kept in the OS secret store" : "A key is set in .env";
+      return "A key is set in .env, and --agent api asked for it";
     case "checking":
       return "Checking…";
-    case "no-key":
-      return where === "store"
-        ? "No key is set. Paste one from Anthropic's console to pay per question."
-        : "No key is set. Add ANTHROPIC_API_KEY to .env, then restart Oriel.";
     default:
       return provider.kind === "codex" ? "Not installed." : "Not found.";
   }

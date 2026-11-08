@@ -1,7 +1,8 @@
-// Where secrets are kept: the API key, `anthropic-key`, in the OS's own
-// store, which the desktop app's shell reaches for the server (decisions
-// 0036, 0042). Since decision 0059 no connection keeps one: a source is
-// read through the person's own agent, which holds its sign-in. What
+// Where secrets are kept: the OS's own store, which the desktop app's shell
+// reaches for the server (decisions 0036, 0042). Since decision 0059 the
+// server keeps none there: a source is read through the person's own agent,
+// which holds its sign-in, and no AI runs on an API key, whose old secret,
+// `anthropic-key`, the shell deletes as its store opens. What
 // `pnpm dev` kept of them before is retired at start (`oldSecretFiles`). No
 // message here carries a value from one.
 import { lstatSync, readdirSync, rmdirSync, rmSync } from "node:fs";

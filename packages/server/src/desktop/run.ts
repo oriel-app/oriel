@@ -1,8 +1,8 @@
 // The server's desktop mode (decision 0036): the server as the desktop
 // shell's child. It reads the launch secret and talks to the shell over
 // stdin and stdout (PROTOCOL.md), keeps its database and port in the data
-// folder the shell names, keeps the API key in the OS secret store through
-// the shell, and quits when the shell is gone (its
+// folder the shell names, reaches the OS secret store through the shell,
+// and quits when the shell is gone (its
 // stdin ends, on every OS) or sends SIGTERM.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -35,16 +35,16 @@ export type DesktopOptions = {
   // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now" | "sources">;
   // Finds the models the agent can run on, with the person's settings and
-  // the shell's secret store, which holds the API key: it runs once the
-  // secret is in, and a stop meanwhile doesn't wait for it. The shell
-  // answers nothing until the server listens, so it mustn't wait on the
-  // store.
+  // the shell's secret store, which holds nothing the server uses since
+  // decision 0059 retired the API key: it runs once the secret is in, and a
+  // stop meanwhile doesn't wait for it. The shell answers nothing until the
+  // server listens, so it mustn't wait on the store.
   // `looked`, when given, holds every request until the first look ends, as
   // it did when the look came first, so no page shows it unfinished.
   // `setup`: the first run and its commands for the person's CLI (decision
   // 0038), which bring the window to the front through the shell.
   model?: (secrets: Secrets) => Promise<
-    Pick<AppOptions, "agent" | "titler" | "models" | "settings" | "keys"> & {
+    Pick<AppOptions, "agent" | "titler" | "models" | "settings"> & {
       looked?: Promise<unknown>;
       setup?: Omit<SetupOptions, "front">;
     }

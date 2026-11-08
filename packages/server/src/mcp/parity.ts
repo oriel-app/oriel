@@ -32,7 +32,6 @@ const connecting =
 export const windowRoutes: Record<string, ProgramWay> = {
   "GET /settings": { not: settings },
   "POST /settings": { not: settings },
-  "POST /settings/key": { not: settings },
   "POST /settings/look": { not: settings },
   "POST /settings/usage": { not: settings },
   "GET /outside-tools": { not: toolsOwn },

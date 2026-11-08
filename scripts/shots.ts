@@ -589,7 +589,7 @@ const freshThread = async (): Promise<string> => {
 };
 
 // Settings (OA-181), on a stand-in for the person's machine: Claude Code
-// and Codex found and signed in, and no API key. Nothing is started; the
+// and Codex found and signed in. Nothing is started; the
 // checks are stand-ins. One opens with large
 // text, which the server writes into the page.
 const codexBin = mkdtempSync(join(tmpdir(), "oriel-shots-codex-"));
@@ -612,12 +612,9 @@ for (let turn = 0; turn < 11; turn++)
     { inputTokens: 30_900, outputTokens: 700, cacheReadTokens: 30_000, cacheWriteTokens: 0 },
     true,
   );
-// The desktop app's secret store, with no key in it yet.
-const noKey = { get: async () => null, set: async () => {}, delete: async () => {} };
 const configured = async (settings: Partial<Settings> = {}) => {
   const chooser = models({
     key: null,
-    kept: noKey,
     env: { PATH: codexBin },
     check: async () => ({
       ok: true,
@@ -666,9 +663,8 @@ const configured = async (settings: Partial<Settings> = {}) => {
     sources: { jira: { mode: "fixture" } },
     models: chooser,
     settings: kept,
-    // As the desktop app has it, so the path and key fields show.
+    // As the desktop app has it, so the path fields show.
     cliPaths: true,
-    keys: { store: noKey, check: async () => "rejected" },
     notify: async () => {},
     working: async () => {},
     pickFolder: async () => null,
@@ -1694,6 +1690,12 @@ return waiting.why;`;
 // the scenes deletes what the last one made first.
 const suggesting = (await writing({ mode: "fixture" })).serving;
 
+// No API-key way in (decision 0059): nothing on the page offers one.
+const noApiKey = async (page: Page) => {
+  const said = await page.evaluate<string>("document.body.innerText");
+  if (/API key|per question|console\.anthropic/i.test(said))
+    throw new Error("the page still offers an API key");
+};
 const scenes: Scene[] = [
   // Settings (OA-181): its sections, each a page; Providers first, its rows
   // without the plan, which Usage shows.
@@ -1704,6 +1706,7 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.locator("#provider-codex .provider-state", { hasText: "Ready" }).waitFor();
       if (await page.locator(".plan-usage").count()) throw new Error("usage on Providers' rows");
+      await noApiKey(page);
     },
   },
   {
@@ -3803,7 +3806,10 @@ scenes.push(
     name: "setup-missing",
     path: "/setup",
     make: firstRun(),
-    act: (page) => page.getByRole("button", { name: "Install", exact: true }).waitFor(),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Install", exact: true }).waitFor();
+      await noApiKey(page);
+    },
   },
   {
     name: "setup-installing",
@@ -3846,13 +3852,29 @@ scenes.push(
       await page.getByRole("button", { name: "Continue with Codex" }).waitFor();
     },
   },
+  // Set up later, with Codex ready and listing Atlassian's server: Your
+  // work lists every source "See what Oriel found" would, Jira to turn on in
+  // place of the stand-in, and each other with how to add its server.
   {
-    name: "setup-api-key",
+    name: "setup-later-work",
     path: "/setup",
-    make: firstRun({ codex: true }),
+    make: firstRun({ codex: "ready", atlassian: "found", slack: "found" }),
     act: async (page) => {
-      await page.getByRole("button", { name: "pay Anthropic per question", exact: true }).click();
-      await page.getByRole("heading", { name: "Pay Anthropic per question" }).waitFor();
+      await noApiKey(page);
+      await page.getByRole("button", { name: "Set up later" }).click();
+      await page.getByRole("button", { name: "Turn on Jira" }).waitFor();
+      // Slack, with no first-run offer of its own, turned on here, stays.
+      await page.getByRole("button", { name: "Turn on Slack" }).click();
+      await page
+        .locator(".provider-row", { hasText: "Slack" })
+        .locator(".provider-status[data-connected]")
+        .waitFor();
+      for (const name of ["Linear", "Google Sheets"])
+        await page
+          .locator(".provider-row", { hasText: name })
+          .getByRole("link", { name: "How to add it" })
+          .waitFor();
+      await noApiKey(page);
     },
   },
   {
@@ -3916,7 +3938,10 @@ scenes.push(
     name: "setup-too-new",
     path: "/setup",
     make: firstRun({ cli: { version: "3.0.1", signedIn: true } }),
-    act: (page) => page.getByText("newer than Oriel works with").waitFor(),
+    act: async (page) => {
+      await page.getByText("newer than Oriel works with").waitFor();
+      await noApiKey(page);
+    },
   },
   {
     name: "setup-usage-limit",
@@ -4091,8 +4116,10 @@ scenes.push(
     name: "first-run-settings",
     path: "/settings",
     make: firstRun({ cli: { signedIn: true }, codex: true, atlassian: "on", state: setupFinished }),
-    act: (page) =>
-      page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
+    act: async (page) => {
+      await page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor();
+      await noApiKey(page);
+    },
   },
   // Both signed in with the person's own API key: no line about training.
   {
@@ -4442,6 +4469,32 @@ scenes.push(
       await page.goto(new URL(`/threads/${thread}`, page.url()).href);
       await page.locator(".oriel-note", { hasText: "Jira is on" }).waitFor();
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+    },
+  },
+  // Jira on through Atlassian's server, then the AI goes: every row says no
+  // AI is on, with where to set one up, never what it listed before, and
+  // Sync says why it can't, not to try again.
+  {
+    name: "settings-source-servers-no-ai",
+    path: "/settings/connections",
+    make: firstRun({
+      cli: { signedIn: true },
+      codex: "ready",
+      atlassian: "on",
+      state: setupFinished,
+      aiGone: true,
+    }),
+    // The Sync that can't run, which the browser logs.
+    refused: 502,
+    act: async (page) => {
+      const section = page.locator("section", { has: page.locator("#settings-source-servers") });
+      await section.getByText("No AI is on to read it.").first().waitFor();
+      if (await section.getByText("Through atlassian").count())
+        throw new Error("Source servers still names what the AI listed before");
+      const jira = page.locator(".connection-row", { hasText: "Jira" });
+      await jira.getByRole("button", { name: "Sync" }).click();
+      await jira.locator(".connection-problem", { hasText: "No AI is on to read Jira" }).waitFor();
+      await section.scrollIntoViewIfNeeded();
     },
   },
   {

@@ -9,9 +9,8 @@ import { lookForServers } from "./connections.ts";
 import type { CliCommand, SetupView } from "./view.ts";
 
 export type SetupScreen =
-  // Your AI; an API key in its place; Claude Code's own way, in Terminal.
+  // Your AI; Claude Code's own way, in Terminal.
   | "ai"
-  | "key"
   | "other-ways"
   // Your work: what Oriel found in the person's agent (decision 0059); then
   // what it reads.
@@ -27,9 +26,6 @@ export type SetupModel = {
   sending: boolean;
   // The test turn is running.
   testing: boolean;
-  // An API key typed and not yet sent, and why the last one wasn't taken.
-  key: string;
-  keyProblem: string | null;
   // Show details is open on the row's failure.
   details: boolean;
   // Use another account: the warning before it signs in again.
@@ -51,8 +47,6 @@ export type SetupMsg =
   // Continue with Claude Code, or Codex, which runs the test turn first;
   // `anyway`, past a usage limit.
   | { type: "continueClicked"; anyway?: true; ai?: "codex" }
-  | { type: "keyTyped"; text: string }
-  | { type: "keySaved" }
   | { type: "screenShown"; screen: SetupScreen }
   | { type: "skipClicked"; step: "ai" | "work" }
   | { type: "workDone" }
@@ -83,8 +77,6 @@ export function initSetup(): SetupModel {
     resumed: false,
     sending: false,
     testing: false,
-    key: "",
-    keyProblem: null,
     details: false,
     another: false,
     problem: null,
@@ -132,17 +124,6 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
           ),
         ],
       ];
-    case "keyTyped":
-      return [{ ...model, key: msg.text, keyProblem: null }, []];
-    case "keySaved": {
-      const key = model.key.trim();
-      if (model.sending || key === "") return [model, []];
-      // Kept through Settings' own route; the page forgets it once it's sent.
-      return [
-        { ...model, sending: true, key: "", keyProblem: null },
-        [post("/api/settings/key", { key }, { kind: "setupKey" })],
-      ];
-    }
     case "screenShown":
       return [{ ...model, screen: msg.screen, details: false, problem: null }, []];
     case "skipClicked":
@@ -197,10 +178,6 @@ export function setupReplied(model: SetupModel, msg: Replied): [SetupModel, Effe
       });
       return [next, chosen ? [...effects, lookForServers] : effects];
     }
-    case "setupKey":
-      if (!msg.ok) return [{ ...model, sending: false, keyProblem: errorOf(msg.body) }, []];
-      // Kept: it becomes the AI the first run continues with.
-      return [model, [post("/api/setup/ai", { ai: "api" }, { kind: "setupAi" })]];
     case "setupProgress": {
       if (!msg.ok) return [{ ...model, finishing: false, problem: errorOf(msg.body) }, []];
       const view = msg.body as SetupView;

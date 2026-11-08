@@ -93,7 +93,9 @@ export type FirstRunOptions = {
   cli?: { version?: string; signedIn?: boolean };
   // Codex on the PATH: signed out, or "ready", signed in (decision 0048).
   codex?: true | "ready";
-  // Both signed in with the person's own API key, with no plan.
+  // Both CLIs signed in with the person's own API key, with no plan: their
+  // own sign-in, which Oriel only reads (no API-key way into Oriel itself,
+  // decision 0059).
   apiKeys?: true;
   install?: Install;
   login?: Login;
@@ -130,6 +132,10 @@ export type FirstRunOptions = {
   // that many more tabs in the tracker, each a small table of its own, as
   // a tracker with a tab a week has (OA-232).
   sheetsTabs?: number;
+  // Once set up, the AI goes, as when the person turns Codex off and Claude
+  // Code is signed out: Oriel looks again and finds no AI to ask, and no
+  // process of one calls a source server.
+  aiGone?: true;
 };
 
 // sheets-mcp as the person's agent lists it: a local server, started by the
@@ -246,17 +252,8 @@ export async function firstRunServer(
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };
 
-  // An API key only the onboarding's key screen pastes.
-  let key: string | null = null;
-  const keys = {
-    get: async () => key,
-    set: async (next: string) => {
-      key = next;
-    },
-    delete: async () => {
-      key = null;
-    },
-  };
+  // Whether the AI went (`aiGone`), once the first run is set up.
+  let gone = false;
   const settings = options.data
     ? settingsFile(join(options.data, "settings.json"), () => {})
     : memorySettings();
@@ -283,7 +280,6 @@ export async function firstRunServer(
   };
   const chooser = models({
     key: null,
-    kept: keys,
     env,
     check,
     checkCodex,
@@ -323,55 +319,61 @@ export async function firstRunServer(
 
   const serving = await start(0, {
     db: options.data ? join(options.data, "oriel.db") : (options.db ?? ":memory:"),
-    // The person's agent, as a fake that asks the tiny server itself.
-    discover: async () => ({
-      agent: { id: "claude-code", name: "Claude Code" },
-      found: standing
-        ? [
-            ...(options.atlassian ? [atlassianFound] : []),
-            ...(options.slack ? [slackFound] : []),
-            ...(options.linear ? [linearFound] : []),
-            ...(options.sheetsMcp ? [sheetsMcpFound] : []),
-          ]
-        : options.found
-          ? [await askTiny()]
-          : [],
-    }),
+    // The person's agent, as a fake that asks the tiny server itself, by
+    // the name of the one that runs, if one does; none once the AI went.
+    discover: async () => {
+      if (gone) return null;
+      const running = chooser.choose(settings.get()).model?.provider;
+      return {
+        agent: running
+          ? { id: running.id, name: running.name }
+          : { id: "claude-code", name: "Claude Code" },
+        found: standing
+          ? [
+              ...(options.atlassian ? [atlassianFound] : []),
+              ...(options.slack ? [slackFound] : []),
+              ...(options.linear ? [linearFound] : []),
+              ...(options.sheetsMcp ? [sheetsMcpFound] : []),
+            ]
+          : options.found
+            ? [await askTiny()]
+            : [],
+      };
+    },
     ...(standing
       ? {
           // Each process of the person's agent, as the stand-in answers it.
-          callServer: async (server) => ({
-            agent: { id: "claude-code", name: "Claude Code", kind: "claude-code" },
-            calls: {
-              call:
-                server.name === "slack"
-                  ? slackTools
-                  : server.name === linearFound.name
-                    ? linearTools
-                    : server.name === sheetsMcpFound.name
-                      ? sheetsTools
-                      : atlassianTools,
-              spent: () => ({
-                inputTokens: 0,
-                outputTokens: 0,
-                cacheReadTokens: 0,
-                cacheWriteTokens: 0,
-                costUsd: 0,
-                turns: 0,
-              }),
-              close: () => {},
-            },
-          }),
+          callServer: async (server) =>
+            gone
+              ? null
+              : {
+                  agent: { id: "claude-code", name: "Claude Code", kind: "claude-code" },
+                  calls: {
+                    call:
+                      server.name === "slack"
+                        ? slackTools
+                        : server.name === linearFound.name
+                          ? linearTools
+                          : server.name === sheetsMcpFound.name
+                            ? sheetsTools
+                            : atlassianTools,
+                    spent: () => ({
+                      inputTokens: 0,
+                      outputTokens: 0,
+                      cacheReadTokens: 0,
+                      cacheWriteTokens: 0,
+                      costUsd: 0,
+                      turns: 0,
+                    }),
+                    close: () => {},
+                  },
+                },
         }
       : { knownServers: testKnown }),
     models: chooser,
     settings,
     agent,
     cliPaths: true,
-    keys: {
-      store: keys,
-      check: async (typed) => (typed.startsWith("sk-ant-") ? "ok" : "rejected"),
-    },
     notify: async () => {},
     pickFolder,
     setup: {
@@ -426,6 +428,13 @@ export async function firstRunServer(
       url,
     );
     if (!reply || reply.status !== 200) throw new Error("the first run's folder didn't connect");
+  }
+  if (options.aiGone) {
+    gone = true;
+    rmSync(join(home, ".signed-in"), { force: true });
+    rmSync(join(home, ".codex-signed-in"), { force: true });
+    await postTo(serving, "/api/settings/look", {});
+    await postTo(serving, "/api/servers/look", {});
   }
   return serving;
 }

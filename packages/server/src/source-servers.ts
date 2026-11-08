@@ -7,7 +7,8 @@
 // still found, or while it has a connection of its own, until its
 // connector's REST connection goes (OA-280), unless a person or the agent
 // turned it off. Only a person turns one on. A look that fails says so,
-// naming the agent, and leaves what's on as it was.
+// naming the agent, and leaves what's on as it was. A look that finds no AI
+// to ask says that instead of what an AI listed before (`noAgent`).
 import {
   type FoundServer,
   type Instant,
@@ -24,7 +25,8 @@ import type { Settings } from "./settings.ts";
 
 // What a look at the agent's servers came to: the agent asked, by its
 // Settings ID and name, and what it listed, or why it couldn't. Null when
-// no agent runs, as with an API key, which has no servers to bring.
+// no agent runs, or only `pnpm dev --agent api`'s key, which has no servers
+// to bring.
 export type Discovery =
   | { agent: { id: string; name: string }; found: readonly FoundServer[] }
   | { agent: { id: string; name: string }; problem: string }
@@ -78,6 +80,9 @@ export function sourceServers(deps: SourceServersDeps) {
   let recognized: Recognized[] | null = null;
   let agent: string | null = store.finds(workspaceId)?.agent ?? null;
   let problem: string | null = null;
+  // Whether the last look found no AI to ask: nothing it listed before is
+  // said to be found now.
+  let noAgent = false;
   let looking: Promise<void> | null = null;
   // The look asked for while one runs, which every later ask joins.
   let queued: Promise<void> | null = null;
@@ -138,14 +143,21 @@ export function sourceServers(deps: SourceServersDeps) {
   async function lookNow(): Promise<void> {
     const before = state();
     let discovery: Discovery;
+    let failed = false;
     try {
       discovery = await deps.discover();
     } catch (error) {
       discovery = null;
+      failed = true;
       deps.log("source servers: the look failed", { error: String(error) });
       problem = "Oriel couldn't ask your agent for its MCP servers. Press Sync to try again.";
     }
     if (closed) return;
+    noAgent = discovery === null && !failed;
+    if (noAgent) {
+      agent = null;
+      problem = null;
+    }
     if (discovery !== null && "problem" in discovery) {
       agent = discovery.agent.name;
       problem = `${discovery.agent.name} didn't list its MCP servers: ${discovery.problem}`;
@@ -267,7 +279,9 @@ export function sourceServers(deps: SourceServersDeps) {
         agent,
         looking: looking !== null,
         problem,
-        found: listed.filter((each) => knows(each.kind)).map(row),
+        noAgent,
+        // With no AI to ask, nothing is found now, whatever one listed before.
+        found: noAgent ? [] : listed.filter((each) => knows(each.kind)).map(row),
         kinds: deps.kinds.flatMap(({ kind }) => {
           const chosen = choice(kind);
           const via = listed.find((each) => each.kind === kind)?.server ?? null;
@@ -281,14 +295,20 @@ export function sourceServers(deps: SourceServersDeps) {
             },
           ];
         }),
+        // Each kind not on whose server isn't listed; with no AI to ask, every
+        // kind neither on nor turned off, since none is listed now.
         missing: deps.kinds.flatMap(({ kind }) => {
           const first = knownFor(kind)[0];
-          if (!first || on(kind) || listed.some((each) => each.kind === kind)) return [];
+          const unlisted = noAgent
+            ? choice(kind)?.state !== "off"
+            : !listed.some((each) => each.kind === kind);
+          if (!first || on(kind) || !unlisted) return [];
           return [{ kind, server: first.server.name, instructions: first.server.instructions }];
         }),
-        // Shown while it offers something to turn on or says what went.
+        // Shown while it offers something to turn on or says what went, and
+        // never with no AI to ask, when nothing it found stands.
         card:
-          shown && (shown.appeared.some((each) => !each.on) || shown.gone.length > 0)
+          !noAgent && shown && (shown.appeared.some((each) => !each.on) || shown.gone.length > 0)
             ? shown
             : null,
         sync: deps.sync(),

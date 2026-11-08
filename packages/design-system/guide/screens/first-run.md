@@ -8,7 +8,7 @@ summary: The desktop app's first screen on a fresh data folder, with Claude Code
 
 ## What it shows
 
-The first thing a person sees in the desktop app, on a fresh data folder, when their Claude Code is already installed and signed in with a Pro plan (decision 0038). It's step 1 of 2. Claude Code is ready and picked, so the way on names it: **Continue with Claude Code**. Codex is on this Mac too, signed in with ChatGPT Plus, and shows as the preview it is, not picked. Both are personal plans, so each row says its vendor may train on the person's chats. The foot offers the two ways out: paying Anthropic per question, and setting the AI up later.
+The first thing a person sees in the desktop app, on a fresh data folder, when their Claude Code is already installed and signed in with a Pro plan (decision 0038). It's step 1 of 2. Claude Code is ready and picked, so the way on names it: **Continue with Claude Code**. Codex is on this Mac too, signed in with ChatGPT Plus, and shows as the preview it is, not picked. Both are personal plans, so each row says its vendor may train on the person's chats. The foot offers the one way out: setting the AI up later.
 
 The onboarding budget's clock starts here (SPEC §1): this screen is meant to take one click.
 
@@ -90,12 +90,6 @@ The onboarding budget's clock starts here (SPEC §1): this screen is meant to ta
     </ul>
     <footer class="setup-foot">
       <div class="setup-links">
-        <span
-          >No Claude plan?
-          <button type="button" class="link-action">
-            Pay Anthropic per question instead
-          </button></span
-        >
         <button type="button" class="link-action">Set up later</button>
       </div>
       <button type="button" class="button primary setup-next">Continue with Claude Code</button>
@@ -108,7 +102,7 @@ The onboarding budget's clock starts here (SPEC §1): this screen is meant to ta
 
 - [First-run column](/components/setup-column): the page, the brand, the steps, the title and lede, and the foot with its links.
 - [Connection and provider rows](/components/connection-row): Claude Code and Codex, their status lines, the pick marks, the Preview badge and its line, and the training lines.
-- [Button](/components/button): Continue with Claude Code (`.setup-next`), and the link-shaped Not this account?, Pay Anthropic per question instead and Set up later.
+- [Button](/components/button): Continue with Claude Code (`.setup-next`), and the link-shaped Not this account? and Set up later.
 
 ## Notes for review
 

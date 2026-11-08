@@ -301,13 +301,21 @@ export const replacedKinds = (connectors: Connectors, model: ConnectionsModel): 
   );
 
 // The connectors the first run offers, in their declared order: none
-// another does the work of (`replacedKinds`).
+// another does the work of (`replacedKinds`), unless a server found for it
+// can turn it on, which a stand-in on now never hides.
 export const offered = (connectors: Connectors, model: ConnectionsModel): ConnectorView[] => {
   const replaced = replacedKinds(connectors, model);
   const off = turnedOff(model);
+  const turnable = new Set(
+    (model.view?.servers.found ?? []).flatMap((each) => (each.on ? [] : [each.kind])),
+  );
   return Object.values(connectors)
     .filter((connector) => connector.offer?.firstRun !== undefined)
-    .filter((connector) => !replaced.has(connector.kind) && !off.includes(connector.kind))
+    .filter(
+      (connector) =>
+        (!replaced.has(connector.kind) || turnable.has(connector.kind)) &&
+        !off.includes(connector.kind),
+    )
     .toSorted((a, b) => (a.offer?.firstRun ?? 0) - (b.offer?.firstRun ?? 0));
 };
 

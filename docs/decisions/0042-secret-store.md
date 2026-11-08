@@ -1,6 +1,6 @@
 # 0042 The desktop app's secret store, and an API key from Settings
 
-Accepted 2026-11-03 (OA-188). Amends 0022, 0039 and 0041. Changes SPEC §3, §5 and §7. Amended by 0049: the fixed names are `anthropic-key` and the shape `connection.<ULID>`, and `jira` moves to its connection's name, staying one release so the move can read it. Amended by 0059: the API key and the connection secrets go; the store keeps whatever is left. Superseded in part by 0059 (OA-280): the names `jira` and `connection.<ULID>` go, and the store takes `anthropic-key` alone.
+Accepted 2026-11-03 (OA-188). Amends 0022, 0039 and 0041. Changes SPEC §3, §5 and §7. Amended by 0049: the fixed names are `anthropic-key` and the shape `connection.<ULID>`, and `jira` moves to its connection's name, staying one release so the move can read it. Amended by 0059: the API key and the connection secrets go; the store keeps whatever is left. Superseded in part by 0059 (OA-280): the names `jira` and `connection.<ULID>` go, and the store takes `anthropic-key` alone. Amended 2026-11-08: the server keeps no secret; the shell deletes `anthropic-key` as its store opens, needing no key, and the name stays the store's only one so the channel stays whole for whatever keeps a secret next. `POST /settings/key` is gone.
 
 Adds: none
 

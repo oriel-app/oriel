@@ -120,17 +120,14 @@ export type Tag =
   | { kind: "settings" }
   | { kind: "settingsChanged" }
   | { kind: "settingsLooked" }
-  | { kind: "settingsKey" }
   // How much of the plan Oriel has used, under each CLI's row.
   | { kind: "settingsUsage" }
   // The desktop app's first run and its commands for the person's CLI
-  // (decision 0038): loaded, a command, the AI chosen, a step, and the key
-  // the first run keeps through Settings' route.
+  // (decision 0038): loaded, a command, the AI chosen, and a step.
   | { kind: "setup" }
   | { kind: "setupCli" }
   | { kind: "setupAi" }
-  | { kind: "setupProgress"; did: string }
-  | { kind: "setupKey" };
+  | { kind: "setupProgress"; did: string };
 
 export type Effect =
   // Browse under a grouping, and its filters when any is set.

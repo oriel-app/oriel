@@ -4,8 +4,10 @@
 // starts the server, shows its page, and does what the page can't: the folder
 // picker, notifications and the secret store (secrets.ts).
 //
-// - Launch. The server gets an environment built here: HOME, TMPDIR, LANG and
-//   the login shell's PATH, with the bundle's Deno first. The shell draws a
+// - Launch. The server gets an environment built here: HOME, USER and
+//   LOGNAME, TMPDIR, LANG and the login shell's PATH, with the bundle's Deno
+//   first. Claude Code finds its sign-in in the Keychain under USER, so
+//   without it a signed-in Claude Code reads as signed out. The shell draws a
 //   32-byte launch secret and writes it, as hex, as the channel's first
 //   line, then sets it as the session cookie before the window's first load.
 //   The server's first line names its URL.
@@ -345,9 +347,14 @@ async function loginPath(): Promise<string | null> {
   return launchd === "" || launchd.includes("\n") ? null : launchd;
 }
 
+// The person's account name, as the OS has it, not as launchd passed it.
+const account = userInfo().username;
+
 async function serverEnvironment(): Promise<Record<string, string>> {
   return {
     HOME: home,
+    USER: account,
+    LOGNAME: account,
     TMPDIR: process.env.TMPDIR || tmpdir(),
     LANG: lang(process.env.LANG, app.getSystemLocale()),
     PATH: serverPath(deno, await (path ??= loginPath()), home),

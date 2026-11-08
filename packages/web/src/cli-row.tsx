@@ -49,9 +49,6 @@ export function ClaudeCodeRow(props: {
   picked?: boolean;
   // Settings' switch.
   onToggle?(on: boolean): void;
-  // Paying per question instead: the first run's key screen, or Settings'
-  // key field.
-  onKey(): void;
   // Claude Code's own way, in Terminal, written out.
   onOtherWays?(): void;
   children?: ComponentChildren;
@@ -75,7 +72,6 @@ export function ClaudeCodeRow(props: {
       {label}
     </button>
   );
-  const keyInstead = quiet("Pay Anthropic per question instead", props.onKey);
   const { state, running, account } = cli;
 
   let status: ComponentChildren;
@@ -144,8 +140,7 @@ export function ClaudeCodeRow(props: {
       );
       below = (
         <div class="cli-box">
-          <p>Oriel's next update will work with it. Until then:</p>
-          <div class="cli-actions">{button("Pay Anthropic per question instead", props.onKey)}</div>
+          <p>Oriel's next update will work with it.</p>
         </div>
       );
       break;
@@ -198,8 +193,8 @@ export function ClaudeCodeRow(props: {
             {button("Use another account", () => run("sign-in"))}
           </div>
           <p class="cli-small">
-            {keyInstead}. In the tab that opens, check the account at the top. If it's still the old
-            one, sign out of claude.ai there first.
+            In the tab that opens, check the account at the top. If it's still the old one, sign out
+            of claude.ai there first.
           </p>
         </div>
       );
@@ -267,7 +262,6 @@ export function ClaudeCodeRow(props: {
           failed={cli.failed}
           model={model}
           send={send}
-          onKey={props.onKey}
           {...(props.onOtherWays ? { onOtherWays: props.onOtherWays } : {})}
         />
       )}
@@ -287,7 +281,6 @@ export function CodexRow(props: {
   send(msg: SetupMsg): void;
   picked?: boolean;
   onToggle?(on: boolean): void;
-  onKey(): void;
   children?: ComponentChildren;
 }) {
   const { provider, cli, model, send } = props;
@@ -406,9 +399,7 @@ export function CodexRow(props: {
     >
       <TrainingLine kind="codex" cli={cli} />
       {below}
-      {cli.failed && !running && (
-        <Failed failed={cli.failed} model={model} send={send} onKey={props.onKey} codex />
-      )}
+      {cli.failed && !running && <Failed failed={cli.failed} model={model} send={send} codex />}
       {props.children}
     </ProviderRow>
   );
@@ -429,7 +420,6 @@ function Failed(props: {
   failed: NonNullable<CliView["failed"]>;
   model: SetupModel;
   send(msg: SetupMsg): void;
-  onKey(): void;
   onOtherWays?(): void;
   codex?: true;
 }) {
@@ -489,11 +479,6 @@ function Failed(props: {
         {props.onOtherWays && (failed.what === "install" || failed.what === "sign-in") && (
           <button type="button" class="link-action" onClick={props.onOtherWays}>
             {failed.what === "install" ? "Other ways to install" : "Other ways to sign in"}
-          </button>
-        )}
-        {failed.what === "test" && (
-          <button type="button" class="link-action" onClick={props.onKey}>
-            Pay Anthropic per question instead
           </button>
         )}
       </div>

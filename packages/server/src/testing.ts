@@ -178,8 +178,6 @@ export type TestOptions = {
   // The providers Settings picks among, in place of `agent` and `titler`.
   models?: Models;
   settings?: SettingsStore;
-  // Where the page keeps an API key, as on the desktop app.
-  keys?: AppOptions["keys"];
   // The desktop app's notifications and folder picker, through its shell.
   notify?: Notify;
   pickFolder?: (prompt: string) => Promise<string | null>;
@@ -337,7 +335,6 @@ export async function testApp(
       : { agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)) }),
     ...(options.challenger ? { challenger: options.challenger } : {}),
     ...(options.settings ? { settings: options.settings } : {}),
-    ...(options.keys ? { keys: options.keys } : {}),
     ...(options.notify ? { notify: options.notify } : {}),
     ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
     ...(options.setup ? { setup: options.setup } : {}),

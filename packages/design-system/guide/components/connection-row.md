@@ -3,7 +3,7 @@ title: Connection and provider rows
 status: drifting
 group: Rows
 order: 52
-classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, provider-path-open, provider-key-actions, provider-key-note, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open
+classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, provider-path-open, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice, pick-list, pick-open, provider-path, provider-path-label
 summary: One thing Oriel uses or reads, as a row with its mark, name, what it is, its state and the one thing to do next. Settings' providers and connections and the first run draw it; four hand copies today.
 ---
 
@@ -11,7 +11,7 @@ summary: One thing Oriel uses or reads, as a row with its mark, name, what it is
 
 ## What it is
 
-A row for one thing Oriel runs on or reads: a provider (Claude Code, Codex, an API key) or a connection (Jira, a folder, Google Sheets). Every Settings row and every first-run row has the same shape:
+A row for one thing Oriel runs on or reads: a provider (Claude Code or Codex) or a connection (Jira, a folder, Google Sheets). Every Settings row and every first-run row has the same shape:
 
 - a **mark** (`.provider-icon`): the thing's letter in a 2.25rem tile;
 - a **main column** (`.provider-main`): its name, a line saying what it is, its **status line**, and anything it lets the person set or do, stacked;
@@ -40,7 +40,7 @@ The row is a flex line, top-aligned, `--space-4` apart, padded `--space-3` `--sp
 
 ### Providers (Settings › Providers)
 
-```html specimen id=providers title="Providers: ready, a preview not in use, and a key not set"
+```html specimen id=providers title="Providers: ready, and a preview not in use"
 <ul class="provider-rows">
   <li id="provider-claude-code" class="provider-row" data-status="ready">
     <span class="provider-icon" aria-hidden="true">C</span>
@@ -86,37 +86,16 @@ The row is a flex line, top-aligned, `--space-4` apart, padded `--space-3` `--sp
       <span class="switch-knob" aria-hidden="true"></span>
     </button>
   </li>
-  <li id="provider-api" class="provider-row" data-status="no-key">
-    <span class="provider-icon" aria-hidden="true">A</span>
-    <div class="provider-main">
-      <span class="provider-name">API key</span>
-      <span class="provider-about">Anthropic bills each question</span>
-      <span class="provider-status">
-        <span class="provider-mark" aria-hidden="true"></span>
-        <span class="provider-state">No key</span>
-        <span>No key is set. Paste one from Anthropic's console to pay per question.</span>
-      </span>
-    </div>
-    <button
-      type="button"
-      role="switch"
-      class="switch"
-      aria-checked="false"
-      aria-label="Use API key"
-    >
-      <span class="switch-knob" aria-hidden="true"></span>
-    </button>
-  </li>
 </ul>
 ```
 
 The status line's third part is `<span class="provider-detail">` in the app (`ProviderRow` in `packages/web/src/provider-row.tsx`). window.css has no rule for that class, so the specimens leave it off; it looks the same.
 
-### A path and a key, in Settings
+### Another path, in Settings
 
-Under a CLI's row in Settings › Providers, **Use a Claude Code at another path** (`.provider-path-open`, a quiet action pulled left to line up with the words) opens a path field, for a CLI that isn't on the PATH Oriel started with. Under the API key's row, once a key is set, **Use another key** and **Remove the key** sit side by side (`.provider-key-actions`); typing a key shows a note under the field (`.provider-key-note`, `--text-sm` in `--text-muted`, a whole line of its own) on where to make one and how it's billed and kept.
+Under a CLI's row in Settings › Providers, **Use a Claude Code at another path** (`.provider-path-open`, a quiet action pulled left to line up with the words) opens a path field, for a CLI that isn't on the PATH Oriel started with. The field (`.provider-path`, its label `.provider-path-label`) stays open once a path is saved.
 
-```html specimen id=path-and-key title="Another path, a key that's set, and a key being typed" width=390
+```html specimen id=path-and-key title="Another path: closed, and open" width=390
 <div class="settings">
   <div class="settings-body">
     <ul class="provider-rows">
@@ -136,45 +115,27 @@ Under a CLI's row in Settings › Providers, **Use a Claude Code at another path
           </button>
         </div>
       </li>
-      <li id="provider-api" class="provider-row" data-status="ready">
-        <span class="provider-icon" aria-hidden="true">A</span>
+      <li class="provider-row" data-status="ready">
+        <span class="provider-icon" aria-hidden="true">O</span>
         <div class="provider-main">
-          <span class="provider-name">API key</span>
-          <span class="provider-about">Anthropic bills each question</span>
+          <span class="provider-name">Codex<span class="provider-badge">Preview</span></span>
+          <span class="provider-about">For ChatGPT plans · OpenAI's assistant for your Mac</span>
           <span class="provider-status"
             ><span class="provider-mark" aria-hidden="true"></span
-            ><span class="provider-state">Ready</span
-            ><span>A key is kept in the OS secret store</span></span
+            ><span class="provider-state">Ready</span><span>Signed in · version 0.166.0</span></span
           >
-          <span class="provider-key-actions"
-            ><button type="button" class="quiet-action">Use another key</button
-            ><button type="button" class="quiet-action">Remove the key</button></span
-          >
-        </div>
-      </li>
-      <li class="provider-row" data-status="no-key">
-        <span class="provider-icon" aria-hidden="true">A</span>
-        <div class="provider-main">
-          <span class="provider-name">API key</span>
-          <span class="provider-about">Anthropic bills each question</span>
           <form class="provider-path">
             <label class="provider-path-label"
-              ><span>API key</span
+              ><span>Path to Codex</span
               ><input
-                type="password"
+                type="text"
                 class="input"
-                placeholder="sk-ant-…"
+                value="/opt/homebrew/bin/codex"
+                placeholder="/opt/homebrew/bin/codex"
                 spellcheck="false"
                 autocomplete="off"
             /></label>
             <button type="submit" class="button" disabled>Save</button>
-            <span class="provider-key-note"
-              >Make one on
-              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer"
-                >Anthropic's console</a
-              >. Anthropic bills each question, and you can set a monthly limit there. Oriel keeps
-              the key in your system's secret store.</span
-            >
           </form>
         </div>
       </li>
@@ -183,7 +144,7 @@ Under a CLI's row in Settings › Providers, **Use a Claude Code at another path
 </div>
 ```
 
-The path and key fields themselves are on [Text field](/components/text-field#settings-path). Removing says "Removing…" while it runs; saving a key says "Checking…" while Anthropic checks it.
+The path field itself is on [Text field](/components/text-field#settings-path). Save stays off until something is typed; saving checks the path at once.
 
 ### Picked through a source server
 
@@ -264,7 +225,7 @@ A connection through a source server (decision 0059) has no options of its own b
 </ul>
 ```
 
-The state words come from `statusNames` in `packages/web/src/provider-row.tsx`: Ready, Not found, Needs an update, Not signed in, No key, Not run, Checking.
+The state words come from `statusNames` in `packages/web/src/provider-row.tsx`: Ready, Not found, Needs an update, Not signed in, Not run, Checking.
 
 ### Claude Code and Codex rows (`cli-row.tsx`)
 
@@ -922,7 +883,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 - Claude Code and Codex: `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`; the waiting line, `Waiting` in `packages/web/src/cli-row.tsx`; the failure box, `Failed` in `packages/web/src/cli-row.tsx`. Placed in Settings by `Providers` in `packages/web/src/settings-page.tsx`, and in the first run by `YourAi` in `packages/web/src/setup-page.tsx`.
 - Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; picked through a source server, `ServerPicks` in `packages/web/src/connections-page.tsx`, and its mapping beside them, `MappingOption` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
 - First run: `SourceRow`, `connected` and `ready` in `packages/web/src/setup-page.tsx`.
-- The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path and key: `CliPath` and `ApiKey` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-key-actions` and `.provider-key-note` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
+- The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path: `CliPath` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-path` and `.provider-path-label` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
 - Settings frame, its sections and body: `SettingsPage` in `packages/web/src/settings-page.tsx`; a section head with its action, `Providers` in `packages/web/src/settings-page.tsx`.
 - CSS: `.provider-rows`, `.provider-row`, `.provider-main`, `.provider-name`, `.provider-badge`, `.provider-preview`, `.provider-status`, `.provider-uses`, `.switch` and `.settings-field` in `window.css`; the status line's colours, `.provider-row[data-status="ready"] .provider-mark` and `.provider-row:is([data-status="checking"], [data-off]) .provider-mark` in `window.css`; connections, `.connection-options`, `.connection-row .provider-side`, `.connection-report` and `.connection-said` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`. The rest of the shell is in the first-run block: `.provider-icon`, `.provider-about`, `.provider-side`, `.provider-row[data-picked]` and `.provider-status[data-connected] .provider-mark` in `window.css`; the CLI pieces, `.cli-picked`, `.cli-line`, `.cli-waiting`, `.cli-note`, `.cli-size`, `.cli-box`, `.cli-actions`, `.cli-log`, `.cli-progress`, `.cli-bar` and `.spinner` in `window.css`. The Settings frame: `.settings`, `.settings-sections`, `.settings-body`, `.settings-section`, `.settings-head`, `.settings-title` and `.settings-lede` in `window.css`.
 - The sidebar's source rows read the same connections but are nav rows: `Sources` in `packages/web/src/sidebar.tsx`. See [Sidebar](/components/sidebar).

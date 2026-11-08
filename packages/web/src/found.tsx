@@ -12,7 +12,7 @@ import {
   turnedOff,
 } from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
-import type { Dispatch } from "./parts.tsx";
+import { type Dispatch, Link } from "./parts.tsx";
 import { Switch } from "./provider-row.tsx";
 import { Choices } from "./settings-page.tsx";
 import type { FoundServerView, SourceServersView } from "./view.ts";
@@ -139,7 +139,8 @@ const syncChoices: { value: string; label: string }[] = [
 // Settings' Source servers: the person's servers that Oriel knows, each
 // with its kind and a switch; each kind on through its own connection, or
 // turned off; for each kind with none found, the server that would turn it
-// on; and how often sync runs.
+// on; and how often sync runs. With no AI on to ask, every row says so, and
+// where to set one up, in place of what an AI listed before.
 export function SourceServers(props: {
   connections: ConnectionsModel;
   connectors: Connectors;
@@ -151,6 +152,13 @@ export function SourceServers(props: {
   const send = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
   const agent = agentOf(servers);
   const off = turnedOff(connections);
+  const { noAgent } = servers;
+  // With no AI on, the one way to fix it, on each row.
+  const setUp = (
+    <Link route={{ page: "settings", section: "providers" }} dispatch={dispatch}>
+      Set one up under Providers
+    </Link>
+  );
   // Every kind with a row: those on or turned off, then those a server
   // found would turn on.
   const rows = [
@@ -162,9 +170,12 @@ export function SourceServers(props: {
       about:
         each.offBy !== null
           ? `Off${each.offBy === "agent" ? ", as you asked Oriel" : ""}. Its items stay in Oriel for when it's on again.`
-          : each.server !== null
-            ? `Through ${each.server} in ${agent}`
-            : "Through its own connection",
+          : noAgent
+            ? "No AI is on to read it."
+            : each.server !== null
+              ? `Through ${each.server} in ${agent}`
+              : "Through its own connection",
+      unread: noAgent && each.offBy === null,
     })),
     ...servers.found
       .filter((each) => !servers.kinds.some((kind) => kind.kind === each.kind))
@@ -174,6 +185,7 @@ export function SourceServers(props: {
         server: each.server,
         problem: null,
         about: `${each.known}, found in ${agent} as ${each.server}`,
+        unread: false,
       })),
   ];
   const every = servers.sync.every;
@@ -183,8 +195,10 @@ export function SourceServers(props: {
         Source servers
       </h2>
       <p class="settings-lede">
-        Oriel reads your sources through the MCP servers in {agent}. It never adds, removes or signs
-        in to one: you do that in {agent}.
+        {noAgent
+          ? "Oriel reads your sources through the MCP servers in your AI, and no AI is on now. "
+          : `Oriel reads your sources through the MCP servers in ${agent}. `}
+        It never adds, removes or signs in to one: you do that in {noAgent ? "your AI" : agent}.
       </p>
       {servers.problem && (
         <p class="connection-problem" role="alert">
@@ -195,7 +209,9 @@ export function SourceServers(props: {
         <p class="settings-field-about">
           {servers.looking
             ? `Looking in ${agent}…`
-            : `Oriel hasn't found a source server it knows in ${agent}.`}
+            : noAgent
+              ? "No AI is on for Oriel to look in."
+              : `Oriel hasn't found a source server it knows in ${agent}.`}
         </p>
       ) : (
         <ul class="provider-rows">
@@ -211,7 +227,10 @@ export function SourceServers(props: {
                 </span>
                 <div class="provider-main">
                   <span class="provider-name">{name}</span>
-                  <span class="provider-about">{row.about}</span>
+                  <span class="provider-about">
+                    {row.about}
+                    {row.unread && <> {setUp}</>}
+                  </span>
                   {problem && (
                     <p class="connection-problem" role="alert">
                       {problem}
@@ -240,15 +259,21 @@ export function SourceServers(props: {
         </ul>
       )}
       {servers.missing.length > 0 && (
-        <ul class="found-missing" aria-label={`Not found in ${agent}`}>
-          {servers.missing.map((each) => (
-            <li key={each.kind}>
-              {nameOf(connectors, each.kind)}: add {each.server} to {agent}.{" "}
-              <a href={each.instructions} target="_blank" rel="noreferrer">
-                How to add it
-              </a>
-            </li>
-          ))}
+        <ul class="found-missing" aria-label={noAgent ? "Not read" : `Not found in ${agent}`}>
+          {servers.missing.map((each) =>
+            noAgent ? (
+              <li key={each.kind}>
+                {nameOf(connectors, each.kind)}: no AI is on to read it. {setUp}
+              </li>
+            ) : (
+              <li key={each.kind}>
+                {nameOf(connectors, each.kind)}: add {each.server} to {agent}.{" "}
+                <a href={each.instructions} target="_blank" rel="noreferrer">
+                  How to add it
+                </a>
+              </li>
+            ),
+          )}
         </ul>
       )}
       <div class="cli-actions">

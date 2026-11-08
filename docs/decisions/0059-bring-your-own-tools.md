@@ -1,6 +1,6 @@
 # 0059 Bring your own tools: sources come through the person's own MCP servers, and Oriel keeps a stand-in tracker
 
-Accepted 2026-11-06. Amends 0003, 0019, 0020, 0022, 0037, 0038, 0041, 0042, 0044, 0048, 0049, 0050 and 0051. Changes SPEC §1, §2, §4, §5, §7 and §14, and the security reviewer's checklist.
+Accepted 2026-11-06. Amends 0003, 0019, 0020, 0022, 0037, 0038, 0041, 0042, 0044, 0048, 0049, 0050 and 0051. Changes SPEC §1, §2, §4, §5, §7 and §14, and the security reviewer's checklist. Amended 2026-11-08: no API key anywhere in the product. `pnpm dev` runs on the person's own agent like the app, Claude Code then Codex; `.env`'s key runs only when `--agent api` asks, and in the evals. A key the desktop app kept is deleted as its secret store opens. With no AI picked or running, Settings' Source servers and sync say so, naming where to set one up, never a stale server or "try again"; the first run's Your work lists every source "See what Oriel found" does, so Set up later misses none, and a tracker found in the agent can be turned on in place of the stand-in.
 
 Adds: none
 

@@ -23,10 +23,11 @@ export const launchCookie = "oriel-launch";
 // 32 bytes, as 64 lowercase hex characters.
 export const isLaunchSecret = (line: string): boolean => /^[0-9a-f]{64}$/.test(line);
 
-// The secrets the server keeps, by name: the API key the agent can run on
-// (OA-188). No connection keeps one since decision 0059: a source is read
-// through the person's own agent, which holds its sign-in. The shell takes
-// no other name.
+// The secrets the server may keep, by name, as the shell's rules.ts takes
+// them. The server keeps none since decision 0059 (no connection keeps one,
+// and no AI runs on an API key), and the shell deletes `anthropic-key` as
+// its store opens; the name stays only so the channel stays whole for
+// whatever keeps a secret next.
 export const isSecretName = (text: string): boolean => text === "anthropic-key";
 const name = refine(string, isSecretName, "a secret the server keeps");
 const secret = refine(string, (text) => Buffer.byteLength(text) <= 16_384, "at most 16 KiB");

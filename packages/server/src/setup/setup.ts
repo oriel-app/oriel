@@ -105,8 +105,8 @@ export type Setup = {
   // after this returns, or checks again.
   command(command: CliCommand | "check" | "cancel", cli?: Cli): Promise<SetupView>;
   // The AI the person continues with: a CLI once a test turn answers (or,
-  // `anyway`, past a usage limit), or the API key Settings kept.
-  choose(ai: Cli | "api", anyway: boolean): Promise<SetupView>;
+  // `anyway`, past a usage limit).
+  choose(ai: Cli, anyway: boolean): Promise<SetupView>;
   progress(did: Progress): Promise<SetupView>;
   // Resolves once no command is running.
   idle(): Promise<void>;
@@ -529,10 +529,10 @@ export function setupService(deps: {
 
   // The model a CLI's turns run on once chosen: Claude's largest, or Codex's
   // own default.
-  const modelFor = (ai: Cli | "api"): string =>
+  const modelFor = (ai: Cli): string =>
     ai === "codex" ? codexDefault(found("codex")) : defaultModel;
 
-  async function chosen(ai: Cli | "api"): Promise<void> {
+  async function chosen(ai: Cli): Promise<void> {
     const instance = store.get().providers.find((p) => p.kind === ai);
     if (!instance) throw new SetupRefused("That AI isn't one Oriel lists.");
     await settings.change({ model: { provider: instance.id, model: modelFor(ai) } });
@@ -581,13 +581,6 @@ export function setupService(deps: {
     },
     async choose(ai, anyway) {
       if (!options) throw new SetupRefused("Only the desktop app has a first run.");
-      if (ai === "api") {
-        await settings.look();
-        if (models?.found("api").status !== "ready")
-          throw new SetupRefused("Add an API key first.");
-        await chosen("api");
-        return view();
-      }
       const at = found(ai);
       if (running || at.status !== "ready" || !at.cli)
         throw new SetupRefused(`${cliNames[ai]} isn't ready yet.`);

@@ -17,7 +17,7 @@ A control that does something now: sends, approves, connects, deletes. Oriel has
 - **Button** (`.button`): bordered, on the surface. Every other action with weight: Reject, Cancel, Try again, Show details.
 - **Danger** (`.button.danger`): the danger fill, only for the confirm step of something that can't be taken back by Undo: Delete in the one question a delete asks, Disconnect.
 - **Quiet action** (`.quiet-action`): "text until hovered" (`.quiet-action` in `window.css`). For actions that sit beside content and shouldn't compete with it: Mark done, Share review link, Dismiss, Open as a thread.
-- **Link action** (`.link-action`): an underlined accent word, for "a way on that isn't the step's own" (`.link-action` in `window.css`), as in the first run: Set up later, Pay Anthropic per question instead.
+- **Link action** (`.link-action`): an underlined accent word, for "a way on that isn't the step's own" (`.link-action` in `window.css`), as in the first run: Set up later, Other ways to install.
 - **Undo action** (`.undo-action`): the accent word beside a change it undoes: Undo, Redo. In the bead, the same Undo is a `.bead-action` (see [Undo](/components/undo)).
 
 ## When to use it

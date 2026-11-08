@@ -149,7 +149,7 @@ test("secrets kept in memory never reach safe storage", async (t) => {
   assert.deepEqual(readdirSync(dir), ["anthropic-key"]);
 });
 
-test("the secrets an older Oriel kept for connections are deleted as the store opens, and nothing else", async (t) => {
+test("the secrets an older Oriel kept, for connections and the API key, are deleted as the store opens, and nothing else", async (t) => {
   const dir = folder(t);
   mkdirSync(dir, { recursive: true });
   const { crypt } = fakeCrypt();
@@ -166,11 +166,10 @@ test("the secrets an older Oriel kept for connections are deleted as the store o
     writeFileSync(join(dir, name), "ciphertext");
   const store = secretStore(dir, crypt);
   assert.deepEqual(readdirSync(dir).toSorted(), [
-    "anthropic-key",
     "connection.01JB0000000000000000000000",
     "connection.ZZZZZZZZZZZZZZZZZZZZZZZZZZ",
     "connection.x",
     "notes",
   ]);
-  assert.equal(await store.get("anthropic-key"), "sk-ant-kept");
+  assert.equal(await store.get("anthropic-key"), null);
 });
