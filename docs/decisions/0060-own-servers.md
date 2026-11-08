@@ -76,6 +76,12 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
 
   Oriel checks the same before every call. Nothing a server says goes into the system prompt or the `.d.ts`, including its tools' names, descriptions and schemas. Those reach the agent only as a run's result.
 
+- **Reads reach past the region, explicitly.** An own server isn't a source, so it has no region. `call()` reads are a third explicit way out, beside `search()` and `window.overview()`. Each one is named in the run and shown in the thread, so none is silent. This amends:
+  - SPEC §8's eval 8, to "must use `search()`, an own server's read through `call()` (decision 0060) (or, in the window chat, …)";
+  - the security reviewer's "a read other than `search()` outside the region", to add "or an own server's `call()` read".
+
+  Reads of a source server stay region-bound, since `call()` refuses them.
+
 - **A read never writes.** A read's answer can lead the agent to propose a write, which waits for a person like any other. Writes are on no list but replay's.
 
 ### Untrusted reads
@@ -124,7 +130,7 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
   - to 0050's write rules, which cover the Sheets kind's writes;
   - to `.claude/rules/bindings.md`'s "write functions accept only region IDs": `call()` names a server and a tool, never an item.
 
-  The review marks a string argument that starts with `=`, `+`, `-` or `@` as "may be read as a formula".
+  The review marks every string in a call's arguments, at any depth (inside arrays and objects too), that starts with `=`, `+`, `-` or `@`, after any leading tab, carriage return or spaces, as "may be read as a formula".
 
 - **No Revert.** A call can't be undone: its `undo` refuses ("Oriel can't know how to undo a call to Teams"). As 0059 and #228 have it, a change set with only calls has no Revert, and one that mixes them reverts the rest and names the calls it can't. The review says so before approval.
 
