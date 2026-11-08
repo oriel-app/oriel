@@ -7,7 +7,7 @@ description: Which layer a change gets a test at (unit, flow, upgrade, live or n
 
 Pick the lowest layer that would have caught the bug a person would hit. Most changes need one test or none.
 
-- **Unit:** only for the keep rule's classes below. Not for routes, wording, labels or happy paths.
+- **Unit:** only the keep rule's classes below, including guards exercised through routes or UI code. Not for wording, labels or happy paths.
 - **Flow:** anything a person does across pages: the first run, Needs you, pills, scroll, a thread's states. A shots scene that asserts as well as shoots, or a design-system page.
 - **Upgrade:** a migration or a stored shape. A database copied from the last release, run through the new code.
 - **Live:** agent-facing text (the system prompt, the module, tools, a tool result). An eval recording.
@@ -34,6 +34,6 @@ A test goes if it pins wording, a label or a list that grows with every kind; re
 - Pass time in (`now`). Code under test never reads the clock.
 - Fixtures over mocks. Model calls replay cassettes; unit tests never touch the network.
 - Each test owns its data (a fresh schema or temp dir) and never depends on run order.
-- No UI unit tests. For visuals, use the screenshot script.
+- For copy and layout, use shots or the design-system site.
 - Tests that define behavior aren't edited in the PR they validate.
 - A guard's test should fail when the guarded line breaks: break it once by hand before you commit.
