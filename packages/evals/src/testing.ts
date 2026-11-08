@@ -1,15 +1,9 @@
 // Shared by this package's tests only.
-import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
-import type { ItemId } from "@oriel/core";
 import { pathToFileURL } from "node:url";
-import { type Fetch, messagesResponse } from "./anthropic.ts";
-import { holding, type LoadedCase, parseEvalCase } from "./case.ts";
-import type { Cassettes } from "./cassette.ts";
-import { type Fixtures, itemNamed } from "./fixtures.ts";
 
 // A fresh directory, removed when the test ends.
 export function tempDir(t: TestContext): URL {
@@ -34,41 +28,6 @@ export function message(
     usage: { input_tokens: 1, output_tokens: 1 },
   });
 }
-
-// Cassettes that never record: a plain fetch, for tests that don't replay.
-// A case as `loadCases` loads it from `input`, its JSON, with no golden diff.
-export function loadedCase(input: unknown, fixtures: Fixtures): LoadedCase {
-  const parsed = parseEvalCase(input);
-  assert.ok(parsed.ok, JSON.stringify(parsed.ok || parsed.issues));
-  const held = holding(parsed.value, fixtures);
-  assert.ok(!("problems" in held), JSON.stringify(held));
-  return { case: parsed.value, ...held, golden: null };
-}
-
-// The item a case names `name`, by ID.
-export function named(fixtures: Fixtures, name: string): ItemId {
-  const found = itemNamed(fixtures, name);
-  assert.ok("id" in found, JSON.stringify(found));
-  return found.id;
-}
-
-export const uncommitted = (fetch: Fetch): Cassettes => ({ fetch, commit: () => null });
-
-// The text of a Messages API response.
-export async function textOf(response: Response): Promise<string> {
-  const parsed = messagesResponse(await response.json());
-  assert.ok(parsed.ok, "not a Messages API response");
-  return parsed.value.content.map((block) => block.text ?? "").join("");
-}
-
-export const verdicts = (...holds: boolean[]) =>
-  JSON.stringify({
-    verdicts: holds.map((h, i) => ({
-      claim: i + 1,
-      reason: h ? "it does" : "it doesn't",
-      holds: h,
-    })),
-  });
 
 // A streamed Messages API response, as the API would send it: some text,
 // then a call to the agent's run tool when `script` is given.
@@ -112,17 +71,4 @@ export function streamed(
     .map((e) => `event: ${String(Reflect.get(e, "type"))}\ndata: ${JSON.stringify(e)}\n\n`)
     .join("");
   return new Response(body, { headers: { "content-type": "text/event-stream" } });
-}
-
-// Answers each request with the next response, and keeps each request's body.
-export function scriptedModel(responses: Response[]) {
-  const queue = [...responses];
-  const bodies: Record<string, unknown>[] = [];
-  const fetch: Fetch = async (input, init) => {
-    bodies.push((await new Request(input, init).json()) as Record<string, unknown>);
-    const next = queue.shift();
-    if (!next) throw new Error("the scripted model has no more responses");
-    return next;
-  };
-  return { fetch, bodies };
 }

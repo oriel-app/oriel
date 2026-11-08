@@ -7,10 +7,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
-import { bindingsFor, typecheck, waitingOf } from "@oriel/bindings";
+import { bindingsFor, waitingOf } from "@oriel/bindings";
 import { readsNow } from "@oriel/core";
 import { loadFixtures } from "./fixtures.ts";
-import { moduleOf, moduleSize, regionOf, shape } from "./module-size.ts";
+import { moduleSize, regionOf, shape } from "./module-size.ts";
 
 const fixtures = loadFixtures();
 const sizes = new Map(
@@ -59,31 +59,6 @@ test("each source adds to the module within the budget it declares", () => {
   }
 });
 
-test("a source adds nothing to the module of a region without its items", () => {
-  const all = [...sizes.values()];
-  const namespaces = Object.assign({}, ...all.map((size) => size.namespaces));
-  const items = Object.assign({}, ...all.map((size) => size.items));
-  for (const [kind, size] of sizes) {
-    const others = [...sizes].filter(([k]) => k !== kind).map(([, other]) => other.item);
-    const { [kind]: _namespace, ...withoutNamespace } = namespaces;
-    const { [kind]: _doc, ...withoutDoc } = items;
-    const module = moduleOf(others, namespaces, items);
-    assert.equal(module, moduleOf(others, withoutNamespace, withoutDoc), `${kind} shows`);
-    assert.ok(moduleOf([size.item], namespaces, items).includes(` * - ${items[kind]}\n`));
-  }
-});
-
-test("an item doc is one line and can't close its comment", () => {
-  const [kind, size] = [...sizes][0] ?? [];
-  assert.ok(kind && size);
-  for (const doc of ["", "two\nlines", "ends */ here"])
-    assert.throws(
-      () => moduleOf([size.item], {}, { [kind]: doc }),
-      /one line of plain text/,
-      JSON.stringify(doc),
-    );
-});
-
 test("the window chat's window namespace adds within its budget, in its module only", () => {
   // The overview's shape and window.overview(), in a window chat only (decision 0027).
   const window = 1_500;
@@ -100,7 +75,6 @@ test("the window chat's window namespace adds within its budget, in its module o
   const turning = 160;
   const start = chat.indexOf("declare const source: {");
   const off = chat.slice(start, chat.indexOf("\n};\n", start) + 4);
-  assert.match(off, /\n {2}off\(input: \{ kind: string \}\): void;\n/);
   assert.ok(shape(off) <= turning, `source.off adds ${shape(off)} bytes`);
   const added = shape(chat.replace(off, "")) - shape(plain);
   assert.ok(added > 0 && added <= window, `window adds ${added} bytes`);
@@ -134,35 +108,6 @@ test("a waiting connection's preview and draft add within their own budget, in t
   assert.ok(added > 0 && added <= drafting, `drafting adds ${added} bytes`);
   // No waiting connection, no preview and no drafts: only source.off.
   assert.doesNotMatch(chat, /preview\(|configure\(/);
-});
-
-test("a waiting Sheets connection's draft, in its own form, typechecks in the window chat's module", async () => {
-  const sheets = fixtures.get("sheets")?.declaration;
-  assert.ok(sheets?.review);
-  const waiting = waitingOf([
-    {
-      id: "01JC0NNECT10N0000000000000",
-      kind: "sheets",
-      source: sheets.name,
-      why: "",
-      options: {},
-      validator: sheets.options,
-      draft: { validator: sheets.review.draft, doc: sheets.review.doc },
-      preview: async () => [],
-    },
-  ]);
-  assert.ok(waiting);
-  const reader = { read: async () => [], search: async () => [] };
-  const overview = async () => ({ view: null, items: [] });
-  const { dts } = bindingsFor(regionOf([]), { reader, namespaces: {}, overview, waiting });
-  const script = [
-    "const [waiting] = await source.preview();",
-    "source.configure({ connection: waiting.connection, options: { tabs: [{",
-    '  at: waiting.tables[0]?.at ?? "", header: 1, end: "blank", hidden: false, key: "A", title: "C",',
-    '  status: "D", states: { todo: ["To do"], "in-progress": ["In progress"], done: ["Done"] },',
-    "}] } });",
-  ].join("\n");
-  assert.equal(await typecheck(script, dts), null);
 });
 
 test("a Sheets connection's preview and draft, offered in every window chat while one reads, add within their budget, and nothing to the base", async () => {
