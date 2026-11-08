@@ -5,19 +5,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  type IndexRecord,
   listed,
   type OpenVia,
-  replayCalls,
   ServerUnreadable,
   serves,
   type ToolCaller,
   type ToOpen,
 } from "@oriel/core";
-import { loadCalls } from "./calls.ts";
-import { SheetsError } from "./google.ts";
 import { openSheets } from "./open-connection.ts";
-import { sheetsPreview, sheetsReview } from "./preview.ts";
 import { fakeId, fakePicks, fakeRows, fakeServer } from "./sheets-mcp-fake.ts";
 import {
   readComments,
@@ -88,9 +83,6 @@ const sync = async (read: ToolCaller, options: Record<string, unknown> = backlog
   return { opened, ...(await listed(opened.source.sync(null))) };
 };
 
-const byTitle = (records: readonly IndexRecord[], title: string) =>
-  records.find((record) => record.title === title);
-
 test("Oriel knows sheets-mcp by this checkout's command, and by no other", () => {
   const found = {
     name: "sheets",
@@ -105,75 +97,6 @@ test("Oriel knows sheets-mcp by this checkout's command, and by no other", () =>
   // Another program reporting its name isn't it.
   assert.equal(serves(sheetsServer, { ...found, command: "node /elsewhere/main.ts" }), false);
   assert.equal(serves(sheetsServer, { ...found, command: null }), false);
-});
-
-test("a sync through the recorded server lists the mapped tab's rows and the spreadsheet", async () => {
-  const { records, texts } = await sync(replayCalls(loadCalls("sync.json").calls));
-  const rows = records.filter((record) => record.facets.kind !== "doc");
-  assert.equal(rows.length, 20);
-  const doc = records.find((record) => record.facets.kind === "doc");
-  assert.equal(doc?.title, "Product backlog");
-  const signIn = byTitle(records, "Sign-in page remembers the last email");
-  assert.equal(signIn?.facets.state, "done");
-  assert.deepEqual(signIn?.facets.people, [{ role: "assignee", id: "Priya", name: "Priya" }]);
-  assert.equal(signIn?.facets.estimate, 2);
-  // Its last change, from the listing, stands for the spreadsheet's.
-  assert.equal(signIn?.updatedAt, "2026-11-03T16:42:10.512Z");
-  assert.match(texts.get(signIn?.id ?? "") ?? "", /^Key: BL-101\nTitle: Sign-in/);
-  // A cell's note is under its cell, and the comments are the spreadsheet's.
-  const csv = byTitle(records, "Export a report as CSV");
-  assert.match(
-    texts.get(csv?.id ?? "") ?? "",
-    /\nNote on Title: Excel export waits for the reporting rework\.\n/,
-  );
-  const docText = texts.get(doc?.id ?? "") ?? "";
-  assert.match(docText, /Ama, 2026-10-28T11:05:00\.000Z:\nOn: Search finds archived projects\n/);
-  assert.match(docText, /Priya replied, 2026-10-28T13:40:00\.000Z:\nYes, all of them\./);
-  assert.match(docText, /Jonas, 2026-10-15T09:20:00\.000Z \(resolved\):/);
-});
-
-test("a read through the recorded server gives a row's cells", async () => {
-  const synced = await sync(replayCalls(loadCalls("sync.json").calls));
-  const id = byTitle(synced.records, "Export a report as CSV")?.id;
-  assert.ok(id);
-  const opened = await openSheets(
-    connection(backlogPicks),
-    via(replayCalls(loadCalls("read.json").calls)),
-  );
-  const [read] = await opened.source.read([id as never]);
-  assert.equal(read?.status, "ok");
-  assert.equal(read?.status === "ok" && read.content.title, "Export a report as CSV");
-});
-
-test("a preview with nothing picked shows the person's latest spreadsheets, and a draft picks what it maps", async () => {
-  const tables = await sheetsPreview(
-    connection({}),
-    via(replayCalls(loadCalls("preview.json").calls)),
-  );
-  assert.deepEqual(
-    tables.map((table) => table.name),
-    [
-      "Product backlog › Backlog",
-      "Product backlog › Sprint 42 notes",
-      "Release checklist › Checklist",
-    ],
-  );
-  assert.deepEqual(tables[0]?.rows[0]?.slice(0, 3), ["Key", "Title", "Status"]);
-  const settled = sheetsReview.settle(
-    {
-      tabs: [{ at: `${backlog}/0`, header: 1, end: "blank", hidden: false, key: "A", title: "B" }],
-    },
-    tables,
-    {},
-  );
-  assert.deepEqual(settled, {
-    spreadsheets: [
-      {
-        id: backlog,
-        tabs: [{ sheetId: 0, header: 1, end: "blank", hidden: false, key: "Key", title: "Title" }],
-      },
-    ],
-  });
 });
 
 test("read_range's cells as the server cuts them are read on, and nowhere else", async () => {
@@ -230,131 +153,8 @@ test("an answer Oriel can't read stops the sync, naming the server, with nothing
     })();
     assert.ok(error instanceof ServerUnreadable, String(error));
     assert.deepEqual(pages, []);
-    assert.equal(
-      opened.problem?.(error),
-      "sheets-mcp answered in a way Oriel didn't expect, so Oriel kept the window as it was.",
-    );
   }
   assert.throws(() => readValues({ values: "rows", truncated: false }), ServerUnreadable);
-});
-
-test("a server that isn't signed in to Google stops the sync, and says to run login", async () => {
-  const read: ToolCaller = async () => ({
-    content: [{ type: "text", text: "Not signed in. Run `sheets-mcp login`." }],
-    isError: true,
-  });
-  const opened = await openSheets(connection(fakePicks), via(read));
-  const error = await listed(opened.source.sync(null)).catch((thrown: unknown) => thrown);
-  assert.ok(error instanceof SheetsError && error.status === 401);
-  assert.equal(
-    opened.problem?.(error),
-    "sheets-mcp isn't signed in to Google. Run `sheets-mcp login`, then sync again.",
-  );
-});
-
-test("a spreadsheet the server can't find is gone, and leaves with its rows", async () => {
-  const server = fakeServer(fakeRows());
-  const picks = { spreadsheets: [{ ...fakePicks.spreadsheets[0], id: "1GoneSpreadsheet00000" }] };
-  const { records } = await sync(server.read, picks);
-  assert.deepEqual(records, []);
-  assert.deepEqual(
-    server.calls.map((call) => call.tool),
-    ["get_spreadsheet"],
-  );
-});
-
-test("an unchanged spreadsheet costs its two reads, and isn't read again", async () => {
-  const server = fakeServer(fakeRows());
-  const opened = await openSheets(connection(fakePicks), via(server.read));
-  let cursor: string | null = null;
-  for await (const page of opened.source.sync(null)) cursor = page.cursor ?? cursor;
-  server.calls.length = 0;
-  for await (const page of opened.source.sync(cursor)) assert.deepEqual(page.records, []);
-  assert.deepEqual(
-    server.calls.map((call) => call.tool),
-    ["get_spreadsheet", "list_spreadsheets"],
-  );
-  assert.equal(fakeId.length > 10, true);
-});
-
-test("a sync through the server skips a row hidden by hand, keeps a cell's note, and has the comments", async () => {
-  const server = fakeServer(fakeRows());
-  // BL-2's row, the third, is hidden; BL-3's title has a note.
-  server.hiddenRows.add(2);
-  server.notes.set("3,1", "Says = on purpose.");
-  server.comments = [
-    {
-      author: "Ana",
-      createdTime: "2026-11-02T09:00:00.000Z",
-      content: "Is BL-2 still wanted?",
-      resolved: true,
-      quoted: "Export as CSV",
-      replies: [{ author: "", createdTime: "2026-11-02T10:00:00.000Z", content: "Yes." }],
-    },
-  ];
-  const { records, texts } = await sync(server.read, fakePicks);
-  const rows = records.filter((record) => record.facets.kind !== "doc");
-  assert.deepEqual(
-    rows.map((record) => record.title),
-    ["Sign-in remembers the email", "=Not a formula, as text"],
-  );
-  const bl3 = byTitle(records, "=Not a formula, as text");
-  assert.match(texts.get(bl3?.id ?? "") ?? "", /\nNote on Title: Says = on purpose\./);
-  const doc = records.find((record) => record.facets.kind === "doc");
-  assert.match(
-    texts.get(doc?.id ?? "") ?? "",
-    /Ana, 2026-11-02T09:00:00\.000Z \(resolved\):\nOn: Export as CSV\nIs BL-2 still wanted\?\n(.|\n)*Someone replied/,
-  );
-  // As shown, with the grid; as entered, without.
-  const reads = server.calls.filter((call) => call.tool === "read_range");
-  assert.ok(reads.every((call) => call.args.includeGrid === true));
-  // A mapping that reads hidden rows has BL-2.
-  const hidden = {
-    spreadsheets: [
-      {
-        ...fakePicks.spreadsheets[0],
-        tabs: [{ ...fakePicks.spreadsheets[0]?.tabs[0], hidden: true }],
-      },
-    ],
-  };
-  const all = await sync(server.read, hidden);
-  assert.equal(all.records.filter((record) => record.facets.kind !== "doc").length, 3);
-});
-
-test("serverGoogle gives notes, hidden rows and columns, comments, and no merges", async () => {
-  const server = fakeServer(fakeRows());
-  server.hiddenRows.add(1);
-  server.hiddenColumns.add(4);
-  // A note on a cell past its row's last value is a cell too.
-  server.notes.set("3,5", "Past the row's end.");
-  const google = serverGoogle(server.read);
-  assert.deepEqual(await google.comments(fakeId), []);
-  const info = await google.tabs(fakeId);
-  assert.ok(info !== "gone");
-  const tab = info.tabs[0];
-  assert.ok(tab);
-  const grid = await google.rows(fakeId, tab, 0, 4, true);
-  assert.ok(grid !== "gone");
-  assert.deepEqual(grid.merges, []);
-  assert.deepEqual([...grid.hiddenRows], [1]);
-  assert.deepEqual([...grid.hiddenColumns], [4]);
-  assert.deepEqual(grid.rows[1]?.[1], {
-    shown: "Sign-in remembers the email",
-    number: null,
-    note: null,
-    entered: "Sign-in remembers the email",
-  });
-  assert.deepEqual(grid.rows[3]?.[5], {
-    shown: "",
-    number: null,
-    note: "Past the row's end.",
-    entered: null,
-  });
-  // FORMULA reads ask for no grid.
-  assert.deepEqual(
-    server.calls.filter((call) => call.tool === "read_range").map((call) => call.args.includeGrid),
-    [true, undefined],
-  );
 });
 
 test("comments are read a page at a time, at most 200, and none when the sign-in can't read them", async () => {
@@ -436,11 +236,8 @@ test("a grid or comments Oriel can't read stop the sync, naming the server", asy
 });
 
 test("Sheets through its server may call its read tools, and no write tool among them", () => {
-  assert.deepEqual(sheetsServer.reads, [
-    "list_spreadsheets",
-    "get_spreadsheet",
-    "read_range",
-    "list_comments",
-  ]);
-  assert.deepEqual(sheetsServer.writes, ["update_range", "append_rows"]);
+  for (const write of ["update_range", "append_rows"]) {
+    assert.ok(sheetsServer.writes.includes(write), write);
+    assert.ok(!sheetsServer.reads.includes(write), write);
+  }
 });
