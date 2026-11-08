@@ -272,8 +272,9 @@ test("under desktop:try, no page the window loads names the signed-in account (O
     });
   }
   // Every page the first run and Settings load, as the bytes the server
-  // sends. The window's event streams carry only thread events.
-  for (const page of ["/api/setup", "/api/settings", "/api/settings/usage", "/api/overview"]) {
+  // sends. Usage is numbers only, and the event streams carry only thread
+  // events.
+  for (const page of ["/api/setup", "/api/settings", "/api/overview"]) {
     const body = String((await run.get(page)).body);
     for (const identity of ["maya@example.com", "Claude Pro", "ChatGPT Plus"])
       assert.ok(!body.includes(identity), `${page} names ${identity}`);
