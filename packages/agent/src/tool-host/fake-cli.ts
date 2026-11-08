@@ -68,6 +68,12 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   appendFileSync(fake.journal, `call ${tool}\n`);
   if (tool === "echo") return ok(id, textAnswer(JSON.stringify(request.arguments)));
   if (tool === "hang") return;
+  // A server the person hasn't signed in to: the CLI refuses the call.
+  if (tool === "auth")
+    return out({
+      type: "control_response",
+      response: { subtype: "error", request_id: id, error: `needs-auth: ${request.server_name}` },
+    });
   if (tool === "crash") process.exit(3);
   if (tool === "big")
     return ok(id, {
