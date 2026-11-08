@@ -62,7 +62,6 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { chromium } from "playwright-core";
 
 const { values } = parseArgs({
   options: {
@@ -134,7 +133,20 @@ function bindingReply(message: Stun): Buffer | null {
 
 // ---- One run's listeners ----
 
-const channels = ["stun", "turn-udp", "turn-tcp", "turn-tls", "peer-udp", "peer-tcp"] as const;
+const channels = [
+  "stun",
+  "turn-udp",
+  "turn-tcp",
+  "turn-tls",
+  "peer-udp",
+  "peer-tcp",
+  // The same, by name: the lookup of a name the script chose is a channel of
+  // its own (to whoever answers for the name), seen in the engine's net log.
+  "stun-dns",
+  "turn-dns",
+  "ice-dns",
+  "ice-tcp-dns",
+] as const;
 type Channel = (typeof channels)[number];
 type Heard = { packets: number; bytes: string };
 type Trap = { ports: Record<Channel, number>; heard: Record<Channel, Heard>; close(): void };
@@ -203,6 +215,10 @@ async function trap(): Promise<Trap> {
     "turn-tls": await tcp("turn-tls", null),
     "peer-udp": await udp("peer-udp", bindingReply),
     "peer-tcp": await tcp("peer-tcp", bindingReply),
+    "stun-dns": await udp("stun-dns", bindingReply),
+    "turn-dns": await tcp("turn-dns", turnReply),
+    "ice-dns": await udp("ice-dns", bindingReply),
+    "ice-tcp-dns": await tcp("ice-tcp-dns", bindingReply),
   };
   return { ports, heard, close: () => closers.forEach((close) => close()) };
 }
@@ -318,17 +334,48 @@ function probe(win: any, c: any, say: (o: any) => void) {
       cand: "candidate:2 1 tcp 1518280447 127.0.0.1 " + P["peer-tcp"] + " typ host tcptype passive",
     },
   );
+  const named = (sub: string) => M + sub + ".exfil.test";
+  go("stun-dns", { iceServers: [{ urls: "stun:" + named("sd") + ":" + P["stun-dns"] }] });
+  go("turn-dns", turn("turn:" + named("td") + ":" + P["turn-dns"] + "?transport=tcp", "tn"));
+  go(
+    "ice-dns",
+    {},
+    {
+      ufrag: M + "pn",
+      cand: "candidate:3 1 udp 2122260223 " + named("id") + " " + P["ice-dns"] + " typ host",
+    },
+  );
+  go(
+    "ice-tcp-dns",
+    {},
+    {
+      ufrag: M + "pm",
+      cand:
+        "candidate:4 1 tcp 1518280447 " +
+        named("ic") +
+        " " +
+        P["ice-tcp-dns"] +
+        " typ host tcptype passive",
+    },
+  );
 }
 
 function main(c: any) {
   const say = (o: any) => {
     o.mark = c.mark;
     o.where = c.nested ? "child-srcdoc" : "frame";
-    try {
-      top!.postMessage({ probe: o }, "*");
-    } catch {}
-    ((self as any).__reports = (self as any).__reports || []).push(o);
+    if (top === self) ((self as any).__reports = (self as any).__reports || []).push(o);
+    else
+      try {
+        top!.postMessage({ probe: o }, "*");
+      } catch {}
   };
+  // A top-level app (the partition kind) collects its nested frame's reports.
+  if (!c.nested && top === self)
+    addEventListener("message", (e) => {
+      if (e.data && e.data.probe)
+        ((self as any).__reports = (self as any).__reports || []).push(e.data.probe);
+    });
   if (!c.nested) {
     fetch(c.own).then(
       (r) => r.text().then((t) => say({ ch: "own-fetch", ok: t === "own" })),
@@ -521,25 +568,68 @@ const commonSwitches = [
   // No name resolves but loopback's, so the engine's own background traffic
   // (updates, accounts) can't leave the Mac either. The probes use literal
   // 127.0.0.1 addresses, which no rule touches.
-  "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
+  // *.exfil.test, the probes' own names, answer 127.0.0.1 from the rules
+  // (WebRTC's lookups go through the network context's resolver, which the
+  // rules wrap: services/network/p2p/socket_manager.cc, network_context.cc).
+  "--host-resolver-rules=MAP *.exfil.test 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
   "--disable-background-networking",
   "--disable-component-update",
+  // The engine's log is the DNS detector: the network service logs each name
+  // WebRTC hands its resolver (services/network/p2p/socket_manager.cc), and
+  // the rules above fail every probe name in the form it asks for (with a
+  // trailing dot), so each lookup is logged, and none leaves the Mac.
+  "--enable-logging=stderr",
+  "--v=0",
+  "--vmodule=*p2p_transport_channel*=1,*turn_port*=1,*stun_port*=1",
 ];
+
+// Probe names the engine's resolver was asked for, and the lookups WebRTC
+// started (renderer side), from the engines' stderr.
+const resolved = new Set<string>();
+const started = new Set<string>();
+function scan(text: string) {
+  for (const line of text.split("\n")) {
+    const asked = /Failed to resolve address for (q\d+z[a-z]{2}\.exfil\.test)/.exec(line)?.[1];
+    if (asked) resolved.add(asked);
+    const begun =
+      /(?:host lookup for|resolving ICE candidate hostname) (q\d+z[a-z]{2}\.exfil\.test)/.exec(line)?.[1];
+    if (begun) started.add(begun);
+  }
+}
+// Chrome's stderr reaches this process only as Playwright's `pw:browser`
+// debug lines, so turn those on before Playwright loads, scan them, and keep
+// them off the terminal.
+process.env["DEBUG"] = "pw:browser";
+const write = process.stderr.write.bind(process.stderr);
+process.stderr.write = ((chunk: string | Uint8Array, ...rest: any[]) => {
+  const text = String(chunk);
+  if (text.includes("pw:browser")) {
+    scan(text);
+    return true;
+  }
+  return write(chunk, ...rest);
+}) as typeof process.stderr.write;
+const { chromium } = await import("playwright-core");
 
 // Current Chrome has no WebRTC policy switch (--force-webrtc-ip-handling-
 // policy is gone); it reads the policy only from the profile's pref
 // `webrtc.ip_handling_policy`, which extensions and enterprise policy set. So
 // a policy run gets a fresh profile with that pref in its Preferences.
 async function chrome(switches: string[], proxied: boolean, policyPref: boolean): Promise<Engine> {
-  const args = [
+  const args = () => [
     ...commonSwitches,
     ...switches,
     ...(proxied
       ? [`--proxy-server=http://127.0.0.1:${proxyPort}`, "--proxy-bypass-list=<-loopback>"]
       : []),
   ];
-  const options = { channel: "chrome", headless: true, chromiumSandbox: true, args };
-  const browser = policyPref ? null : await chromium.launch(options);
+  const options = () => ({
+    channel: "chrome",
+    headless: true,
+    chromiumSandbox: true,
+    args: args(),
+  });
+  const browser = policyPref ? null : await chromium.launch(options());
   let version = browser?.version() ?? "";
   const open = async () => {
     if (browser) return browser.newContext();
@@ -549,7 +639,7 @@ async function chrome(switches: string[], proxied: boolean, policyPref: boolean)
       join(profile, "Default/Preferences"),
       JSON.stringify({ webrtc: { ip_handling_policy: "disable_non_proxied_udp" } }),
     );
-    const context = await chromium.launchPersistentContext(profile, options);
+    const context = await chromium.launchPersistentContext(profile, options());
     version = context.browser()?.version() ?? version;
     return context;
   };
@@ -584,7 +674,11 @@ async function chrome(switches: string[], proxied: boolean, policyPref: boolean)
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const framework = "Contents/Frameworks/Electron Framework.framework/Electron Framework";
 
-async function electron(out: string, switches: string[]): Promise<Engine> {
+async function electron(
+  out: string,
+  switches: string[],
+  rules?: { line: string; appended: string },
+): Promise<Engine> {
   // The app's own Electron, fuses set, from a built Oriel.app: `--app`, or
   // this worktree's build, or the main checkout's (read only, copied).
   const built =
@@ -623,12 +717,21 @@ async function electron(out: string, switches: string[]): Promise<Engine> {
   mkdirSync(data);
   const child = spawn(
     join(app, "Contents/MacOS/Oriel"),
-    [...commonSwitches, ...switches, "--probe-data", data],
+    [
+      ...commonSwitches.map((arg) =>
+        rules && arg.startsWith("--host-resolver-rules=") ? `--host-resolver-rules=${rules.line}` : arg,
+      ),
+      ...switches,
+      "--probe-data",
+      data,
+      ...(rules ? ["--probe-append-rules", rules.appended] : []),
+    ],
     {
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
-  child.stderr.on("data", () => {});
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => scan(chunk));
   const exited = new Promise<void>((resolve) => child.on("exit", () => resolve()));
   const waiting = new Map<number, (outcome: Outcome) => void>();
   let ready: (v: { electron: string; chrome: string }) => void;
@@ -687,7 +790,7 @@ async function electron(out: string, switches: string[]): Promise<Engine> {
 
 // ---- The matrix ----
 
-type Cell = "LEAK" | "reach" | "proxy" | "·" | "n/a";
+type Cell = string;
 type Row = {
   engine: string;
   config: string;
@@ -710,6 +813,22 @@ const userOf: Record<Channel, string> = {
   "turn-tls": "ts",
   "peer-udp": "pu",
   "peer-tcp": "pt",
+  "stun-dns": "",
+  "turn-dns": "tn",
+  "ice-dns": "pn",
+  "ice-tcp-dns": "pm",
+};
+// The probes' names resolve to 127.0.0.1 by the engine's rules. WebRTC's
+// lookups leave nothing in the net log, so a lookup shows as where the
+// connection went: straight to the listener, or to the proxy as CONNECT
+// 127.0.0.1:port (looked up here first: a DNS leak outside the harness), not
+// CONNECT <name>:port (the name handed to the proxy, no lookup here).
+const named = new Set<Channel>(["stun-dns", "turn-dns", "ice-dns", "ice-tcp-dns"]);
+const nameOf: Partial<Record<Channel, string>> = {
+  "stun-dns": "sd",
+  "turn-dns": "td",
+  "ice-dns": "id",
+  "ice-tcp-dns": "ic",
 };
 
 async function measure(
@@ -738,9 +857,15 @@ async function measure(
         : heard.packets
           ? "reach"
           : asked.some((line) => line.endsWith(`:${port}`))
-            ? "proxy"
+            ? named.has(channel) &&
+              asked.some((line) => line.endsWith(`127.0.0.1:${port}`))
+              ? "DNS→proxy"
+              : "proxy"
             : "·";
-      return [channel, cell];
+      // A lookup the resolver was asked for is a DNS leak on its own.
+      const name = `${run.mark}${nameOf[channel] ?? "--"}.exfil.test`;
+      const looked = resolved.has(name);
+      return [channel, looked ? (cell === "·" ? "DNS" : `DNS+${cell}`) : cell];
     }),
   ) as Record<Channel, Cell>;
   const reports = (outcome.reports ?? []).filter((r: any) => r && r.mark === run.mark);
@@ -782,6 +907,7 @@ type Plan = {
   switches: string[];
   proxied?: boolean;
   policyPref?: boolean;
+  rules?: { line: string; appended: string };
   levers: Levers[];
   kinds: readonly Kind[];
   variants: readonly Variant[];
@@ -822,6 +948,21 @@ const plans: Plan[] = values.desktop
       {
         config: "--webrtc-ip-handling-policy",
         switches: ["--webrtc-ip-handling-policy=disable_non_proxied_udp"],
+        levers: [{}],
+        kinds: ["sandboxed"],
+        variants: ["direct"],
+      },
+      {
+        // The command line fails every probe name; the rule the probe build
+        // appends from code maps the TURN name to loopback. TURN by name
+        // connecting means the appended rule is the one in force.
+        config: "fence set from code",
+        switches: [],
+        rules: {
+          line: "MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
+          appended:
+            "MAP *.exfil.test 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
+        },
         levers: [{}],
         kinds: ["sandboxed"],
         variants: ["direct"],
@@ -881,7 +1022,7 @@ for (const plan of plans) {
   );
   if (!wanted) continue;
   const engine = values.desktop
-    ? await electron(out, plan.switches)
+    ? await electron(out, plan.switches, plan.rules)
     : await chrome(plan.switches, plan.proxied ?? false, plan.policyPref ?? false);
   if (!engines.includes(engine.name)) engines.push(engine.name);
   console.log(`engine: ${engine.name}`);

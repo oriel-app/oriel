@@ -28,6 +28,11 @@ const data = argument("--probe-data");
 if (!data) throw new Error("--probe-data <dir> is required");
 const preloadPath = join(fileURLToPath(new URL(".", import.meta.url)), "preload.cjs");
 
+// The shell takes no launch argument but its own, so a resolver fence would
+// be set from code, before Electron is ready, as here.
+const appended = argument("--probe-append-rules");
+if (appended) app.commandLine.appendSwitch("host-resolver-rules", appended);
+
 app.dock?.hide();
 app.setPath("userData", data);
 app.setPath("sessionData", data);
