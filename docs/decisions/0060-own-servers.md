@@ -1,6 +1,6 @@
 # 0060 Own servers: Oriel's agent uses any server the person turns on, and Oriel calls every tool itself, with no model
 
-Proposed 2026-11-08. Amends 0003, 0036, 0037, 0048 and 0059. Changes SPEC §1, §2, §5, §7 and §8, and the security reviewer's threat model and checklist.
+Proposed 2026-11-08. Amends 0003, 0036, 0037, 0048, 0050 and 0059. Changes SPEC §1, §2, §5, §7 and §8, `.claude/rules/bindings.md`, and the security reviewer's threat model and checklist.
 
 Adds: none
 
@@ -30,6 +30,13 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
 
   - **While it runs:** Oriel declines every control request the CLI sends, such as a permission prompt or an elicitation. Oriel never sends `mcp_authenticate`, `mcp_toggle` or `mcp_set_servers`. A server that needs signing in is a problem naming it, and the person fixes it in their own agent.
   - **Guard:** Oriel's caller refuses any tool not on the list it was given, before anything is sent. Sync's caller lists the connector's reads. Replay's caller lists exactly the change set's tools. The agent's caller lists the reads of the servers turned on. With no model in the process, this list is the guard. Sync, replay and the agent's reads never share a caller.
+  - **The types back the list** (SPEC §5: "at the type level and in tests"):
+    - a `ReadCaller` and a `WriteCaller` are different branded types;
+    - only packages/changeset makes a `WriteCaller`, from an `Approved<…>` change set, as it makes a writer now;
+    - the sandbox's bindings take a `ReadCaller`, and a test shows they can't be given a `WriteCaller`.
+
+    Today both are the same `ToolCaller` (packages/core/src/servers.ts).
+
   - **Deadlines and cancelling:** each call has its own deadline. `ToolCaller` takes a signal. When a run ends, however it ends, its calls still waiting are cancelled, and none queued behind them is sent.
 - **On Codex,** calls go through `mcpServer/tool/call` on a thread that runs no turn, with only the named servers enabled (0059). That thread is the tool host there. Its start check is `mcpServerStatus/list`, as now. It also compares each server's URL, or its command and arguments, from `config/read` against the grant, which today's `checkCodexServers` doesn't.
 - **The Haiku button press goes:** `callerPrompt`, `shapeOf`, the permission answer that swapped in Oriel's arguments, and the retry when Haiku missed. Sync and replay on Claude Code use the tool host.
@@ -45,9 +52,10 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
 - **A grant names the server exactly:** the agent (Claude Code or Codex), the server's name in that agent's configuration, and its URL or command line as the agent reported them.
   - A grant on Claude Code means nothing on Codex. Switching agents in Settings starts with nothing on.
   - A server whose URL or command changes, or that disappears, turns off, and 0059's card says so.
-  - A tool host is started for one set of grants. It's closed as soon as a grant changes, and its replacement re-checks before any call.
+  - A tool host is started for one set of grants and lists. It's closed as soon as a grant or a list changes, and its replacement re-checks before any call. A tool moved back to writes is never called as a read again.
+  - Turning a server on, moving a tool to reads and turning a tool back on are person-only actions in 0024's registry, refused to the agent, an outside tool (0058) and a review link's holder. Turning one off is open to all of them.
 - **Reads and writes, per tool.** Turning a server on shows its tools in two lists, with what each one does:
-  - **Reads (Oriel's agent calls these without asking).** A tool starts here only if its server marks it read-only and doesn't mark it destructive or open-world. The marks come from the server's annotations, as the agent reports them: `readOnly`, `destructive` and `openWorld` on Claude Code, and the tool's `annotations` on Codex.
+  - **Reads (Oriel's agent calls these without asking).** A tool starts here only if its server marks it read-only and explicitly not open-world (`openWorldHint: false`), and doesn't mark it destructive. MCP's default for a missing open-world mark is open-world, and the agent's report tells a missing mark from false: measured, a tool marked only `readOnlyHint` shows `{"readOnly": true}` with no `openWorld` key. So most tools start as writes, and the person moves the reads they want. The marks come from the server's annotations, as the agent reports them: `readOnly`, `destructive` and `openWorld` on Claude Code, and the tool's `annotations` on Codex.
   - **Writes (each one asks you first).** Every other tool, including one with no marks at all, which most tools have.
   - A person can move any tool between the lists, and can turn single tools off.
   - A tool that shows up later, or whose marks change, starts as a write until the person looks.
@@ -61,7 +69,13 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
     - Claude Code 2.1.319 reports names and marks only. `mcp_status` has nothing more, and no other control request does either. There, the agent calls a read by its name, and if the arguments are wrong, the server's error says what it wants. That error is a read's answer, so it's untrusted too.
     - A write gets no second chance: its call is captured, not sent. So on Claude Code, a write tool with no schema isn't offered to the agent until Claude Code reports one. Settings says so beside the tool.
   - `call(server, tool, args)`: a read tool's call goes through the agent's caller and returns its answer. A write tool's call is captured as a call mutation and returns a stand-in answer, like any captured mutation (0003). A source server's name is refused here.
-- **Validated names, never code.** The server's name and the tool's name are strings that `call` checks against the turned-on lists. Claude Code names a tool `mcp__<server>__<tool>` and splits the name at the first `__`, so a granted name can't contain `__`. A server or tool name that changes under Claude Code's normalisation (anything outside `[A-Za-z0-9_-]` becomes `_`), or that collides with another granted name once normalised, can't be granted, and Settings says why. Nothing a server says goes into the system prompt or the `.d.ts`, including its tools' names, descriptions and schemas. Those reach the agent only as a run's result.
+- **Validated names, never code.** The server's name and the tool's name are strings that `call` checks against the turned-on lists. Claude Code names a tool `mcp__<server>__<tool>` and splits the name at the first `__`. Nothing can be granted if Settings shows a reason instead, and that's the case when:
+  - the server's name contains `__` or ends with `_`, or the tool's name starts with `_`;
+  - either name changes under Claude Code's normalisation (anything outside `[A-Za-z0-9_-]` becomes `_`);
+  - the full name doesn't parse back, the CLI's way, to exactly its granted pair, or matches another granted pair's.
+
+  Oriel checks the same before every call. Nothing a server says goes into the system prompt or the `.d.ts`, including its tools' names, descriptions and schemas. Those reach the agent only as a run's result.
+
 - **A read never writes.** A read's answer can lead the agent to propose a write, which waits for a person like any other. Writes are on no list but replay's.
 
 ### Untrusted reads
@@ -75,6 +89,7 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
   - Text blocks only, up to 100,000 characters an answer. A longer answer is cut, and the cut is marked.
   - Images and embedded resources are dropped, with a note.
   - At most 20 read calls a run, plus the run's existing size and time caps.
+  - A read's arguments: at most 4,096 characters a call, and 32,768 a run, as JSON. A call past either is refused before it's sent, so no single read carries everything a run has read.
   - On Claude Code, `result_not_for_model` means the CLI hands over the server's own content unbounded, up to its 10 MB refusal. Oriel enforces these caps itself.
 - **What an answer may steer:** what the agent says and which writes it proposes. It can't approve anything, can't turn a server on or move a tool between the lists, and can't reach past what 0024 lets the agent do.
 - **Read arguments leave the machine.** A read's arguments, such as a search query, go to that server. Text the agent read elsewhere can go with them: "search Notion for <the contents of a Jira issue>". This is the main new risk. For that reason:
@@ -95,14 +110,22 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
 - **The review** (the change-set diff and the review link) shows:
   - Oriel's line: "Call `post_message` on Teams".
   - The agent's summary, labelled as the agent's words, since Oriel can't check it.
-  - The arguments exactly, each value as escaped text, with long ones folded and openable.
+  - The arguments exactly, each value as escaped text, in full. A long value scrolls in its own box with its length shown, and nothing is hidden behind a fold.
   - "Can't be undone", before anyone approves.
 
   A person may edit argument values, which changes the hash and voids an approval (0003).
 
+- **Only the person in the window approves a change set that holds a call.** A call can reach anything a server of the person's can, such as a local file or shell server whose tools all start as writes. 0036 says whoever controls the review page's host can seal any decision. So a review link shows calls but can't approve them, as 0051 has it for drafts. A change set without calls is unchanged.
+
 - **Apply** sends exactly the captured arguments, once, through a tool host whose start check matched the captured grant, and whose caller lists only that change set's tools. If the grant is gone or changed, or the tool is no longer a write there, nothing is sent and the mutation fails with the reason.
   - A call is never idempotent. If it may have reached the server, it's never sent again, and the person gets 0003's dismiss, with a warning naming it.
   - Its `applied` keeps the time and, where the answer gives one, the server's ID. The answer isn't kept.
+- **No connector's checks.** An own server is one Oriel doesn't know, even if it reaches a kind that's on, such as another vendor's Sheets server. Its calls get none of that connector's guards: no region, no picks, no `RAW`-only or formula check (0050). What guards them is the person reading the exact arguments in the window. This is an explicit exception:
+  - to 0050's write rules, which cover the Sheets kind's writes;
+  - to `.claude/rules/bindings.md`'s "write functions accept only region IDs": `call()` names a server and a tool, never an item.
+
+  The review marks a string argument that starts with `=`, `+`, `-` or `@` as "may be read as a formula".
+
 - **No Revert.** A call can't be undone: its `undo` refuses ("Oriel can't know how to undo a call to Teams"). As 0059 and #228 have it, a change set with only calls has no Revert, and one that mixes them reverts the rest and names the calls it can't. The review says so before approval.
 
 ### `~/.claude` stays untouched
@@ -170,6 +193,10 @@ The maintainer, 2026-11-08: "if they have mcps we should just let their harness 
   - a write tool reachable without a change set;
   - a tool outside a caller's list sent;
   - a source server's tools reachable through `call()`;
+  - a `WriteCaller` made outside packages/changeset, or reachable from the sandbox's bindings;
+  - a change set with a call approved through a review link;
+  - a granted name that doesn't parse back to its pair;
+  - a read's arguments past their caps;
   - a grant or call not keyed by the agent, name and address;
   - a server's name, tool name, description or schema in a system prompt or `.d.ts`;
   - an own-server answer indexed or rendered outside a run's result;
