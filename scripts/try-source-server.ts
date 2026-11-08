@@ -136,11 +136,18 @@ try {
   }
   if (trying.pick) {
     const [field, value] = trying.pick;
-    const id = (await it.connection(kind))?.id ?? "";
+    const id = (await it.connection(kind))?.id;
+    if (!id) {
+      const why = (await it.connections()).servers.kinds.find((each) => each.kind === kind);
+      throw new Error(`${trying.name} didn't open: ${why?.problem ?? "no reason given"}`);
+    }
     const listed = await it.post(`/api/connections/${id}/pick`, { query: "", field });
     const { choices = [] } = json<{ choices?: { value: string }[] }>(listed);
-    if (listed.status !== 200 || !choices.some((each) => [value].flat().includes(each.value)))
-      throw new Error(`${trying.name}'s ${field} wasn't listed: ${listed.status}`);
+    if (listed.status !== 200 || !choices.some((each) => [value].flat().includes(each.value))) {
+      throw new Error(
+        `${trying.name}'s ${field} wasn't listed: ${listed.status} ${JSON.stringify(json(listed))}`,
+      );
+    }
     const set = await it.post(`/api/connections/${id}/options`, { options: { [field]: value } });
     if (set.status !== 200) throw new Error(`${trying.name}'s ${field} didn't set: ${set.status}`);
     await it.app.settled();
@@ -190,6 +197,12 @@ try {
     `approved: ${approved.status}; ${item} reads "${row?.title}"; ${after?.items} items, problem ${after?.problem ?? "none"}`,
     at,
   );
+} catch (error) {
+  // What went wrong inside, as the app logged it: never a source's content.
+  const failed = it.logged.filter((each) => /fail|couldn't|stopped|missed/i.test(each.message));
+  for (const each of failed)
+    console.error(`logged: ${each.message} ${JSON.stringify(each.fields)}`);
+  throw error;
 } finally {
   for (const fn of quiet) await fn();
 }
