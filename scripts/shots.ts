@@ -1514,6 +1514,85 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
+// Moving an item between workstreams (moving.ts), on a server of each
+// shot's own: "Checkout polish" holds three items, and "Gift cards" one.
+// At 1280 the item's row is dragged with the mouse, down, across and up,
+// onto the sidebar; at 390, where the sidebar is a drawer, its row's menu
+// does the same.
+let moveFrom = "";
+const moving = async () => {
+  const { serving } = await writing();
+  const from = await post<{ id: string }>(
+    "/api/workstreams",
+    {
+      kind: "picked",
+      name: "Checkout polish",
+      items: ["jira:SYN-21", "jira:SYN-23", "jira:SYN-99"],
+    },
+    serving,
+  );
+  await post(
+    "/api/workstreams",
+    { kind: "picked", name: "Gift cards", items: ["jira:SYN-104"] },
+    serving,
+  );
+  moveFrom = from.id;
+  return serving;
+};
+const narrow = (page: Page) => (page.viewportSize()?.width ?? 0) <= 760;
+const movingRow = (page: Page, key = "SYN-23") =>
+  page.locator(".workstream-page .members .member", { has: page.getByRole("link", { name: key }) });
+const sidebarWorkstream = (page: Page, name: string) =>
+  page.locator(".sidebar .nav-workstream-row", { hasText: name });
+const workstreamsHeading = (page: Page) => page.locator(".sidebar-workstreams .fold-head");
+// The workstream's page, its items shown, and the sidebar's workstreams.
+async function openMoving(page: Page): Promise<void> {
+  // A drag the scene before held mid-way lets go, over nothing.
+  await page.mouse.move(1, 1);
+  await page.mouse.up();
+  await page.goto(new URL(`/workstreams/${moveFrom}`, page.url()).href);
+  await movingRow(page).waitFor();
+  await sidebarWorkstream(page, "Gift cards").waitFor({ state: "attached" });
+}
+// The row dragged with the mouse onto `onto`, let go there unless `hold`.
+async function dragRow(page: Page, onto: Locator, hold = false): Promise<void> {
+  await movingRow(page).locator(".member-title").hover();
+  await page.mouse.down();
+  const box = await onto.boundingBox();
+  if (!box) throw new Error("nothing to drop on");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  if (!hold) await page.mouse.up();
+}
+// The row's menu, opened as a right-click opens it.
+async function rowMenu(page: Page): Promise<void> {
+  await movingRow(page).locator(".member-title").click({ button: "right" });
+  await page.locator(".context-menu:popover-open").waitFor();
+}
+// SYN-23 moved to "Gift cards": gone from this page, two items there, and
+// the bead says so, with its Undo.
+async function moveToGiftCards(page: Page): Promise<void> {
+  await openMoving(page);
+  if (narrow(page)) {
+    await rowMenu(page);
+    await page.getByRole("menuitem", { name: "Move to “Gift cards”" }).click();
+  } else await dragRow(page, sidebarWorkstream(page, "Gift cards"));
+  await page.locator(beadSays, { hasText: "Moved SYN-23" }).waitFor();
+  await movingRow(page).waitFor({ state: "detached" });
+  await sidebarWorkstream(page, "Gift cards")
+    .locator(".nav-count", { hasText: /^2$/ })
+    .waitFor({ state: "attached" });
+  await page
+    .getByRole("button", { name: "Undo: Moved SYN-23 from “Checkout polish” to “Gift cards”." })
+    .waitFor({ state: "attached" });
+}
+// Dropped on the Workstreams heading: the menu asks.
+async function dropOnHeading(page: Page): Promise<void> {
+  await openMoving(page);
+  if (narrow(page)) await rowMenu(page);
+  else await dragRow(page, workstreamsHeading(page));
+  await page.locator(".context-menu:popover-open").waitFor();
+}
+
 // After you approve, set to go on to the next thing that needs you: a
 // server of each shot's own, with a change set to review on the checkout
 // epic, and with `others`, a plan proposed before it, which is next in
@@ -2711,6 +2790,89 @@ const scenes: Scene[] = [
       await page.locator(".bead").hover();
       await page.getByRole("button", { name: "Undo removing SYN-23" }).click();
       await page.locator('.members [data-item="jira:SYN-23"]').waitFor();
+      await pointerAway(page);
+    },
+  },
+  // An item dragged from a workstream's page onto another workstream in
+  // the sidebar moves there, with Undo.
+  { name: "drag-move", path: "/", make: moving, act: moveToGiftCards },
+  // Mid-drag: the workstream under the pointer takes the drop, drawn so.
+  {
+    name: "drag-move-over",
+    path: "/",
+    make: moving,
+    act: async (page) => {
+      await openMoving(page);
+      if (narrow(page)) return rowMenu(page);
+      await dragRow(page, sidebarWorkstream(page, "Gift cards"), true);
+      await sidebarWorkstream(page, "Gift cards").and(page.locator("[data-drop-over]")).waitFor();
+    },
+  },
+  // Its Undo: back where it came from, and out of "Gift cards".
+  {
+    name: "drag-move-undone",
+    path: "/",
+    make: moving,
+    act: async (page) => {
+      await moveToGiftCards(page);
+      await page.locator(".bead").hover();
+      await page
+        .getByRole("button", { name: "Undo: Moved SYN-23 from “Checkout polish” to “Gift cards”." })
+        .click();
+      await movingRow(page).waitFor();
+      await sidebarWorkstream(page, "Gift cards")
+        .locator(".nav-count", { hasText: /^1$/ })
+        .waitFor({ state: "attached" });
+      await pointerAway(page);
+    },
+  },
+  // Dropped on the Workstreams heading: a menu where it was let go.
+  { name: "drag-move-menu", path: "/", make: moving, act: dropOnHeading },
+  // Create: a new workstream holds it, named for it, and opens; it left
+  // the one it came from.
+  {
+    name: "drag-move-new",
+    path: "/",
+    make: moving,
+    act: async (page) => {
+      await dropOnHeading(page);
+      await page
+        .getByRole("menuitem", {
+          name: narrow(page) ? "Move to a new workstream" : "Create new workstream",
+        })
+        .click();
+      await page.locator(beadSays, { hasText: "Moved SYN-23 to a new workstream" }).waitFor();
+      await page.waitForURL((url) => !url.pathname.endsWith(moveFrom));
+      await movingRow(page).waitFor();
+      await page.locator(".workstream-page .member").nth(1).waitFor({ state: "detached" });
+      const name = await page.getByRole("textbox", { name: "Workstream name" }).inputValue();
+      if (name !== "Pay with a phone wallet on the website")
+        throw new Error(`the new workstream is named ${name}`);
+      await sidebarWorkstream(page, "Checkout polish")
+        .locator(".nav-count", { hasText: /^2$/ })
+        .waitFor({ state: "attached" });
+    },
+  },
+  // Cancel: nothing changed, and nothing says it did.
+  {
+    name: "drag-move-cancel",
+    path: "/",
+    make: moving,
+    act: async (page) => {
+      await dropOnHeading(page);
+      if (narrow(page)) await page.keyboard.press("Escape");
+      else await page.getByRole("menuitem", { name: "Cancel" }).click();
+      await page.locator(".context-menu:popover-open").waitFor({ state: "detached" });
+      await movingRow(page).waitFor();
+      await sidebarWorkstream(page, "Checkout polish")
+        .locator(".nav-count", { hasText: /^3$/ })
+        .waitFor({ state: "attached" });
+      await sidebarWorkstream(page, "Gift cards")
+        .locator(".nav-count", { hasText: /^1$/ })
+        .waitFor({ state: "attached" });
+      if ((await page.locator(beadSays).count()) > 0) throw new Error("the bead says something");
+      if ((await page.locator(".sidebar .nav-workstream").count()) !== 2)
+        throw new Error("a workstream was made");
       await pointerAway(page);
     },
   },

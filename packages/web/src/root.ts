@@ -46,6 +46,13 @@ import {
   leftPage,
   updateEnding,
 } from "./ending.ts";
+import {
+  initMoving,
+  type MovingModel,
+  type MovingMsg,
+  movingReplied,
+  updateMoving,
+} from "./moving.ts";
 import { type Connectors, connectorsReplied, loadConnectors, noConnectors } from "./connectors.ts";
 import { type Effect, get, type Replied, report, type Tag } from "./http.ts";
 import { samePage, withItem } from "./nav.ts";
@@ -204,6 +211,9 @@ export type Model = {
   // Workstreams being marked done, reopened or deleted, from wherever, and
   // what was last done, with its Undo.
   ending: EndingModel;
+  // An item being moved to another workstream, by a drag or its row's menu,
+  // and what the last move did, with its Undo.
+  moving: MovingModel;
   // The item open in the panel beside the page, as the route names it.
   panel: PanelModel | null;
   // The list on the page the open item was opened from, by item ID, which
@@ -242,6 +252,7 @@ export type Msg =
   | { type: "connections"; msg: ConnectionsMsg }
   | { type: "closing"; msg: ClosingMsg }
   | { type: "ending"; msg: EndingMsg }
+  | { type: "moving"; msg: MovingMsg }
   | { type: "panel"; msg: PanelMsg }
   | { type: "panelAdd"; msg: PanelAddMsg }
   | { type: "panelEdit"; msg: PanelEditMsg }
@@ -354,6 +365,7 @@ export function init(route: Route): [Model, Effect[]] {
     threads: null,
     closing: initClosing(),
     ending: initEnding(),
+    moving: initMoving(),
     panel: null,
     panelList: null,
     panelAdds: noAdds,
@@ -654,6 +666,30 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [ending, effects] = updateEnding(model.ending, msg.msg);
       return [{ ...model, ending }, effects];
     }
+    case "moving": {
+      const [moving, effects] = updateMoving(model.moving, msg.msg);
+      // Undoing a new workstream deletes it: its page, if on screen, gives
+      // way to where the item came from.
+      const made = model.moving.moved?.made ? model.moving.moved : null;
+      const { route } = model;
+      const away: Effect[] =
+        made &&
+        msg.msg.type === "undoClicked" &&
+        moving.undoing > 0 &&
+        route.page === "workstream" &&
+        route.id === made.to.id
+          ? [
+              {
+                type: "navigate",
+                route: made.item.from
+                  ? { page: "workstream", id: made.item.from.id }
+                  : { page: "overview" },
+                replace: true,
+              },
+            ]
+          : [];
+      return [{ ...model, moving }, [...effects, ...away]];
+    }
     case "panel": {
       if (model.panel === null) return [model, []];
       const [panel, effects] = updatePanel(model.panel, msg.msg);
@@ -673,6 +709,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
         ? updateWorkstream(model.workstream, { type: "undoHeld", by, held })
         : [null, []];
       const [ending, ended] = updateEnding(model.ending, { type: "undoHeld", by, held });
+      const [moving, moves] = updateMoving(model.moving, { type: "undoHeld", by, held });
       const [overview, made] = model.overview
         ? updateOverview(model.overview, { type: "undoHeld", by, held })
         : [null, []];
@@ -681,8 +718,18 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [approved, told] = updateApproved(model.approved, { type: "undoHeld", by, held });
       const [rejected, kept] = updateRejected(model.rejected, { type: "undoHeld", by, held });
       return [
-        { ...model, workstream, ending, overview, panelAdds, panelEdits, approved, rejected },
-        [...removals, ...ended, ...made, ...added, ...edited, ...told, ...kept],
+        {
+          ...model,
+          workstream,
+          ending,
+          moving,
+          overview,
+          panelAdds,
+          panelEdits,
+          approved,
+          rejected,
+        },
+        [...removals, ...ended, ...moves, ...made, ...added, ...edited, ...told, ...kept],
       ];
     }
     case "approved": {
@@ -950,6 +997,15 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
         msg.tag.kind === "workstreamChanged" ||
         msg.tag.kind === "restored";
       return [{ ...model, workstream }, moved ? [...effects, loadWorkstreams] : effects];
+    }
+    // Each step of a move, and its Undo, changes a workstream: every page
+    // hears it as it hears any change to the workspace.
+    case "moveJoined":
+    case "moveLeft":
+    case "moveUndone": {
+      const [moving, effects] = movingReplied(model.moving, msg);
+      const next = { ...model, moving };
+      return [next, msg.ok ? [...effects, ...workspaceChanged(next)] : effects];
     }
     // Its threads moved with it, so both lists load again, and its page, if
     // it is on screen and still there.

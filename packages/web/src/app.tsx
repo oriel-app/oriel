@@ -25,6 +25,7 @@ import { addUndos } from "./panel-adds.ts";
 import { editUndos } from "./panel-edits.ts";
 import { approvedUndos } from "./approved.ts";
 import { rejectedUndos } from "./rejected.ts";
+import { movingUndos } from "./moving.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import { BeadStatus } from "./undo-stack.tsx";
 import type { Undos } from "./undos.ts";
@@ -130,9 +131,11 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const edits = editUndos(model.panelEdits, (msg) => dispatch({ type: "panelEdit", msg }));
   const approved = approvedUndos(model.approved, (msg) => dispatch({ type: "approved", msg }));
   const rejected = rejectedUndos(model.rejected, (msg) => dispatch({ type: "rejected", msg }));
+  const moved = movingUndos(model.moving, (msg) => dispatch({ type: "moving", msg }));
   const added = {
-    notes: [...adds.notes, ...edits.notes, ...approved.notes, ...rejected.notes],
+    notes: [...adds.notes, ...edits.notes, ...approved.notes, ...rejected.notes, ...moved.notes],
     problem:
+      moved.problem ??
       adds.problem ??
       edits.problem ??
       approved.problem ??
@@ -268,6 +271,7 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
         model.workstream && (
           <WorkstreamPage
             model={model.workstream}
+            workstreams={model.workstreams}
             threads={workstreamThreads(model, model.workstream.id)}
             ending={model.ending}
             added={props.added}

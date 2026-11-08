@@ -2,6 +2,7 @@
 // Controls stay out of the way until something is picked or hovered.
 import type { ComponentChildren } from "preact";
 import { useContext } from "preact/hooks";
+import { dragItem } from "./drag-item.ts";
 import { columnsOf } from "./connectors.ts";
 import {
   Assignee,
@@ -535,8 +536,10 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
   const { item, picked, dispatch } = props;
   const connectors = useContext(ConnectorsContext);
   const columns = columnsOf(connectors, item);
+  // Dragged onto a workstream in the sidebar, it joins it (moving.ts).
+  const carried = { id: item.id, key: keyLabel(item, connectors), title: item.title, from: null };
   return (
-    <li class={picked ? "item picked" : "item"}>
+    <li class={picked ? "item picked" : "item"} {...dragItem(carried)}>
       <label class="pick">
         <input
           type="checkbox"

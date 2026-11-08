@@ -13,6 +13,9 @@ import {
 } from "./chip.ts";
 import { type Connectors, noConnectors } from "./connectors.ts";
 import { carries, type Dropped, readDrop } from "./drop.ts";
+import { dragItem } from "./drag-item.ts";
+import { ContextMenu, type MenuItem } from "./menu.tsx";
+import type { Carried } from "./moving.ts";
 import { type Inline, opens, parse, type Prose, quoteKey } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
@@ -760,15 +763,19 @@ export function Member({
   member,
   onRemove,
   inRegion = false,
+  moving,
 }: {
   member: MemberView;
   onRemove?: () => void;
   // Found outside the workstream, though it holds this one too.
   inRegion?: boolean;
+  // On a workstream's page: the row drags to another workstream in the
+  // sidebar, and its menu moves it as a keyboard can (moving.ts).
+  moving?: { item: Carried; menu: MenuItem[] };
 }) {
   const { ref, row } = member;
-  return (
-    <li class={row ? "member" : "member gone"} data-item={ref.id}>
+  const cells = (
+    <>
       <TypeMark row={row} />
       <ItemKey item={ref} />
       <span class="member-title">{row?.title ?? ref.title ?? "Not in the index"}</span>
@@ -792,6 +799,24 @@ export function Member({
           </button>
         </Tooltip>
       )}
+    </>
+  );
+  if (moving)
+    return (
+      <li
+        class={row ? "member" : "member gone"}
+        data-item={ref.id}
+        data-movable
+        {...dragItem(moving.item)}
+      >
+        <ContextMenu label={`Move ${ref.key}`} items={moving.menu} class="member-menu">
+          {cells}
+        </ContextMenu>
+      </li>
+    );
+  return (
+    <li class={row ? "member" : "member gone"} data-item={ref.id}>
+      {cells}
     </li>
   );
 }
