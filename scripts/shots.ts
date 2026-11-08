@@ -3844,6 +3844,8 @@ scenes.push(
       await email.waitFor();
       if ((await email.innerText()).includes("maya@example.com"))
         throw new Error("the email shows before a click");
+      if (!(await email.evaluate((e) => getComputedStyle(e).filter)).includes("blur"))
+        throw new Error("the hidden email isn't blurred");
       await email.click();
       await page
         .locator("#provider-claude-code .hidden-email[data-shown]", { hasText: "maya@example.com" })
