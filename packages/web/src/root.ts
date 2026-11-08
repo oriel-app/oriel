@@ -1036,7 +1036,9 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // has no notice of its own, so a refusal there says why with the
     // window's other workstream failures.
     case "renamed": {
-      const shown = model.workstream?.id === msg.tag.id ? model.workstream : null;
+      // Only the page on screen: one kept from before loads again on entering.
+      const here = model.route.page === "workstream" && model.route.id === msg.tag.id;
+      const shown = here ? model.workstream : null;
       const [workstream, effects] = shown ? workstreamReplied(shown, msg) : [null, []];
       const ending =
         msg.ok || shown ? model.ending : { ...model.ending, problem: errorOf(msg.body) };

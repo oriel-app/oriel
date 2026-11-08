@@ -2779,7 +2779,8 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A swipe on it in the sidebar shows Mark done and Delete.
+    // A swipe on it in the sidebar shows Rename, Mark done and Delete,
+    // the last against more resistance.
     name: "ending-swipe",
     path: endedPage,
     on: ending,
@@ -2788,7 +2789,7 @@ const scenes: Scene[] = [
       await openSidebar(page);
       const row = page.locator(".nav-workstream-menu .swipe").first();
       await row.hover();
-      for (let i = 0; i < 48; i++) {
+      for (let i = 0; i < 80; i++) {
         await page.mouse.wheel(10, 0);
         await page.waitForTimeout(16);
       }
@@ -2936,6 +2937,34 @@ const scenes: Scene[] = [
   // then, after Enter, the new name in the sidebar and on the overview.
   { name: "rename-field", path: "/", make: renaming, act: (page) => renameInSidebar(page, false) },
   { name: "rename-saved", path: "/", make: renaming, act: (page) => renameInSidebar(page, true) },
+  // Refused, off its page, after a visit to it: the window's problem says
+  // why, and the old name comes back.
+  {
+    name: "rename-refused",
+    path: "/",
+    make: renaming,
+    refused: 409,
+    act: async (page) => {
+      await page.route("**/api/workstreams/*/rename", (route) =>
+        route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "The workstream changed since this page loaded." }),
+        }),
+      );
+      await openSidebar(page);
+      await page.locator(".nav-workstream-menu .nav-link", { hasText: "New workstream" }).click();
+      await page.locator(".workstream-page .workstream-title").waitFor();
+      await openSidebar(page);
+      await page.locator(".sidebar .nav-link", { hasText: "Window" }).click();
+      await page.locator(".overview-workstream-name").waitFor();
+      await renameInSidebar(page, false);
+      await page.getByRole("textbox", { name: "Workstream name" }).press("Enter");
+      await page.getByText("The workstream changed since this page loaded.").waitFor();
+      await page.locator(".nav-workstream-menu .nav-name", { hasText: "New workstream" }).waitFor();
+      if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
+    },
+  },
   // An item dragged from a workstream's page onto another workstream in
   // the sidebar moves there, with Undo.
   { name: "drag-move", path: "/", make: moving, act: moveToGiftCards },
