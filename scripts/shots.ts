@@ -1548,6 +1548,32 @@ async function overviewShown(page: Page): Promise<void> {
 // onto the sidebar; at 390, where the sidebar is a drawer, its row's menu
 // does the same.
 let moveFrom = "";
+// A workstream still under the name a new one gets, to rename.
+const renaming = async () => {
+  const { serving } = await writing();
+  await post(
+    "/api/workstreams",
+    { kind: "picked", name: "New workstream", items: ["jira:SYN-21", "jira:SYN-23"] },
+    serving,
+  );
+  return serving;
+};
+const renameInSidebar = async (page: Page, save: boolean) => {
+  await openSidebar(page);
+  const row = page.locator(".nav-workstream-menu", { hasText: "New workstream" });
+  await row.locator(".nav-link").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const field = page.getByRole("textbox", { name: "Workstream name" });
+  await field.fill("Checkout wallets");
+  if (!save) return;
+  await field.press("Enter");
+  await page.locator(".nav-workstream-menu .nav-name", { hasText: "Checkout wallets" }).waitFor();
+  await page.locator(".nav-workstream-menu .nav-link:focus").waitFor();
+  if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
+  await page.locator(".overview-workstream-name", { hasText: "Checkout wallets" }).waitFor();
+  if ((await page.locator(".nav-name", { hasText: "New workstream" }).count()) > 0)
+    throw new Error("The sidebar still shows the old name.");
+};
 const moving = async () => {
   const { serving } = await writing();
   const from = await post<{ id: string }>(
@@ -2753,7 +2779,8 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A swipe on it in the sidebar shows Mark done and Delete.
+    // A swipe on it in the sidebar shows Mark done and Delete; Rename is
+    // in its menu only.
     name: "ending-swipe",
     path: endedPage,
     on: ending,
@@ -2904,6 +2931,38 @@ const scenes: Scene[] = [
       await page.getByRole("button", { name: "Undo removing SYN-23" }).click();
       await page.locator('.members [data-item="jira:SYN-23"]').waitFor();
       await pointerAway(page);
+    },
+  },
+  // A workstream renamed in place from its menu in the sidebar: the field,
+  // then, after Enter, the new name in the sidebar and on the overview.
+  { name: "rename-field", path: "/", make: renaming, act: (page) => renameInSidebar(page, false) },
+  { name: "rename-saved", path: "/", make: renaming, act: (page) => renameInSidebar(page, true) },
+  // Refused, off its page, after a visit to it: the window's problem says
+  // why, and the old name comes back.
+  {
+    name: "rename-refused",
+    path: "/",
+    make: renaming,
+    refused: 409,
+    act: async (page) => {
+      await page.route("**/api/workstreams/*/rename", (route) =>
+        route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "The workstream changed since this page loaded." }),
+        }),
+      );
+      await openSidebar(page);
+      await page.locator(".nav-workstream-menu .nav-link", { hasText: "New workstream" }).click();
+      await page.locator(".workstream-page .workstream-title").waitFor();
+      await openSidebar(page);
+      await page.locator(".sidebar .nav-link", { hasText: "Window" }).click();
+      await page.locator(".overview-workstream-name").waitFor();
+      await renameInSidebar(page, false);
+      await page.getByRole("textbox", { name: "Workstream name" }).press("Enter");
+      await page.locator(beadSays, { hasText: "changed since" }).waitFor();
+      await page.locator(".nav-workstream-menu .nav-name", { hasText: "New workstream" }).waitFor();
+      if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
     },
   },
   // An item dragged from a workstream's page onto another workstream in
