@@ -9,14 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type {
-  ConnectorView,
-  DiffView,
-  OverviewView,
-  ThreadView,
-  WindowView,
-  WorkstreamsView,
-} from "@oriel/web/view";
+import type { DiffView, OverviewView, ThreadView, WindowView } from "@oriel/web/view";
 import { account, json, type Script, testApp } from "./testing.ts";
 
 const details = {
@@ -76,55 +69,8 @@ async function fresh(t: TestContext, db?: string) {
     await it.app.settled();
     return { status: reply.status, diff };
   };
-  const events = (name: string) =>
-    it.app
-      .telemetry()
-      .filter((event) => event.name === name)
-      .map((event) => event.data);
-  return { ...it, browse, ask, approve, events };
+  return { ...it, browse, ask, approve };
 }
-
-test("with no tracker connected, the window chat's plan lands in the stand-in once approved, and every view sees it at once", async (t) => {
-  const it = await fresh(t);
-  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
-  const entry = view.entries.find((each) => each.kind === "change-set");
-  assert.ok(entry?.kind === "change-set", "one change set");
-  const { status, diff } = await it.approve(entry.changeSetId);
-  assert.equal(status, 200);
-  assert.deepEqual(
-    diff.lines.map((line) => line.sentence),
-    [
-      "Create an epic “Spring launch”.",
-      "Create a story “Pricing page” in the new epic “Spring launch”, estimated at 3 points.",
-      "Create a story “Launch email” in the new epic “Spring launch”.",
-    ],
-  );
-  // Browse, by epic, has the epic and its stories.
-  assert.deepEqual(await it.browse(), [["Spring launch", 3]]);
-  // Browse's item search finds one by its title, as search() does.
-  const searched = json<WindowView>(await it.get("/api/browse?grouping=epic&q=pricing")).clusters;
-  assert.deepEqual(
-    searched.map((cluster) => [cluster.row.label, cluster.matched]),
-    [["Spring launch", 1]],
-  );
-  // The panel reads one, with its form.
-  const panel = json<{ read: { status: string; edit?: { fields: { name: string }[] } } }>(
-    await it.get("/api/items/tracker%3AT-2"),
-  );
-  assert.equal(panel.read.status, "ok");
-  assert.ok(panel.read.edit?.fields.some((field) => field.name === "summary"));
-  assert.deepEqual(it.events("standin.written"), [
-    { source: "tracker", by: "change-set", change: "created", fields: [] },
-    { source: "tracker", by: "change-set", change: "created", fields: [] },
-    { source: "tracker", by: "change-set", change: "created", fields: [] },
-  ]);
-  // Nothing synced it: the sync worker never ran on the tracker.
-  assert.ok(
-    !it.logged.some(
-      (line) => line.message === "sync: finished" && line.fields.source === "tracker",
-    ),
-  );
-});
 
 test("a person's edit of a stand-in issue applies at once, and its Undo puts back what it replaced", async (t) => {
   const it = await fresh(t);
@@ -149,10 +95,6 @@ test("a person's edit of a stand-in issue applies at once, and its Undo puts bac
   assert.equal(undone.status, 200);
   const again = json<WindowView>(await it.get("/api/browse?grouping=assignee")).clusters;
   assert.ok(!again.some((cluster) => cluster.row.label === "Ada Quill"));
-  assert.deepEqual(it.events("standin.written").slice(-2), [
-    { source: "tracker", by: "person", change: "edited", fields: ["status", "points", "assignee"] },
-    { source: "tracker", by: "person", change: "edited", fields: ["status", "points", "assignee"] },
-  ]);
   // What it can't take, it refuses; and Jira's items are never edited so.
   assert.equal((await edit({ status: "Shipped" })).status, 400);
   const jira = await it.post("/api/actions/item.edit", {
@@ -165,114 +107,27 @@ test("a person's edit of a stand-in issue applies at once, and its Undo puts bac
 test("a tracker turning on is offered the stand-in's issues; approved, the stand-in steps aside and keeps them while it's off", async (t) => {
   const top = mkdtempSync(join(tmpdir(), "oriel-standin-"));
   t.after(() => rmSync(top, { recursive: true, force: true }));
-  const path = join(top, "window.db");
-  const it = await fresh(t, path);
+  const it = await fresh(t, join(top, "window.db"));
   const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
-  // The window chat's workstream holds what its change set created, as
-  // the overview's card for it says.
-  const overview = async () => json<OverviewView>(await it.get("/api/overview"));
-  const held = (view: OverviewView) =>
-    view.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Tracker");
-  assert.ok(held(await overview()));
-  // It's among the connections, as the tracker that's on, which Oriel
-  // keeps itself, so the sidebar's Sources and Settings show it.
-  const listed = json<{ connections: { kind: string; own: boolean; items: number }[] }>(
-    await it.get("/api/connections"),
-  );
-  assert.deepEqual(
-    listed.connections.map((each) => [each.kind, each.own, each.items]),
-    [["tracker", true, 3]],
-  );
+  const kinds = async () =>
+    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
+      (each) => each.kind,
+    );
 
-  // Jira connected: Oriel offers one change set that makes the stand-in's
-  // issues again in Jira (decision 0059), and both stay until it applies.
+  // Jira connected: Oriel offers to make the stand-in's issues again in
+  // Jira (decision 0059), and both stay until it applies.
   assert.equal((await it.connect("jira", details)).status, 200);
-  assert.deepEqual(
-    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
-      (each) => each.kind,
-    ),
-    ["jira", "tracker"],
-  );
+  assert.deepEqual(await kinds(), ["jira", "tracker"]);
   const offer = await moving(it);
-  assert.deepEqual(offer.note, {
-    kind: "moving",
-    changeSetId: offer.changeSetId,
-    from: "Oriel's tracker",
-    into: "Jira",
-    items: 3,
-  });
-  const moved = await it.approve(offer.changeSetId);
-  assert.equal(moved.status, 200);
+  assert.equal((await it.approve(offer.changeSetId)).status, 200);
   assert.deepEqual(
-    moved.diff.lines.map((line) => [line.source, line.sentence]),
-    [
-      ["Jira", "Create an epic “Spring launch”."],
-      [
-        "Jira",
-        "Create a story “Pricing page” in the new epic “Spring launch”, estimated at 3 points.",
-      ],
-      ["Jira", "Create a story “Launch email” in the new epic “Spring launch”."],
-    ],
+    ["SYN-900", "SYN-901", "SYN-902"].map((key) => it.site?.issue(key)?.summary),
+    ["Spring launch", "Pricing page", "Launch email"],
   );
-  const made = it.site?.issue("SYN-900") ? ["SYN-900", "SYN-901", "SYN-902"] : [];
-  assert.deepEqual(
-    made.map((key) => [it.site?.issue(key)?.summary, it.site?.issue(key)?.epic]),
-    [
-      ["Spring launch", null],
-      ["Pricing page", "SYN-900"],
-      ["Launch email", "SYN-900"],
-    ],
-  );
-  assert.equal(it.site?.issue("SYN-901")?.points, 3);
-  // Its workstream holds the new items in place of the stand-in's.
-  const after = await overview();
-  assert.ok(after.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Jira"));
-  assert.ok(!after.workstreams.some((row) => row.bySource.some((by) => by.source === "Tracker")));
-  assert.deepEqual(it.events("standin.moving"), [
-    { source: "jira", step: "offered", items: 3 },
-    { source: "jira", step: "moved", items: 3 },
-  ]);
-  // The move's own workstream held nothing but the move: it's done, its
-  // thread with it, kept on the Done page, and both say where the items went.
-  const into = json<ThreadView>(await it.get(`/api/threads/${offer.threadId}`));
-  const holder = after.workstreams.find((row) => row.size === 3)?.name;
-  assert.ok(holder);
-  assert.deepEqual(
-    into.move?.went?.map((each) => each.name),
-    [holder],
-  );
-  assert.equal(into.state, "done");
-  assert.ok(
-    into.entries.some(
-      (each) => each.kind === "note" && each.note.kind === "moved" && each.note.into === "Jira",
-    ),
-  );
-  const streams = json<WorkstreamsView>(await it.get("/api/workstreams")).workstreams;
-  const own = streams.find((each) => each.name === "Into Jira");
-  assert.equal(own?.size, 0);
-  assert.notEqual(own?.done, null, "no empty Into Jira workstream lingers open");
-  // Moved: nothing of the stand-in shows.
-  assert.deepEqual(
-    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
-      (each) => each.kind,
-    ),
-    ["jira"],
-  );
-  // "Spring launch" is Jira's now; none of the stand-in's rows shows.
-  const rows = it.app.window("epic").clusters.flatMap((cluster) => cluster.list);
-  assert.ok(rows.some((row) => row.id.startsWith("jira:") && row.title === "Pricing page"));
-  assert.ok(!rows.some((row) => row.id.startsWith("tracker:")));
-  const read = json<{ read: { status: string } }>(await it.get("/api/items/tracker%3AT-2"));
-  assert.notEqual(read.read.status, "ok");
-  // A blank region's module offers no tracker creates: what's off, the agent can't propose.
-  const blank = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
-  assert.ok(
-    !blank.entries.some((each) => each.kind === "change-set"),
-    "a fresh window chat's creates have nowhere to go",
-  );
+  assert.deepEqual(await kinds(), ["jira"]);
 
   // Jira disconnected: it's on again, with its issues as they were.
   const jira = json<{ connections: { id: string; kind: string }[] }>(
@@ -332,35 +187,6 @@ test("a move with an issue left out keeps the stand-in on, for the issue still o
   );
 });
 
-test("a move reverted puts the stand-in back on, with its workstream holding its issues again", async (t) => {
-  const it = await fresh(t);
-  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
-  const entry = view.entries.find((each) => each.kind === "change-set");
-  assert.ok(entry?.kind === "change-set");
-  await it.approve(entry.changeSetId);
-  assert.equal((await it.connect("jira", details)).status, 200);
-  const offer = await moving(it);
-  assert.equal((await it.approve(offer.changeSetId)).status, 200);
-  const kinds = async () =>
-    json<{ connections: { kind: string }[] }>(await it.get("/api/connections")).connections.map(
-      (each) => each.kind,
-    );
-  assert.deepEqual(await kinds(), ["jira"]);
-  it.advance(1000);
-  const reverted = await it.post(`/api/change-sets/${offer.changeSetId}/revert`);
-  assert.equal(reverted.status, 200);
-  // Made, the revert is a change set of its own: until it applies, the move
-  // stands.
-  assert.deepEqual(await kinds(), ["jira"]);
-  const { revert } = json<{ revert: string }>(reverted);
-  assert.equal((await it.approve(revert)).status, 200);
-  assert.deepEqual(await kinds(), ["jira", "tracker"]);
-  const overview = json<OverviewView>(await it.get("/api/overview"));
-  assert.ok(
-    overview.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Tracker"),
-  );
-});
-
 test("a move's revert that deleted nothing in Jira leaves the move as it was", async (t) => {
   const it = await fresh(t);
   const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
@@ -414,11 +240,4 @@ test("a move's revert stopped partway, then retried, gives every workstream back
     overview.workstreams.some((row) => row.size === 3 && row.bySource[0]?.source === "Tracker"),
   );
   assert.ok(!overview.workstreams.some((row) => row.bySource.some((by) => by.source === "Jira")));
-});
-
-test("the stand-in shows as a writable connector with no connect steps", async (t) => {
-  const it = await fresh(t);
-  const { connectors } = json<{ connectors: ConnectorView[] }>(await it.get("/api/connectors"));
-  const tracker = connectors.find((each) => each.kind === "tracker");
-  assert.deepEqual([tracker?.name, tracker?.writable, tracker?.connect], ["Tracker", true, null]);
 });

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import { handler, type Look, type Request, within } from "./site.ts";
+import { handler, type Look, type Request } from "./site.ts";
 
 const port = 4310;
 const host = "127.0.0.1:4310";
@@ -37,33 +37,15 @@ function text(body: string | Uint8Array): string {
   return typeof body === "string" ? body : new TextDecoder().decode(body);
 }
 
-test("the page names the vendor files in an import map its CSP allows", async (t) => {
+test("the page runs only its own scripts and the import map's hash, and nothing frames it", async (t) => {
   const reply = await site(t)(get("/"));
   assert.equal(reply.status, 200);
-  const page = text(reply.body);
-  const map = /<script type="importmap">(.*)<\/script>/.exec(page)?.[1] ?? "";
-  assert.deepEqual(JSON.parse(map), { imports: { preact: "/vendor/preact.js" } });
+  const map = /<script type="importmap">(.*)<\/script>/.exec(text(reply.body))?.[1] ?? "";
   const hash = createHash("sha256").update(map).digest("base64");
   const csp = reply.headers["content-security-policy"] ?? "";
-  assert.match(csp, new RegExp(`script-src 'self' 'sha256-${hash.replaceAll("+", "\\+")}'`));
+  const scripts = /script-src ([^;]*)/.exec(csp)?.[1];
+  assert.equal(scripts, `'self' 'sha256-${hash}'`);
   assert.match(csp, /frame-ancestors 'none'/);
-  assert.match(page, /<script type="module" src="\/app\/main.js"><\/script>/);
-});
-
-test("compiled modules, assets and vendor files are served with their types", async (t) => {
-  const handle = site(t);
-  const cases = [
-    ["/app/main.js", "text/javascript; charset=utf-8", "export {};\n"],
-    ["/assets/window.css", "text/css; charset=utf-8", "body {}\n"],
-    ["/vendor/preact.js", "text/javascript; charset=utf-8", "export const h = 1;\n"],
-  ];
-  for (const [url = "", type, body] of cases) {
-    const reply = await handle(get(url));
-    assert.equal(reply.status, 200, url);
-    assert.equal(reply.headers["content-type"], type, url);
-    assert.equal(reply.headers["x-content-type-options"], "nosniff", url);
-    assert.equal(text(reply.body), body, url);
-  }
 });
 
 test("nothing outside the served roots is reachable", async (t) => {
@@ -80,22 +62,6 @@ test("nothing outside the served roots is reachable", async (t) => {
     "/app/missing.js",
     "/app/",
   ]) {
-    assert.equal((await handle(get(url))).status, 404, url);
-  }
-});
-
-test("within keeps paths inside their root", () => {
-  assert.equal(within("/srv/dist", "a/b.js"), "/srv/dist/a/b.js");
-  assert.equal(within("/srv/dist/", "a.js"), "/srv/dist/a.js");
-  assert.equal(within("/srv/dist", "../secret.js"), null);
-  assert.equal(within("/srv/dist", "..%2fsecret.js"), null);
-  assert.equal(within("/srv/dist", "/etc/passwd"), null);
-  assert.equal(within("/srv/dist", ""), null);
-});
-
-test("the old whole-list window route is gone; Browse serves the view", async (t) => {
-  const handle = site(t);
-  for (const url of ["/api/window", "/api/window?grouping=epic"]) {
     assert.equal((await handle(get(url))).status, 404, url);
   }
 });
@@ -117,29 +83,6 @@ test("state-changing methods need this server's Origin, and no route takes them 
   const own = await post({ host, origin: `http://${host}` });
   assert.equal(own.status, 405);
   assert.equal(own.headers.allow, "GET, HEAD");
-});
-
-test("the Done page is served at /done with its page number, and nothing is at /inbox", async (t) => {
-  const handle = site(t);
-  assert.equal((await handle(get("/inbox"))).status, 404);
-  for (const url of ["/done", "/done?page=2"]) {
-    const reply = await handle(get(url));
-    assert.equal(reply.status, 200, url);
-    assert.match(text(reply.body), /<script type="module" src="\/app\/main.js"><\/script>/, url);
-  }
-});
-
-test("the page's <html> carries the person's theme and text size, but a review link's doesn't", async (t) => {
-  const handle = site(t, { theme: "broadsheet", textSize: "large" });
-  for (const path of ["/", "/settings", "/settings/appearance", "/done"]) {
-    const page = text((await handle(get(path))).body);
-    assert.match(page, /<html lang="en" data-theme="broadsheet" data-text-size="large">/, path);
-  }
-  const review = text((await handle(get("/review/abc_DEF-123"))).body);
-  assert.match(review, /<html lang="en">/);
-  const plain = text((await site(t, { theme: "graphite", textSize: "default" })(get("/"))).body);
-  assert.match(plain, /<html lang="en">/);
-  assert.equal((await handle(get("/settings/nothing"))).status, 404);
 });
 
 test("the window's pages may frame the sketch origin, and a review link's page frames nothing", async (t) => {

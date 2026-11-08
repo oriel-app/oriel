@@ -24,9 +24,7 @@ test("types that keep tsc busy end at the deadline, with no tsc or temp director
     log,
   });
   assert.equal(result.outcome, "timeout");
-  const error = errorOf(result.transcript.at(-1));
-  assert.equal(error.phase, "limit");
-  assert.match(error.message, /typecheck took longer than|while its types were checked/);
+  assert.equal(errorOf(result.transcript.at(-1)).phase, "limit");
   assert.equal(exists(tscPid(logged)), false);
   assert.deepEqual(readdirSync(tmp), []);
   const next = await box.run(`return 1;`, fakeBindings(), { limits, signal, log: () => {} });

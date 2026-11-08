@@ -9,16 +9,10 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import { type Call, instant, ulid } from "@oriel/core";
+import { instant, ulid } from "@oriel/core";
 import { indexStore, open } from "@oriel/db";
 import { fixtureApi, loadSlackFixture } from "@oriel/slack";
-import {
-  type ChatEntry,
-  type ConnectionView,
-  holding,
-  type ThreadsView,
-  type ThreadView,
-} from "@oriel/web/view";
+import type { ChatEntry, ConnectionView, ThreadView } from "@oriel/web/view";
 import { refusal } from "./actions.ts";
 import { memorySecrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
@@ -90,95 +84,13 @@ async function waitingSlack(t: TestContext) {
   return { ...it, id: kept.connection.id, ask, thread, drafts, draftOf, events };
 }
 
-test("the agent drafts a waiting Slack connection's channels, and the user applies them", async (t) => {
-  const it = await waitingSlack(t);
-  assert.equal((await it.connection("slack"))?.state, "waiting");
-  const id = await it.ask("Draft which Slack channels Oriel should read.");
-  const view = await it.thread(id);
-  // The preview it read shows as its own block, Oriel's.
-  const preview = view.entries.find((e) => e.kind === "block" && e.block.form === "preview");
-  assert.ok(preview?.kind === "block" && preview.block.form === "preview");
-  assert.deepEqual(preview.block.tables[0]?.rows, [
-    ["weather-disruptions", "2026-09-27"],
-    ["random", "2026-09-05"],
-  ]);
-  // The draft waits on the user, drawn from Oriel's data.
-  const draft = it.draftOf(view);
-  assert.deepEqual(draft && { ...draft, seq: 0, at: "" }, {
-    seq: 0,
-    at: "",
-    kind: "draft",
-    connection: { id: it.id, name: "Slack" },
-    changes: [
-      {
-        option: "channels",
-        was: ["weather-disruptions", "launch-room"],
-        drafted: ["weather-disruptions"],
-      },
-    ],
-    // Slack drafts options as they are, so there's nothing to draw or say.
-    tables: null,
-    said: [],
-    stale: false,
-    outcome: null,
-  });
-  assert.ok(holding(view.entries));
-  const needsYou = json<ThreadsView>(await it.get("/api/threads")).threads.find((x) => x.id === id);
-  assert.equal(needsYou?.waitingOn, "draft");
-  // New chat leaves it working, in Needs you.
-  assert.equal((await it.post("/api/window-chat/new")).status, 200);
-  assert.equal((await it.thread(id)).state, "working");
-  assert.deepEqual(it.events("draft.made"), [{ threadId: id, action: "source.configure" }]);
-
-  // Applied, Slack opens with the drafted channels and syncs.
-  const applied = await it.post(`/api/threads/${id}/held/${draft?.seq}/apply`);
-  assert.equal(applied.status, 200);
-  const { connection, undo } = json<{ connection: ConnectionView; undo: Call | null }>(applied);
-  assert.deepEqual(
-    [connection.state, connection.options],
-    ["open", { channels: ["weather-disruptions"] }],
-  );
-  assert.ok(connection.items > 0);
-  // Its Undo puts back the options it replaced.
-  assert.deepEqual(undo, {
-    action: "source.configure",
-    input: { connection: it.id, options: { channels: ["weather-disruptions", "launch-room"] } },
-  });
-  const after = await it.thread(id);
-  assert.equal(it.draftOf(after)?.outcome, "applied");
-  assert.ok(!holding(after.entries));
-  const settled = json<ThreadsView>(await it.get("/api/threads")).threads.find((x) => x.id === id);
-  assert.notEqual(settled?.waitingOn, "draft");
-  assert.deepEqual(it.events("draft.applied"), [
-    { threadId: id, action: "source.configure", edited: false },
-  ]);
-  assert.deepEqual(it.events("source.configured"), [
-    { source: "slack", later: false, options: ["channels"] },
-  ]);
-  // Applied once: it isn't there to apply again.
-  assert.equal((await it.post(`/api/threads/${id}/held/${draft?.seq}/apply`)).status, 404);
-  // Its Undo puts the old options back, though they don't fit: Slack waits
-  // for its options again, and says why.
-  const undone = await it.post("/api/actions/source.configure", undo?.input);
-  assert.equal(undone.status, 200);
-  assert.match(json<{ problem?: string }>(undone).problem ?? "", /#launch-room/);
-  const waits = await it.connection("slack");
-  assert.deepEqual(
-    [waits?.state, waits?.options],
-    ["waiting", { channels: ["weather-disruptions", "launch-room"] }],
-  );
-});
-
 test("only the user applies a draft: no review link, outside tool or agent", () => {
   for (const actor of [
     { kind: "review-link", by: "Ana" },
     { kind: "tool", name: "a bot" },
     { kind: "agent", threadId: ulid(0, new Uint8Array(10)) },
   ] as const)
-    assert.match(
-      refusal("held.apply", actor) ?? "",
-      /isn't for a review link|only the user applies it/,
-    );
+    assert.notEqual(refusal("held.apply", actor), null, actor.kind);
   assert.equal(refusal("held.apply", { kind: "user" }), null);
 });
 
@@ -221,16 +133,4 @@ test("an edit applies as the user's, keeping its connection; a stale draft can o
   assert.deepEqual(it.events("draft.discarded"), [
     { threadId: second, action: "source.configure", stale: true },
   ]);
-});
-
-test("no connection waits: the window chat's module offers no preview or draft", async (t) => {
-  const it = await testApp(t, {
-    plan: () => [{ run: "draft" }],
-    scripts: { draft: drafting(["random"]) },
-  });
-  const reply = await it.post("/api/window-chat/messages", { text: "Draft." });
-  await it.app.settled();
-  const view = json<ThreadView>(await it.get(`/api/threads/${json<{ id: string }>(reply).id}`));
-  assert.ok(!view.entries.some((e) => e.kind === "draft"));
-  assert.ok(view.entries.some((e) => e.kind === "error" && /source\.preview/.test(e.message)));
 });

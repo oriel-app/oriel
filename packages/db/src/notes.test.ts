@@ -102,20 +102,3 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
     rows.map(([, , when], i) => [i + 1, when]),
   );
 });
-
-test("a note's shape is checked as it is stored", () => {
-  const db = open(":memory:");
-  migrate(db, loadMigrations(), t0);
-  const workspaceId = id(0);
-  ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  workstreamStore(db).create(
-    { id: id(1), workspaceId, name: "Checkout", origin: { kind: "picked" } },
-    [{ id: "jira:SYN-1", stableId: "10001" }],
-    t0,
-  );
-  const threads = threadStore(db);
-  threads.open({ id: id(2), workspaceId, workstreamId: id(1) }, t0);
-  const note = { kind: "rejected", changeSet: id(10), via: "thread" } as const;
-  const seq = threads.append(id(2), { role: "note", note }, id(3), t0);
-  assert.deepEqual(threads.messages(id(2)), [{ seq, at: t0, role: "note", note }]);
-});

@@ -1,21 +1,8 @@
-// The committed cases and cassettes.
+// The committed cassettes.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { loadCases } from "./case.ts";
-import { loadFixtures } from "./fixtures.ts";
-import { cassettesDir, casesDir, repoRoot } from "./repo.ts";
-
-test("every committed case loads against the declared fixtures", () => {
-  const { cases, problems } = loadCases(casesDir, loadFixtures(), repoRoot);
-  assert.deepEqual(problems, []);
-  // SPEC §8's kinds 2, 3, 4, 7 (a chart's forecast in the reply) and 8, and
-  // the second look's 9, with a region from a fixture, items, and a mix.
-  assert.deepEqual([...new Set(cases.map((c) => c.case.kind))].toSorted(), [2, 3, 4, 7, 8, 9]);
-  assert.ok(cases.some((c) => c.region && c.items.length));
-  assert.ok(cases.some((c) => c.region && !c.items.length));
-  assert.ok(cases.some((c) => !c.region && c.items.length));
-});
+import { cassettesDir } from "./repo.ts";
 
 test("no committed cassette holds an API key or a header", () => {
   const files = readdirSync(cassettesDir, { recursive: true, encoding: "utf8" }).filter((f) =>

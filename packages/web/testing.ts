@@ -9,8 +9,6 @@ import type {
   ConnectOffer,
   ActionLineView,
   ChangeSetView,
-  ClusterPageView,
-  ClusterRow,
   ConnectorView,
   ConnectionView,
   DiffView,
@@ -18,12 +16,10 @@ import type {
   ItemRow,
   MemberView,
   OverviewView,
-  SearchResultView,
   SettingsView,
   SourceServersView,
   ThreadSummaryView,
   ThreadView,
-  WindowView,
   WorkstreamSummary,
   WorkstreamView,
 } from "./src/view.ts";
@@ -182,21 +178,6 @@ export const memberView = (over: Partial<MemberView> = {}): MemberView => ({
   ...over,
 });
 
-export const clusterRow = (over: Partial<ClusterRow> = {}): ClusterRow => ({
-  key: "10001",
-  label: "Checkout",
-  origin: { kind: "source", source: "Jira" },
-  anchor: null,
-  count: 0,
-  // Its items and its anchor, unless a test says otherwise.
-  size: (over.count ?? 0) + (over.anchor ? 1 : 0),
-  points: 0,
-  estimated: 0,
-  unestimated: 0,
-  status: { todo: 0, "in-progress": 0, done: 0 },
-  ...over,
-});
-
 // A connection, open: Jira's first, reading SYN, unless overridden.
 export const connectionView = (over: Partial<ConnectionView> = {}): ConnectionView => ({
   id: "01JBZ0000000000000000000K1",
@@ -235,26 +216,6 @@ export const serversView = (over: Partial<SourceServersView> = {}): SourceServer
   missing: [],
   card: null,
   sync: { every: null, plan: true },
-  ...over,
-});
-
-export const windowView = (over: Partial<WindowView> = {}): WindowView => ({
-  grouping: "epic",
-  clusters: [],
-  items: 0,
-  asOf: at,
-  fixture: true,
-  ...over,
-});
-
-export const clusterPageView = (over: Partial<ClusterPageView> = {}): ClusterPageView => ({
-  grouping: "epic",
-  cluster: "10001",
-  of: "list",
-  from: 0,
-  items: [],
-  total: 0,
-  locations: {},
   ...over,
 });
 
@@ -365,19 +326,6 @@ export const threadView = (over: Partial<ThreadView> = {}): ThreadView => ({
   writable: true,
   chips: {},
   quotes: {},
-  ...over,
-});
-
-export const searchResult = (over: Partial<SearchResultView> = {}): SearchResultView => ({
-  thread: {
-    id: threadId,
-    title: null,
-    state: "working",
-    workstream: { id: workstreamId, name: "Launch" },
-  },
-  changeSet: null,
-  matched: "name",
-  excerpt: "",
   ...over,
 });
 

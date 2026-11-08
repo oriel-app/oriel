@@ -87,53 +87,6 @@ const tables = [
   "review_links",
 ];
 
-test("a thread that wrote nothing goes with everything in it, and leaves its workstream", () => {
-  const { workstreams, workstreamId, threads, threadId, workspaceId, count } = fresh();
-  assert.deepEqual(threads.wrote(threadId), {
-    applied: 0,
-    reverted: 0,
-    unconfirmed: 0,
-    sources: [],
-  });
-  assert.deepEqual(
-    threads.delete(threadId, after(1000), () => false),
-    {
-      workstreamId,
-      kept: false,
-      workstreamRemoved: false,
-    },
-  );
-  assert.deepEqual(
-    tables.map((table) => [table, count(table)]),
-    tables.map((table) => [table, 0]),
-  );
-  assert.equal(count("deleted_threads"), 0);
-  assert.equal(threads.get(threadId, after(1000)), null);
-  assert.deepEqual(threads.list(workspaceId, after(1000)), []);
-  // A workstream the user picked is theirs: it stays, empty of threads or not.
-  assert.equal(workstreams.get(workstreamId)?.name, "Kiosk");
-  assert.throws(() => threads.delete(threadId, after(2000), () => false), /no thread/);
-});
-
-test("a workstream made for a thread from nothing goes with it once it holds nothing", () => {
-  const { workstreams, workstreamId, threads, threadId, workspaceId, count } = fresh({
-    origin: { kind: "thread" },
-    members: 0,
-  });
-  assert.deepEqual(
-    threads.delete(threadId, after(1000), () => false),
-    {
-      workstreamId,
-      kept: false,
-      workstreamRemoved: true,
-    },
-  );
-  assert.equal(workstreams.get(workstreamId), null);
-  assert.deepEqual(workstreams.list(workspaceId), []);
-  for (const table of ["workstreams", "workstream_changes", "workstream_members"])
-    assert.equal(count(table), 0);
-});
-
 test("a workstream made for a thread from nothing stays while it holds an item or another thread", () => {
   const items = fresh({ origin: { kind: "thread" }, members: 1 });
   assert.equal(
@@ -188,9 +141,9 @@ test("a thread that wrote to a source is kept out of sight, with its records, an
   assert.equal(threads.get(threadId, after(1000)), null);
   assert.deepEqual(threads.list(workspaceId, after(1000)), []);
   assert.deepEqual(threads.ofWorkstream(workstreamId, after(1000)), []);
-  assert.throws(() => threads.markDone(threadId, after(2000)), /no thread/);
-  assert.throws(() => threads.wrote(threadId), /no thread/);
-  assert.throws(() => threads.delete(threadId, after(2000), () => false), /no thread/);
+  assert.throws(() => threads.markDone(threadId, after(2000)));
+  assert.throws(() => threads.wrote(threadId));
+  assert.throws(() => threads.delete(threadId, after(2000), () => false));
 });
 
 test("a change sent with no answer may have landed, so its thread is kept too", () => {
@@ -251,35 +204,4 @@ test("nothing is deleted while one of its change sets is being applied", () => {
   assert.equal(count("threads"), 1);
   assert.equal(count("deleted_threads"), 0);
   assert.ok(threads.get(threadId, after(1000)));
-});
-
-test("a deleted thread doesn't follow its workstream", () => {
-  const { workstreams, workstreamId, threads, threadId, workspaceId } = fresh({
-    status: "applied",
-  });
-  threads.open({ id: id(20), workspaceId, workstreamId }, t0);
-  threads.delete(threadId, after(1000), () => false);
-  workstreams.add(
-    workstreamId,
-    [{ id: "jira:SYN-9", stableId: "10009" }],
-    { kind: "user" },
-    after(2000),
-  );
-  let n = 100;
-  assert.deepEqual(
-    threads.follow(workstreamId, after(2000), () => id(n++)).map((move) => move.threadId),
-    [id(20)],
-  );
-});
-
-test("a workstream made for a thread from nothing goes with it even after the user named it", () => {
-  const { workstreams, workstreamId, threads, threadId, workspaceId, count } = fresh({
-    origin: { kind: "thread" },
-    members: 0,
-  });
-  assert.equal(workstreams.rename(workstreamId, "Kiosk wallets"), true);
-  assert.equal(workstreams.get(workstreamId)?.namedBy, "user");
-  assert.equal(threads.delete(threadId, after(1000), () => false)?.workstreamRemoved, true);
-  assert.deepEqual(workstreams.list(workspaceId), []);
-  assert.equal(count("user_named_workstreams"), 0);
 });

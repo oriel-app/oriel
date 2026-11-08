@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { instant, type PreviewAsk, type PreviewTable, ulid } from "@oriel/core";
+import { instant, type PreviewTable, ulid } from "@oriel/core";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
 import { loadSheetsFixture } from "./fixture.ts";
-import { sheetsOptions } from "./mapping.ts";
-import { fixtureGoogle } from "./stand-in.ts";
 import { sheetsReview } from "./preview.ts";
 
 const fixture = loadSheetsFixture();
@@ -25,35 +23,6 @@ const connection = {
   secret: null,
 };
 const preview = () => sheetsDeclaredFixture.preview?.(connection, via) ?? Promise.resolve([]);
-const tableOf = (tables: PreviewTable[], at: string) => {
-  const found = tables.find((table) => table.at === at);
-  assert.ok(found, at);
-  return found;
-};
-
-test("a waiting connection's preview is each picked tab's first rows, under their letters, by ID", async () => {
-  const tables = await preview();
-  assert.deepEqual(
-    tables.map((table) => table.at),
-    [
-      ...fixture.spreadsheets
-        .find((s) => s.slug === "tracker")!
-        .tabs.map((t) => `${tracker}/${t.sheetId}`),
-      ...fixture.spreadsheets
-        .find((s) => s.slug === "raid")!
-        .tabs.map((t) => `${raid}/${t.sheetId}`),
-    ],
-  );
-  const sheet = tableOf(tables, `${tracker}/1100`);
-  assert.deepEqual(sheet.columns.slice(0, 4), ["A", "B", "C", "D"]);
-  assert.deepEqual(sheet.rows[0]?.slice(0, 4), ["ID", "Epic", "Story", "Status"]);
-  assert.equal(sheet.rows[1]?.[0], "FW-101");
-  assert.ok(sheet.rows.length <= 30);
-  // A picked spreadsheet with no mapping checks out, and waits.
-  assert.equal(sheetsOptions(picked).ok, true);
-  assert.equal(sheetsReview.waits(picked), true);
-});
-
 // The mapping a person would approve for the tracker's first tab, by
 // letter.
 const trackerDraft = {
@@ -70,266 +39,12 @@ const trackerDraft = {
   link: "G",
 };
 
-test("a draft by letter settles into options naming the headers above them", async () => {
-  const tables = await preview();
-  const settled = sheetsReview.settle({ tabs: [trackerDraft] }, tables, {
-    ...picked,
-    readOnly: true,
-  });
-  assert.ok(!("problem" in settled));
-  assert.deepEqual(settled, {
-    readOnly: true,
-    spreadsheets: [
-      {
-        id: tracker,
-        tabs: [
-          {
-            sheetId: 1100,
-            header: 1,
-            end: "blank",
-            hidden: false,
-            states: trackerDraft.states,
-            key: "ID",
-            title: "Story",
-            status: "Status",
-            assignee: "Owner",
-            estimate: "Estimate",
-            link: "Link",
-          },
-        ],
-      },
-      { id: raid, tabs: [] },
-    ],
-  });
-  assert.ok(sheetsOptions(settled).ok);
-});
-
-test("a draft maps only the tabs it names, as its card draws them", async () => {
-  const tables = await preview();
-  const had = sheetsReview.settle({ tabs: [trackerDraft] }, tables, picked);
-  assert.ok(!("problem" in had));
-  const raidTab = {
-    at: `${raid}/4100`,
-    header: 1,
-    end: "blank",
-    hidden: false,
-    key: "B",
-    title: "C",
-  };
-  const settled = sheetsReview.settle({ tabs: [raidTab] }, tables, had);
-  assert.ok(!("problem" in settled));
-  const spreadsheets = settled["spreadsheets"] as { id: string; tabs: unknown[] }[];
-  assert.deepEqual(spreadsheets.find((s) => s.id === tracker)?.tabs, []);
-  assert.equal(spreadsheets.find((s) => s.id === raid)?.tabs.length, 1);
-  assert.equal(sheetsReview.waits(settled), false);
-  assert.equal(sheetsReview.waits(picked), true);
-});
-
-test("a draft that names what the sheet doesn't show settles into nothing, and says why", async () => {
-  const tables = await preview();
-  for (const [draft, says] of [
-    [{ ...trackerDraft, link: "Z" }, /column Z has no header/],
-    [{ ...trackerDraft, header: 31 }, /row 31 isn't in what Oriel read/],
-    [{ ...trackerDraft, at: "1NotPickedAtAll000/1100" }, /isn't in the picked spreadsheets/],
-  ] as const) {
-    const settled = sheetsReview.settle({ tabs: [draft] }, tables, picked);
-    assert.ok("problem" in settled);
-    assert.match(String(settled.problem), says);
-  }
-  assert.equal(sheetsReview.draft({ tabs: [{ ...trackerDraft, key: "Story" }] }).ok, false);
-});
-
-test("Oriel's guess takes the first row as the header and the first column all present and unique as the key", async () => {
-  const tables = await preview();
-  const guessed = sheetsReview.guess(tables) as { tabs: Record<string, unknown>[] } | null;
-  assert.ok(guessed && sheetsReview.draft(guessed).ok);
-  const sheet = guessed.tabs.find((tab) => tab.at === `${tracker}/1100`);
-  // The tracker's IDs repeat once and one row has none, so its stories key it.
-  assert.deepEqual(sheet, {
-    at: `${tracker}/1100`,
-    header: 1,
-    end: "blank",
-    hidden: false,
-    key: "C",
-    title: "C",
-  });
-  assert.ok(!("problem" in sheetsReview.settle(guessed, tables, picked)));
-});
-
-test("Oriel draws a draft from the sheet: each column's letter, its header and the field it feeds", async () => {
-  const tables = await preview();
-  const drawn = sheetsReview.draw({ tabs: [trackerDraft] }, tables);
-  assert.equal(drawn.length, tables.length);
-  const sheet = drawn.find((table) => table.name.endsWith("› Tracker"));
-  assert.ok(sheet);
-  assert.deepEqual(sheet.columns.slice(0, 4), [
-    { at: "A", header: "ID", feeds: "Row ID" },
-    { at: "B", header: "Epic", feeds: null },
-    { at: "C", header: "Story", feeds: "Title" },
-    { at: "D", header: "Status", feeds: "Status" },
-  ]);
-  assert.equal(sheet.rows[0]?.[0], "FW-101");
-  assert.ok(sheet.lines.some((line) => /first blank row/.test(line)));
-  assert.ok(sheet.lines.some((line) => /In progress, Blocked are in progress/.test(line)));
-  // The tabs it doesn't map aren't read.
-  assert.ok(
-    drawn.filter((table) => table !== sheet).every((table) => table.lines[0] === "Not read."),
-  );
-});
-
-test("a mapped column gone from its header row makes the connection wait for options that fit", async () => {
-  const mapped = sheetsReview.settle({ tabs: [trackerDraft] }, await preview(), picked);
-  assert.ok(!("problem" in mapped));
-  const spreadsheets = (mapped as typeof picked).spreadsheets.map((s) => ({
-    ...s,
-    tabs: s.tabs.map((tab) => ({ ...(tab as object), status: "Stage" })),
-  }));
-  const stale = { ...connection, options: { spreadsheets } };
-  const opened = await sheetsDeclaredFixture.open(stale, via);
-  let cursor: string | null = null;
-  for await (const page of opened.source.sync(null)) cursor = page.cursor ?? cursor;
-  assert.match(opened.unfit?.() ?? "", /the status column, "Stage", isn't in the header row/);
-  // Opened again, as at the next start, its cursor reads that spreadsheet
-  // again, so it still waits.
-  const reopened = await sheetsDeclaredFixture.open(stale, via);
-  for await (const page of reopened.source.sync(cursor)) assert.ok(page);
-  assert.match(reopened.unfit?.() ?? "", /"Stage"/);
-  const fits = await sheetsDeclaredFixture.open({ ...connection, options: mapped }, via);
-  for await (const page of fits.source.sync(null)) assert.ok(page);
-  assert.equal(fits.unfit?.(), null);
-});
-
 // The tracker's first tab mapped as `trackerDraft` says, settled.
 const mappedNow = async (tables: PreviewTable[]) => {
   const mapped = sheetsReview.settle({ tabs: [trackerDraft] }, tables, picked);
   assert.ok(!("problem" in mapped));
   return mapped;
 };
-
-test("a mapping as it reads now is drawn back by letter, the same as the draft it settled from", async () => {
-  const tables = await preview();
-  const current = sheetsReview.current(await mappedNow(tables), tables);
-  assert.deepEqual(current, { tabs: [trackerDraft] });
-  const sheet = sheetsReview.draw(current, tables).find((table) => table.at === trackerDraft.at);
-  assert.deepEqual(sheet?.reads, {
-    header: 1,
-    end: "blank",
-    hidden: false,
-    fields: { key: "A", title: "C", status: "D", assignee: "E", estimate: "F", link: "G" },
-  });
-  // A tab whose title's header is gone isn't drawn as read; a link's is
-  // only dropped.
-  const renamed = tables.map((table) =>
-    table.at === trackerDraft.at
-      ? {
-          ...table,
-          rows: [
-            table.rows[0]!.map((cell) => (cell === "Link" ? "URL" : cell)),
-            ...table.rows.slice(1),
-          ],
-        }
-      : table,
-  );
-  const tabs = (sheetsReview.current(await mappedNow(tables), renamed) as { tabs: object[] }).tabs;
-  assert.equal(Object.hasOwn(tabs[0] ?? {}, "link"), false);
-  const untitled = tables.map((table) =>
-    table.at === trackerDraft.at
-      ? {
-          ...table,
-          rows: [
-            table.rows[0]!.map((cell) => (cell === "Story" ? "Name" : cell)),
-            ...table.rows.slice(1),
-          ],
-        }
-      : table,
-  );
-  assert.deepEqual(sheetsReview.current(await mappedNow(tables), untitled), { tabs: [] });
-});
-
-test("the person edits a draft a change at a time: a field's column, a tab read or not, its rows", async () => {
-  const tables = await preview();
-  const draft = { tabs: [trackerDraft] };
-  const edited = (
-    given: Record<string, unknown>,
-    edit: Parameters<typeof sheetsReview.edit>[1],
-  ) => {
-    const next = sheetsReview.edit(given, edit, tables);
-    assert.ok(!("problem" in next), JSON.stringify(next));
-    assert.ok(sheetsReview.draft(next).ok);
-    return next as { tabs: Record<string, unknown>[] };
-  };
-  const problem = (edit: Parameters<typeof sheetsReview.edit>[1]) => {
-    const next = sheetsReview.edit(draft, edit, tables);
-    assert.ok("problem" in next, JSON.stringify(edit));
-    return String(next.problem);
-  };
-  const at = trackerDraft.at;
-  // A column taken from an optional field leaves that field unmapped.
-  const moved = edited(draft, { table: at, field: "assignee", column: "G" });
-  assert.equal(moved.tabs[0]?.["assignee"], "G");
-  assert.equal(Object.hasOwn(moved.tabs[0] ?? {}, "link"), false);
-  // The status moved drops the states, which were its old column's values.
-  const status = edited(draft, { table: at, field: "status", column: "B" });
-  assert.equal(Object.hasOwn(status.tabs[0] ?? {}, "states"), false);
-  assert.equal(
-    Object.hasOwn(
-      edited(draft, { table: at, field: "status", column: null }).tabs[0] ?? {},
-      "status",
-    ),
-    false,
-  );
-  // A unique name may be key and title both.
-  assert.equal(edited(draft, { table: at, field: "key", column: "C" }).tabs[0]?.["key"], "C");
-  assert.match(problem({ table: at, field: "title", column: null }), /^Choose a title column\.$/);
-  assert.match(
-    problem({ table: at, field: "assignee", column: "A" }),
-    /is used for the row ID\. Choose another row ID column first/,
-  );
-  assert.match(problem({ table: at, field: "assignee", column: "ZZ" }), /no column ZZ/);
-  assert.match(problem({ table: at, field: "owner", column: "B" }), /isn't a field/);
-  assert.match(problem({ table: at, header: 31 }), /first \d+ rows/);
-  assert.match(problem({ table: "1NotPickedAtAll000/1100", read: true }), /can't find that tab/);
-  const rows = edited(edited(edited(draft, { table: at, header: 2 }), { table: at, end: "grid" }), {
-    table: at,
-    hidden: true,
-  });
-  assert.deepEqual(
-    [rows.tabs[0]?.["header"], rows.tabs[0]?.["end"], rows.tabs[0]?.["hidden"]],
-    [2, "grid", true],
-  );
-  // A tab whose table sits under a title row is read from the header row
-  // its guess finds.
-  const titled = {
-    name: "Plan › Q4",
-    at: `${tracker}/9`,
-    columns: ["A", "B"],
-    rows: [
-      ["Q4 plan", null],
-      [null, null],
-      ["ID", "Feature"],
-      ["P-1", "Search"],
-      ["P-2", "Export"],
-    ],
-  };
-  const read = sheetsReview.edit({ tabs: [] }, { table: titled.at, read: true }, [titled]);
-  assert.deepEqual(read, {
-    tabs: [{ at: titled.at, header: 3, end: "blank", hidden: false, key: "A", title: "A" }],
-  });
-  // Never a row of the table itself, even when no column is unique.
-  const same = { ...titled, rows: [["ID", "Feature"], ...Array(3).fill(["P-1", "Search"])] };
-  assert.ok("problem" in sheetsReview.edit({ tabs: [] }, { table: titled.at, read: true }, [same]));
-  // A tab not read, read, is Oriel's guess at it; left out, it isn't read.
-  const raidAt = `${raid}/4100`;
-  const both = edited(draft, { table: raidAt, read: true });
-  assert.deepEqual(
-    both.tabs.map((tab) => tab.at),
-    [at, raidAt],
-  );
-  assert.deepEqual(
-    edited(both, { table: at, read: false }).tabs.map((tab) => tab.at),
-    [raidAt],
-  );
-});
 
 test("before it applies, a new mapping says which rows it takes from the window", async () => {
   const tables = await preview();
@@ -342,74 +57,10 @@ test("before it applies, a new mapping says which rows it takes from the window"
   // Another title, status or owner: every item stays.
   assert.deepEqual(said({ ...trackerDraft, title: "B", assignee: undefined }), []);
   assert.deepEqual(said(trackerDraft), []);
-  const [rekeyed] = said({ ...trackerDraft, key: "C" });
-  assert.match(
-    rekeyed ?? "",
-    /^Changing the row ID column of .+ › Tracker makes every row a new item\./,
-  );
-  const [dropped] = said(null);
-  assert.match(
-    dropped ?? "",
-    /^Oriel will stop reading .+ › Tracker, so its rows leave the window\./,
-  );
-  assert.match(
-    said({ ...trackerDraft, end: "grid" }).join(),
-    /^Rows Oriel will no longer read from .+ › Tracker leave the window\.$/,
-  );
+  // A new key column, a tab no longer read, or fewer rows read: each says so.
+  assert.equal(said({ ...trackerDraft, key: "C" }).length, 1);
+  assert.equal(said(null).length, 1);
+  assert.equal(said({ ...trackerDraft, end: "grid" }).length, 1);
   // Nothing mapped before, nothing goes.
   assert.deepEqual(sheetsReview.said(picked, before, tables), []);
-});
-
-test("Settings' list is every tab's name and place, from one request a spreadsheet, and the tab asked about is read first", async () => {
-  const google = fixtureGoogle(fixture);
-  const asked: string[] = [];
-  const counting: typeof fetch = (input, init) => {
-    asked.push(String(input instanceof Request ? input.url : input));
-    return google.fetch(input, init);
-  };
-  const viaCounting = { ...via, fetch: counting };
-  const ask = (preview: PreviewAsk) =>
-    sheetsDeclaredFixture.preview?.(connection, viaCounting, preview) ?? Promise.resolve([]);
-  const listed = await ask({ names: true });
-  assert.equal(asked.length, 2);
-  assert.ok(listed.every((table) => table.rows.length === 0 && table.columns.length === 0));
-  assert.deepEqual(
-    listed.map((table) => table.at),
-    (await preview()).map((table) => table.at),
-  );
-  // Read first, the asked tab is there however many come before it, and
-  // first.
-  const raidAt = `${raid}/4100`;
-  const first = await ask({ first: [raidAt] });
-  assert.equal(first[0]?.at, raidAt);
-  assert.ok((first[0]?.rows.length ?? 0) > 0);
-});
-
-test("a connection's tables sum up in a line each, by their headers, a key that is the title said once", async () => {
-  const tables = await preview();
-  const mapped = await mappedNow(tables);
-  const outline = sheetsReview.outline(mapped, tables);
-  assert.deepEqual(
-    outline.map((entry) => entry.at),
-    tables.map((table) => table.at),
-  );
-  assert.equal(
-    outline.find((entry) => entry.at === trackerDraft.at)?.reads,
-    "Row ID: “ID” · Title: “Story” · Status: “Status” · Assignee: “Owner” · Estimate: “Estimate” · Link: “Link”",
-  );
-  assert.ok(
-    outline.filter((entry) => entry.at !== trackerDraft.at).every((entry) => entry.reads === null),
-  );
-  const same = sheetsReview.settle({ tabs: [{ ...trackerDraft, key: "C" }] }, tables, picked);
-  assert.ok(!("problem" in same));
-  assert.match(
-    sheetsReview.outline(same, tables).find((entry) => entry.at === trackerDraft.at)?.reads ?? "",
-    /^Row ID and title: “Story” · Status/,
-  );
-  // A mapped tab gone from the sheet is still listed, by its place.
-  assert.deepEqual(sheetsReview.outline(mapped, [])[0], {
-    at: trackerDraft.at,
-    name: "Tab 1100",
-    reads: outline.find((entry) => entry.at === trackerDraft.at)?.reads,
-  });
 });

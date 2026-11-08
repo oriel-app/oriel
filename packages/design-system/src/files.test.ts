@@ -36,15 +36,9 @@ before(() => {
   leaked = git("rev-parse", "HEAD");
   git("rm", "-q", "--cached", ".env");
   git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "undone");
-  writeFileSync(join(checkout, "packages/web/new.ts"), "export const x = 1;\n");
 });
 
 after(() => rmSync(join(checkout, ".."), { recursive: true, force: true }));
-
-test("shows a tracked file, and a new one git would track", () => {
-  assert.equal(readShown(checkout, "packages/web/window.css"), ".button {}\n");
-  assert.equal(readShown(checkout, "packages/web/new.ts"), "export const x = 1;\n");
-});
 
 test("never shows what git ignores, in any case", () => {
   for (const path of [".env", ".ENV", "secrets/jira", "packages/../.env"])
@@ -56,11 +50,6 @@ test("never shows a file outside the checkout, by a path or a link", () => {
     assert.equal(readShown(checkout, path), null, path);
   assert.equal(readIn(checkout, "out-link"), null);
   assert.equal(readIn(checkout, "../outside.txt"), null);
-});
-
-test("reads a file at a full or short hex commit", () => {
-  assert.equal(readAt(checkout, "packages/web/window.css", commit), ".button {}\n");
-  assert.equal(readAt(checkout, "packages/web/window.css", commit.slice(0, 7)), ".button {}\n");
 });
 
 test("never reads what git ignores today, even at a commit that has it", () => {

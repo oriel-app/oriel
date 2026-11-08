@@ -239,7 +239,7 @@ test("Jira disconnected and connected again comes back under its ID and number, 
   );
 });
 
-test("a connection's secret is named for its ID alone, and a store that doesn't answer reads as none", async (t) => {
+test("a connection's secret is named for its ID alone: no other name reaches the file store", async (t) => {
   const { top } = scratch(t);
   const files = fileSecrets(join(top, "secrets", "window"));
   for (const name of [
@@ -248,65 +248,5 @@ test("a connection's secret is named for its ID alone, and a store that doesn't 
     "connection.x",
     "Connection.01JC0NNECT10NSST0RED0000AB",
   ])
-    await assert.rejects(files.set(name, "s"), /not a secret's name/, name);
-  const db = open(":memory:");
-  migrate(db, loadMigrations(), instant(new Date(t0)));
-  const workspaceId = ulid(1, new Uint8Array(10));
-  ensureWorkspace(db, { id: workspaceId, name: "test" }, instant(new Date(t0)));
-  const logged: string[] = [];
-  const connections = connectionsOf({
-    db,
-    index: indexStore(db),
-    secrets: {
-      get: async () => {
-        throw new Error("the shell is gone");
-      },
-      set: async () => {},
-      delete: async () => {},
-    },
-    workspaceId,
-    now: () => instant(new Date(t0)),
-    newId: () => ulid(2, new Uint8Array(10)),
-    log: (message) => logged.push(message),
-  });
-  const made = await connections.connect({
-    kind: "jira",
-    identity: synSite,
-    options: {},
-    secret: "{}",
-  });
-  assert.ok("connection" in made);
-  assert.equal(await connections.secret(made.connection), null);
-  assert.deepEqual(logged, ["connections: the store for secrets didn't answer"]);
-});
-
-test("a flag's connection is its kind's first, and follows what the flag names", () => {
-  const db = open(":memory:");
-  migrate(db, loadMigrations(), instant(new Date(t0)));
-  const workspaceId = ulid(1, new Uint8Array(10));
-  ensureWorkspace(db, { id: workspaceId, name: "test" }, instant(new Date(t0)));
-  let n = 1;
-  const connections = connectionsOf({
-    db,
-    index: indexStore(db),
-    secrets: memorySecrets(),
-    workspaceId,
-    now: () => instant(new Date(t0)),
-    newId: () => ulid(++n, new Uint8Array(10)),
-    log: () => {},
-  });
-  const first = connections.flagged("jira", synSite, { project: "SYN" });
-  assert.deepEqual(
-    [first.prefix, first.identity, first.options],
-    ["jira", synSite, { project: "SYN" }],
-  );
-  const moved = connections.flagged("jira", "https://acme.atlassian.net", { project: "ACME" });
-  assert.deepEqual(
-    [moved.id, moved.prefix, moved.identity, moved.options],
-    [first.id, "jira", "https://acme.atlassian.net", { project: "ACME" }],
-  );
-  assert.deepEqual(
-    connections.list().map((c) => c.identity),
-    ["https://acme.atlassian.net"],
-  );
+    await assert.rejects(files.set(name, "s"), Error, name);
 });

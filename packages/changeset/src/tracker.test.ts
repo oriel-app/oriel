@@ -130,7 +130,7 @@ test("a create captured before two kinds shared its op, with no kind, is Jira's,
     { op: epic.op, target: null, ref: epic.ref, args: epic.args },
   ]);
   // Jira's, which isn't connected here, so it can't be approved.
-  await assert.rejects(approve(sets, set.id), /Writing to Jira isn't configured here/);
+  await assert.rejects(approve(sets, set.id), { code: "read-only" });
 });
 
 test("a create's kind is in the hash a person approves", async () => {

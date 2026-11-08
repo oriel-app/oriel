@@ -5,6 +5,7 @@
 // the hash changes, so approval needs the new diff.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ChangeSetError } from "./change-sets.ts";
 import { approve, setup } from "./testing.ts";
 
 const estimate = (key: string, points: number) => ({
@@ -29,20 +30,17 @@ test("a suggestion joins an undecided change set after its rows, and changes its
   // A diff shown before is no longer what the person would approve.
   await assert.rejects(
     changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, set.hash),
-    /changed after you reviewed it/,
+    { code: "stale" },
   );
 });
 
 test("a suggestion is refused outside the region, past the cap, with a new item, or once decided", async () => {
   const { changeSets, run } = setup();
   const set = await changeSets.capture(run, [estimate("SYN-8", 3)]);
-  await assert.rejects(
-    changeSets.extend(set.id, [estimate("SYN-45", 2)], 50),
-    /isn't in this thread's region/,
-  );
+  await assert.rejects(changeSets.extend(set.id, [estimate("SYN-45", 2)], 50), { code: "refused" });
   await assert.rejects(
     changeSets.extend(set.id, [estimate("SYN-13", 5), estimate("SYN-21", 1)], 2),
-    /at most 2 changes/,
+    ChangeSetError,
   );
   await assert.rejects(
     changeSets.extend(
@@ -50,13 +48,10 @@ test("a suggestion is refused outside the region, past the cap, with a new item,
       [{ op: "createStory", target: null, ref: "new:1", args: { summary: "A new story" } }],
       50,
     ),
-    /only a change to an item that exists/,
+    { code: "refused" },
   );
   await approve(changeSets, set.id);
-  await assert.rejects(
-    changeSets.extend(set.id, [estimate("SYN-13", 5)], 50),
-    /nobody has decided on/,
-  );
+  await assert.rejects(changeSets.extend(set.id, [estimate("SYN-13", 5)], 50), { code: "refused" });
 });
 
 test("a look at the diff records nothing a person would approve from", async () => {

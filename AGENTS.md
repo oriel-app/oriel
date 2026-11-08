@@ -6,6 +6,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 - `pnpm check`: typecheck, lint, unit tests, repo checks. It must be green before you say done; report its output, not "tests pass".
 - `pnpm --filter <pkg> check` while iterating. CI runs everything.
+- Which layer a change gets a test at, and which unit tests stay: the `unit-tests` skill.
 - `pnpm perf`: the window's open on a 4,000-item world, in Chrome, against its budget. Run it after touching the index, the overview or Browse.
 - `pnpm ui-check` when you touch `packages/web`, and fix the page it names in the same PR.
 - `pnpm desktop:try <scenario>`: the built desktop app, hidden, on a fresh data folder, with its secrets in memory. See `packages/desktop/README.md`.

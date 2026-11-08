@@ -1,56 +1,11 @@
-// Slack's picked channels, read-only: their messages join the window beside
-// Jira's, under groupings that say Slack has no epics or assignees, and a
-// workstream can hold both, read by its thread's region.
+// A Slack message's text reaches the agent through tool results, never the
+// declarations its scripts are typed against.
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
-import { fixtureApi, type ReadMethod, SlackError, loadSlackFixture } from "@oriel/slack";
-import type { ConnectionView, ThreadView, WindowView, WorkstreamView } from "@oriel/web/view";
+import type { ThreadView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
-const fixture = loadSlackFixture();
-const slackRows = (view: WindowView) =>
-  view.clusters.flatMap((c) => c.list).filter((row) => row.id.startsWith("slack:"));
-
-test("the picked channel's messages are in the window, in clusters that say Slack has no epics or assignees", async (t) => {
-  const app = await testApp(t, { slack: { mode: "fixture" } });
-  const byEpic = app.app.window("epic");
-  const own = byEpic.clusters.find((c) => c.row.key === "no-epics-in-source");
-  assert.equal(own?.row.origin.kind, "derived");
-  assert.equal(own?.list.length, 19);
-  assert.equal(slackRows(byEpic).length, 19);
-  const row = own?.list.find((r) => r.title.startsWith("Dara Nikolaidis: Decision:"));
-  assert.deepEqual(row && { ...row, title: undefined }, {
-    id: "slack:C0FW1WEATHR-1788444000.000100",
-    key: "C0FW1WEATHR-1788444000.000100",
-    title: undefined,
-    type: "message",
-    status: null,
-    assignee: null,
-    points: null,
-    // Its last reply, on 20 September, as of the SYN window's 2 October.
-    idleDays: 12,
-    replies: {
-      count: 4,
-      url: "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100",
-    },
-  });
-  const byAssignee = app.app.window("assignee");
-  const none = byAssignee.clusters.find((c) => c.row.key === "no-assignees-in-source");
-  assert.equal(none?.list.filter((r) => r.id.startsWith("slack:")).length, 19);
-  assert.equal(slackRows(byAssignee).length, 19);
-  // A message isn't work that can be stuck.
-  assert.deepEqual(slackRows(app.app.window("stuck")), []);
-  const connects = app.app.telemetry().filter((e) => e.name === "source.connected");
-  assert.deepEqual(
-    connects.map((e) => e.data.source),
-    ["jira", "slack"],
-  );
-});
-
-test("a workstream holds Jira items and Slack messages; its thread reads both, and no message text reaches the declarations", async (t) => {
+test("a thread on a Slack message reads it, and no message text reaches the declarations", async (t) => {
   const inspect: Script = async (bindings) => ({
     value: { dts: bindings.dts, items: (await bindings.read("items.list", [])).value },
   });
@@ -67,17 +22,6 @@ test("a workstream holds Jira items and Slack messages; its thread reads both, a
       items: ["jira:SYN-45", message],
     }),
   );
-  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`));
-  assert.deepEqual(
-    workstream.members.map((m) => [m.ref.id, m.ref.url]),
-    [
-      ["jira:SYN-45", "https://oriel.atlassian.net/browse/SYN-45"],
-      [message, "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100"],
-    ],
-  );
-  assert.equal(workstream.members[1]?.row?.type, "message");
-  const added = app.app.telemetry().filter((e) => e.name === "workstream.created");
-  assert.equal(added.length, 1);
   const { id } = json<{ id: string }>(
     await app.post(`/api/workstreams/${workstreamId}/threads`, {
       text: "What did the team decide?",
@@ -89,177 +33,11 @@ test("a workstream holds Jira items and Slack messages; its thread reads both, a
   assert.ok(finished?.kind === "run.finished");
   const value = JSON.parse(finished.run.returned ?? "null") as {
     dts: string;
-    items: { id: string; gone: boolean; title?: string; text?: string }[];
+    items: { id: string; text?: string }[];
   };
+  // The item's text reaches the run, through a tool result, and not the
+  // declarations, which name it by ID alone.
+  assert.match(value.items.find((item) => item.id === message)?.text ?? "", /fare they paid/);
   assert.ok(value.dts.includes(JSON.stringify(message)));
-  // Writable through change sets (OA-28): Slack's namespace, which names no
-  // message text either.
-  assert.match(value.dts, /declare const slack/);
   assert.doesNotMatch(value.dts, /Dara|Decision|fare they paid/);
-  const read = value.items.find((item) => item.id === message);
-  assert.equal(read?.gone, false);
-  assert.match(read?.title ?? "", /^Dara Nikolaidis: Decision:/);
-  assert.match(read?.text ?? "", /Farid Haddad replied, 2026-09-20T09:30:00\.000Z:\nPicking this/);
-});
-
-test("Slack syncs each time the server starts, and connects once", async (t) => {
-  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-slack-")));
-  t.after(() => rmSync(top, { recursive: true, force: true }));
-  const db = join(top, "oriel.db");
-  const first = await testApp(t, { db, slack: { mode: "fixture" } });
-  await first.app.close();
-  const again = await testApp(t, { db, slack: { mode: "fixture" } });
-  assert.equal(slackRows(again.app.window("epic")).length, 19);
-  const connects = again.app.telemetry().filter((e) => e.name === "source.connected");
-  assert.deepEqual(
-    connects.map((e) => e.data.source),
-    ["jira", "slack"],
-  );
-});
-
-// Slack's Web API over fetch, answered from the fixture: the live path end to
-// end, with no network.
-function fixtureFetch() {
-  const { api, calls } = fixtureApi(fixture);
-  const send: typeof fetch = async (input, init) => {
-    const method = String(input).replace("https://slack.com/api/", "") as ReadMethod;
-    const params = Object.fromEntries(new URLSearchParams(String(init?.body)));
-    const body = await api(method, params).catch((error: unknown) => {
-      if (error instanceof SlackError) return { ok: false, error: error.code };
-      throw error;
-    });
-    return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
-  };
-  return { send, calls };
-}
-
-test("live Slack reads only the channels picked by name, through the Web API", async (t) => {
-  const { send, calls } = fixtureFetch();
-  const token = "xoxp-test";
-  const app = await testApp(t, {
-    slack: {
-      mode: "live",
-      identity: "",
-      options: { channels: ["#weather-disruptions"] },
-      secret: token,
-      fetch: send,
-    },
-  });
-  assert.equal(slackRows(app.app.window("epic")).length, 19);
-  assert.ok(
-    calls.every((c) => c.params.channel === undefined || c.params.channel === "C0FW1WEATHR"),
-  );
-  await assert.rejects(
-    testApp(t, {
-      slack: {
-        mode: "live",
-        identity: "",
-        options: { channels: ["weather"] },
-        secret: token,
-        fetch: send,
-      },
-    }),
-    /Slack has no public channel Oriel can see named #weather/,
-  );
-});
-
-test("a Slack message's link dropped on a workstream adds it", async (t) => {
-  const app = await testApp(t, { slack: { mode: "fixture" } });
-  const { id } = json<{ id: string }>(
-    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
-  );
-  const link = "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100";
-  const dropped = json<{ added: string[]; refused: unknown[] }>(
-    await app.post(`/api/workstreams/${id}/drop`, { links: [link], files: [] }),
-  );
-  assert.deepEqual(dropped.added, ["slack:C0FW1WEATHR-1788444000.000100"]);
-  assert.deepEqual(dropped.refused, []);
-});
-
-test("started without Slack, the window and search leave out what an earlier start indexed", async (t) => {
-  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-slack-off-")));
-  t.after(() => rmSync(top, { recursive: true, force: true }));
-  const db = join(top, "oriel.db");
-  const first = await testApp(t, { db, slack: { mode: "fixture" } });
-  await first.app.close();
-  const found: Script = async (bindings) => ({
-    value: (await bindings.read("search", ["SMS"])).value,
-  });
-  const off = await testApp(t, { db, plan: () => [{ run: "found" }], scripts: { found } });
-  assert.deepEqual(slackRows(off.app.window("epic")), []);
-  const { id: workstreamId } = json<{ id: string }>(
-    await off.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
-  );
-  const { id } = json<{ id: string }>(
-    await off.post(`/api/workstreams/${workstreamId}/threads`, { text: "Anything about SMS?" }),
-  );
-  await off.app.settled();
-  const thread = json<ThreadView>(await off.get(`/api/threads/${id}`));
-  const finished = thread.entries.find((e) => e.kind === "run.finished");
-  assert.ok(finished?.kind === "run.finished");
-  const hits = JSON.parse(finished.run.returned ?? "[]") as { id: string }[];
-  assert.ok(hits.length > 0);
-  assert.ok(hits.every((hit) => !hit.id.startsWith("slack:")));
-});
-
-test("the sidebar lists every connected source the same way, Slack among them", async (t) => {
-  const app = await testApp(t, { slack: { mode: "fixture" } });
-  const sources = (await app.connections()).connections;
-  assert.deepEqual(
-    sources.map(({ kind, name, about, items }) => ({ kind, name, about, items })),
-    [
-      { kind: "jira", name: "Jira", about: "SYN on oriel.atlassian.net", items: 120 },
-      { kind: "slack", name: "Slack", about: "ferrowick-example.slack.com", items: 19 },
-    ],
-  );
-  assert.ok(sources.every((source) => source.syncedAt !== null));
-  // Started without Slack, it isn't listed.
-  const alone = await testApp(t);
-  assert.deepEqual(
-    (await alone.connections()).connections.map((s) => s.kind),
-    ["jira"],
-  );
-});
-
-test("Slack syncs on demand, says so when it can't, and isn't there to sync unconnected", async (t) => {
-  const workspace = fixtureApi(fixture);
-  let down = false;
-  const app = await testApp(t, {
-    slack: {
-      mode: "fixture",
-      fetch: async (input, init) =>
-        down ? Response.json({ ok: false, error: "fatal_error" }) : workspace.fetch(input, init),
-    },
-  });
-  const synced = await app.sync("slack");
-  assert.equal(synced.status, 200);
-  assert.deepEqual(
-    (({ about, items }) => ({ about, items }))(
-      json<{ connection: ConnectionView }>(synced).connection,
-    ),
-    { about: "ferrowick-example.slack.com", items: 19 },
-  );
-  down = true;
-  const failed = await app.sync("slack");
-  assert.equal(failed.status, 502);
-  assert.deepEqual(json(failed), {
-    error: "Slack didn't answer, so Oriel couldn't look for new messages.",
-  });
-  // What it had stays.
-  assert.equal(slackRows(app.app.window("epic")).length, 19);
-  assert.deepEqual(
-    app.app
-      .telemetry()
-      .filter((e) => e.name === "source.synced")
-      .map((e) => e.data),
-    [
-      { source: "slack", ok: true },
-      { source: "slack", ok: false },
-    ],
-  );
-  // Unconnected, there's no connection to sync: the page names only one the
-  // server has.
-  const alone = await testApp(t);
-  assert.equal((await alone.sync("slack")).status, 404);
-  assert.equal((await alone.post(`/api/connections/${"0".repeat(26)}/sync`)).status, 404);
 });

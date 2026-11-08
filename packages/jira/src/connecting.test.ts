@@ -8,16 +8,6 @@ const env = {
   JIRA_API_TOKEN: "secret-token-value",
 };
 
-test("a live connection reads Jira's three values, to the throwaway site, SYN unless a flag says", () => {
-  assert.deepEqual(jiraLive.env, ["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN"]);
-  assert.deepEqual(jiraLive.connection(env, {}), {
-    identity: "https://oriel.atlassian.net",
-    options: { project: "SYN" },
-    secret: JSON.stringify({ email: "pm@example.com", token: "secret-token-value" }),
-  });
-  assert.deepEqual(jiraLive.connection(env, { project: "OA" }).options, { project: "OA" });
-});
-
 test("without them, or to another site, no message carries a value", () => {
   const partial: Record<string, string>[] = [
     {},

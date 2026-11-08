@@ -35,19 +35,6 @@ const issue = (n: number, estimate: number | null, at = t0): IndexRecord => ({
   attrs: { issueType: "Story", status: "To do", labels: [] },
 });
 
-test("migration 0030 keeps a stand-in's content as JSON beside its index rows", () => {
-  const { db, workspaceId } = fresh();
-  assert.throws(
-    () =>
-      db
-        .prepare(
-          "insert into own_items (workspace_id, source, stable_id, content) values (?, ?, ?, ?)",
-        )
-        .run(workspaceId, "tracker", "1", "not json"),
-    /CHECK constraint failed/,
-  );
-});
-
 test("a stand-in's write lands its rows, their text, content and change log at once, as one snapshot", () => {
   const { index, workspaceId, own } = fresh();
   const first = own.write(

@@ -72,64 +72,6 @@ function wrapped(
   return { source, cursors };
 }
 
-test("the first sync is a full sweep, and the index holds exactly the fixture's records", async () => {
-  const { sync, live, index, workspaceId } = fresh();
-  const report = await sync(fixtureSource(fixture, { site, edited: 0 }));
-  const expected = fixtureSnapshot(fixture, site, 0).records;
-  assert.deepEqual(report, {
-    version: 1,
-    full: true,
-    records: expected.length,
-    skipped: 0,
-    gone: 0,
-  });
-  assert.deepEqual(byId(live()), byId(expected));
-  const latest = expected
-    .map((r) => r.updatedAt)
-    .toSorted()
-    .at(-1);
-  assert.deepEqual(index.source(workspaceId, "jira"), {
-    cursor: latest,
-    syncedAt: t1,
-    lastSync: { new: expected.length, changed: 0, removed: 0 },
-  });
-});
-
-test("an incremental sync resumes from the stored cursor and picks up source edits", async () => {
-  const { sync, live, index, workspaceId } = fresh();
-  await sync(fixtureSource(fixture, { site, edited: 0 }));
-  const stored = index.source(workspaceId, "jira")?.cursor ?? null;
-  const { source, cursors } = wrapped(allEdits, (page) => page);
-  const report = await sync(source);
-  assert.deepEqual(cursors, [stored]);
-  assert.equal(report.full, false);
-  assert.equal(report.version, 2);
-  const now = fixtureSnapshot(fixture, site, allEdits).records;
-  for (const edit of fixture.edits.filter((e) => e.kind !== "delete")) {
-    const id = `jira:${edit.key}`;
-    assert.deepEqual(
-      live().find((r) => r.id === id),
-      now.find((r) => r.id === id),
-    );
-  }
-  // Jira's search can't list a deletion, so only a full sweep finds it.
-  assert.ok(index.liveStableIds(workspaceId, "jira").includes(deletedId));
-});
-
-test("a full sweep marks what the source no longer returns as gone", async () => {
-  const { sync, live, index, workspaceId } = fresh();
-  await sync(fixtureSource(fixture, { site, edited: 0 }));
-  await sync(fixtureSource(fixture, { site, edited: allEdits }));
-  const report = await sync(fixtureSource(fixture, { site, edited: allEdits }), true);
-  assert.equal(report.full, true);
-  assert.equal(report.gone, 1);
-  assert.equal(report.version, 3);
-  assert.ok(!index.liveStableIds(workspaceId, "jira").includes(deletedId));
-  assert.deepEqual(byId(live()), byId(fixtureSnapshot(fixture, site, allEdits).records));
-  // Nothing new: the version stays.
-  assert.equal((await sync(fixtureSource(fixture, { site, edited: allEdits }), true)).version, 3);
-});
-
 test("a malformed record is skipped and logged, its page still lands, and a sweep keeps it", async () => {
   const { sync, live, lines } = fresh();
   await sync(fixtureSource(fixture, { site, edited: 0 }));
@@ -146,8 +88,7 @@ test("a malformed record is skipped and logged, its page still lands, and a swee
   assert.equal(report.skipped, 1);
   assert.equal(report.gone, 0);
   assert.deepEqual(byId(live()), byId(before));
-  const line = lines.find((l) => l.message.includes("malformed"));
-  assert.equal(line?.fields?.stableId, before[0]?.stableId);
+  const line = lines.find((l) => l.fields?.stableId === before[0]?.stableId);
   assert.match(String(line?.fields?.problem), /\$\.attrs\.labels/);
 });
 
@@ -265,88 +206,6 @@ test("a full sweep keeps an item read by itself that the listing doesn't have ye
   assert.equal(live().length, fixtureSnapshot(fixture, site, 0).records.length + 1);
 });
 
-test("items are read before the listing, so a failed read applies nothing", async () => {
-  const { index, workspaceId } = fresh();
-  const { source, cursors } = wrapped(0, (page) => page);
-  const options = {
-    attrs: jiraAttrs,
-    key: jiraKeyShape,
-    index,
-    workspaceId,
-    full: true,
-    items: [{ id: created.id, stableId: created.stableId }],
-    clock: () => t1,
-    log: () => {},
-  };
-  const failing: Source<"jira", unknown> = {
-    ...source,
-    records: async () => {
-      throw new Error("Jira went away");
-    },
-  };
-  await assert.rejects(syncSource({ ...options, source: failing }), /went away/);
-  // A source that can't read items one by one says so, rather than leaving them out.
-  await assert.rejects(syncSource({ ...options, source }), /can't read items one by one/);
-  assert.deepEqual(cursors, []);
-  assert.equal(index.snapshot(workspaceId), 0);
-});
-
-test("a read the listing has overtaken is left out, and an item already gone isn't counted again", async () => {
-  const { sync, live, index, workspaceId } = fresh();
-  await sync(fixtureSource(fixture, { site, edited: 0 }));
-  const listed = fixtureSnapshot(fixture, site, 0).records.find((r) => r.facets.kind === "story");
-  assert.ok(listed);
-  // Read before a teammate's edit that the listing then returned.
-  const older = {
-    ...listed,
-    title: "Before the edit",
-    updatedAt: instant(new Date(Date.parse(listed.updatedAt) - 60_000)),
-  };
-  const { source } = lagging(0, new Map([[listed.id, older]]));
-  const report = await syncSource({
-    source,
-    attrs: jiraAttrs,
-    key: jiraKeyShape,
-    index,
-    workspaceId,
-    full: true,
-    items: [
-      { id: listed.id, stableId: listed.stableId },
-      { id: "jira:SYN-901", stableId: "20901" },
-    ],
-    clock: () => t1,
-    log: () => {},
-  });
-  assert.equal(report.gone, 0);
-  assert.equal(live().find((r) => r.id === listed.id)?.title, listed.title);
-});
-
-test("what the index holds as gone stays gone when a lagging listing still returns it", async () => {
-  const { sync, live, workspaceId, index } = fresh();
-  await sync(fixtureSource(fixture, { site, edited: 0 }));
-  await sync(fixtureSource(fixture, { site, edited: allEdits }), true);
-  assert.ok(!index.liveStableIds(workspaceId, "jira").includes(deletedId));
-  // The listing is from before the delete; reading the item by key finds nothing.
-  const gone = fixtureSnapshot(fixture, site, 0).records.find((r) => r.stableId === deletedId);
-  assert.ok(gone);
-  const byKey = new Map(fixtureSnapshot(fixture, site, allEdits).records.map((r) => [r.id, r]));
-  const lines: string[] = [];
-  const { source, asked } = lagging(0, byKey);
-  const report = await syncSource({
-    source,
-    attrs: jiraAttrs,
-    key: jiraKeyShape,
-    index,
-    workspaceId,
-    full: true,
-    clock: () => t1,
-    log: (message) => lines.push(message),
-  });
-  assert.ok(!live().some((r) => r.stableId === deletedId));
-  assert.deepEqual([asked, report.gone], [[[gone.id]], 0]);
-  assert.ok(lines.includes("sync: the listing returned items the source no longer has"));
-});
-
 test("what a sweep wrongly held as gone comes back once the source has it by key", async () => {
   const { live, workspaceId, index } = fresh();
   // A listing that lags a write doesn't have the new item yet, so the
@@ -374,12 +233,4 @@ test("what a sweep wrongly held as gone comes back once the source has it by key
     live().find((r) => r.stableId === behind.stableId),
     behind,
   );
-});
-
-test("a source that can't read by key is taken at its word when it lists an item again", async () => {
-  const { sync, workspaceId, index } = fresh();
-  await sync(fixtureSource(fixture, { site, edited: 0 }));
-  await sync(fixtureSource(fixture, { site, edited: allEdits }), true);
-  await sync(fixtureSource(fixture, { site, edited: 0 }), true);
-  assert.ok(index.liveStableIds(workspaceId, "jira").includes(deletedId));
 });

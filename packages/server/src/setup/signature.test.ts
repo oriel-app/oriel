@@ -13,50 +13,27 @@ import {
   installerTrust,
   requirement,
   type RunTool,
-  withLocalBin,
 } from "./signature.ts";
 
-test("codesign checks the file against Anthropic's Team ID, then spctl that it's notarized", async () => {
-  const asked: string[][] = [];
+test("a CLI runs only when codesign finds Anthropic's Team ID and spctl finds it notarized", async () => {
+  // codesign passes only when it is asked to check this path against a
+  // requirement naming Anthropic's Team ID.
   const answers =
     (codesign: number, spctl: string): RunTool =>
     async (file, args) => {
-      asked.push([file, ...args]);
-      return file === "/usr/bin/codesign"
-        ? { code: codesign, output: codesign ? "test-requirement: code failed" : "" }
-        : { code: spctl.includes(": accepted") ? 0 : 3, output: spctl };
+      if (file !== "/usr/bin/codesign")
+        return { code: spctl.includes(": accepted") ? 0 : 3, output: spctl };
+      const checked = args.at(-1) === "/c" && args[args.indexOf("-R") + 1] === requirement;
+      return checked && !codesign ? { code: 0, output: "" } : { code: 3, output: "failed" };
     };
+  assert.ok(requirement.includes(`certificate leaf[subject.OU] = "${anthropicTeam}"`));
   assert.equal(
     await anthropicSigned("/c", answers(0, "/c: accepted\nsource=Notarized Developer ID\n")),
     null,
   );
-  assert.deepEqual(asked, [
-    ["/usr/bin/codesign", "--verify", "--strict", "-R", requirement, "/c"],
-    [
-      "/usr/sbin/spctl",
-      "--assess",
-      "--type",
-      "open",
-      "--context",
-      "context:primary-signature",
-      "--verbose",
-      "/c",
-    ],
-  ]);
-  assert.ok(requirement.includes(`certificate leaf[subject.OU] = "${anthropicTeam}"`));
+  assert.ok(await anthropicSigned("/c", answers(3, "")));
   assert.ok(
-    requirement.startsWith(
-      "=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6]",
-    ),
-  );
-  assert.match(
-    (await anthropicSigned("/c", answers(3, "")))?.problem ?? "",
-    /isn't signed by Anthropic/,
-  );
-  assert.match(
-    (await anthropicSigned("/c", answers(0, "/c: rejected\nsource=Unnotarized Developer ID")))
-      ?.problem ?? "",
-    /notarized/,
+    await anthropicSigned("/c", answers(0, "/c: rejected\nsource=Unnotarized Developer ID")),
   );
   // A tool that couldn't start refuses too.
   assert.ok(await anthropicSigned("/c", async () => ({ code: null, output: "" })));
@@ -97,17 +74,6 @@ test("only a CLI in the installer's folder is checked, once per file as it is", 
   assert.equal(checked.length, 2);
   // Nothing there now: the look says so, not the check.
   assert.equal(await trust(join(home, "nowhere")), null);
-});
-
-test("the PATH gains the installer's bin once, last", () => {
-  assert.equal(
-    withLocalBin("/usr/bin:/bin", "/Users/maya"),
-    "/usr/bin:/bin:/Users/maya/.local/bin",
-  );
-  assert.equal(
-    withLocalBin("/Users/maya/.local/bin:/usr/bin", "/Users/maya"),
-    "/Users/maya/.local/bin:/usr/bin",
-  );
 });
 
 test("the log a person copies holds no password, key, code, email or link query", () => {

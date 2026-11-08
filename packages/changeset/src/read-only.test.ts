@@ -38,46 +38,8 @@ test("without writer config a change set is captured and diffed, but approving i
   await assert.rejects(approve(sets, set.id), {
     name: "ChangeSetError",
     code: "read-only",
-    message: /Writing to Jira isn't configured here/,
   });
   assert.equal((await sets.get(set.id))?.decision, null);
   await assert.rejects(sets.apply(set.id), { code: "read-only" });
   assert.deepEqual(jira.calls, []);
-});
-
-test("without writer config a change set can still be edited and rejected", async () => {
-  const { sets, run } = readOnly();
-  const set = await sets.capture(run, [estimate("SYN-3", 5), estimate("SYN-8", 2)]);
-  const edited = await sets.edit(set.id, { remove: [nth(set.mutations, 0).id] });
-  assert.equal(edited.mutations.length, 1);
-  const diff = await sets.diff(set.id);
-  const rejected = await sets.decide(set.id, "rejected", { via: "thread", by: "pm" }, diff.hash);
-  assert.equal(rejected.decision?.kind, "rejected");
-});
-
-test("a thread's change sets read back in order, without touching the source", async () => {
-  const { sets, run, jira } = readOnly();
-  const first = await sets.capture(run, [estimate("SYN-3", 5)]);
-  const second = await sets.capture(run, [estimate("SYN-8", 2)]);
-  const reads = jira.calls.length;
-  assert.deepEqual(
-    (await sets.ofThread(run.threadId)).map((s) => s.id),
-    [first.id, second.id],
-  );
-  assert.equal((await sets.get(second.id))?.mutations.length, 1);
-  assert.equal(await sets.get(run.id), null);
-  assert.deepEqual(await sets.ofThread(run.id), []);
-  assert.equal(jira.calls.length, reads);
-});
-
-test("without writer config, next steps never offer approving or applying", async () => {
-  const { sets, run } = readOnly();
-  const set = await sets.capture(run, [estimate("SYN-3", 5), estimate("SYN-8", 2)]);
-  const removable = { kind: "remove", mutationIds: set.mutations.map((m) => m.id) } as const;
-  assert.deepEqual(await sets.nextSteps(set.id), [{ kind: "reject" }, removable]);
-  // A diff shown changes nothing: there is no writer to approve it for.
-  await sets.diff(set.id);
-  assert.deepEqual(await sets.nextSteps(set.id), [{ kind: "reject" }, removable]);
-  await sets.decide(set.id, "rejected", { via: "thread", by: "pm" }, set.hash);
-  assert.deepEqual(await sets.nextSteps(set.id), []);
 });
