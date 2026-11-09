@@ -11,7 +11,7 @@ import {
 } from "@oriel/core";
 import { issuesIn } from "./issues.ts";
 import { memoryItems } from "./memory.ts";
-import { trackerSpecs } from "./specs.ts";
+import { trackerSpecs } from "./shape.ts";
 import { trackerWriter } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in

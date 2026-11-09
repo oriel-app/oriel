@@ -10,10 +10,8 @@ import {
 } from "@oriel/core";
 import { trackerDeclaredFixture } from "./declared-fixture.ts";
 import { trackerKeyShape, trackerPresentation } from "./issues.ts";
-import { trackerItemDoc, trackerNamespace } from "./namespace.ts";
 import { openTracker, type TrackerOn, type TrackerWrites } from "./open-connection.ts";
-import { trackerPanel } from "./panel.ts";
-import { trackerSpecs } from "./specs.ts";
+import { tracker, trackerItemDoc } from "./shape.ts";
 
 // Its keys in any text, as T-12.
 const recognizer: Recognizer = (text) =>
@@ -24,17 +22,13 @@ export const trackerDeclaration = {
   key: trackerKeyShape,
   ...trackerPresentation,
   itemDoc: trackerItemDoc,
-  panel: trackerPanel,
+  panel: tracker.panel,
   recognizer: () => recognizer,
   facets: issueDeclaredFacets,
   overview: issueOverview,
   // Off, it offers the agent nothing.
-  namespace: (records, on: TrackerOn | undefined) =>
-    trackerNamespace(
-      new Map(records.map((record) => [record.id, record.facets.kind])),
-      on !== undefined,
-    ),
-  specs: trackerSpecs,
+  namespace: (records, on: TrackerOn | undefined) => tracker.namespace(records, on !== undefined),
+  specs: tracker.specs,
   // Its item doc and its namespace.
   budget: 2_400,
   open: openTracker,

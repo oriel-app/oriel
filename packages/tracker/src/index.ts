@@ -15,9 +15,6 @@ export {
   trackerKeyShape,
   trackerPresentation,
 } from "./issues.ts";
-export { trackerItemDoc, trackerNamespace } from "./namespace.ts";
 export { openTracker, type TrackerOn, type TrackerWrites } from "./open-connection.ts";
-export { trackerOps } from "./ops.ts";
-export { trackerPanel } from "./panel.ts";
 export { trackerSource } from "./source.ts";
-export { trackerSpecs } from "./specs.ts";
+export { tracker, trackerItemDoc, trackerOps } from "./shape.ts";
