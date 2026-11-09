@@ -3,7 +3,14 @@
 // content, and only as tool results (SPEC §5). Nothing here reads a clock or
 // makes an ID, so a turn against fixtures sends the same bytes every time and
 // its cassettes replay.
-import type { AgentNote, CapturedMutation, Intent, RunResult, TranscriptEntry } from "@oriel/core";
+import type {
+  ActionLine,
+  AgentNote,
+  CapturedMutation,
+  Intent,
+  RunResult,
+  TranscriptEntry,
+} from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
 import type { ModelMessage, ToolCall, ToolResult, ToolSpec } from "./provider.ts";
 
@@ -171,6 +178,18 @@ export const capturedRules = [
 export const actionRules =
   "The user undoes one with Undo under your reply, if one shows, not Revert.";
 
+// What the agent reads of the host's list of Oriel's actions: each call as it
+// applied or was refused, by ID, never by name.
+export const actionsText = (lines: readonly ActionLine[]): string =>
+  [
+    ...lines.map((line) => {
+      const call = json(line.call);
+      if (!line.applied) return `refused ${call}: ${line.why}`;
+      return `applied ${call}${line.since?.undone ? ", which the user then undid" : ""}`;
+    }),
+    ...(lines.some((line) => line.applied) ? [actionRules] : []),
+  ].join("\n");
+
 const actions = (count: number) =>
   count === 1 ? "1 of Oriel's actions" : `${count} of Oriel's actions`;
 
@@ -185,14 +204,19 @@ const drafts = (count: number) => (count === 1 ? "1 draft" : `${count} drafts`);
 // A run as the model reads it: its transcript, then what became of its writes,
 // of the actions it asked for and of the blocks and sketches it asked Oriel
 // to show. `replaced`, `replacedIntents` and `replacedDrafts` are what it replaced of an
-// earlier run's; `shown`, Oriel's line for each block and sketch. No run ID, timing or other value a
-// replay can't reproduce.
+// earlier run's; `shown`, Oriel's line for each block and sketch; `joined`,
+// the host's lines for its additions to the thread's own workstream, which
+// applied as it ended (OA-312), and `declared`, the module of the region
+// they made, which the rest of the turn runs against. No run ID, timing or
+// other value a replay can't reproduce.
 export function runResultText(
   result: RunResult,
   replaced: number,
   replacedIntents = 0,
   shown: readonly string[] = [],
   replacedDrafts = 0,
+  joined: readonly ActionLine[] = [],
+  declared?: string,
 ): string {
   const lines = result.transcript.flatMap(entry);
   const count = result.mutations.length;
@@ -214,6 +238,14 @@ export function runResultText(
         : "They become the change set the user reviews when this turn ends, unless a later run in this turn captures changes instead.",
       ...capturedRules,
     );
+  }
+  if (joined.length) {
+    lines.push("Oriel added to this workstream as the run ended:", actionsText(joined));
+    if (declared !== undefined)
+      lines.push(
+        "Your next runs in this turn run against this module instead of the tool's:",
+        `\`\`\`ts\n${declared}\`\`\``,
+      );
   }
   if (asked) {
     lines.push(`Recorded ${actions(asked)}:`, ...intentLines(result.intents));

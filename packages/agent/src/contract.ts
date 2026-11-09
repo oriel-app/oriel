@@ -97,7 +97,8 @@ export type AgentEvent =
   | { kind: "change-set"; changeSetId: Ulid }
   // What became of the intents the turn's last run (`runId`) recorded,
   // applied or refused, one line each: the host's record, shown under the
-  // agent's reply (decision 0024).
+  // agent's reply (decision 0024). Or of the additions to the thread's own
+  // workstream that run `runId` recorded, as it ended (OA-312).
   | { kind: "actions"; runId: Ulid; lines: ActionLine[] }
   // A per-thread cap that ends the turn: turns or tokens (SPEC §9). A
   // run-level cap (wall time, reads, mutations, output) isn't one: it shows as
@@ -137,11 +138,15 @@ export type AgentDeps = {
   changeSets: Pick<ChangeSets, "capture">;
   // Applies a turn's intents as the thread's agent, once its change set, if
   // it proposed one, is captured; says what it applied and what it refused.
+  // A run's additions to the thread's own workstream apply as the run ends
+  // (OA-312): `region` is then the version the thread works in, which the
+  // rest of the turn uses.
   actions: {
     apply(
       turn: { thread: Thread; changeSetId: Ulid | null },
       intents: readonly Intent[],
     ): Promise<ActionLine[]>;
+    region(thread: Thread): Region | null;
   };
   // Holds a turn's drafts in the thread, under its reply, for the user to
   // apply, edit or discard (decision 0051): never applied here.

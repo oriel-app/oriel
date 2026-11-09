@@ -10,7 +10,6 @@ import {
   type ThreadStore,
 } from "@oriel/db";
 import {
-  type ActionLine,
   type Draft,
   type Actor,
   type HeldSender,
@@ -23,7 +22,7 @@ import {
   type Thread,
   type Ulid,
 } from "@oriel/core";
-import { actionRules, capturedRules, type Titler } from "@oriel/agent";
+import { actionsText, capturedRules, type Titler } from "@oriel/agent";
 import { chipIds } from "@oriel/web/markdown";
 import type { Chips } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
@@ -168,18 +167,6 @@ function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): strin
   if (!result.mutations.length) return cut;
   return `${cut}; captured ${result.mutations.length} changes (${capturedRules.join(" ")})`;
 }
-
-// What the agent reads of the host's list under a reply: each call as it
-// applied or was refused, by ID, never by name.
-const actionsText = (lines: readonly ActionLine[]): string =>
-  [
-    ...lines.map((line) => {
-      const call = JSON.stringify(line.call);
-      if (!line.applied) return `refused ${call}: ${line.why}`;
-      return `applied ${call}${line.since?.undone ? ", which the user then undid" : ""}`;
-    }),
-    ...(lines.some((line) => line.applied) ? [actionRules] : []),
-  ].join("\n");
 
 const plus = (
   a: { inputTokens: number; outputTokens: number },

@@ -41,7 +41,7 @@ declare const items: {
 declare const linear: {
   /** Create a project for the team. Returns its ref, which createIssue can put issues in. */
   createProject(project: { name: string; description?: string }): NewRef;
-  /** Create an issue, in a project createProject made earlier in this run, or in none. Returns its ref. */
+  /** Create an issue, in a project createProject made earlier in this run, or in none. Returns its ref. For a project outside this region, workstream.add() it, then create in a later run. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null; project?: NewRef | null }): NewRef;
 };
 declare const workstream: {
@@ -196,7 +196,7 @@ declare const linear: {
   listItems(): Promise<readonly (LinearItem | Gone)[]>;
   /** The team's statuses, by name and type, and its cycles' names. */
   team(): Promise<{ statuses: readonly { name: string; type: string }[]; cycles: readonly { number: number; name: string | null }[] }>;
-  /** Create an issue in one of this region's projects, or in none. Returns its ref, which later writes in this run can target. */
+  /** Create an issue in one of this region's projects, or in none. Returns its ref, which later writes in this run can target. Only an empty workstream can create a project. For a project outside this region, workstream.add() it, then create in a later run. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null; project?: LinearProjectId | null }): NewRef;
   /** Set an issue's or a project's title. */
   setTitle(id: LinearTarget, title: string): void;
@@ -473,7 +473,7 @@ declare const linear: {
   listItems(): Promise<readonly (LinearItem | Gone)[]>;
   /** The team's statuses, by name and type, and its cycles' names. */
   team(): Promise<{ statuses: readonly { name: string; type: string }[]; cycles: readonly { number: number; name: string | null }[] }>;
-  /** Create an issue. This region holds no project, so it goes in none. Returns its ref, which later writes in this run can target. */
+  /** Create an issue. This region holds no project, so it goes in none. Returns its ref, which later writes in this run can target. Only an empty workstream can create a project. For a project outside this region, workstream.add() it, then create in a later run. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null }): NewRef;
   /** Set an issue's or a project's title. */
   setTitle(id: LinearTarget, title: string): void;
@@ -720,7 +720,7 @@ declare const linear: {
   listItems(): Promise<readonly (LinearItem | Gone)[]>;
   /** The team's statuses, by name and type, and its cycles' names. */
   team(): Promise<{ statuses: readonly { name: string; type: string }[]; cycles: readonly { number: number; name: string | null }[] }>;
-  /** Create an issue in this region's project. Returns its ref, which later writes in this run can target. */
+  /** Create an issue in this region's project. Returns its ref, which later writes in this run can target. Only an empty workstream can create a project. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null }): NewRef;
   /** Set an issue's or a project's title. */
   setTitle(id: LinearTarget, title: string): void;
@@ -967,7 +967,7 @@ declare const linear: {
   listItems(): Promise<readonly (LinearItem | Gone)[]>;
   /** The team's statuses, by name and type, and its cycles' names. */
   team(): Promise<{ statuses: readonly { name: string; type: string }[]; cycles: readonly { number: number; name: string | null }[] }>;
-  /** Create an issue in this region's project. Returns its ref, which later writes in this run can target. */
+  /** Create an issue in this region's project. Returns its ref, which later writes in this run can target. Only an empty workstream can create a project. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null }): NewRef;
   /** Set an issue's or a project's title. */
   setTitle(id: LinearTarget, title: string): void;
@@ -1096,7 +1096,7 @@ declare const linear: {
   listItems(): Promise<readonly (LinearItem | Gone)[]>;
   /** The team's statuses, by name and type, and its cycles' names. */
   team(): Promise<{ statuses: readonly { name: string; type: string }[]; cycles: readonly { number: number; name: string | null }[] }>;
-  /** Create an issue in this region's project. Returns its ref, which later writes in this run can target. */
+  /** Create an issue in this region's project. Returns its ref, which later writes in this run can target. Only an empty workstream can create a project. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null }): NewRef;
   /** Set an issue's or a project's title. */
   setTitle(id: LinearTarget, title: string): void;
@@ -1222,7 +1222,7 @@ declare const linear: {
   listItems(): Promise<readonly (LinearItem | Gone)[]>;
   /** The team's statuses, by name and type, and its cycles' names. */
   team(): Promise<{ statuses: readonly { name: string; type: string }[]; cycles: readonly { number: number; name: string | null }[] }>;
-  /** Create an issue. This region holds no project, so it goes in none. Returns its ref, which later writes in this run can target. */
+  /** Create an issue. This region holds no project, so it goes in none. Returns its ref, which later writes in this run can target. Only an empty workstream can create a project. For a project outside this region, workstream.add() it, then create in a later run. */
   createIssue(issue: { title: string; description?: string; estimate?: number | null; cycle?: LinearCycle | null }): NewRef;
   /** Set an issue's or a project's title. */
   setTitle(id: LinearTarget, title: string): void;

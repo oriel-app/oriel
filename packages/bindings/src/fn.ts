@@ -71,7 +71,8 @@ export type WriteFn = NamespaceWrite & {
 
 // One of Oriel's own actions, generated from the registry (decision 0024).
 // It takes one `input` object, typed as the agent's door has it, and a run
-// only records it, as an intent that applies when the turn ends. `source`:
+// only records it, as an intent that applies when the turn ends, or, an
+// addition to the thread's own workstream, as the run ends (OA-312). `source`:
 // turning a kind off, in the window chat only (decision 0059).
 export type IntentFn = {
   kind: "intent";

@@ -1866,6 +1866,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         if (!intents) throw new Error("Oriel's actions aren't ready yet");
         return intents.apply(turn, recorded);
       },
+      // Where the thread is now: a working thread follows its workstream to
+      // each new version, with its marker in the chat.
+      region: (thread) => {
+        const at = threads.get(thread.id, now());
+        return at ? workstreams.region(at.workstreamId, at.regionVersion) : null;
+      },
     },
     // Held under the reply, each with what it was drafted over; one whose
     // connection went meanwhile is dropped.

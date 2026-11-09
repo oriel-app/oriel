@@ -85,6 +85,17 @@ export type NamespaceSpec = {
   blank?: boolean;
 };
 
+// What a tracker's create says of the containers its items go in (an epic,
+// a project), whatever the tracker: only a region with no items offers to
+// create one (by design), so the agent never promises one elsewhere
+// (OA-312); and an item for one outside the region goes in once it is
+// added, from the next run on. `a` is the container with its article.
+export const containerRules = {
+  noNew: (a: string) => `Only an empty workstream can create ${a}.`,
+  addFirst: (a: string) =>
+    `For ${a} outside this region, workstream.add() it, then create in a later run.`,
+};
+
 export const param = <T>(name: string, type: string, check: Validator<T>): Param<T> => ({
   name,
   type,

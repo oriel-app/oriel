@@ -243,6 +243,8 @@ export function memoryRecords(newId: () => Ulid) {
           undo: null,
         }));
       },
+      // No workstream to follow: the turn keeps the region it started in.
+      region: () => null,
     },
     runs: { record: (run, reads) => void runs.push({ run, reads }) },
     changeSets: {

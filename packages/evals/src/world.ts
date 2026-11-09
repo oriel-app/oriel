@@ -136,7 +136,7 @@ export type World = {
 };
 
 // A workstream member, with its stable ID as its fixture keeps it.
-const member = (fixtures: Fixtures, id: ItemId): WorkstreamMember => ({
+export const member = (fixtures: Fixtures, id: ItemId): WorkstreamMember => ({
   id,
   stableId: fixtureOf(fixtures, id)?.stableId?.(id) ?? parseItemId(id)?.key ?? "",
 });
