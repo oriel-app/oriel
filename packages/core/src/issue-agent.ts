@@ -28,23 +28,7 @@ import type { PanelBlock, PanelEdit, PanelOf, PanelView } from "./panel.ts";
 import { type CapturedMutation, isNewRef, type NewRef } from "./sandbox.ts";
 import type { IndexRecord, WriteResult } from "./source.ts";
 import type { TakenIssue } from "./declaration.ts";
-import {
-  type Infer,
-  nullable,
-  object,
-  optional,
-  refine,
-  string,
-  type Validator,
-} from "./validate.ts";
-
-// Text of 1 to `max` characters, not all spaces.
-export const shortText = (max: number, what: string) =>
-  refine(
-    string,
-    (text) => text.trim() !== "" && [...text].length <= max,
-    `expected ${what} of 1 to ${max} characters`,
-  );
+import { type Infer, nullable, object, optional, string, type Validator } from "./validate.ts";
 
 // A thing a tracker holds, in its words: "epic", "an epic", "epics".
 export type IssueWord = { word: string; a: string; plural: string };
@@ -88,8 +72,11 @@ export type IssueView = {
 export type IssuePanel = {
   facts: Parameters<typeof issueFacts>[0];
   more?: readonly { name: string; value: string }[];
-  description: string;
+  // Its description as text, or as a block of its own, such as rich text.
+  description: string | PanelBlock;
   format: "plain" | "markdown";
+  // Its own blocks after the description, such as comments.
+  blocks?: readonly PanelBlock[];
   edit?: PanelEdit;
 };
 
@@ -148,6 +135,8 @@ export type IssueDeclared<C = never> = {
   // How it takes in a stand-in's issues, when it does: its titles' limit,
   // and an estimate it takes.
   take?: { maxTitle: number; estimate(points: number): number };
+  // What stops a revert, in its own words (`OpSpecs.explain`).
+  explain?: OpSpecs["explain"];
 };
 
 type Entry<A> = { args: Validator<A>; revertOnly: boolean };
@@ -156,7 +145,11 @@ type D = IssueDeclared<never>;
 // What a check takes, from a declaration.
 type Of<X> = X extends { check: Validator<infer U> } ? U : never;
 type Created<F> = {
-  [P in keyof F]: F[P] extends { create: { check: Validator<infer U> } } ? U | undefined : never;
+  [P in keyof F as F[P] extends { create: object } ? P : never]: F[P] extends {
+    create: { check: Validator<infer U> };
+  }
+    ? U | undefined
+    : never;
 };
 
 // The catalogue a declaration gives, typed by its names.
@@ -188,6 +181,7 @@ export type IssueOps<T extends D> = {
 // What a tracker's extra op's spec is built with: how a line names an item,
 // and a set op's revert.
 export type IssueLines = {
+  quoted(text: string): string;
   named(subject: Subject): string;
   restore<T>(name: string, field: string, validator: Validator<T>, arg?: string): Revert<T>;
 };
@@ -291,7 +285,7 @@ export function issueShape<const T extends D>(d: T) {
       if (!result.ok) return { refused: `the earlier ${field} can't be set back` };
       return { op: name, args: result.value };
     };
-  const lines: IssueLines = { named, restore };
+  const lines: IssueLines = { quoted, named, restore };
   const specs = specsOf();
 
   function specsOf(): OpSpecs {
@@ -444,6 +438,7 @@ export function issueShape<const T extends D>(d: T) {
       updatedField: "updated",
       fields: Object.fromEntries(fieldsOf(d).map((f) => [f, f === "epic" ? "item" : "value"])),
       ops: specs,
+      ...(d.explain && { explain: d.explain }),
     };
   }
 
@@ -765,12 +760,15 @@ function panelOf(d: D): PanelOf {
     if (!view) return null;
     const blocks: PanelBlock[] = [
       { kind: "facts", facts: [...issueFacts(view.facts).facts, ...(view.more ?? [])] },
-      {
-        kind: "text",
-        heading: "Description",
-        text: view.description === "" ? "No description." : view.description,
-        format: view.format,
-      },
+      typeof view.description === "string"
+        ? {
+            kind: "text",
+            heading: "Description",
+            text: view.description === "" ? "No description." : view.description,
+            format: view.format,
+          }
+        : view.description,
+      ...(view.blocks ?? []),
     ];
     const panel: PanelView = { title: null, blocks };
     return view.edit ? { ...panel, edit: view.edit } : panel;
