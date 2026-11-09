@@ -16,10 +16,11 @@ import {
 } from "@oriel/core";
 import { labelField, valuesOf } from "./fields.ts";
 import { type Issue, idOf, inTurn, issuesIn, isTrackerId, stableIdOf } from "./issues.ts";
-import { issueFields, type TrackerArgs, type TrackerOp, trackerOps } from "./ops.ts";
+import { tracker, type TrackerArgs, type TrackerOp, trackerOps } from "./shape.ts";
 import type { TrackerWrites } from "./open-connection.ts";
 
-const isTrackerOp = (op: string): op is TrackerOp => Object.hasOwn(trackerOps, op);
+const isTrackerOp = tracker.isOp;
+const issueFields = tracker.fields;
 
 const refused = (message: string) => new SourceRefused(message, { sent: false });
 

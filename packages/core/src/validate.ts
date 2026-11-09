@@ -221,3 +221,11 @@ export function refine<T>(
 export function lazy<T>(get: () => Validator<T>): Described<T> {
   return described<T>((input, path) => get()(input, path), { kind: "unknown" });
 }
+
+// Text of 1 to `max` characters, not all spaces.
+export const shortText = (max: number, what: string) =>
+  refine(
+    string,
+    (text) => text.trim() !== "" && [...text].length <= max,
+    `expected ${what} of 1 to ${max} characters`,
+  );

@@ -21,7 +21,6 @@ export {
   readIssue,
   readProject,
 } from "./linear-mcp.ts";
-export { linearItemDoc, linearNamespace } from "./namespace.ts";
 export {
   type LinearContext,
   type LinearScope,
@@ -30,10 +29,16 @@ export {
   openLinear,
   type OpenedLinear,
 } from "./open-connection.ts";
-export { isLinearOp, type LinearArgs, type LinearOp, linearOps } from "./ops.ts";
-export { linearPanel } from "./panel.ts";
 export { linearSource } from "./source.ts";
-export { linearSpecs } from "./specs.ts";
-export { takeIssues } from "./take-issues.ts";
+export {
+  isLinearOp,
+  linear,
+  type LinearArgs,
+  linearItemDoc,
+  type LinearOp,
+  linearOps,
+  linearSpecs,
+  takeIssues,
+} from "./shape.ts";
 export { type LinearWorld, loadLinearWorld, linearWorldPath } from "./world.ts";
 export { callsDir, loadCalls } from "./calls.ts";

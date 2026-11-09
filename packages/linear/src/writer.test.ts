@@ -17,8 +17,8 @@ import {
 } from "@oriel/core";
 import { linearServer, linearTools as t } from "./linear-mcp.ts";
 import { linearStandIn, standInCaller, standInWorld } from "./linear-standin.ts";
-import { linearSpecs } from "./specs.ts";
-import { takeIssues } from "./take-issues.ts";
+import { linearSpecs } from "./shape.ts";
+import { takeIssues } from "./shape.ts";
 import { linearWriter } from "./writer.ts";
 import { loadLinearWorld } from "./world.ts";
 
