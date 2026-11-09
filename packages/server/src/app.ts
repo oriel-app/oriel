@@ -2000,6 +2000,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     newId,
     log,
     alsoSpent: (threadId) => looks.usage(threadId),
+    changeSets: async (threadId) =>
+      (await reads.changeSets(threadId)).map(({ id, state }) => ({ id, state })),
   });
   told = () => conversation.synced();
   // Second looks (decision 0054), with an agent of their own, or the

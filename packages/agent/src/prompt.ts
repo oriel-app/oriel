@@ -7,9 +7,11 @@ import type {
   ActionLine,
   AgentNote,
   CapturedMutation,
+  ChangeSetState,
   Intent,
   RunResult,
   TranscriptEntry,
+  Ulid,
 } from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
 import type { ModelMessage, ToolCall, ToolResult, ToolSpec } from "./provider.ts";
@@ -121,10 +123,15 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
           ? ["// Oriel's note that the workstream changed. Not a run.", message.text]
           : message.role === "note"
             ? ["// Oriel's note of what happened in the thread. Not a run.", noteText(message.note)]
-            : [
-                "// Oriel's note of what it did with the actions a run asked for. Not a run.",
-                message.text,
-              ];
+            : message.role === "states"
+              ? [
+                  "// Oriel's note of where this thread's change sets stand. Not a run.",
+                  statesText(message.changeSets),
+                ]
+              : [
+                  "// Oriel's note of what it did with the actions a run asked for. Not a run.",
+                  message.text,
+                ];
     pending.calls.push({ id, name: runToolName, input: { script } });
     pending.results.push({ callId: id, content, isError: false });
   });
@@ -153,6 +160,22 @@ export function noteText(note: AgentNote): string {
       return `Your last answer named ${ids}, but Oriel has nothing with ${note.ids.length === 1 ? "that ID" : "those IDs"}, so the user saw "unknown reference" there. Name things only by IDs a run returned.`;
     }
   }
+}
+
+// A change set's state in the words the window uses for it.
+const stateWords: Record<ChangeSetState, string> = {
+  pending: "waiting on the user's review",
+  approved: "approved, not yet applied",
+  applied: "applied",
+  rejected: "rejected",
+  reverted: "reverted",
+};
+
+// Where the thread's change sets stand as this turn starts, as the window
+// shows them (OA-310): what earlier messages said of them may be out of date.
+export function statesText(sets: readonly { id: Ulid; state: ChangeSetState }[]): string {
+  const each = sets.map((set) => `${set.id}: ${stateWords[set.state]}`);
+  return `This thread's change sets now, as the window shows them; earlier messages may be out of date:\n${each.join("\n")}`;
 }
 
 const json = (value: unknown) => JSON.stringify(value) ?? "undefined";
