@@ -20,7 +20,7 @@ import {
 } from "@oriel/core";
 import { isProjectKey, projectId } from "./items.ts";
 import { type LinearIssue, type LinearProject, linearReads, linearWrites } from "./linear-mcp.ts";
-import { isLinearOp, type LinearArgs, type LinearOp, linearOps } from "./ops.ts";
+import { isLinearOp, type LinearArgs, type LinearOp, linearOps } from "./shape.ts";
 import type { LinearWrites } from "./open-connection.ts";
 
 const refused = (message: string) => new SourceRefused(message, { sent: false });

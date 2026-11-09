@@ -453,7 +453,9 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
     namespace: (records: readonly IndexRecord[], context: Ctx): NamespaceSpec =>
       namespaceOf(d, ops, new Map(records.map((r) => [r.id, r.facets.kind])), d.region(context)),
     panel: panelOf(d),
-    takeIssues: d.take && takeOf(d, d.take),
+    takeIssues: (d.take && takeOf(d, d.take)) as T["take"] extends object
+      ? ReturnType<typeof takeOf>
+      : undefined,
   };
 }
 

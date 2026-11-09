@@ -14,16 +14,13 @@ import {
 import { linearDeclaredFixture } from "./declared-fixture.ts";
 import { linearKeyShape, linearPresentation } from "./items.ts";
 import { linearServer } from "./linear-mcp.ts";
-import { linearItemDoc, linearNamespace } from "./namespace.ts";
 import {
   type LinearContext,
   type LinearScope,
   type LinearWrites,
   openLinear,
 } from "./open-connection.ts";
-import { linearPanel } from "./panel.ts";
-import { linearSpecs } from "./specs.ts";
-import { takeIssues } from "./take-issues.ts";
+import { linear, linearItemDoc } from "./shape.ts";
 
 // Its team's issue identifiers in any text, as ENG-4.
 const recognizer =
@@ -38,14 +35,13 @@ export const linearDeclaration = {
   key: linearKeyShape,
   ...linearPresentation,
   itemDoc: linearItemDoc,
-  panel: linearPanel,
+  panel: linear.panel,
   recognizer,
   // An issue tracker's, as every tracker's are (decision 0059).
   facets: issueDeclaredFacets,
   overview: issueOverview,
-  namespace: (records, context: LinearContext | undefined) =>
-    linearNamespace(new Map(records.map((record) => [record.id, record.facets.kind])), context),
-  specs: linearSpecs,
+  namespace: (records, context: LinearContext | undefined) => linear.namespace(records, context),
+  specs: linear.specs,
   // Its item doc and its namespace, with its team's cycles and team():
   // 2,808 bytes in OA-278.
   budget: 2_850,
@@ -57,6 +53,6 @@ export const linearDeclaration = {
     ),
   }),
   servers: [linearServer],
-  takeIssues,
+  takeIssues: linear.takeIssues,
   fixture: linearDeclaredFixture,
 } satisfies SourceDeclaration<LinearContext | undefined, LinearScope, LinearWrites>;
