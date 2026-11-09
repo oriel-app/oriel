@@ -2981,6 +2981,53 @@ const scenes: Scene[] = [
       await sidebarWorkstream(page, "Gift cards").and(page.locator("[data-drop-over]")).waitFor();
     },
   },
+  // Dropped over nothing: the page takes the drop, so the system has no
+  // refusal to slide back, and the card is back and gone within 150ms
+  // (OA-314). Times are events' own, which the pinned clock leaves alone.
+  {
+    name: "drag-move-nowhere",
+    path: "/",
+    make: moving,
+    act: async (page) => {
+      await openMoving(page);
+      if (narrow(page)) return;
+      await movingRow(page).locator(".member-title").hover();
+      await page.mouse.down();
+      await page.mouse.move(900, 640, { steps: 8 });
+      await page.locator(".drag-card").waitFor({ state: "attached" });
+      await page.evaluate(`{
+        const root = document.documentElement;
+        let start = null;
+        const ended = (event) => {
+          if (event.type === "drop") root.dataset.dropTaken = "";
+          start ??= event.timeStamp;
+        };
+        document.addEventListener("drop", ended, { capture: true, once: true });
+        document.addEventListener("dragend", ended, { capture: true, once: true });
+        const watch = new MutationObserver(() => {
+          if (start === null || document.querySelector(".drag-card, [data-lifted]")) return;
+          watch.disconnect();
+          root.dataset.settledIn = String(Math.round(new Event("settled").timeStamp - start));
+        });
+        watch.observe(document.body, { childList: true, subtree: true, attributes: true });
+      }`);
+      await page.mouse.up();
+      const root = page.locator("html[data-settled-in]");
+      await root.waitFor({ state: "attached" });
+      const took = Number(await root.getAttribute("data-settled-in"));
+      const taken = (await page.locator("html[data-drop-taken]").count()) > 0;
+      await page.evaluate(
+        "document.documentElement.removeAttribute('data-settled-in'), document.documentElement.removeAttribute('data-drop-taken')",
+      );
+      if (!taken) throw new Error("the page refused the drop, so the system slides it back");
+      if (took > 150) throw new Error(`the card took ${took}ms to go back, over 150ms`);
+      if ((await page.locator(beadSays).count()) > 0) throw new Error("the bead says something");
+      await sidebarWorkstream(page, "Checkout polish")
+        .locator(".nav-count", { hasText: /^3$/ })
+        .waitFor({ state: "attached" });
+      await pointerAway(page);
+    },
+  },
   // Its Undo: back where it came from, and out of "Gift cards".
   {
     name: "drag-move-undone",

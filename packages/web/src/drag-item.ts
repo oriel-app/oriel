@@ -11,6 +11,30 @@ const itemType = "application/x-oriel-item";
 
 let carried: Carried | null = null;
 
+// Whether the drag over a place is an item's, and which.
+const ours = (event: DragEvent): Carried | null =>
+  carried !== null && event.dataTransfer?.types.includes(itemType) ? carried : null;
+
+// While an item is dragged, the whole page takes its drop, so the system
+// never refuses it: a refused drop slides the browser's picture back first,
+// on macOS for most of a second, and only then ends the drag. A drop that
+// no place took sends the card back at once.
+const anywhere = (event: DragEvent) => {
+  if (event.defaultPrevented || !ours(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+};
+const nowhere = (event: DragEvent) => {
+  if (event.defaultPrevented || !ours(event)) return;
+  event.preventDefault();
+  drop("back");
+};
+const settled = () => {
+  carried = null;
+  document.removeEventListener("dragover", anywhere);
+  document.removeEventListener("drop", nowhere);
+};
+
 // The props that make a row draggable as `item`. The cursor says move, and
 // the item rides on its card (drag-card.ts): set down where it's dropped,
 // or back to its row from a drop nowhere.
@@ -22,23 +46,23 @@ export function dragItem(item: Carried) {
       carried = item;
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData(itemType, item.id);
+      document.addEventListener("dragover", anywhere);
+      document.addEventListener("drop", nowhere);
       lift(event, event.currentTarget as HTMLElement, { key: item.key, title: item.title ?? "" });
     },
+    // A drop nowhere sent the card back already; one Escape cancelled
+    // still says "none".
     onDragEnd: (event: DragEvent) => {
-      carried = null;
+      settled();
       drop(event.dataTransfer?.dropEffect === "none" ? "back" : "dropped");
     },
   };
 }
 
-// Whether the drag over a place is an item's, and which.
-const ours = (event: DragEvent): Carried | null =>
-  carried !== null && event.dataTransfer?.types.includes(itemType) ? carried : null;
-
 // A place an item can be dropped on: `takes` says whether it takes this
 // one, and `onDrop` gets it with where the pointer let go. `over`: an item
-// it takes is over it now, to be drawn so. One it doesn't take shows the
-// no-drop cursor, and its drop does nothing.
+// it takes is over it now, to be drawn so. One it doesn't take isn't drawn,
+// and its drop is a drop nowhere.
 export function useItemDrop(
   takes: (item: Carried) => boolean,
   onDrop: (item: Carried, at: { x: number; y: number }) => void,
@@ -80,7 +104,7 @@ export function useItemDrop(
         setOver(false);
         if (!item) return;
         event.preventDefault();
-        carried = null;
+        settled();
         onDrop(item, { x: event.clientX, y: event.clientY });
       },
     },
