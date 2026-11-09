@@ -153,13 +153,13 @@ export type IssueDeclared<C = never> = {
 type Entry<A> = { args: Validator<A>; revertOnly: boolean };
 type D = IssueDeclared<never>;
 
-// The catalogue a declaration gives, typed by its names.
 // What a check takes, from a declaration.
 type Of<X> = X extends { check: Validator<infer U> } ? U : never;
 type Created<F> = {
   [P in keyof F]: F[P] extends { create: { check: Validator<infer U> } } ? U | undefined : never;
 };
 
+// The catalogue a declaration gives, typed by its names.
 export type IssueOps<T extends D> = {
   [K in T["container"]["op"]]: Entry<
     { [P in T["container"]["title"]]: Of<T["container"]> } & {
@@ -188,7 +188,6 @@ export type IssueOps<T extends D> = {
 // What a tracker's extra op's spec is built with: how a line names an item,
 // and a set op's revert.
 export type IssueLines = {
-  quoted(text: string): string;
   named(subject: Subject): string;
   restore<T>(name: string, field: string, validator: Validator<T>, arg?: string): Revert<T>;
 };
@@ -209,7 +208,7 @@ const fieldsOf = (d: D) => [
 
 const maxTitleChars = 80;
 
-export function quoted(text: string): string {
+function quoted(text: string): string {
   const chars = [...text.replace(/\s+/g, " ").trim()];
   const short =
     chars.length > maxTitleChars
@@ -219,12 +218,15 @@ export function quoted(text: string): string {
 }
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
+// An op's arguments, checked by its catalogue entry before a spec reads them.
+type A = Readonly<Record<string, unknown>>;
+const text = (a: A, key: string) => a[key] as string;
 const points = (n: unknown) =>
   typeof n !== "number" ? "no estimate" : n === 1 ? "1 point" : `${n} points`;
 const capital = (word: string) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`;
 
 // A tracker's agent side, from its declaration.
-export function issueShape<const T extends IssueDeclared<any>>(d: T) {
+export function issueShape<const T extends D>(d: T) {
   type Ctx = T extends IssueDeclared<infer C> ? C : never;
   const { container, issue, title, estimate, assignee, status, label } = d;
   const fields = Object.entries(d.fields ?? {});
@@ -267,7 +269,7 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
     }),
     deleteItem: { args: object({}), revertOnly: true },
   } as unknown as IssueOps<T>;
-  const entry = (name: string) => (ops as Record<string, Entry<any>>)[name] as Entry<any>;
+  const entry = (name: string) => (ops as Record<string, Entry<A>>)[name] as Entry<A>;
 
   // How a line names an item, and a set op's revert.
   const named = (subject: Subject): string => {
@@ -289,11 +291,10 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
       if (!result.ok) return { refused: `the earlier ${field} can't be set back` };
       return { op: name, args: result.value };
     };
-  const lines: IssueLines = { quoted, named, restore };
+  const lines: IssueLines = { named, restore };
   const specs = specsOf();
 
   function specsOf(): OpSpecs {
-    type A = Record<string, any>;
     const deleteItem = () => ({ op: "deleteItem", args: {} });
     const set = (
       name: string,
@@ -314,13 +315,14 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
           summary: a[container.title],
           ...(a.description === undefined ? {} : { description: a.description }),
         }),
-        describe: (a) => `Create ${container.a} ${quoted(a[container.title])}${container.in}.`,
+        describe: (a) =>
+          `Create ${container.a} ${quoted(text(a, container.title))}${container.in}.`,
         undo: deleteItem,
       }),
       [issue.op]: op<A>(entry(issue.op), {
         creates: true,
         makes: issue.word,
-        refs: (a) => (a[container.word] === null ? [] : [a[container.word]]),
+        refs: (a) => (a[container.word] === null ? [] : [text(a, container.word)]),
         newRefArgs: { [container.word]: container.op },
         after: (a) => ({
           summary: a[title.arg],
@@ -334,7 +336,7 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
           epic: a[container.word],
         }),
         describe: async (a, context) => {
-          const at: string | null = a[container.word];
+          const at = a[container.word] as string | null;
           let where = "";
           if (at !== null) {
             const called = isNewRef(at) || isItemId(at) ? await context.title(at) : null;
@@ -350,19 +352,20 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
           const n = a[estimate.arg];
           const estimated = typeof n === "number" ? `, estimated at ${points(n)}` : "";
           const more = fields.map(([name, f]) => f.create?.describe(a[name]) ?? "").join("");
-          return `Create ${issue.a} ${quoted(a[title.arg])}${where}${estimated}${more}.`;
+          return `Create ${issue.a} ${quoted(text(a, title.arg))}${where}${estimated}${more}.`;
         },
         undo: deleteItem,
       }),
       [title.op]: set(title.op, "summary", title.arg, {
         after: (a) => ({ summary: a[title.arg] }),
-        describe: (a, context) => `Rename ${named(context.subject)} to ${quoted(a[title.arg])}.`,
+        describe: (a, context) =>
+          `Rename ${named(context.subject)} to ${quoted(text(a, title.arg))}.`,
       }),
       setDescription: set("setDescription", "description", "description", {
         after: (a) => ({ description: a.description }),
         describe: (a, context) => {
           const was = context.before.description;
-          if (a.description.trim() === "")
+          if (text(a, "description").trim() === "")
             return `Clear the description of ${named(context.subject)}.`;
           if (typeof was !== "string" || was.trim() === "")
             return `Add a description to ${named(context.subject)}.`;
@@ -413,7 +416,7 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
           idempotent: true,
           after: (a) => ({ [`label:${a.label}`]: true }),
           describe: (a, context) =>
-            `Add the label ${quoted(a.label)} to ${named(context.subject)}.`,
+            `Add the label ${quoted(text(a, "label"))} to ${named(context.subject)}.`,
           // One it had already stays.
           undo: (a, applied) =>
             applied.before[`label:${a.label}`] === true
@@ -424,7 +427,7 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
           idempotent: true,
           after: (a) => ({ [`label:${a.label}`]: false }),
           describe: (a, context) =>
-            `Remove the label ${quoted(a.label)} from ${named(context.subject)}.`,
+            `Remove the label ${quoted(text(a, "label"))} from ${named(context.subject)}.`,
           undo: (a) => ({ op: "addLabel", args: { label: a.label } }),
         }),
       }),
@@ -451,7 +454,12 @@ export function issueShape<const T extends IssueDeclared<any>>(d: T) {
     isOp: (name: string): name is keyof IssueOps<T> & string => Object.hasOwn(ops, name),
     specs,
     namespace: (records: readonly IndexRecord[], context: Ctx): NamespaceSpec =>
-      namespaceOf(d, ops, new Map(records.map((r) => [r.id, r.facets.kind])), d.region(context)),
+      namespaceOf(
+        d,
+        ops,
+        new Map(records.map((r) => [r.id, r.facets.kind])),
+        (d.region as (given: Ctx) => IssueRegion | undefined)(context),
+      ),
     panel: panelOf(d),
     takeIssues: (d.take && takeOf(d, d.take)) as T["take"] extends object
       ? ReturnType<typeof takeOf>

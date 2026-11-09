@@ -33,10 +33,6 @@ const regionOf = (
   origin,
 });
 
-// Each write's probes: its arguments, by the parameter's place, with the
-// target first for a write that has one.
-type Probe = readonly unknown[];
-
 const lines: string[] = [];
 const say = (heading: string, value: unknown) =>
   lines.push(
