@@ -2768,6 +2768,86 @@ a.replies:hover {
   background: var(--type-epic);
 }
 
+/* What the next message is about (decision 0062): the item open beside the
+   composer, over its field. Left out, or offered beside a draft that keeps
+   its own, a chip is dashed. */
+.ctx {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-height: 1.5rem;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.ctx-chip[data-off] {
+  border-style: dashed;
+  background: none;
+  color: var(--text-faint);
+}
+
+button.ctx-chip {
+  padding-right: var(--space-2);
+  cursor: pointer;
+}
+
+button.ctx-chip:hover {
+  border-color: var(--focus);
+  color: var(--text);
+}
+
+.ctx-label {
+  color: var(--text-faint);
+}
+
+.ctx-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-name b {
+  font-weight: var(--weight-strong);
+}
+
+.ctx-x {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ctx-x:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.ctx-action {
+  font-size: var(--text-sm);
+}
+
 .chat-input-notice {
   margin: 0;
   padding: 0 var(--space-2);
@@ -2914,6 +2994,15 @@ a.replies:hover {
   font-size: var(--text-lg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* What the message was about, under its words (decision 0062). */
+.user-message .about {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  white-space: normal;
 }
 
 .reply {

@@ -6,7 +6,7 @@ import { useContext, useEffect, useMemo, useRef } from "preact/hooks";
 import { chipIds } from "./markdown.ts";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
-import { ChatInput } from "./chat-input.tsx";
+import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
 import { watchLatest } from "./effects.ts";
 import { kindOfItem } from "./item-id.ts";
 import {
@@ -15,7 +15,9 @@ import {
   type Dispatch,
   DropZone,
   ItemKey,
+  AnswerChip,
   ChipsContext,
+  EntryContext,
   ItemLinksContext,
   ItemListContext,
   Member,
@@ -237,7 +239,24 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
                   ? planPrompt
                   : `Ask about ${plural(view.members.length, "item")}…`
               }
-              reads={readsOf(view)}
+              reads={readsWith(readsOf(view), model.lookingAt, readOnlyIn(view))}
+              context={
+                <LookingChips
+                  lookingAt={model.lookingAt}
+                  readOnly={readOnlyIn(view)}
+                  onLooking={(msg) => send({ type: "looking", msg })}
+                  onCite={(item) =>
+                    dispatch({
+                      type: "panelAdd",
+                      msg: {
+                        type: "addClicked",
+                        item: { id: item.id, key: item.key },
+                        workstream: { id: view.workstream.id, name: view.workstream.name },
+                      },
+                    })
+                  }
+                />
+              }
               onDraft={(text) => send({ type: "draftChanged", text })}
               onSubmit={() => send({ type: "sendClicked" })}
               onStop={() => send({ type: "stopClicked" })}
@@ -415,16 +434,45 @@ function Reply({ text, view }: { text: string; view: ThreadView }) {
   );
 }
 
-export function ChatEntryItem(props: {
+type EntryProps = {
   entry: Entry;
   model: ThreadModel;
   view: ThreadView;
   send: (msg: ThreadMsg) => void;
-}) {
+};
+
+// An entry, whose item links say they were opened from it (decision 0062).
+export function ChatEntryItem(props: EntryProps) {
+  return (
+    <EntryContext.Provider value={{ thread: props.model.id, seq: props.entry.seq }}>
+      <EntryBody {...props} />
+    </EntryContext.Provider>
+  );
+}
+
+function EntryBody(props: EntryProps) {
   const { entry } = props;
   switch (entry.kind) {
     case "user":
-      return <li class="user-message">{entry.text}</li>;
+      return (
+        <li class="user-message">
+          {entry.text}
+          {entry.about && (
+            <ChipsContext.Provider value={props.view.chips}>
+              <span class="about">
+                about{" "}
+                {entry.about.map(({ id, outside }, i) => (
+                  <Fragment key={id}>
+                    {i > 0 && ", "}
+                    <AnswerChip id={id} />
+                    {outside && !props.view.windowChat && " (read-only)"}
+                  </Fragment>
+                ))}
+              </span>
+            </ChipsContext.Provider>
+          )}
+        </li>
+      );
     case "reply":
       return <Reply text={entry.text} view={props.view} />;
     case "marker":
@@ -588,6 +636,14 @@ function ActionLines(props: {
 
 // The thread's items by address, so a link to one in a reply, or in a diff's
 // value, opens its panel.
+// Whether an item the composer is looking at is outside the thread's
+// region, so the agent reads it but can't change it (decision 0062). In the
+// window chat, every item is read as the window is.
+export const readOnlyIn =
+  (view: ThreadView) =>
+  (id: string): boolean =>
+    !view.windowChat && !view.members.some((member) => member.ref.id === id);
+
 export const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 

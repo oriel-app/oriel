@@ -1,6 +1,7 @@
 // The whole app as one program: where the page is, and each page's own
 // model. Pages update themselves; this routes messages and replies to them,
 // and keeps the workstreams and threads lists the chrome shows.
+import { type LookItem, lookedAt } from "./looking.ts";
 import {
   accepted,
   approvedIn,
@@ -185,6 +186,9 @@ import type {
   WorkstreamView,
 } from "./view.ts";
 
+// A chat entry, by its thread and place.
+type Under = { thread: string; seq: number };
+
 export type Model = {
   route: Route;
   overview: OverviewModel | null;
@@ -220,6 +224,8 @@ export type Model = {
   // The list on the page the open item was opened from, by item ID, which
   // the panel steps through; null when it wasn't opened from one.
   panelList: readonly string[] | null;
+  // The chat entry the open item was opened from, if it was (decision 0062).
+  panelUnder: Under | null;
   // The panel's last add of each item to each workstream, whatever item the
   // panel shows: in flight, or what came of it, with its Undo while that
   // shows.
@@ -267,7 +273,8 @@ export type Msg =
   | { type: "setup"; msg: SetupMsg }
   // A plain click on a link to an item: it opens in the panel. `list`: the
   // list on the page that holds the link, by item ID.
-  | { type: "itemOpened"; id: string; list?: readonly string[] }
+  // `under`: the chat entry that holds the link.
+  | { type: "itemOpened"; id: string; list?: readonly string[]; under?: Under }
   // The next or previous item in that list, in the panel.
   | { type: "panelStepped"; by: 1 | -1 }
   | { type: "panelClosed" }
@@ -372,6 +379,7 @@ export function init(route: Route): [Model, Effect[]] {
     moving: initMoving(),
     panel: null,
     panelList: null,
+    panelUnder: null,
     panelAdds: noAdds,
     panelEdits: noEdits,
     search: initSearch(),
@@ -544,7 +552,34 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
-  return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
+  return [
+    looking(next),
+    [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest],
+  ];
+}
+
+// Each composer on screen follows the item open beside it (decision 0062):
+// the thread's, or the window chat's first question's.
+function looking(model: Model): Model {
+  const { panel, thread, chat } = model;
+  const open = (threadId: string | null): LookItem | null => {
+    if (!panel) return null;
+    const under = model.panelUnder;
+    return {
+      id: panel.id,
+      key: panel.view?.key ?? panel.glimpse?.key ?? panel.id.slice(panel.id.indexOf(":") + 1),
+      title: panel.view?.title ?? panel.glimpse?.title ?? null,
+      under: under && under.thread === threadId ? under.seq : null,
+    };
+  };
+  const ownLooking = thread && lookedAt(thread.lookingAt, open(thread.id), thread.draft);
+  const chatLooking = lookedAt(chat.lookingAt, open(null), chat.draft);
+  if (ownLooking === (thread?.lookingAt ?? null) && chatLooking === chat.lookingAt) return model;
+  return {
+    ...model,
+    thread: thread && ownLooking ? { ...thread, lookingAt: ownLooking } : thread,
+    chat: { ...chat, lookingAt: chatLooking },
+  };
 }
 
 function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {
@@ -796,7 +831,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     case "itemOpened": {
       const route = withItem(model.route, msg.id);
       if (route.item === undefined) return [model, []];
-      const listed = { ...model, panelList: msg.list ?? null };
+      const listed = { ...model, panelList: msg.list ?? null, panelUnder: msg.under ?? null };
       // The item already open stays as it is, and so does the page.
       if (model.route.item === msg.id) return [listed, []];
       const replace = model.route.item !== undefined ? { replace: true as const } : {};
@@ -808,7 +843,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const next = id === undefined ? null : stepped(model.panelList, id, msg.by);
       if (next === null) return [model, []];
       return [
-        model,
+        { ...model, panelUnder: null },
         [{ type: "navigate", route: withItem(model.route, next), stay: true, replace: true }],
       ];
     }

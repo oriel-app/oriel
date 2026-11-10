@@ -501,7 +501,17 @@ export function views(deps: ViewDeps) {
   ): ChatEntry | null => {
     const workstreamId = own.workstream;
     const at = { seq: message.seq, at: message.at };
-    if (message.role === "user") return { ...at, kind: "user", text: message.text };
+    // What it was about, by ID, and whether each was outside the region then
+    // (decision 0062).
+    if (message.role === "user")
+      return {
+        ...at,
+        kind: "user",
+        text: message.text,
+        ...(message.about
+          ? { about: message.about.map(({ id, outside }) => ({ id, outside })) }
+          : {}),
+      };
     if (message.role === "held" && "draft" in message) {
       // Drawn from Oriel's own data: the connection by its name, and each
       // option the draft changes, as it was drafted over and as drafted.
@@ -818,7 +828,10 @@ export function views(deps: ViewDeps) {
           return look === undefined ? view : { ...view, secondLook: look };
         }),
         writable: deps.writable,
-        chips: await chips([...new Set([...answered(entries), ...evidence])], id),
+        chips: await chips(
+          [...new Set([...answered(entries), ...evidence, ...looked(entries)])],
+          id,
+        ),
         quotes: Object.fromEntries(
           messages.flatMap((m) =>
             m.role === "note" && m.note.kind === "quotes"
@@ -908,6 +921,13 @@ export function views(deps: ViewDeps) {
 }
 
 export type Views = ReturnType<typeof views>;
+
+// The items the person's messages were about, which their lines name as
+// chips (decision 0062).
+const looked = (entries: readonly ChatEntry[]): string[] =>
+  entries.flatMap((entry) =>
+    entry.kind === "user" ? (entry.about ?? []).map((each) => each.id) : [],
+  );
 
 // The IDs a thread's answers name as chips. An answer streams in as many
 // text entries, which may split an ID, so each run of them is read whole.

@@ -1,10 +1,19 @@
 // A thread's page: the chat, its change sets with their diffs, and the
 // region in the right rail. Entries arrive over the thread's event stream as
 // they're stored; change sets are acted on with explicit requests.
+import {
+  aboutOf,
+  looked,
+  type LookingAt,
+  type LookingMsg,
+  notLooking,
+  updateLooking,
+} from "./looking.ts";
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type {
+  AboutView,
   BlockView,
   SketchView,
   ActionLineView,
@@ -28,6 +37,9 @@ export type ThreadModel = {
   view: ThreadView | null;
   status: "loading" | "ready" | "failed";
   draft: string;
+  // What the composer's next message is about: the item open beside it
+  // (decision 0062).
+  lookingAt: LookingAt;
   sending: boolean;
   // Sync now was asked for and not yet answered.
   syncing: boolean;
@@ -96,6 +108,7 @@ export type Decision = { kind: "approved" } | { kind: "rejected" };
 
 export type ThreadMsg =
   | { type: "draftChanged"; text: string }
+  | { type: "looking"; msg: LookingMsg }
   | { type: "sendClicked" }
   | { type: "stopClicked" }
   | { type: "doneClicked" }
@@ -151,6 +164,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       view: null,
       status: "loading",
       draft: "",
+      lookingAt: notLooking,
       sending: false,
       syncing: false,
       diffs: {},
@@ -294,6 +308,8 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
   switch (msg.type) {
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
+    case "looking":
+      return [{ ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) }, []];
     // Sending takes the page to the latest entry, where what was said and the
     // reply to it show, and keeps it there. Words Edit put here from a held
     // message that still waits send it.
@@ -305,7 +321,13 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       if (text === "" || model.sending || model.view?.running) return [model, []];
       return [
         { ...model, sending: true, notice: null, atLatest: true },
-        [post(`/api/threads/${model.id}/messages`, { text }, { kind: "sent", threadId: model.id })],
+        [
+          post(
+            `/api/threads/${model.id}/messages`,
+            { text, about: aboutOf(model.lookingAt) },
+            { kind: "sent", threadId: model.id },
+          ),
+        ],
       ];
     }
     case "stopClicked":
@@ -714,7 +736,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
     case "sent":
       if (tag.threadId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, sending: false, notice: errorOf(msg.body) }, []];
-      return [{ ...model, sending: false, draft: "" }, []];
+      return [{ ...model, sending: false, draft: "", lookingAt: looked(model.lookingAt) }, []];
     case "dropped": {
       if (tag.workstreamId !== model.view?.workstream.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
@@ -1047,7 +1069,7 @@ export function newThreadReplied(model: NewThreadModel, msg: Replied): [NewThrea
 // start and finish are one entry. ("Block" is the glossary's word for what
 // Oriel builds from a read, which is one kind of entry here; decision 0030.)
 export type Entry =
-  | { kind: "user"; seq: number; text: string }
+  | { kind: "user"; seq: number; text: string; about?: AboutView }
   | { kind: "reply"; seq: number; text: string }
   | {
       kind: "marker";
@@ -1089,7 +1111,12 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
     const last = out.at(-1);
     switch (entry.kind) {
       case "user":
-        out.push({ kind: "user", seq: entry.seq, text: entry.text });
+        out.push({
+          kind: "user",
+          seq: entry.seq,
+          text: entry.text,
+          ...(entry.about ? { about: entry.about } : {}),
+        });
         break;
       case "text":
         if (last?.kind === "reply") last.text += entry.text;

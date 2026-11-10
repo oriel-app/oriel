@@ -6,6 +6,14 @@
 // on a workstream of its own.
 import type { StartQuestion } from "@oriel/core/window-chat";
 import { type Effect, errorOf, get, post, report, type Replied } from "./http.ts";
+import {
+  aboutOf,
+  looked,
+  type LookingAt,
+  type LookingMsg,
+  notLooking,
+  updateLooking,
+} from "./looking.ts";
 import { initThread, type ThreadModel } from "./thread.ts";
 import type { OverviewView } from "./view.ts";
 
@@ -18,11 +26,16 @@ export type WindowChatModel = {
   // and closes back to the full-width overview.
   open: boolean;
   problem: string | null;
+  // What the chat's first question is about: the item open beside it
+  // (decision 0062). The ask bar sends none, as it shows none.
+  lookingAt: LookingAt;
 };
 
 export type WindowChatMsg =
   | { type: "draftChanged"; text: string }
-  | { type: "askClicked" }
+  // `chat`: from the chat's own field, which shows what it's looking at.
+  | { type: "askClicked"; chat?: true }
+  | { type: "looking"; msg: LookingMsg }
   | { type: "questionPicked"; question: Question }
   | { type: "newChatClicked" }
   | { type: "closeClicked" }
@@ -44,6 +57,7 @@ export const initWindowChat = (): WindowChatModel => ({
   asking: false,
   open: false,
   problem: null,
+  lookingAt: notLooking,
 });
 
 // Which window chat the window shows, if any: the overview loads it.
@@ -118,13 +132,19 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
 // The root's slice the window chat changes: its own model and the thread.
 export type ChatState = { chat: WindowChatModel; thread: ThreadModel | null };
 
-const ask = (state: ChatState, text: string, used: StartQuestion | null): [ChatState, Effect[]] => {
+const ask = (
+  state: ChatState,
+  text: string,
+  used: StartQuestion | null,
+  looking = false,
+): [ChatState, Effect[]] => {
   const trimmed = text.trim();
   if (trimmed === "" || state.chat.asking || state.thread?.view?.running) return [state, []];
+  const about = looking ? aboutOf(state.chat.lookingAt) : undefined;
   return [
     { ...state, chat: { ...state.chat, asking: true, open: true, problem: null } },
     [
-      post("/api/window-chat/messages", { text: trimmed }, { kind: "windowChatAsked" }),
+      post("/api/window-chat/messages", { text: trimmed, about }, { kind: "windowChatAsked" }),
       ...(used ? [report({ name: "window-chat.question-used", question: used })] : []),
     ],
   ];
@@ -136,7 +156,12 @@ export function updateWindowChat(state: ChatState, msg: WindowChatMsg): [ChatSta
     case "draftChanged":
       return [{ ...state, chat: { ...chat, draft: msg.text } }, []];
     case "askClicked":
-      return ask(state, chat.draft, null);
+      return ask(state, chat.draft, null, msg.chat === true);
+    case "looking":
+      return [
+        { ...state, chat: { ...chat, lookingAt: updateLooking(chat.lookingAt, msg.msg) } },
+        [],
+      ];
     case "questionPicked":
       return ask(state, msg.question.text, msg.question.kind);
     // The old chat is marked done, or kept in Needs you while it waits on
@@ -178,7 +203,10 @@ export function windowChatReplied(state: ChatState, msg: Replied): [ChatState, E
       const chat = { ...state.chat, asking: false };
       if (!msg.ok) return [{ ...state, chat: { ...chat, problem: errorOf(msg.body) } }, []];
       const { id } = msg.body as { id: string };
-      return showing({ ...state, chat: { ...chat, draft: "" } }, id);
+      return showing(
+        { ...state, chat: { ...chat, draft: "", lookingAt: looked(chat.lookingAt) } },
+        id,
+      );
     }
     case "windowChatNew":
       if (msg.ok) return [state, []];
