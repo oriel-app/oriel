@@ -7,8 +7,15 @@
 // connector the window still connects itself (decision 0059): it's on the
 // person's disk, and nothing is hosted.
 import { homedir } from "node:os";
-import { basename, isAbsolute, join } from "node:path";
-import { type ConnectOf, type ConnectOffer, object, refine, string } from "@oriel/core";
+import { basename, isAbsolute } from "node:path";
+import {
+  type ConnectOf,
+  type ConnectOffer,
+  homeExpanded,
+  object,
+  refine,
+  string,
+} from "@oriel/core";
 import { folderProblem } from "./open-connection.ts";
 import { resolveFolder } from "./walk.ts";
 
@@ -60,7 +67,7 @@ export const folderConnect = {
   given,
   async identify(picked) {
     const typed = picked.path.trim();
-    const path = typed === "~" || typed.startsWith("~/") ? join(homedir(), typed.slice(1)) : typed;
+    const path = homeExpanded(typed, homedir());
     if (!isAbsolute(path))
       return { problem: "Type the folder's full path, starting with / or ~.", fields: ["path"] };
     try {

@@ -183,6 +183,10 @@ export type TestOptions = {
   pickFolder?: (prompt: string) => Promise<string | null>;
   // The desktop app's first run, with stand-ins for what runs.
   setup?: SetupOptions;
+  // The person's home folder, which paths show from as `~`.
+  home?: string;
+  // Whether the page may set where a CLI is, as the desktop app's may.
+  cliPaths?: true;
   // What calls a connection's sync every few minutes, in place of a timer.
   every?: AppOptions["every"];
   // What Noticed's pass runs on (decision 0052); nothing, when absent.
@@ -330,6 +334,8 @@ export async function testApp(
     ...(options.notify ? { notify: options.notify } : {}),
     ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
     ...(options.setup ? { setup: options.setup } : {}),
+    ...(options.home ? { home: options.home } : {}),
+    ...(options.cliPaths ? { cliPaths: options.cliPaths } : {}),
     themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
     // No pass runs unless a test gives what it runs on.

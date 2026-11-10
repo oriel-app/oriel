@@ -26,7 +26,7 @@ import {
   titleModel,
   tooNew,
 } from "@oriel/agent";
-import type { Instant, Log, TelemetryEvent, Ulid } from "@oriel/core";
+import { homeRelative, type Instant, type Log, type TelemetryEvent, type Ulid } from "@oriel/core";
 import type {
   CliCommand,
   CliFailure,
@@ -320,10 +320,11 @@ export function setupService(deps: {
   };
   const viewNow = (): SetupView => {
     // Claude Code's row, and Codex's once it's installed (decision 0048).
+    // A CLI's path from `~`, as Settings shows it (OA-315).
     const providers = options
-      ? (models?.providers(store.get()) ?? []).filter(
-          (p) => p.kind === "claude-code" || p.kind === "codex",
-        )
+      ? (models?.providers(store.get()) ?? [])
+          .filter((p) => p.kind === "claude-code" || p.kind === "codex")
+          .map((p) => ({ ...p, path: p.path === null ? null : homeRelative(p.path, options.home) }))
       : [];
     return {
       providers,
