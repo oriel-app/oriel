@@ -1760,7 +1760,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       oriel: reads,
       ...(thread ? { thread } : {}),
       ...(shown ? { shown } : {}),
-      ...(run?.challenge ? { challenge: run.challenge } : {}),
+      ...(run?.challenge ? { challenge: run.challenge } : { looking: lookedIn(thread) }),
       // The window chat reads the overview, as the page shows it, and the
       // previews of connections that wait for their options.
       ...(thread && threads.isWindowChat(thread) ? windowChat() : {}),
@@ -1776,6 +1776,16 @@ export async function createApp(options: AppOptions): Promise<App> {
         asOf: () => asOf ?? now(),
       }),
     });
+  // The items the thread's messages were about (decision 0062), which its
+  // runs may read; a second look's may not.
+  const lookedIn = (thread: Ulid | undefined): string[] =>
+    thread === undefined
+      ? []
+      : threads
+          .messages(thread)
+          .flatMap((message) =>
+            message.role === "user" ? (message.about ?? []).map((each) => each.id) : [],
+          );
   const windowChat = () => {
     const waiting = waitingFor();
     return { overview: windowOverview, ...(waiting ? { waiting } : {}) };

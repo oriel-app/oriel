@@ -18,6 +18,7 @@ import {
   isUlid,
   type Log,
   literal,
+  lookingAt,
   maxItems,
   messageText,
   maxNameChars,
@@ -225,7 +226,9 @@ const droppedBody = object({
   ),
 });
 const openThreadBody = object({ text: optional(textValue) });
-const messageBodyValue = object({ text: textValue });
+// A question in the window chat, with the items open beside it (decision
+// 0062). Their shape is the dispatcher's to check.
+const messageBodyValue = object({ text: textValue, about: unknown });
 // A thread from nothing, and what its new workstream is called, if the user
 // named it. How long a name may be is the dispatcher's to check.
 const newThreadBody = object({ text: textValue, workstreamName: optional(string) });
@@ -1284,9 +1287,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/window-chat/messages"),
       async run(_, request) {
-        const { text } = await readJson(request, messageBody, messageBodyValue);
+        const { text, about } = await readJson(request, messageBody, messageBodyValue);
+        // Checked before the thread is made, so a refused one makes none.
+        const looked = about === undefined ? undefined : lookingAt(about);
+        if (looked && !looked.ok) throw new Refused(400, "about: expected the items open");
         const { thread, made } = await windowChatThread();
-        const { seq } = await deps.dispatch("thread.say", { thread, text }, user);
+        const said = { thread, text, ...(looked ? { about: looked.value } : {}) };
+        const { seq } = await deps.dispatch("thread.say", said, user);
         return json(made ? 201 : 202, { id: thread, seq });
       },
     },
@@ -1332,10 +1339,14 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/threads/:id/messages"),
       async run([id = ""], request) {
-        const { text } = await readJson(request, messageBody, object({ text: unknown }));
+        const { text, about } = await readJson(
+          request,
+          messageBody,
+          object({ text: unknown, about: unknown }),
+        );
         const { seq } = await deps.dispatch(
           "thread.say",
-          checked("thread.say", { thread: id, text }),
+          checked("thread.say", { thread: id, text, about }),
           user,
         );
         return json(202, { seq });

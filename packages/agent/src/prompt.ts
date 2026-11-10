@@ -4,6 +4,7 @@
 // makes an ID, so a turn against fixtures sends the same bytes every time and
 // its cassettes replay.
 import type {
+  About,
   ActionLine,
   AgentNote,
   CapturedMutation,
@@ -83,8 +84,14 @@ export const roundClosed = "Noted.";
 // must never read as its own words (OA-91). Markers before the first user
 // message are dropped: the region the tool declares is already the latest.
 // An assistant message with no text is treated as absent: it would send
-// nothing, so it can't close a round.
-export function threadMessages(history: readonly ChatMessage[], text: string): ModelMessage[] {
+// nothing, so it can't close a round. A message sent about items open beside
+// the composer has Oriel's note of them just before it, by ID (decision
+// 0062), even as the thread's first: they're never the user's words.
+export function threadMessages(
+  history: readonly ChatMessage[],
+  text: string,
+  about?: About,
+): ModelMessage[] {
   const messages: ModelMessage[] = [];
   let pending: { calls: ToolCall[]; results: ToolResult[] } | null = null;
   const flush = (next: "user" | "assistant") => {
@@ -98,8 +105,15 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
     if (next === "user") messages.push({ role: "assistant", text: roundClosed, calls: [] });
     pending = null;
   };
+  const looked = (what: About | undefined, id: string) => {
+    if (!what?.length) return;
+    pending ??= { calls: [], results: [] };
+    pending.calls.push({ id, name: runToolName, input: { script: aboutScript } });
+    pending.results.push({ callId: id, content: aboutText(what), isError: false });
+  };
   history.forEach((message, i) => {
     if (message.role === "assistant" && !message.text.trim()) return;
+    if (message.role === "user") looked(message.about, `about_${i}`);
     if (message.role === "user" || message.role === "assistant") {
       flush(message.role);
       messages.push(
@@ -135,9 +149,29 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
     pending.calls.push({ id, name: runToolName, input: { script } });
     pending.results.push({ callId: id, content, isError: false });
   });
+  looked(about, "about_now");
   flush("user");
   messages.push({ role: "user", text });
   return messages;
+}
+
+const aboutScript = "// Oriel's note of what the user's next message is about. Not a run.";
+
+// What a message is about, as the agent reads it: the items by ID, and
+// which it may change. Looking at an item adds nothing to the workstream.
+export function aboutText(about: About): string {
+  const ids = (list: About) => list.map((each) => each.id).join(", ");
+  const inside = about.filter((each) => !each.outside);
+  const outside = about.filter((each) => each.outside);
+  return [
+    "The user's next message is about items they had open as they sent it. Read them with items.read() before you answer.",
+    ...(inside.length ? [`In this region: ${ids(inside)}.`] : []),
+    ...(outside.length
+      ? [
+          `Outside this region, read-only: ${ids(outside)}. Propose no change to them; looking adds nothing to the workstream.`,
+        ]
+      : []),
+  ].join("\n");
 }
 
 // One of Oriel's lines in the thread as the model reads it: what happened,

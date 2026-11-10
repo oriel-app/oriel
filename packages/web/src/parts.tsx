@@ -157,6 +157,10 @@ export const ItemListContext = createContext<readonly string[] | null>(null);
 // for it stays marked while it's open. Null with the panel closed.
 export const OpenItemContext = createContext<string | null>(null);
 
+// The chat entry a link sits in, by its thread and place, so the item it
+// opens is known to have been opened from there (decision 0062).
+export const EntryContext = createContext<{ thread: string; seq: number } | null>(null);
+
 // Which key sends a question, as the person set it in Settings: Enter, with
 // Shift+Enter a new line; or Cmd+Enter (Ctrl+Enter), with Enter a new line.
 export const SendKeyContext = createContext<SendKey>("enter");
@@ -184,11 +188,16 @@ export function ItemLink(props: {
 }) {
   const links = useContext(ItemLinksContext);
   const list = useContext(ItemListContext);
+  const entry = useContext(EntryContext);
   const href = safeHref(props.item.url);
   const id = props.item.id ?? (href ? links?.items.get(addressOf(href)) : undefined) ?? null;
   const dispatch = id === null ? null : (links?.dispatch ?? null);
-  const opened = (id: string): Msg =>
-    list?.includes(id) ? { type: "itemOpened", id, list } : { type: "itemOpened", id };
+  const opened = (id: string): Msg => ({
+    type: "itemOpened",
+    id,
+    ...(list?.includes(id) ? { list } : {}),
+    ...(entry ? { under: entry } : {}),
+  });
   if (id === null || dispatch === null) {
     if (!href) return <span class={props.class}>{props.children}</span>;
     return (

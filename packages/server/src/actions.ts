@@ -818,9 +818,9 @@ const handlers = {
   },
 
   // The turn counts the question, and tells the thread's pages.
-  "thread.say": async ({ thread: id, text }, _actor, deps) => {
+  "thread.say": async ({ thread: id, text, about }, _actor, deps) => {
     const thread = mustThread(deps, id);
-    const { seq } = deps.turns.say(thread.id, text);
+    const { seq } = deps.turns.say(thread.id, text, about);
     return { output: { seq }, undo: null, changed: null, events: "counted" };
   },
 

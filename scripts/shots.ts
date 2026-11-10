@@ -96,6 +96,27 @@ type Scene = {
   sketch?: true;
 };
 
+// The rail's second item, opened while a draft keeps the first, is offered
+// dashed: from the panel's steps, where the panel lies over the rail; on a
+// phone, whose panel is closed, from the rail. There the item covers the
+// composer until it docks under the item (OA-333), and closing the item
+// takes what it offered.
+async function secondLooked(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1280) >= 761) {
+    await page.keyboard.press("ArrowDown");
+    await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
+  } else await page.locator(".rail a.key").nth(1).click();
+  await page.locator(".ctx-chip[data-off]", { hasText: "+" }).waitFor();
+}
+
+// On a phone the item panel is a sheet over the page, composer and all:
+// closing it shows the composer, which keeps a draft's chip.
+async function closePanelOnPhone(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1280) >= 761) return;
+  await page.getByRole("button", { name: "Close the panel" }).click();
+  await page.locator(".item-panel").waitFor({ state: "detached" });
+}
+
 const shootStarted = Date.now();
 const asked = parseArgs({
   options: {
@@ -788,6 +809,13 @@ const rebooking = await post<{ id: string }>(
   quoted,
 );
 const quoting = await ask("What does SYN-45 say about itself?", quoted, rebooking.id);
+// The composer's "Looking at" (decision 0062), on a server of its own, so no
+// other scene shows its thread: the checkout epic's workstream, whose rail
+// opens its items, and SYN-54, a weather bug outside it.
+const lookingOn = (await writing()).serving;
+const lookingAt = await post<{ id: string }>("/api/workstreams", checkout, lookingOn);
+const lookingThread = await ask("What's left before checkout ships?", lookingOn, lookingAt.id);
+const outsideItem = `?item=${encodeURIComponent("jira:SYN-54")}`;
 // The boarding epic's workstream, its finished stories taken out by the
 // agent and its thread closed: what Oriel did, listed under the reply, and
 // the workstream's log naming the agent's thread (OA-69).
@@ -3978,6 +4006,147 @@ const scenes: Scene[] = [
       if (await hide.count()) await hide.click();
       await page.getByRole("button", { name: "Search threads" }).click();
       await searchThreads(page, "estimates", ".search-results [role=status]:not(:empty)");
+    },
+  },
+  // Last, so the scenes before them run as soon as before: a held apply
+  // reads as stalled once it has waited five minutes (thread-applying).
+  // The composer offers the item open beside it as what the next message is
+  // about (decision 0062). Words are typed first: on a phone the item
+  // covers the composer, and closing it keeps the chip only for a draft.
+  ...(
+    [
+      ["offered", async () => {}],
+      [
+        "not-sending",
+        async (page: Page) => {
+          await page.locator(".ctx-x").first().click();
+          await page.locator(".ctx-chip[data-off]", { hasText: "Not sending" }).waitFor();
+        },
+      ],
+      ["second", secondLooked],
+      // Added, then left out: it stays, dashed, to add back (Sol, S1).
+      [
+        "both",
+        async (page: Page) => {
+          await secondLooked(page);
+          // On a phone the item lies over it, so the click goes to it alone.
+          await page.locator(".ctx-chip[data-off]", { hasText: "+" }).dispatchEvent("click");
+          await closePanelOnPhone(page);
+          await page.getByRole("button", { name: "Leave SYN-10 out" }).click();
+          await page.locator(".ctx-chip[data-off]", { hasText: "SYN-10" }).waitFor();
+          await page.getByRole("button", { name: "Add back" }).click();
+          await page.getByRole("button", { name: "Leave SYN-10 out" }).waitFor();
+        },
+      ],
+    ] as const
+  ).map(([name, then]): Scene => ({
+    name: `looking-${name}`,
+    window: true,
+    path: `/threads/${lookingThread}`,
+    on: lookingOn,
+    act: async (page) => {
+      await page.locator(".rail .members").waitFor();
+      await page.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
+      await page.locator(".rail a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await closePanelOnPhone(page);
+      await page.locator(".ctx-chip", { hasText: "Looking at" }).waitFor();
+      await then(page);
+    },
+  })),
+  {
+    name: "looking-read-only",
+    window: true,
+    path: `/threads/${lookingThread}${outsideItem}`,
+    on: lookingOn,
+    act: async (page) => {
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
+      await closePanelOnPhone(page);
+      await page.locator(".ctx-chip", { hasText: "read-only" }).waitFor();
+      await page.getByRole("button", { name: "Cite" }).waitFor();
+    },
+  },
+  // Sent with the chip, the agent reads the item by its ID (the scripted
+  // agent's run returns its title), and the message keeps "about SYN-54",
+  // read-only, after a reload.
+  {
+    name: "looking-sent",
+    window: true,
+    path: "/",
+    make: async () => {
+      const on = (await writing()).serving;
+      const { id } = await post<{ id: string }>("/api/workstreams", checkout, on);
+      await ask("What's left before checkout ships?", on, id);
+      return on;
+    },
+    act: async (page) => {
+      const id = await page.evaluate(async () => {
+        const { threads } = (await (await fetch("/api/threads")).json()) as {
+          threads: { id: string }[];
+        };
+        return threads[0]?.id ?? "";
+      });
+      await page.goto(new URL(`/threads/${id}${outsideItem}`, page.url()).href);
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
+      await closePanelOnPhone(page);
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.locator(".reply", { hasText: "read-only here" }).waitFor();
+      await page.reload();
+      await page.locator(".user-message .about", { hasText: "read-only" }).waitFor();
+      const said = await page.evaluate(async (thread) => {
+        const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
+          entries: {
+            kind: string;
+            about?: unknown;
+            run?: { outcome: string; transcript?: unknown };
+          }[];
+        };
+        return {
+          about: view.entries.find((entry) => entry.kind === "user" && entry.about)?.about,
+          runs: view.entries.filter((entry) => entry.kind === "run.finished").map((e) => e.run),
+        };
+      }, id);
+      const about = JSON.stringify(said.about);
+      if (about !== JSON.stringify([{ id: "jira:SYN-54", outside: true }]))
+        throw new Error(`The message should be about SYN-54, outside the region, not ${about}`);
+      const runs = JSON.stringify(said.runs);
+      if (!runs.includes("Cancellation alert"))
+        throw new Error(`The turn should have read SYN-54 by its ID: ${runs}`);
+    },
+  },
+  // In the window chat, beside the item (OA-333): opened from the answer, the
+  // item is offered, read as the window reads it, never read-only, and the
+  // follow-up keeps its about line. Narrower, the item covers the chat.
+  {
+    name: "looking-window",
+    path: "/",
+    window: true,
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".ask-input").fill("What's holding up saved cards?");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.locator(".window-chat .reply .chip").first().waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await page.locator(".window-chat .reply .chip-link").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      if (!beside(page)) return;
+      const chat = page.locator(".window-chat");
+      await chat
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: "SYN-99" })
+        .waitFor();
+      await expectCount(chat.locator(".ctx-chip", { hasText: "read-only" }), 0);
+      await chat
+        .locator(".chat-input-reads", { hasText: "Reads your whole window, and SYN-99" })
+        .waitFor();
+      await chat.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
+      await chat.getByRole("button", { name: "Send" }).click();
+      await chat.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await expectCount(chat.locator(".user-message .about", { hasText: "read-only" }), 0);
     },
   },
 ];

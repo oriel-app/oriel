@@ -1,3 +1,4 @@
+export * from "./about.ts";
 export * from "./actions.ts";
 export * from "./block.ts";
 export * from "./block-charts.ts";

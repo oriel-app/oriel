@@ -656,8 +656,12 @@ export type SketchView = { src: string; height: 240 | 400 | 640 };
 // over and as drafted, each as JSON values.
 export type DraftChange = { option: string; was: unknown; drafted: unknown };
 
+// What a person's message was about (decision 0062): each item by ID, and
+// whether it was outside the thread's region as they sent it.
+export type AboutView = { id: string; outside: boolean }[];
+
 export type ChatEntry = { seq: number; at: string } & (
-  | { kind: "user"; text: string }
+  | { kind: "user"; text: string; about?: AboutView }
   // `ownAgent`: this thread's agent made every change it covers.
   // `fromLine`: the user made every change it covers by an Undo or Redo
   // under this thread's agent's reply.

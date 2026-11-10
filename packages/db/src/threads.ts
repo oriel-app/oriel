@@ -4,6 +4,8 @@
 // `now` is passed in.
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import {
+  type About,
+  aboutValue,
   type Actor,
   actions,
   type Draft,
@@ -17,6 +19,7 @@ import {
   isUlid,
   literal,
   nullable,
+  optional,
   number,
   object,
   parseItemId,
@@ -62,8 +65,10 @@ const messageRow = object({
   content: string,
   at: instantValue,
 });
-// Rows written before 0003 hold a user's text as a bare JSON string.
-const userContent = union(object({ text: string }), string);
+// Rows written before 0003 hold a user's text as a bare JSON string; one
+// sent with items open beside the composer holds what it is about
+// (decision 0062), and one sent before that holds none.
+const userContent = union(object({ text: string, about: optional(aboutValue) }), string);
 const markerContent = object({ from: number, to: number });
 // A held message, who it is from, and its text within that sender's limit;
 // or a draft of the agent's, of a draftable action, with what it was
@@ -103,7 +108,7 @@ const wroteRow = object({
 // waits for them (decision 0024). A note is Oriel's own line about what
 // someone did, never the agent's (OA-91).
 export type NewMessage =
-  | { role: "user"; text: string }
+  | { role: "user"; text: string; about?: About }
   | { role: "agent"; event: unknown }
   | { role: "marker"; from: number; to: number }
   | { role: "note"; note: OrielNote }
@@ -402,7 +407,9 @@ export function threadStore(db: DatabaseSync) {
       message.role === "agent"
         ? message.event
         : message.role === "user"
-          ? { text: message.text }
+          ? message.about
+            ? { text: message.text, about: message.about }
+            : { text: message.text }
           : message.role === "held"
             ? "draft" in message
               ? { draft: message.draft, over: message.over, outcome: null }
@@ -446,12 +453,9 @@ export function threadStore(db: DatabaseSync) {
     if (role === "user") {
       const user = userContent(content);
       if (!user.ok) throw new Error(`corrupt user message ${seq}`);
-      return {
-        seq,
-        at: when,
-        role,
-        text: typeof user.value === "string" ? user.value : user.value.text,
-      };
+      if (typeof user.value === "string") return { seq, at: when, role, text: user.value };
+      const { text, about } = user.value;
+      return { seq, at: when, role, text, ...(about ? { about } : {}) };
     }
     if (role === "held") {
       const held = heldContent(content);
@@ -735,18 +739,23 @@ export function threadStore(db: DatabaseSync) {
     // The person's message. A thread behind its workstream (one that settled, or
     // was dropped, while the workstream changed) first catches up, with a marker,
     // so the message is about the workstream as it is now (decision 0018).
+    // What it is about, if anything, is marked against the region it is
+    // sent in, once the thread has caught up (decision 0062).
     say(
       id: Ulid,
       text: string,
       ids: { marker: Ulid; message: Ulid },
       now: Instant,
+      about?: (regionVersion: number, workstreamId: Ulid) => About | null,
     ): { move: Move | null; seq: number } {
       return transaction(db, () => {
         const moved = move(id, now, ids.marker);
-        return {
-          move: moved,
-          seq: append(mustLoad(id), { role: "user", text }, ids.message, now),
-        };
+        const thread = mustLoad(id);
+        const what = about?.(thread.region_version, thread.workstream_id) ?? null;
+        const message = what
+          ? { role: "user" as const, text, about: what }
+          : { role: "user" as const, text };
+        return { move: moved, seq: append(thread, message, ids.message, now) };
       });
     },
 

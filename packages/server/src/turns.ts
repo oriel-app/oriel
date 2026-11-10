@@ -10,12 +10,14 @@ import {
   type ThreadStore,
 } from "@oriel/db";
 import {
+  type About,
   type Draft,
   type Actor,
   type ChangeSetState,
   type HeldSender,
   type Instant,
   type Log,
+  type LookingAt,
   maxUnknownChips,
   type OrielNote,
   type Reader,
@@ -211,7 +213,8 @@ export function history(
   let capturing: Extract<ChatMessage, { role: "run" }> | null = null;
   for (const message of messages) {
     if (message.role === "user") {
-      out.push({ role: "user", text: message.text, at: message.at });
+      const { text, about, at } = message;
+      out.push({ role: "user", text, ...(about ? { about } : {}), at });
       continue;
     }
     if (message.role === "marker") {
@@ -377,7 +380,12 @@ export function turns(deps: TurnDeps) {
   // runs to its end. One that throws instead gets an error and a `done`
   // here, so every turn in the chat ends the same way. A stopped turn says so
   // last.
-  const run = async (thread: Thread, text: string, seq: number, signal: AbortSignal) => {
+  const run = async (
+    thread: Thread,
+    said: { text: string; about: About | null },
+    seq: number,
+    signal: AbortSignal,
+  ) => {
     const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: thread.id });
     let done = false;
     try {
@@ -392,7 +400,8 @@ export function turns(deps: TurnDeps) {
         thread,
         region,
         history: [...history(before, markerText(thread.workstreamId)), ...states],
-        text,
+        text: said.text,
+        ...(said.about ? { about: said.about } : {}),
         snapshot: deps.snapshot(),
         spent: plus(spent(before), deps.alsoSpent?.(thread.id)),
       };
@@ -456,10 +465,22 @@ export function turns(deps: TurnDeps) {
   // returns. A settled thread catches up with its workstream first. Counting it
   // is the caller's. `by` started it: only a turn the user started applies
   // the agent's actions (decision 0024).
+  // What a message is about, each item marked as outside the region it is
+  // sent in, or not (decision 0062).
+  const marked =
+    (looking: LookingAt) =>
+    (version: number, workstreamId: Ulid): About => {
+      const members = new Set(
+        workstreams.region(workstreamId, version)?.items.map((item) => item.id) ?? [],
+      );
+      return looking.map(({ id, under }) => ({ id, outside: !members.has(id), under }));
+    };
+
   const start = (
     threadId: Ulid,
     text: string,
     by: Actor,
+    looking?: LookingAt,
   ): { seq: number; at: Instant; workspaceId: Ulid } => {
     if (running.has(threadId)) throw new ThreadBusy();
     // The per-thread caps hold whatever agent is plugged in (SPEC §9).
@@ -474,13 +495,16 @@ export function turns(deps: TurnDeps) {
     }
     const first = !earlier.some((m) => m.role === "user");
     const now = deps.now();
-    const said = threads.say(threadId, text, { marker: deps.newId(), message: deps.newId() }, now);
+    const ids = { marker: deps.newId(), message: deps.newId() };
+    const said = threads.say(threadId, text, ids, now, looking && marked(looking));
     if (said.move) published(threadId, said.move.seq);
     published(threadId, said.seq);
     const thread = threads.get(threadId, now);
     if (!thread) throw new RangeError(`no thread ${threadId}`);
     const controller = new AbortController();
-    const done = run(thread, text, said.seq, controller.signal).finally(() => {
+    const stored = threads.messages(threadId, said.seq - 1).find((m) => m.seq === said.seq);
+    const about = stored?.role === "user" ? (stored.about ?? null) : null;
+    const done = run(thread, { text, about }, said.seq, controller.signal).finally(() => {
       running.delete(threadId);
       publish(threadId, { type: "status", running: false });
     });
@@ -493,13 +517,13 @@ export function turns(deps: TurnDeps) {
   // The user's message, counted, and as their reason for rejecting a change
   // set when it is the next thing they said after Oriel asked what was wrong
   // with it.
-  const say = (threadId: Ulid, text: string): { seq: number } => {
+  const say = (threadId: Ulid, text: string, looking?: LookingAt): { seq: number } => {
     const last = threads.messages(threadId).at(-1);
     const answers =
       last?.role === "note" && last.note.kind === "rejected"
         ? { rejected: last.note.changeSet }
         : undefined;
-    const { seq, at, workspaceId } = start(threadId, text, { kind: "user" });
+    const { seq, at, workspaceId } = start(threadId, text, { kind: "user" }, looking);
     deps.emit({ name: "question.asked", at, workspaceId, threadId, ...answers });
     return { seq };
   };

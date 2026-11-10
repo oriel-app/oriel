@@ -5,6 +5,7 @@
 // any door is closed to it. The server holds the handlers and the one
 // dispatcher every door calls. Source writes stay in their source's
 // catalogue (decision 0019); they aren't declared again here.
+import { lookingAt } from "./about.ts";
 import { isInstant, isItemId, isPrefix, isUlid, type SourceKind, type Ulid } from "./ids.ts";
 import {
   array,
@@ -295,10 +296,11 @@ export const actions = {
     },
     closed: { agent: unsaid, tool: untold },
   },
-  // The user's message, which starts a turn to answer it.
+  // The user's message, which starts a turn to answer it, with the items
+  // it is about, open beside the composer as they sent it (decision 0062).
   "thread.say": {
     doc: "Says something in a thread, which the agent answers.",
-    input: object({ thread: threadId, text: messageText }),
+    input: object({ thread: threadId, text: messageText, about: optional(lookingAt) }),
     class: {
       kind: "direct",
       inverse: null,

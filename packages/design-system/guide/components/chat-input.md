@@ -3,7 +3,7 @@ title: Chat input
 status: stable
 group: Inputs
 order: 20
-classes: ask, chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-notice, ask-starts-head, ask-questions, ask-question, chat-dock, workstream-ask
+classes: ask, chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-notice, ask-starts-head, ask-questions, ask-question, chat-dock, workstream-ask, ctx, ctx-chip, ctx-label, ctx-name, ctx-x, ctx-action
 summary: Where a person asks the agent: one ChatInput for the overview's ask bar, the window chat, a thread's composer and a workstream's Ask box, with the same frame, focus, problem line and foot.
 ---
 
@@ -101,6 +101,85 @@ A frame holding the field, then its foot, then at most one line for a problem.
   <div class="chat-input-foot">
     <span class="chat-input-reads">Reads 6 items · v2</span>
     <button type="submit" class="button" disabled>Ask</button>
+  </div>
+</form>
+```
+
+## What it's about (Looking at)
+
+Over the field, the composer offers the item open beside it as what the next message is about (decision 0062): `LookingChips` in `packages/web/src/chat-input.tsx`, in the `context` slot. Sent, the message keeps the item by ID, and the agent reads it in a tool result. Looking adds nothing to the workstream: that's a cite's.
+
+- **Offered** (`.ctx-chip`): "Looking at", the item's key and title, and × (`.ctx-x`) to leave it out. The foot adds it: "Reads 17 items · v3, and SYN-99".
+- **Not sending** (`.ctx-chip[data-off]`): dashed, with Add back (`.ctx-action`) beside it.
+- **A second item:** with words typed, opening another item keeps the draft's own and offers the new one dashed, as a button: "+ SYN-104". + adds it. With the field empty, opening another item swaps the chip.
+- **Read-only:** in a thread, an item outside its region says "· read-only", and Cite beside it adds it to the workstream, with its Undo. The window chat reads every item as the window does, so it never says read-only.
+- Closing the item takes its chip only while nothing is typed.
+
+```html specimen id=looking title="Looking at: offered, and a second item while typing"
+<form class="chat-input" data-lines="grow">
+  <div class="ctx" role="group" aria-label="What your message is about">
+    <span class="ctx-chip"
+      ><span class="ctx-label">Looking at</span
+      ><span class="ctx-name"><b>SYN-99</b> Save a card for next time</span
+      ><button type="button" class="ctx-x" aria-label="Leave SYN-99 out">×</button></span
+    >
+    <button
+      type="button"
+      class="ctx-chip"
+      data-off
+      aria-label="Add SYN-104 to what your message is about"
+    >
+      <span class="ctx-label">+</span
+      ><span class="ctx-name"><b>SYN-104</b> Handle 3-D Secure challenges</span>
+    </button>
+  </div>
+  <textarea class="chat-input-field" rows="2" aria-label="Message">Is this blocked on</textarea>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 17 items · v3, and SYN-99</span>
+    <button type="submit" class="button primary">Send</button>
+  </div>
+</form>
+```
+
+```html specimen id=looking-off title="Not sending, and read-only with Cite"
+<form class="chat-input" data-lines="grow">
+  <div class="ctx" role="group" aria-label="What your message is about">
+    <span class="ctx-chip" data-off
+      ><span class="ctx-label">Not sending</span
+      ><span class="ctx-name"><b>SYN-99</b> Save a card for next time</span></span
+    >
+    <button type="button" class="quiet-action ctx-action">Add back</button>
+  </div>
+  <textarea
+    class="chat-input-field"
+    rows="2"
+    placeholder="Ask about 17 items…"
+    aria-label="Message"
+  ></textarea>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <button type="submit" class="button" disabled>Send</button>
+  </div>
+</form>
+<form class="chat-input" data-lines="grow">
+  <div class="ctx" role="group" aria-label="What your message is about">
+    <span class="ctx-chip"
+      ><span class="ctx-label">Looking at</span
+      ><span class="ctx-name"><b>SYN-54</b> Cancellation alert sent for a sailing</span
+      ><span class="ctx-label">· read-only</span
+      ><button type="button" class="ctx-x" aria-label="Leave SYN-54 out">×</button></span
+    >
+    <button type="button" class="quiet-action ctx-action">Cite</button>
+  </div>
+  <textarea
+    class="chat-input-field"
+    rows="2"
+    placeholder="Ask about 17 items…"
+    aria-label="Message"
+  ></textarea>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 17 items · v3, and SYN-54 (read-only)</span>
+    <button type="submit" class="button" disabled>Send</button>
   </div>
 </form>
 ```
@@ -206,3 +285,4 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
 - The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`, which imports only `ChatInput` for them.
 - The thread composer: `ThreadPage` and `NewThreadPage` in `packages/web/src/thread-page.tsx`, inside `Dock`. CSS `.chat-dock` in `window.css`. `composer` stays on the frame as a placement hook: the pill for a change set out of view (`ToReview`) and `focusComposer` find it.
 - The workstream's Ask box: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`, with `.workstream-ask` for its margin.
+- What a message is about: `LookingChips` and `readsWith` in `packages/web/src/chat-input.tsx`, fed by `lookedAt` in `packages/web/src/looking.ts`, which `update` in `packages/web/src/root.ts` runs against the open panel. CSS `.ctx`, `.ctx-chip`, `.ctx-label`, `.ctx-name`, `.ctx-x` and `.ctx-action` in `window.css`.

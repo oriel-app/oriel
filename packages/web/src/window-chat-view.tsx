@@ -3,10 +3,12 @@
 // the overview while it has a conversation, over the page's right side, or
 // as a sheet on a narrow window. While an item is open, on a window with
 // room, the chat moves into the page column beside it, and "‹ Window" puts
-// the overview back; narrower, the item covers it. Its entries render as a thread's page renders them, blocks included;
+// the overview back; narrower, the item covers it. Its composer offers the item open as what
+// the next question is about (decision 0062). Its entries render as a thread's page renders them, blocks included;
 // its fields are the one ChatInput.
 import { useEffect, useRef } from "preact/hooks";
-import { ChatInput } from "./chat-input.tsx";
+import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { notLooking } from "./looking.ts";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
 import { entriesOf, expected, type ThreadModel, type ThreadMsg } from "./thread.ts";
 import { ChatEntryItem, itemsOf } from "./thread-page.tsx";
@@ -104,6 +106,10 @@ export function AskBar(props: {
   );
 }
 
+// The window chat reads every item as the window does: none is read-only
+// there, as no region holds it.
+const noneReadOnly = () => false;
+
 export function WindowChat(props: {
   chat: WindowChatModel;
   thread: ThreadModel | null;
@@ -116,6 +122,9 @@ export function WindowChat(props: {
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
   const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   const view = thread && expected(thread);
+  // A held message's words in the composer send as they were held, about
+  // nothing, so it offers nothing while they're there (decision 0062).
+  const followUp = !thread || thread.composing ? notLooking : thread.lookingAt;
   const entries = view?.entries.length ?? 0;
   const list = useRef<HTMLOListElement>(null);
   // Each new entry, and the agent at work, shows at the chat's end.
@@ -196,7 +205,14 @@ export function WindowChat(props: {
           running={view.running}
           notice={thread.notice ?? chat.problem}
           placeholder="Ask a follow-up"
-          reads="Reads your whole window"
+          reads={readsWith("Reads your whole window", followUp, noneReadOnly)}
+          context={
+            <LookingChips
+              lookingAt={followUp}
+              readOnly={noneReadOnly}
+              onLooking={(msg) => sendThread({ type: "looking", msg })}
+            />
+          }
           onDraft={(text) => sendThread({ type: "draftChanged", text })}
           onSubmit={() => sendThread({ type: "sendClicked" })}
           onStop={() => sendThread({ type: "stopClicked" })}
@@ -209,9 +225,16 @@ export function WindowChat(props: {
           busy={chat.asking}
           notice={chat.problem}
           placeholder="Ask about your window"
-          reads="Reads your whole window"
+          reads={readsWith("Reads your whole window", chat.lookingAt, noneReadOnly)}
+          context={
+            <LookingChips
+              lookingAt={chat.lookingAt}
+              readOnly={noneReadOnly}
+              onLooking={(msg) => send({ type: "looking", msg })}
+            />
+          }
           onDraft={(text) => send({ type: "draftChanged", text })}
-          onSubmit={() => send({ type: "askClicked" })}
+          onSubmit={() => send({ type: "askClicked", chat: true })}
         />
       )}
     </aside>

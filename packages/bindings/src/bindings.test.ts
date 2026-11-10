@@ -85,6 +85,24 @@ test("only search() reaches outside the region, and other reads refuse what's ou
   await assert.rejects(bindings.read("jira.setEstimate", ["jira:SYN-13", 1]));
 });
 
+// Decision 0062: an item a message was about, outside the region, is read
+// and never written.
+test("an item the user looked at outside the region reads, read-only", async () => {
+  const bindings = bindingsFor(fixtureRegion("boarding-epic"), {
+    reader: base,
+    namespaces,
+    looking: ["jira:SYN-80", "jira:SYN-13"],
+  });
+  const looked = await bindings.read("items.read", ["jira:SYN-80"]);
+  assert.equal(looked.outsideRegion, true);
+  assert.equal((looked.value as { title: string }).title, summary("SYN-80"));
+  await assert.rejects(bindings.read("items.read", ["jira:SYN-54"]));
+  assert.throws(() => bindings.capture("jira.setEstimate", ["jira:SYN-80", 3], null));
+  assert.throws(() => bindings.capture("jira.setSummary", ["jira:SYN-80", "x"], null));
+  // Only the one outside the region is declared as looked at.
+  assert.match(bindings.dts, /type LookedId =\n {2}\| "jira:SYN-80";/);
+});
+
 test("an item that moved project is followed and keeps its region handle", async () => {
   const reader = movingReader(base, "jira:SYN-13", "jira:FER-7");
   const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader, namespaces });

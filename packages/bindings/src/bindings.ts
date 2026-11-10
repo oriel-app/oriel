@@ -63,6 +63,9 @@ export function bindingsFor(
     // The window chat's connections that wait for their options; its
     // thread's module gets `source` only with it (decision 0051).
     waiting?: Waiting;
+    // What the thread's messages were about (decision 0062): any outside the
+    // region a run may read, read-only, as it may what its search() found.
+    looking?: readonly string[];
     // Items with what the change log saw of them, from the index alone.
     history?: (of: string | null) => Promise<unknown>;
     // A run Oriel started for a second look at a change set: its module is
@@ -71,7 +74,7 @@ export function bindingsFor(
     challenge?: ChallengeRun;
   },
 ): Bindings {
-  const scope = scopeOf(region, options.namespaces, options.items);
+  const scope = scopeOf(region, options.namespaces, options.items, options.looking);
   const { waiting } = options;
   const fns = describe(scope, {
     window: options.overview !== undefined,
@@ -88,7 +91,7 @@ export function bindingsFor(
   // IDs this run's search() returned. A namespace may read those too, and
   // nothing else outside the region: the host refuses before any adapter
   // code sees the ID, whatever the adapter checks itself.
-  const found = new Set<string>();
+  const found = new Set<string>(scope.looked);
   // IDs an action in this run may take though no read showed them: the items
   // of the clusters the overview named, as Make a workstream copies them.
   // Never read through: reading one still takes a search() that shows it.
