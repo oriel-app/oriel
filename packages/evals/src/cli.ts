@@ -212,6 +212,9 @@ export type Io = {
   // While it exists, a replay passes a case whose cassettes its requests no
   // longer match: they wait for the night's recording. Absent: none.
   stale?: URL;
+  // Cases whose committed cassettes a live round leaves byte for byte: it
+  // draws them but records nothing. Absent: none.
+  keep?: ReadonlySet<string>;
   network: Fetch;
   // Milliseconds since the epoch, naming the round.
   now: () => number;
@@ -344,10 +347,11 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     system,
     model: command.model,
     judgeModel: command.judge,
-    // A case's first trial records its cassettes; the others only spend.
+    // A case's first trial records its cassettes, unless they are kept; the
+    // others only spend.
     transport: (caseId, rep) => {
       const dir = cassetteDir(io.cassettes, caseId, command.model, command.judge);
-      if (live && rep > 0) return { fetch: live, commit: () => null };
+      if (live && (rep > 0 || io.keep?.has(caseId))) return { fetch: live, commit: () => null };
       return live ? cassettes({ mode: "record", dir, live }) : cassettes({ mode: "replay", dir });
     },
     reps,
