@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { homeRelativeIn } from "@oriel/core";
 import { redacted } from "./redact.ts";
 import { systemPath } from "./signature.ts";
 
@@ -167,8 +168,7 @@ function run(
   return child.exited;
 }
 
-const shown = (home: string) => (part: string) =>
-  home.length > 1 ? part.split(home).join("~") : part;
+const shown = (home: string) => (part: string) => homeRelativeIn(part, home);
 
 // Anthropic's installer, run unmodified by /bin/bash from a folder only the
 // person can open, with the system PATH in place of theirs, never with sudo.

@@ -9,6 +9,8 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
 import {
   boolean,
+  homeExpanded,
+  homeRelative,
   type Log,
   literal,
   nullable,
@@ -289,6 +291,9 @@ export function settingsService(deps: {
   themes: readonly string[];
   // Whether a change may set where a CLI is (decision 0041).
   cliPaths: boolean;
+  // The person's home folder: a CLI's path shows from `~`, and a `~/…`
+  // saved expands back (OA-315). None in a test that doesn't care.
+  home?: string;
   // Whether this server can notify: only the desktop app's shell shows them.
   notifies?: boolean;
   // Whether this server's app asks before quitting: only the desktop app's.
@@ -303,13 +308,17 @@ export function settingsService(deps: {
   synced?(): void;
 }): SettingsService {
   const { store, models, themes } = deps;
+  const home = deps.home ?? "";
   const view = (): SettingsView => {
     const settings = store.get();
     const choice = models?.choose(settings);
     const pick = (r: { provider: { id: string }; model: string } | null | undefined) =>
       r ? { provider: r.provider.id, model: r.model } : null;
     return {
-      providers: models?.providers(settings) ?? [],
+      providers: (models?.providers(settings) ?? []).map((provider) => ({
+        ...provider,
+        path: provider.path === null ? null : homeRelative(provider.path, home),
+      })),
       models: models?.options(settings) ?? [],
       model: pick(choice?.model),
       titleModel: pick(choice?.title),
@@ -330,7 +339,12 @@ export function settingsService(deps: {
   };
   return {
     view,
-    async change(change) {
+    async change(asked) {
+      // A path saved from `~` is kept as the real one.
+      const change =
+        "path" in asked && asked.path !== null
+          ? { ...asked, path: homeExpanded(asked.path, home) }
+          : asked;
       const before = store.get();
       if ("path" in change && !deps.cliPaths)
         throw new SettingsRefused(

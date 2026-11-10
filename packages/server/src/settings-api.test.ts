@@ -1,9 +1,12 @@
 // Settings through the server (OA-181): never a key in a reply, and nothing
 // another site can start.
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { ModelEvent, Provider } from "@oriel/agent";
-import type { SettingsView } from "@oriel/web/view";
+import type { ConnectionView, SettingsView } from "@oriel/web/view";
 import { models } from "./model.ts";
 import { memorySettings } from "./settings.ts";
 import { json, testApp } from "./testing.ts";
@@ -57,4 +60,37 @@ test("Claude Code's usage is read only by a POST, so another site can't start th
   const app = await settingsApp(t);
   assert.notEqual((await app.get("/api/settings/usage")).status, 200);
   assert.equal((await app.post("/api/settings/usage")).status, 200);
+});
+
+// OA-315: no screen names the Mac's user. Settings › Providers shows a CLI's
+// path from `~`, and a `~/…` saved is kept as the real path; Connections
+// shows a folder from `~`.
+test("Connections and Settings › Providers show paths from ~, never the home folder", async (t) => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "oriel-home-")));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  mkdirSync(join(home, "notes"));
+  writeFileSync(join(home, "notes", "plan.md"), "# Plan\n");
+  const chooser = models({ key: null, env: { PATH: "" }, check: async () => ({ ok: true, cli }) });
+  const settings = memorySettings();
+  const app = await testApp(t, { models: chooser, settings, home, cliPaths: true, jira: false });
+
+  const saved = await app.post("/api/settings", { provider: "claude-code", path: "~/bin/claude" });
+  assert.equal(saved.status, 200);
+  const shown = json<SettingsView>(await app.get("/api/settings"));
+  assert.equal(shown.providers.find((p) => p.id === "claude-code")?.path, "~/bin/claude");
+  const kept = settings.get().providers.find((p) => p.id === "claude-code")?.path;
+  assert.equal(kept, join(home, "bin", "claude"));
+
+  const made = await app.post("/api/connections", {
+    kind: "folder",
+    given: { path: join(home, "notes") },
+  });
+  assert.equal(made.status, 200);
+  const { connections } = json<{ connections: ConnectionView[] }>(
+    await app.get("/api/connections"),
+  );
+  const folder = connections.find((each) => each.kind === "folder");
+  assert.equal(folder?.about, "~/notes");
+  for (const reply of [shown, connections])
+    assert.doesNotMatch(JSON.stringify(reply), new RegExp(home.replaceAll("/", "\\/")));
 });

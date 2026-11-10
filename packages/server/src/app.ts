@@ -5,6 +5,7 @@
 // source (decision 0049). It wires groupings, change sets, bindings, the
 // sandbox and the agent into the JSON routes. Only this file builds change
 // sets, which hold the writers; thread code gets `capture` and nothing else.
+import { homedir } from "node:os";
 import { bindingsFor, type Waiting, waitingOf } from "@oriel/bindings";
 import { ChangeSetError, changeSets, explainConflicts } from "@oriel/changeset";
 import {
@@ -44,6 +45,8 @@ import {
   type ReadResult,
   type Region,
   searchedOf,
+  homeLocation,
+  homeRelative,
   settingNames,
   type Shown,
   type Sketch,
@@ -213,6 +216,10 @@ export type AppOptions = {
     tools: readonly string[],
     known: SourceServer,
   ) => Promise<Calling | null>;
+  // The person's home folder: the window and the agent see every path under
+  // it from `~`, never the Mac's user name (OA-315). The first run's, or
+  // the system's, when absent.
+  home?: string;
   // The themes window.css has, the default first.
   themes?: readonly string[];
   // Whether the page may set where a CLI is: only behind the desktop app's
@@ -315,6 +322,7 @@ export const limits: AgentLimits = {
 
 export async function createApp(options: AppOptions): Promise<App> {
   const now = options.now ?? (() => instant(new Date()));
+  const home = options.home ?? options.setup?.home ?? homedir();
   const newId = () => ulid(Date.parse(now()));
   const log: Log = options.log ?? (() => {});
   const db = open(options.db, { exclusive: options.exclusive ?? false });
@@ -1418,7 +1426,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     async search(query, limit) {
       // The connections open or shut now, by their prefixes.
-      return index.search(workspaceId, query, limit, indexed()).map(searchedOf);
+      return index.search(workspaceId, query, limit, indexed()).map((record) => ({
+        ...searchedOf(record),
+        location: homeLocation(record.location, home),
+      }));
     },
   };
   const known = (): Known => {
@@ -1912,6 +1923,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     models: models ?? null,
     themes: options.themes ?? [defaultTheme],
     cliPaths: options.cliPaths ?? false,
+    home,
     notifies: options.notify !== undefined,
     asksBeforeQuitting: options.working !== undefined,
     saved: () => guarding?.changed(),
@@ -2596,9 +2608,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       prefix: kept.prefix,
       name: kept.name ?? declared(kept.kind).name,
       named: kept.name !== null,
-      about: open?.connection.id === connection.id ? open.opened.about : kept.identity,
-      reads: declared(kept.kind).reads?.(kept) ?? kept.identity,
-      identity: kept.identity,
+      // A path from `~`, as every path the window shows (OA-315).
+      about: homeRelative(
+        open?.connection.id === connection.id ? open.opened.about : kept.identity,
+        home,
+      ),
+      reads: homeRelative(declared(kept.kind).reads?.(kept) ?? kept.identity, home),
+      identity: homeRelative(kept.identity, home),
       options: kept.options,
       readOnly: readOnlyOf(kept.options),
       viewOnly:
@@ -2715,7 +2731,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             {
               id: record.id,
               title: record.title,
-              location: record.location,
+              location: homeLocation(record.location, home),
               updatedAt: record.updatedAt,
             },
           ]

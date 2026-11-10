@@ -2,6 +2,8 @@
 // can copy to whoever helps them (decision 0038): never a password, a key, a
 // code, an email, or a link's query, where a sign-in link carries its state
 // and code. Oriel's own lines are written by Oriel and need none of this.
+import { homeRelativeIn } from "@oriel/core";
+
 const maxLine = 300;
 
 export function redacted(line: string, home: string): string {
@@ -23,6 +25,6 @@ export function redacted(line: string, home: string): string {
     .replace(/\bsk-ant-[A-Za-z0-9_-]+/g, "[key]")
     // Long runs of letters and digits, as keys, codes and tokens are.
     .replace(/\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b/g, "[hidden]");
-  if (home.length > 1) text = text.split(home).join("~");
+  text = homeRelativeIn(text, home);
   return text.length > maxLine ? `${text.slice(0, maxLine)}…` : text;
 }

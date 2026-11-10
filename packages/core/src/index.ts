@@ -14,6 +14,7 @@ export * from "./find.ts";
 export * from "./fixture.ts";
 export * from "./workstream.ts";
 export * from "./grouping.ts";
+export * from "./home.ts";
 export * from "./ids.ts";
 export * from "./intents.ts";
 export * from "./issue.ts";
