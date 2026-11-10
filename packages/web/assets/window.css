@@ -1535,8 +1535,8 @@ button.nav-more {
   height: 0.4375rem;
   margin-left: 0.25em;
   border: var(--border-thin) solid var(--focus);
-  border-left-width: 3px;
-  border-radius: 2px;
+  border-left-width: var(--border-thick);
+  border-radius: var(--radius-sm);
   content: "";
   vertical-align: 0.05em;
 }
