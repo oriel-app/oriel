@@ -3,6 +3,14 @@
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
+import {
+  aboutOf,
+  looked,
+  type LookingAt,
+  type LookingMsg,
+  notLooking,
+  updateLooking,
+} from "./looking.ts";
 import type { Msg } from "./root.ts";
 import { expiry, type Held, type Hold, hold, holding, notHeld, undoMs } from "./undos.ts";
 import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
@@ -26,6 +34,9 @@ export type WorkstreamModel = {
   view: WorkstreamView | null;
   status: "loading" | "ready" | "failed";
   draft: string;
+  // What the Ask box's question is about: the item open beside it (decision
+  // 0062), which the new thread's first message carries.
+  lookingAt: LookingAt;
   // The name being edited, or null.
   name: string | null;
   pending: boolean;
@@ -46,6 +57,7 @@ export type WorkstreamModel = {
 export type WorkstreamMsg =
   | { type: "draftChanged"; text: string }
   | { type: "askClicked" }
+  | { type: "looking"; msg: LookingMsg }
   | { type: "memberRemoved"; id: string }
   | { type: "undoClicked"; version: number }
   // The Undo of an outside tool's change, in the workstream's history.
@@ -64,6 +76,7 @@ export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
       view: null,
       status: "loading",
       draft: "",
+      lookingAt: notLooking,
       name: null,
       pending: false,
       notice: null,
@@ -83,6 +96,8 @@ export function updateWorkstream(
   switch (msg.type) {
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
+    case "looking":
+      return [{ ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) }, []];
     case "askClicked": {
       const text = model.draft.trim();
       if (text === "" || model.pending) return [model, []];
@@ -91,7 +106,7 @@ export function updateWorkstream(
         [
           post(
             `/api/workstreams/${model.id}/threads`,
-            { text },
+            { text, about: aboutOf(model.lookingAt) },
             { kind: "threadOpened", workstreamId: model.id },
           ),
         ],
@@ -268,7 +283,7 @@ export function workstreamReplied(
       if (!msg.ok) return [{ ...model, pending: false, notice: errorOf(msg.body) }, []];
       const { id } = msg.body as { id: string };
       return [
-        { ...model, pending: false, draft: "" },
+        { ...model, pending: false, draft: "", lookingAt: looked(model.lookingAt) },
         [{ type: "navigate", route: { page: "thread", id } }],
       ];
     }

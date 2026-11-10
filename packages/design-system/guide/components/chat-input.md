@@ -114,6 +114,7 @@ Over the field, the composer offers the item open beside it as what the next mes
 - **A second item:** with words typed, opening another item keeps the draft's own and offers the new one dashed, as a button: "+ SYN-104". + adds it. With the field empty, opening another item swaps the chip.
 - **Read-only:** in a thread, an item outside its region says "· read-only", and Cite beside it adds it to the workstream, with its Undo. The window chat reads every item as the window does, so it never says read-only.
 - Closing the item takes its chip only while nothing is typed.
+- **A question that starts a thread** keeps it too: the workstream's Ask box and a new thread's first message carry what they're about, and the thread opens with the item still beside it. In the Ask box, an item the workstream doesn't hold says read-only, with Cite; on a new thread whose workstream it makes, every item is read-only, since the new workstream holds none, and there's no Cite until it exists.
 
 ```html specimen id=looking title="Looking at: offered, and a second item while typing"
 <form class="chat-input" data-lines="grow">

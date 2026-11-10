@@ -3976,6 +3976,17 @@ button.ctx-chip:hover {
   background: var(--danger-soft);
 }
 
+/* The line whose item is open in the panel, so the person sees which change
+   they're reading the item for: the focus colour's edge, as the open chip's
+   underline, on the accent's tint. One that stopped keeps its own colour. */
+.diff-line[data-open] {
+  box-shadow: inset var(--border-thick) 0 0 var(--focus);
+}
+
+.diff-line[data-open]:not([data-stopped]) {
+  background: var(--accent-soft);
+}
+
 .line-error {
   display: flex;
   flex-wrap: wrap;
