@@ -1,1 +1,2 @@
 - OA-312: a run's additions to the thread's own workstream apply as the run ends, and its result says what joined and that later runs can read and write it; createStory (Jira, tracker) and createIssue (Linear) say only an empty workstream can create an epic or project, and how to use one outside the region.
+- OA-334: a user message can carry what it is about (decision 0062): Oriel's note before it, by ID, and `items.read()` declared over `RegionId | LookedId` in a thread that looked outside its region. No existing case sends one, so no case's requests change.
