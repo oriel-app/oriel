@@ -22,6 +22,13 @@ export type PanelModel = {
 
 export type Glimpse = { key: string; title: string; status: string | null };
 
+// The open item as the window names it: its key, and its title once known,
+// from the read or else from what the page knew of it.
+export const panelName = (model: PanelModel): { key: string; title: string | null } => ({
+  key: model.view?.key ?? model.glimpse?.key ?? model.id.slice(model.id.indexOf(":") + 1),
+  title: model.view?.title ?? model.glimpse?.title ?? null,
+});
+
 // The workstream the page is about, which the panel's item can be added to:
 // the workstream's page, a thread's, or the window adding to one. `members`,
 // when the page knows them.

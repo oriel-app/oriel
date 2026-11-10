@@ -98,19 +98,24 @@ type Scene = {
 
 // The rail's second item, opened while a draft keeps the first, is offered
 // dashed: from the panel's steps, where the panel lies over the rail; on a
-// phone, whose panel is closed, from the rail. There the item covers the
-// composer until it docks under the item (OA-333), and closing the item
-// takes what it offered.
+// phone, whose panel is closed, from the rail. There the item carries the
+// composer in its dock (OA-335), and closing the item takes what it
+// offered.
 async function secondLooked(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 1280) >= 761) {
     await page.keyboard.press("ArrowDown");
     await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
+    // Shot once its read is in, not before.
+    await page.locator(".item-panel .panel-facts").waitFor();
   } else await page.locator(".rail a.key").nth(1).click();
-  await page.locator(".ctx-chip[data-off]", { hasText: "+" }).waitFor();
+  // Below 1100 the panel's dock carries the composer, and the thread's own,
+  // under the panel, is hidden (OA-335).
+  await page.locator(".ctx-chip[data-off]:visible", { hasText: "+" }).waitFor();
 }
 
-// On a phone the item panel is a sheet over the page, composer and all:
-// closing it shows the composer, which keeps a draft's chip.
+// On a phone the item panel is a sheet over the page, with the composer in
+// its dock (OA-335): closing it shows the thread's own, which keeps a
+// draft's chip.
 async function closePanelOnPhone(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 1280) >= 761) return;
   await page.getByRole("button", { name: "Close the panel" }).click();
@@ -1733,13 +1738,17 @@ async function askChat(page: Page, question: string, answered: string, on = serv
 }
 
 // Asks the window chat about saved cards and opens the first story its
-// answer names, in the panel, as one of the two it named.
-async function openFromAnswer(page: Page) {
-  await askChat(page, "What's holding up saved cards?", ".window-chat .reply .chip");
+// answer names, in the panel, as one of the two it named. `on`: the scene's
+// server, so New chat goes to it and leaves no other's chat.
+async function openFromAnswer(page: Page, on = server) {
+  await askChat(page, "What's holding up saved cards?", ".window-chat .reply .chip", on);
   await page.locator(".window-chat .reply .chip-link").first().click();
   await page.locator(".item-panel .panel-facts").waitFor();
   await page.locator(".panel-place", { hasText: "1 of 2" }).waitFor();
 }
+
+// The server the ask-panel-* scene running now made for itself.
+let docking = server;
 
 // Whether the window has room for the window chat beside an open item, as
 // app.tsx's `besideChat` says.
@@ -4031,8 +4040,8 @@ const scenes: Scene[] = [
       [
         "not-sending",
         async (page: Page) => {
-          await page.locator(".ctx-x").first().click();
-          await page.locator(".ctx-chip[data-off]", { hasText: "Not sending" }).waitFor();
+          await page.locator(".ctx-x:visible").first().click();
+          await page.locator(".ctx-chip[data-off]:visible", { hasText: "Not sending" }).waitFor();
         },
       ],
       ["second", secondLooked],
@@ -4041,11 +4050,10 @@ const scenes: Scene[] = [
         "both",
         async (page: Page) => {
           await secondLooked(page);
-          // On a phone the item lies over it, so the click goes to it alone.
-          await page.locator(".ctx-chip[data-off]", { hasText: "+" }).dispatchEvent("click");
+          await page.locator(".ctx-chip[data-off]:visible", { hasText: "+" }).click();
           await closePanelOnPhone(page);
           await page.getByRole("button", { name: "Leave SYN-10 out" }).click();
-          await page.locator(".ctx-chip[data-off]", { hasText: "SYN-10" }).waitFor();
+          await page.locator(".ctx-chip[data-off]:visible", { hasText: "SYN-10" }).waitFor();
           await page.getByRole("button", { name: "Add back" }).click();
           await page.getByRole("button", { name: "Leave SYN-10 out" }).waitFor();
         },
@@ -4062,7 +4070,7 @@ const scenes: Scene[] = [
       await page.locator(".rail a.key").first().click();
       await page.locator(".item-panel .panel-facts").waitFor();
       await closePanelOnPhone(page);
-      await page.locator(".ctx-chip", { hasText: "Looking at" }).waitFor();
+      await page.locator(".ctx-chip:visible", { hasText: "Looking at" }).waitFor();
       await then(page);
     },
   })),
@@ -4075,7 +4083,7 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
       await page.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
       await closePanelOnPhone(page);
-      await page.locator(".ctx-chip", { hasText: "read-only" }).waitFor();
+      await page.locator(".ctx-chip:visible", { hasText: "read-only" }).waitFor();
       await page.getByRole("button", { name: "Cite" }).waitFor();
     },
   },
@@ -4159,6 +4167,116 @@ const scenes: Scene[] = [
       await chat.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
       await page.locator(".working").first().waitFor({ state: "detached" });
       await expectCount(chat.locator(".user-message .about", { hasText: "read-only" }), 0);
+    },
+  },
+  // Below 1100 the item lies over the conversation and carries its
+  // composer in a dock at its foot (OA-335): the latest answer's first
+  // lines, "Chat", and the composer looking at the item. Sending keeps the
+  // item open, and the dock shows the answer; "Chat" folds the item to a
+  // line above the chat's composer. With room, the chat stands beside it
+  // and there's no dock.
+  ...(["dock", "sending", "folded"] as const).map((step): Scene => ({
+    name: `ask-panel-${step}`,
+    path: "/",
+    window: true,
+    make: async () => (docking = (await writing()).serving),
+    act: async (page) => {
+      await overviewShown(page);
+      await openFromAnswer(page, docking);
+      const dock = page.locator(".item-panel .panel-dock");
+      if (beside(page)) {
+        await expectCount(dock, 0);
+        return;
+      }
+      await page.locator(".window-chat").waitFor({ state: "detached" });
+      await dock.locator(".panel-dock-latest", { hasText: "saved cards" }).waitFor();
+      await dock
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: "SYN-99" })
+        .waitFor();
+      await dock
+        .locator(".chat-input-reads", { hasText: "Reads your whole window, and SYN-99" })
+        .waitFor();
+      if (step === "sending") {
+        const before = await dock.locator(".panel-dock-latest").innerText();
+        await dock.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
+        await dock.getByRole("button", { name: "Send" }).click();
+        await dock.locator(".panel-dock-working").waitFor({ state: "detached" });
+        await dock.locator(".panel-dock-you").waitFor({ state: "detached" });
+        await dock.getByRole("button", { name: "Send" }).waitFor();
+        const after = await dock.locator(".panel-dock-latest").innerText();
+        if (after === before) throw new Error(`The dock should show the new answer: ${after}`);
+        await page.locator(".item-panel .panel-facts").waitFor();
+        await expectCount(page.getByRole("textbox", { name: "Message" }), 1);
+      }
+      if (step === "folded") {
+        await dock.getByRole("button", { name: "Chat" }).click();
+        const folded = page.locator(".window-chat .panel-folded", { hasText: "SYN-99" });
+        await folded.waitFor();
+        await page.locator(".item-panel").waitFor({ state: "detached" });
+        await folded.getByRole("button", { name: "Show SYN-99" }).click();
+        await page.locator(".item-panel .panel-dock").waitFor();
+        await page.locator(".item-panel").getByRole("button", { name: "Chat" }).click();
+        await folded.waitFor();
+        await page
+          .locator(".window-chat .ctx-chip", { hasText: "Looking at" })
+          .filter({ hasText: "SYN-99" })
+          .waitFor();
+      }
+    },
+  })),
+  // On a thread's page, the panel opened from the rail carries the thread's
+  // own composer, and the one it covers is inert.
+  {
+    name: "ask-panel-thread",
+    window: true,
+    path: `/threads/${lookingThread}`,
+    on: lookingOn,
+    act: async (page) => {
+      await page.locator(".rail .members").waitFor();
+      await page.locator(".rail a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      const dock = page.locator(".item-panel .panel-dock");
+      if (beside(page)) {
+        await expectCount(dock, 0);
+        return;
+      }
+      await dock.locator(".ctx-chip", { hasText: "Looking at" }).waitFor();
+      await dock.locator(".panel-dock-latest").waitFor();
+      await expectCount(page.locator(".thread .chat-dock[inert]"), 1);
+    },
+  },
+  // A first question asked from the dock, after New chat, has no thread
+  // until it's answered: while it's on its way, the dock shows it, with the
+  // agent at work, and the item stays open.
+  {
+    name: "ask-panel-first",
+    path: "/",
+    window: true,
+    make: async () => (docking = (await writing()).serving),
+    act: async (page) => {
+      await overviewShown(page);
+      await openFromAnswer(page, docking);
+      if (beside(page)) return;
+      const dock = page.locator(".item-panel .panel-dock");
+      await dock.getByRole("button", { name: "Chat" }).click();
+      await page.getByRole("button", { name: "New chat" }).click();
+      await page.getByRole("button", { name: "Show SYN-99" }).click();
+      let held = () => {};
+      const answered = new Promise<void>((done) => (held = done));
+      await page.route("**/api/window-chat/messages", async (route) => {
+        await answered;
+        await route.continue();
+      });
+      await dock.getByRole("textbox", { name: "Message" }).fill("Who owns the consent copy?");
+      await dock.getByRole("button", { name: "Send" }).click();
+      await dock.locator(".panel-dock-working").waitFor();
+      // Words typed since don't change what was sent.
+      await dock.getByRole("textbox", { name: "Message" }).fill("And the return URL?");
+      await dock.locator(".panel-dock-you", { hasText: "Who owns the consent copy?" }).waitFor();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      held();
+      await dock.locator(".panel-dock-working").waitFor({ state: "detached" });
     },
   },
 ];

@@ -4328,6 +4328,12 @@ button.ctx-chip:hover {
   position: relative;
 }
 
+/* While the item panel carries the thread's composer (dock.tsx), this one
+   is out of use: hidden, so none shows that takes no typing. */
+.chat-dock[inert] {
+  visibility: hidden;
+}
+
 /* A change set to review out of view: a pill floating just over the
    composer, clear of the bead at the top, that goes to it (OA-260). */
 .to-review {
@@ -5580,6 +5586,116 @@ button.ctx-chip:hover {
     background: var(--bg);
     box-shadow: none;
   }
+}
+
+/* Below 1100, over a conversation, the panel carries that conversation's
+   composer in a dock at its foot (dock.tsx): the latest answer's first two
+   lines, "Chat" to give the conversation the screen, and the composer. It
+   sticks to the panel's foot whatever scrolls above it, edge to edge, and
+   rises a few pixels as it arrives with the panel. */
+.panel-dock {
+  position: sticky;
+  /* Into the panel's foot padding, which a sticky box otherwise keeps. */
+  bottom: calc(-1 * var(--space-8));
+  z-index: var(--layer-sticky);
+  display: grid;
+  gap: var(--space-2);
+  margin: auto calc(-1 * var(--panel-side)) calc(-1 * var(--space-8));
+  padding: var(--space-3) var(--panel-side) var(--space-4);
+  border-top: var(--border-thin) solid var(--line);
+  background: var(--frame);
+  animation: arrive var(--duration-move) var(--ease-out);
+}
+
+.panel-dock-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+/* Two lines of the answer, whatever it holds: its blocks run on as one. */
+.panel-dock-latest {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.panel-dock-latest :is(p, ul, ol, li, blockquote, h1, h2, h3, h4, h5, h6, pre, table) {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+}
+
+.panel-dock-latest :is(p, li, h1, h2, h3, h4, h5, h6) + * {
+  margin-left: 0.25em;
+}
+
+.panel-dock-you {
+  color: var(--text-faint);
+}
+
+.panel-dock-chat {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+/* The item folded to a line above the conversation's composer: Show puts
+   it back, × closes it. It arrives as the panel goes. */
+.panel-folded {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.125rem;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--frame);
+  font-size: var(--text-md);
+  animation: arrive var(--duration-move) var(--ease-out);
+}
+
+.panel-folded-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-folded-name b {
+  font-weight: var(--weight-strong);
+}
+
+.panel-folded-close {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel-folded-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .panel-head {
@@ -7964,7 +8080,9 @@ a.button.primary {
   }
 
   /* Arrivals fade, all at once, without the rise. */
-  .arrive {
+  .arrive,
+  .panel-dock,
+  .panel-folded {
     animation-name: panel-fade;
     animation-delay: 0s;
   }

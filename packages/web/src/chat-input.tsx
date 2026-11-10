@@ -106,6 +106,10 @@ export function ChatInput(props: {
   );
 }
 
+// A composer's props, as a conversation draws its own and hands the same to
+// the item panel's dock (dock.tsx).
+export type Composer = Parameters<typeof ChatInput>[0];
+
 // What the next message is about, over the composer's field (decision
 // 0062): the item open beside it, "Looking at", with × to leave it out;
 // left out, dashed, "Not sending", with Add back; and the item opened since

@@ -32,6 +32,7 @@ tokens motion
 - **The item panel** (`.item-panel` in `window.css`) slides in from `--slide-panel` (0.375rem) to the right and fades in, at quick speed (`--duration-quick`) with `--ease-out`: a click on an item should feel answered at once (2026-11-08). Its contents fade in again for each item it shows (`panel-fade`), at the same speed.
 - **The window chat** (`.window-chat` in `window.css`) arrives the same way, but at move speed. On a narrow screen it's a bottom sheet that rises `--space-6` (`@starting-style` in `window.css`).
 - **The window chat beside an item.** At 1100px and up, opening an item from the chat moves the chat into the page column: the item arrives at the window's edge as above, and the chat slides left into the column at move speed with `--ease-out` (its `left` and `right`), over the overview, which is hidden once it's covered. Closing the item reverses it: the overview is back at once, and the chat slides back to the right. Swapping items moves nothing: only the panel's contents fade (`panel-fade`). Nothing waits on the slide.
+- **The item panel's dock** (`.panel-dock` in `window.css`), below 1100px over a conversation, arrives with the panel, rising `--space-1` as it fades in (`arrive`). Folded with Chat, the panel leaves at once and the item's line above the composer (`.panel-folded`) arrives the same way; Show brings the panel back as it first came.
 - **The sidebar's fold** (`.shell` in `window.css`): its grid column narrows to icons, at move speed.
 - **A change set folding itself** (`.change-set[data-closing]` in `window.css`): once its apply ends on screen and a 1.2s beat has passed, everything under its head closes to nothing and fades, at move speed with `--ease-out`, then it folds. Under reduced motion it folds at once.
 - **The drawer** on a narrow screen slides in from the left, and its scrim fades. Closing, it stays visible until the move ends, then leaves the tab order (`.sidebar` in `window.css`).
@@ -135,7 +136,7 @@ The block is the last thing in `window.css`, so it wins over every rule above it
 
 The bead (decision 0056, amended) reads the same query in script (`reducedMotion` in `packages/web/src/undo-stack.tsx`): it only fades. It arrives at its size, swaps its words at once, and fades out where it is, with no drop or spread. The block shows its marks drawn and its panes lit, with no glint.
 
-The drag card follows the pointer level, with no lean (`reduced` in `drag-card.ts`); dropped, it only fades, and dropped nowhere it goes back to its row at once. Menus only fade, with no scale (`.context-menu` in the block). Arrivals fade, all together, with no rise or stagger (`.arrive`, which takes `panel-fade`).
+The drag card follows the pointer level, with no lean (`reduced` in `drag-card.ts`); dropped, it only fades, and dropped nowhere it goes back to its row at once. Menus only fade, with no scale (`.context-menu` in the block). Arrivals fade, all together, with no rise or stagger (`.arrive`, which takes `panel-fade`), and so do the panel's dock and the folded item line (`.panel-dock`, `.panel-folded`).
 
 The window chat keeps its fade as the item panel does (`transition-property: opacity`), so beside an item it moves to the column at once, and the overview under it hides at once.
 

@@ -73,6 +73,7 @@ import {
   openPanel,
   type PanelModel,
   type PanelMsg,
+  panelName,
   panelReplied,
   stepped,
   updatePanel,
@@ -226,6 +227,11 @@ export type Model = {
   panelList: readonly string[] | null;
   // The chat entry the open item was opened from, if it was (decision 0062).
   panelUnder: Under | null;
+  // Below 1100, where the item lies over a conversation: the person gave
+  // the conversation the screen with "Chat", and the item is a line above
+  // its composer until Show (dock.tsx). Opening another item, or closing
+  // it, unfolds it.
+  panelFolded: boolean;
   // The panel's last add of each item to each workstream, whatever item the
   // panel shows: in flight, or what came of it, with its Undo while that
   // shows.
@@ -278,6 +284,8 @@ export type Msg =
   // The next or previous item in that list, in the panel.
   | { type: "panelStepped"; by: 1 | -1 }
   | { type: "panelClosed" }
+  // "Chat" in the panel's dock folds the item; Show unfolds it.
+  | { type: "panelFolded"; folded: boolean }
   // The user left for an item's source: from its panel, or by a Cmd/Ctrl or
   // middle click on a link to it. The browser goes; this only tells.
   | { type: "sourceOpened"; id: string; via: "panel" | "link" }
@@ -380,6 +388,7 @@ export function init(route: Route): [Model, Effect[]] {
     panel: null,
     panelList: null,
     panelUnder: null,
+    panelFolded: false,
     panelAdds: noAdds,
     panelEdits: noEdits,
     search: initSearch(),
@@ -402,11 +411,11 @@ export function init(route: Route): [Model, Effect[]] {
 // names another item, and closes when it names none.
 function withPanel(model: Model, effects: Effect[]): [Model, Effect[]] {
   const { item } = model.route;
-  if (item === undefined) return [{ ...model, panel: null }, effects];
+  if (item === undefined) return [{ ...model, panel: null, panelFolded: false }, effects];
   if (model.panel?.id === item) return [model, effects];
   const [panel, opened] = openPanel(item, glimpseOf(model, item));
   const checked = checkAdd(model.panelAdds, item, model.workstreams);
-  return [{ ...model, panel }, [...effects, ...opened, ...checked]];
+  return [{ ...model, panel, panelFolded: false }, [...effects, ...opened, ...checked]];
 }
 
 // What the page on screen already shows of an item, from the index: a row
@@ -567,8 +576,7 @@ function looking(model: Model): Model {
     const under = model.panelUnder;
     return {
       id: panel.id,
-      key: panel.view?.key ?? panel.glimpse?.key ?? panel.id.slice(panel.id.indexOf(":") + 1),
-      title: panel.view?.title ?? panel.glimpse?.title ?? null,
+      ...panelName(panel),
       under: under && under.thread === threadId ? under.seq : null,
     };
   };
@@ -831,7 +839,13 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     case "itemOpened": {
       const route = withItem(model.route, msg.id);
       if (route.item === undefined) return [model, []];
-      const listed = { ...model, panelList: msg.list ?? null, panelUnder: msg.under ?? null };
+      // A link to the item folded shows it again.
+      const listed = {
+        ...model,
+        panelList: msg.list ?? null,
+        panelUnder: msg.under ?? null,
+        panelFolded: false,
+      };
       // The item already open stays as it is, and so does the page.
       if (model.route.item === msg.id) return [listed, []];
       const replace = model.route.item !== undefined ? { replace: true as const } : {};
@@ -853,6 +867,8 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
         model,
         [{ type: "navigate", route: withItem(model.route, null), replace: true, stay: true }],
       ];
+    case "panelFolded":
+      return [{ ...model, panelFolded: msg.folded }, []];
     case "sourceOpened":
       return [model, [report({ name: "item.source-opened", item: msg.id, via: msg.via })]];
     case "pivotRegrouped":
@@ -929,7 +945,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       // Answered after the user left the overview: the chat waits for them,
       // and loads again when they're back.
       if (model.route.page !== "overview")
-        return [{ ...model, chat: { ...model.chat, asking: false } }, []];
+        return [{ ...model, chat: { ...model.chat, asking: false, asked: null } }, []];
       const [state, effects] = windowChatReplied({ chat: model.chat, thread: model.thread }, msg);
       const made =
         msg.tag.kind === "windowChatAsked" && msg.ok ? [loadWorkstreams, loadThreads] : [];
