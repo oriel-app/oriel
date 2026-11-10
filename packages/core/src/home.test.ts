@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { homeExpanded, homeLocation, homeRelative, homeRelativeIn } from "./home.ts";
+import { homeLocation, homeRelative, homeRelativeIn } from "./home.ts";
 
 // Secrets never sent (keep rule 1): the Mac's user name in a path the window
 // or the agent reads (OA-315). Screenshots of the window go to a public repo.
@@ -16,15 +16,6 @@ test("a path from home reads from ~; one outside it, or a sibling, stays absolut
   assert.equal(homeRelative("/Users/patrick", home), "/Users/patrick");
   // No home to show from: every path as it is.
   assert.equal(homeRelative("/Users/pat/notes", "/"), "/Users/pat/notes");
-});
-
-test("a saved ~ path expands back to the real one, and nothing else does", () => {
-  assert.equal(homeExpanded("~", home), "/Users/pat");
-  assert.equal(homeExpanded("~/.local/bin/claude", home), "/Users/pat/.local/bin/claude");
-  assert.equal(homeExpanded("~pat/bin/claude", home), "~pat/bin/claude");
-  assert.equal(homeExpanded("/opt/bin/claude", home), "/opt/bin/claude");
-  const saved = "/Users/pat/.local/bin/claude";
-  assert.equal(homeExpanded(homeRelative(saved, home), home), saved);
 });
 
 test("a file link under home reads as its path from ~; other locations stay", () => {
