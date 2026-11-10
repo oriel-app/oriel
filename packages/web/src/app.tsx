@@ -8,6 +8,7 @@ import {
   type Dispatch,
   ItemLinksContext,
   Link,
+  OpenItemContext,
   Mark,
   plural,
   SendKeyContext,
@@ -50,6 +51,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   }, []);
   const [folded, setFolded] = useState(() => readFolded());
   const [drawer, setDrawer] = useState(false);
+  const beside = useMatches(besideChat);
   // Closing the drawer by hand gives focus back to the menu that opened it.
   const closeDrawer = () => {
     if (!document.querySelector(".shell[data-drawer]")) return;
@@ -152,55 +154,67 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
     <SendKeyContext.Provider value={sendKey(model.settings)}>
       <TimeFormatContext.Provider value={timeFormat(model.settings)}>
         <ConnectorsContext.Provider value={model.connectors}>
-          <div
-            class="shell"
-            data-folded={folded || undefined}
-            data-drawer={drawer || undefined}
-            data-panel={model.panel ? "" : undefined}
-            data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
-          >
-            <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
-            <div class="frame" aria-hidden="true" />
-            <button
-              type="button"
-              class="drawer-backdrop"
-              tabIndex={-1}
-              aria-hidden="true"
-              onClick={closeDrawer}
-            />
-            <div class="shell-main">
-              <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
-              <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-                <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
-              </ItemLinksContext.Provider>
-            </div>
-            {model.route.page === "overview" && model.chat.open && !model.panel && (
-              <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
-            )}
-            {model.panel && (
-              <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-                <ItemPanel
-                  model={model.panel}
-                  place={placeIn(model.panelList, model.panel.id)}
-                  workstream={currentWorkstream(model)}
-                  adds={model.panelAdds}
-                  edits={model.panelEdits}
+          <OpenItemContext.Provider value={model.panel?.id ?? null}>
+            <div
+              class="shell"
+              data-folded={folded || undefined}
+              data-drawer={drawer || undefined}
+              data-panel={model.panel ? "" : undefined}
+              data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
+            >
+              <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
+              <div class="frame" aria-hidden="true" />
+              <button
+                type="button"
+                class="drawer-backdrop"
+                tabIndex={-1}
+                aria-hidden="true"
+                onClick={closeDrawer}
+              />
+              <div class="shell-main">
+                <Bar
+                  model={model}
+                  dispatch={dispatch}
+                  open={drawer}
+                  onMenu={() => setDrawer(true)}
+                />
+                <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+                  <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
+                </ItemLinksContext.Provider>
+              </div>
+              {model.route.page === "overview" && model.chat.open && (!model.panel || beside) && (
+                <WindowChat
+                  chat={model.chat}
+                  thread={model.thread}
+                  beside={model.panel !== null}
                   dispatch={dispatch}
                 />
-              </ItemLinksContext.Provider>
-            )}
-            <Closing model={model.closing} dispatch={dispatch} />
-            <BeadStatus />
-            <Endings
-              model={model.ending}
-              added={added}
-              shownByPage={
-                model.route.page === "workstream" ||
-                (model.route.page === "overview" && model.overview !== null)
-              }
-              dispatch={dispatch}
-            />
-          </div>
+              )}
+              {model.panel && (
+                <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+                  <ItemPanel
+                    model={model.panel}
+                    place={placeIn(model.panelList, model.panel.id)}
+                    workstream={currentWorkstream(model)}
+                    adds={model.panelAdds}
+                    edits={model.panelEdits}
+                    dispatch={dispatch}
+                  />
+                </ItemLinksContext.Provider>
+              )}
+              <Closing model={model.closing} dispatch={dispatch} />
+              <BeadStatus />
+              <Endings
+                model={model.ending}
+                added={added}
+                shownByPage={
+                  model.route.page === "workstream" ||
+                  (model.route.page === "overview" && model.overview !== null)
+                }
+                dispatch={dispatch}
+              />
+            </div>
+          </OpenItemContext.Provider>
         </ConnectorsContext.Provider>
       </TimeFormatContext.Provider>
     </SendKeyContext.Provider>
@@ -213,6 +227,24 @@ const noItems: ReadonlyMap<string, string> = new Map();
 
 // Where the sidebar is a drawer; window.css says the same.
 const narrow = "(max-width: 760px)";
+
+// Where the window chat stays beside an open item, in the page column, and
+// the item takes the window's edge; window.css says the same. Narrower, the
+// item covers the chat, as it always has.
+const besideChat = "(min-width: 1100px)";
+
+// Whether a media query matches, kept as the window resizes.
+function useMatches(query: string): boolean {
+  const [matches, setMatches] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const list = matchMedia(query);
+    const changed = () => setMatches(list.matches);
+    changed();
+    list.addEventListener("change", changed);
+    return () => list.removeEventListener("change", changed);
+  }, [query]);
+  return matches;
+}
 
 // Whether the sidebar was left folded, kept in this browser only.
 const foldedKey = "oriel.sidebar.folded";

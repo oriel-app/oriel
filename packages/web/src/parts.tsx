@@ -153,6 +153,10 @@ export const ItemLinksContext = createContext<ItemLinks | null>(null);
 // in the panel.
 export const ItemListContext = createContext<readonly string[] | null>(null);
 
+// The item open in the panel, by ID, so whatever named it can say so: a chip
+// for it stays marked while it's open. Null with the panel closed.
+export const OpenItemContext = createContext<string | null>(null);
+
 // Which key sends a question, as the person set it in Settings: Enter, with
 // Shift+Enter a new line; or Cmd+Enter (Ctrl+Enter), with Enter a new line.
 export const SendKeyContext = createContext<SendKey>("enter");
@@ -447,6 +451,7 @@ export function AnswerChip({ id }: { id: string }) {
 export function Chip({ id, view }: { id: string; view: ChipView }) {
   const links = useContext(ItemLinksContext);
   const connectors = useContext(ConnectorsContext);
+  const open = useContext(OpenItemContext);
   const key = chipKey(view, connectors);
   const state = chipStateName(view);
   const label = chipLabel(view, connectors);
@@ -475,7 +480,7 @@ export function Chip({ id, view }: { id: string; view: ChipView }) {
   const shared = { "data-kind": view.kind, "data-state": chipState(view) };
   if (view.kind === "item")
     return (
-      <span class="chip" {...shared} title={label}>
+      <span class="chip" {...shared} data-open={open === id || undefined} title={label}>
         <ItemLink item={{ id, url: view.url }} class="chip-link">
           {body}
         </ItemLink>

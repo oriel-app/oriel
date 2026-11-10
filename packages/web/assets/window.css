@@ -1520,6 +1520,27 @@ button.nav-more {
   text-decoration-color: currentColor;
 }
 
+/* The chip whose item is open in the panel stays marked while it is, so the
+   person sees which words the item came from: its name underlined in full
+   in the focus colour, and a small open mark, a panel at an edge. */
+.chip[data-open] .chip-name {
+  color: var(--text);
+  text-decoration-color: var(--focus);
+  text-decoration-thickness: 2px;
+}
+
+.chip[data-open] .chip-lead::after {
+  display: inline-block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-left: 0.25em;
+  border: var(--border-thin) solid var(--focus);
+  border-left-width: 3px;
+  border-radius: 2px;
+  content: "";
+  vertical-align: 0.05em;
+}
+
 .chip-state {
   margin-left: 0.35em;
   color: var(--chip-state);
@@ -6747,6 +6768,53 @@ button.overview-title:hover {
   font-size: var(--text-md);
 }
 
+/* Beside an open item, on a window with room (app.tsx's `besideChat`):
+   the item takes the window's edge and the chat stands in the page column
+   in the overview's place, as a thread's page sits beside its panel. As the
+   item arrives, the chat slides left into the column and the overview goes
+   under it; closing the item slides it back. Both of its edges are set on
+   either side of the move, so it can slide. The overview is hidden, not
+   unmounted, so it comes back where it was; the bead stays. */
+@media (min-width: 1100px) {
+  .window-chat {
+    left: calc(100% - var(--panel));
+    width: auto;
+    transition:
+      opacity var(--duration-move) var(--ease-out),
+      transform var(--duration-move) var(--ease-out),
+      left var(--duration-move) var(--ease-out),
+      right var(--duration-move) var(--ease-out);
+  }
+
+  /* Under the frame's band, as the page column is. */
+  .shell[data-panel] .window-chat {
+    left: var(--sidebar);
+    right: calc(var(--beside) + var(--frame-band));
+    z-index: var(--layer-sticky);
+    padding: var(--frame-room) var(--space-6) var(--space-4);
+    border-left: 0;
+    background: var(--bg);
+    box-shadow: none;
+  }
+
+  .shell[data-panel][data-chat] .shell-main > * {
+    visibility: hidden;
+    transition: visibility 0s var(--duration-move);
+  }
+
+  .shell[data-panel][data-chat] .bead-wrap {
+    visibility: visible;
+  }
+}
+
+/* Where the column would leave the chat less than 28rem, the item narrows
+   instead, down to 24rem; 30rem is the panel's own width. */
+@media (min-width: 1100px) and (max-width: 1279px) {
+  .shell[data-panel][data-chat] {
+    --panel: clamp(24rem, 100vw - var(--sidebar) - 28rem - var(--frame-band), 30rem);
+  }
+}
+
 /* On a narrow window it opens as a sheet over the overview. */
 @media (max-width: 760px) {
   .window-chat {
@@ -7784,7 +7852,7 @@ a.button.primary {
   .fold-toggle .chevron,
   .swipe-row,
   .swipe-actions,
-  .window-chat,
+  .shell[data-panel][data-chat] .shell-main > *,
   .switch,
   .switch-knob,
   .frame {
@@ -7792,6 +7860,7 @@ a.button.primary {
   }
 
   .item-panel,
+  .window-chat,
   .drag-card[data-settle],
   .context-menu {
     transition-property: opacity;

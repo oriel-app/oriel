@@ -1,8 +1,9 @@
 // The window chat on screen (decisions 0027 and 0030): the ask bar under the
 // overview's counts strip, with questions to start from, and the chat beside
 // the overview while it has a conversation, over the page's right side, or
-// as a sheet on a narrow window. The item panel covers it while an item is
-// open. Its entries render as a thread's page renders them, blocks included;
+// as a sheet on a narrow window. While an item is open, on a window with
+// room, the chat moves into the page column beside it, and "‹ Window" puts
+// the overview back; narrower, the item covers it. Its entries render as a thread's page renders them, blocks included;
 // its fields are the one ChatInput.
 import { useEffect, useRef } from "preact/hooks";
 import { ChatInput } from "./chat-input.tsx";
@@ -106,6 +107,9 @@ export function AskBar(props: {
 export function WindowChat(props: {
   chat: WindowChatModel;
   thread: ThreadModel | null;
+  // An item is open beside it, so it stands in the page column for the
+  // overview.
+  beside: boolean;
   dispatch: Dispatch;
 }) {
   const { chat, thread, dispatch } = props;
@@ -122,6 +126,15 @@ export function WindowChat(props: {
   return (
     <aside class="window-chat" aria-label="Ask about your window">
       <header class="window-chat-head">
+        {props.beside && (
+          <button
+            type="button"
+            class="quiet-action window-chat-back"
+            onClick={() => send({ type: "closeClicked" })}
+          >
+            ‹ Window
+          </button>
+        )}
         <h2 class="window-chat-title">Ask about your window</h2>
         {view && (
           <Link route={{ page: "thread", id: view.id }} dispatch={dispatch} class="quiet-action">
@@ -136,14 +149,17 @@ export function WindowChat(props: {
         >
           New chat
         </button>
-        <button
-          type="button"
-          class="window-chat-close"
-          aria-label="Close the chat"
-          onClick={() => send({ type: "closeClicked" })}
-        >
-          ×
-        </button>
+        {/* Beside an item, "‹ Window" closes it instead. */}
+        {!props.beside && (
+          <button
+            type="button"
+            class="window-chat-close"
+            aria-label="Close the chat"
+            onClick={() => send({ type: "closeClicked" })}
+          >
+            ×
+          </button>
+        )}
       </header>
       <ol class="chat window-chat-entries" ref={list}>
         {view && thread && (
