@@ -421,9 +421,8 @@ const scripted = (deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]) =>
 // models gets the scripted dev agent, as it would, its runs' time fixed.
 const started: Serving[] = [];
 const start = async (...[ports, given]: Parameters<typeof serve>) => {
-  // Paths show from the shots' own home, as from the person's (OA-315); a
-  // first run keeps the home of its stubs.
-  const options = given && !given.setup ? { home: shotsHome, ...given } : given;
+  // Paths show from the shots' own home, as from the person's (OA-315).
+  const options = given ? { home: shotsHome, ...given } : given;
   const serving = await serve(
     ports,
     options && !options.agent && !options.models
