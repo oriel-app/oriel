@@ -110,14 +110,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       });
       return;
     case "focusComposer":
-      // After the page renders: "Ask about this" opens the chat it focuses.
-      // Under an open item, the composer is the one its dock carries.
-      requestAnimationFrame(() =>
-        (
-          document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??
-          document.querySelector<HTMLTextAreaElement>(".composer textarea")
-        )?.focus(),
-      );
+      focusComposer(10);
       return;
     case "focusFolded":
       // Once the page shows it folded, as `focusHeading` waits.
@@ -257,4 +250,17 @@ async function loadItems(
   const response = await fetch(`/api/browse/items?${query}`);
   if (!response.ok) throw new Error(`GET /api/browse/items: ${response.status}`);
   return (await response.json()) as ClusterPageView;
+}
+
+// Puts the cursor in the composer once the page shows it, which may take a
+// few frames: "Ask about this" opens the chat it focuses. Under an open
+// item, the composer is the one its dock carries.
+function focusComposer(frames: number): void {
+  requestAnimationFrame(() => {
+    const field =
+      document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??
+      document.querySelector<HTMLTextAreaElement>(".composer textarea");
+    if (field) field.focus();
+    else if (frames > 1) focusComposer(frames - 1);
+  });
 }

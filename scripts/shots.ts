@@ -5412,6 +5412,15 @@ scenes.push(
     },
     act: async (page) => {
       const key = await openInBrowse(page);
+      // The current chat's thread held back, so words are typed while it loads.
+      let release = () => {};
+      if (step === "ongoing") {
+        const loaded = new Promise<void>((done) => (release = done));
+        await page.route(/\/api\/threads\/[0-9A-Z]{26}$/, async (route) => {
+          await loaded;
+          await route.continue();
+        });
+      }
       await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
       await page.waitForURL((url) => url.pathname === "/" && url.searchParams.has("item"));
       await page.locator(".item-panel .panel-facts").waitFor();
@@ -5429,8 +5438,17 @@ scenes.push(
         `document.activeElement?.closest(${JSON.stringify(beside(page) ? ".window-chat" : ".panel-dock")}) != null`,
       );
       if (step === "ongoing") {
+        await page.keyboard.type("Who owns this?");
+        release();
         const said = beside(page) ? ".window-chat .reply" : ".item-panel .panel-dock-latest";
         await page.locator(said, { hasText: "saved cards" }).first().waitFor();
+        const typed = composer.getByRole("textbox", { name: "Message" });
+        if ((await typed.inputValue()) !== "Who owns this?")
+          throw new Error("The words typed while the chat loaded went missing");
+        await composer
+          .locator(".ctx-chip", { hasText: "Looking at" })
+          .filter({ hasText: key })
+          .waitFor();
       }
       if (step === "this" && beside(page)) await page.locator(".window-chat-empty").waitFor();
       if (step === "asked") {

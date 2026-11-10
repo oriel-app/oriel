@@ -1190,7 +1190,23 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       // A thread that didn't load has no stream to say when others move.
       const unwatched =
         msg.tag.kind === "thread" && msg.tag.id === model.thread.id && !msg.ok && !thread.view;
-      return [{ ...model, thread }, unwatched ? [...effects, { type: "watchThreads" }] : effects];
+      const watching = unwatched ? [...effects, { type: "watchThreads" } as const] : effects;
+      // Words typed in the window chat while its thread loaded, as after Ask
+      // about this, go on in its composer, which is the thread's once it has.
+      const { chat } = model;
+      if (
+        model.route.page === "overview" &&
+        chat.open &&
+        !model.thread.view &&
+        thread.view &&
+        chat.draft.trim() !== "" &&
+        thread.draft === ""
+      )
+        return [
+          { ...model, chat: { ...chat, draft: "" }, thread: { ...thread, draft: chat.draft } },
+          watching,
+        ];
+      return [{ ...model, thread }, watching];
     }
   }
 }
