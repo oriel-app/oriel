@@ -1192,7 +1192,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
         msg.tag.kind === "thread" && msg.tag.id === model.thread.id && !msg.ok && !thread.view;
       const watching = unwatched ? [...effects, { type: "watchThreads" } as const] : effects;
       // Words typed in the window chat while its thread loaded, as after Ask
-      // about this, go on in its composer, which is the thread's once it has.
+      // about this, go on in its composer, which is the thread's once it has,
+      // with what they're about.
       const { chat } = model;
       if (
         model.route.page === "overview" &&
@@ -1203,7 +1204,11 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
         thread.draft === ""
       )
         return [
-          { ...model, chat: { ...chat, draft: "" }, thread: { ...thread, draft: chat.draft } },
+          {
+            ...model,
+            chat: { ...chat, draft: "" },
+            thread: { ...thread, draft: chat.draft, lookingAt: chat.lookingAt },
+          },
           watching,
         ];
       return [{ ...model, thread }, watching];
