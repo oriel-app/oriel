@@ -5434,9 +5434,7 @@ scenes.push(
         .locator(".ctx-chip", { hasText: "Looking at" })
         .filter({ hasText: key })
         .waitFor();
-      await page.waitForFunction(
-        `document.activeElement?.closest(${JSON.stringify(beside(page) ? ".window-chat" : ".panel-dock")}) != null`,
-      );
+      await composer.locator("textarea:focus").waitFor();
       if (step === "ongoing") {
         await page.keyboard.type("Who owns this?");
         release();
@@ -5459,11 +5457,14 @@ scenes.push(
           await page.locator(".window-chat .user-message .about", { hasText: key }).waitFor();
         // Answered once the dock shows words that aren't the message sent.
         else
-          await page.waitForFunction(`(() => {
-              const latest = document.querySelector(".item-panel .panel-dock-latest");
-              return latest !== null && latest.textContent.trim() !== "" &&
-                latest.querySelector(".panel-dock-you, .panel-dock-working") === null;
-            })()`);
+          await page
+            .locator(
+              ".item-panel .panel-dock-latest:not(:has(.panel-dock-you, .panel-dock-working))",
+              {
+                hasText: /\S/,
+              },
+            )
+            .waitFor();
         await page.locator(".item-panel .panel-facts").waitFor();
       }
     },

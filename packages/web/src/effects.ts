@@ -252,15 +252,14 @@ async function loadItems(
   return (await response.json()) as ClusterPageView;
 }
 
-// Puts the cursor in the composer once the page shows it, which may take a
-// few frames: "Ask about this" opens the chat it focuses. Under an open
-// item, the composer is the one its dock carries.
+// Puts the cursor in the composer: at once, as after Reject, or once the
+// page shows it, which may take a few frames, as when "Ask about this"
+// opens the chat. Under an open item, the composer is the one its dock
+// carries.
 function focusComposer(frames: number): void {
-  requestAnimationFrame(() => {
-    const field =
-      document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??
-      document.querySelector<HTMLTextAreaElement>(".composer textarea");
-    if (field) field.focus();
-    else if (frames > 1) focusComposer(frames - 1);
-  });
+  const field =
+    document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??
+    document.querySelector<HTMLTextAreaElement>(".composer textarea");
+  if (field) field.focus();
+  else if (frames > 0) requestAnimationFrame(() => focusComposer(frames - 1));
 }
