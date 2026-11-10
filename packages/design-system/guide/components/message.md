@@ -3,7 +3,7 @@ title: Thread messages
 status: stable
 group: Thread
 order: 60
-classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
+classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, about, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
 summary: What a thread's conversation holds, entry by entry: the person's message, the agent's reply, its runs, Oriel's own lines, held messages and drafts, and "Working…".
 ---
 
@@ -164,6 +164,22 @@ A bubble on the right, at most 85% wide (92% in a narrow page), on `--surface-ho
   <!-- prettier-ignore -->
   <li class="user-message">I'm meeting the payments team on Thursday.
 Which of these need a decision from them first?</li>
+</ol>
+```
+
+A message sent while looking at an item (decision 0062) keeps a line under its words, `.about`, in `--text-sm` and `--text-faint`: "about" and each item's chip, drawn by Oriel from its own data, with "(read-only)" after one that was outside the thread's region. It survives a reload. The window chat never says read-only.
+
+```html specimen id=user-message-about title="The person's message, about an item"
+<ol class="chat">
+  <li class="user-message">
+    Does this touch checkout?<span class="about"
+      >about
+      <span class="chip" data-kind="item"
+        ><span class="chip-key">SYN-54</span> Cancellation alert sent for a sailing</span
+      >
+      (read-only)</span
+    >
+  </li>
 </ol>
 ```
 
@@ -694,7 +710,7 @@ The window chat draws its entries with the same renderer, in its own panel at th
 
 - `ChatEntryItem` in `packages/web/src/thread-page.tsx`. The thread page's chat and Working…: `ThreadPage` in `packages/web/src/thread-page.tsx`. The window chat's, with its head: `WindowChat` in `packages/web/src/window-chat-view.tsx`; CSS `.window-chat-head` and `.window-chat-title` in `window.css`.
 - The thread's head: `ThreadPage` in `packages/web/src/thread-page.tsx`. CSS: `.thread-layout` and `.thread` in `window.css`; the head, `.thread-head`, `.crumb`, `.thread-title-row`, `.thread-title` and `.thread-title-row .quiet-action` in `window.css`.
-- `.chat` and `.user-message` in `window.css`. `.reply` and its markdown: `.reply`, `.reply :is(p, ul, ol, blockquote, pre, hr)`, `.reply :is(h3, h4, h5, h6)`, `.reply :is(ul, ol)`, `.reply blockquote`, `.reply code`, `.reply pre`, `.reply a`, `.reply hr`, `.table-scroll` and `.reply table` in `window.css`; `Markdown` in `packages/web/src/parts.tsx`, its tables drawn by `block` in `packages/web/src/parts.tsx`.
+- `.chat` and `.user-message` in `window.css`, and `.user-message .about`, the line `ChatEntryItem` in `packages/web/src/thread-page.tsx` draws for what a message was about. `.reply` and its markdown: `.reply`, `.reply :is(p, ul, ol, blockquote, pre, hr)`, `.reply :is(h3, h4, h5, h6)`, `.reply :is(ul, ol)`, `.reply blockquote`, `.reply code`, `.reply pre`, `.reply a`, `.reply hr`, `.table-scroll` and `.reply table` in `window.css`; `Markdown` in `packages/web/src/parts.tsx`, its tables drawn by `block` in `packages/web/src/parts.tsx`.
 - `.quote-from`: `QuoteFrom` in `packages/web/src/parts.tsx`; CSS `.reply .quote-from` in `window.css`.
 - `.marker`: `ChatEntryItem` in `packages/web/src/thread-page.tsx`; CSS `.marker` in `window.css`, and `.marker::before` in `window.css` hides its rules when narrow.
 - `.run`: `Run` in `packages/web/src/thread-page.tsx`; CSS `.run`, `.run summary`, `.run[data-outcome="threw"] summary`, `.run-body`, `.code`, `.run-error` and `.hint` in `window.css`.
