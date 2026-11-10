@@ -19,7 +19,7 @@ The bar is "a little life, never obnoxious" (2026-11-08): nothing takes over 200
 - `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`): how a move settles, fast then gentle. Use it for anything that arrives.
 - `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a small flourish** (decision 0056). Only [the bead](/components/bead) uses them, for its count's pop and its caught-up mark. Its shape moves on springs of its own, in script (see below).
 
-Shorter and longer steps are written from these, never as new numbers: a menu leaves in two thirds of quick (`calc(var(--duration-quick) * 2 / 3)`, 80ms), a drop settles in four thirds of move (240ms), and arrivals stagger by a fifth of quick (24ms).
+Shorter and longer steps are written from these, never as new numbers: a menu leaves, and a card dropped nowhere goes back, in two thirds of quick (`calc(var(--duration-quick) * 2 / 3)`, 80ms), a drop settles in four thirds of move (240ms), and arrivals stagger by a fifth of quick (24ms).
 
 They're shared: no theme changes them. A rule may not write a duration as a literal, since Oriel's theme check fails it. Keyframe durations are the exception: the pulse's is the shared `--pulse` (1.6s), and the spinner's and the install bar's are literals. See [Drift](#drift).
 
@@ -58,7 +58,7 @@ An item dragged to a workstream (see [Drag to move](/patterns/drag-to-move)) is 
 - **It leans with the pull.** About 3°, never more than 4° (`leanStep` in `drag-card.ts`), clockwise as it's pulled right, as a card held at its left edge trails. It eases back to level when the pointer stops. The pull and the lean follow on short exponential lags (50ms and 100ms), stepped by real time, so they look the same at any frame rate.
 - **It's cheap.** A dragover only notes where the pointer is; one animation frame moves the card by its `transform`, and nothing reads layout but at the start. It's in the top layer (a manual popover), so nothing clips it, and the pointer passes through it.
 - **Dropped, it's set down.** It comes level, shrinks to 94% and fades, in 240ms on `--ease-spring`, the one tiny overshoot.
-- **Dropped nowhere, it goes back.** It slides to its row at move speed and fades as it gets there; the row, dimmed while it was away, comes back.
+- **Dropped nowhere, it goes back at once.** It slides toward its row and fades as it goes, in 80ms; the row, dimmed while it was away, comes back. The page takes every drop of an item, its own places or not (`anywhere` in `drag-item.ts`), so the system never refuses one: macOS slides a refused drag back to where it started before the drag ends, and the card would wait on it for most of a second (OA-314).
 
 ## Menus
 

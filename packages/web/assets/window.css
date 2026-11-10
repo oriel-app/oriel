@@ -374,6 +374,47 @@ textarea {
   color: inherit;
 }
 
+/* Every select draws its own arrow, inset from its right edge as far as
+   its words are from its left, in every theme and scheme. Two strokes, as
+   gradients in the theme's colour, since the page loads no image but its
+   own. A page sets the box: its height, border and size, never the
+   inline padding or the background image. */
+select {
+  --select-inset: var(--space-2);
+  --select-arrow: var(--text-muted);
+  --select-stroke: 0.3125rem;
+  appearance: none;
+  padding-inline: var(--select-inset) calc(var(--select-inset) * 2 + var(--select-stroke) * 2);
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent calc(50% - 0.75px),
+      var(--select-arrow) calc(50% - 0.75px) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    ),
+    linear-gradient(
+      135deg,
+      transparent calc(50% - 0.75px),
+      var(--select-arrow) calc(50% - 0.75px) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    );
+  background-position:
+    right calc(var(--select-inset) + var(--select-stroke)) center,
+    right var(--select-inset) center;
+  background-size: var(--select-stroke) var(--select-stroke);
+  background-repeat: no-repeat;
+}
+
+select:hover:not(:disabled) {
+  --select-arrow: var(--text);
+}
+
+select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 a {
   color: inherit;
 }
@@ -1799,10 +1840,9 @@ button.nav-more {
 .filter select {
   min-height: 1.875rem;
   max-width: 12rem;
-  padding: 0 var(--space-2);
+  padding-block: 0;
   border: var(--border-thin) solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
@@ -2352,10 +2392,9 @@ a.replies:hover {
 }
 
 .add-to {
-  padding: 0.1875rem var(--space-2);
+  padding-block: 0.1875rem;
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius);
-  background: var(--surface);
   font-size: var(--text-sm);
   max-width: 14rem;
 }
@@ -3491,10 +3530,9 @@ a.replies:hover {
 .pivot-pick select {
   min-height: 1.75rem;
   max-width: 11rem;
-  padding: 0 var(--space-1);
+  padding-block: 0;
   border: var(--border-thin) solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
   color: var(--text);
   font-size: var(--text-sm);
 }
@@ -4807,11 +4845,12 @@ a.replies:hover {
     opacity calc(var(--duration-move) * 4 / 3) var(--ease-out);
 }
 
-/* Dropped nowhere: back to its row, fading as it gets there. */
+/* Dropped nowhere: back toward its row, fading as it goes, in the 80ms a
+   menu leaves in, so a drop nowhere is over at once. */
 .drag-card[data-settle="back"] {
   transition:
-    transform var(--duration-move) var(--ease-out),
-    opacity var(--duration-quick) var(--ease-out) var(--duration-quick);
+    transform calc(var(--duration-quick) * 2 / 3) var(--ease-out),
+    opacity calc(var(--duration-quick) * 2 / 3) ease-in;
 }
 
 /* What the browser draws in place of the row it drags: nothing, out of
@@ -5511,13 +5550,17 @@ a.replies:hover {
 }
 
 .panel-edit-input {
-  padding: 0.4375rem var(--space-2);
+  padding-block: 0.4375rem;
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius);
-  background: var(--surface);
+  background-color: var(--surface);
   color: var(--text);
   font: inherit;
   font-size: var(--text-md);
+}
+
+.panel-edit-input:is(input, textarea) {
+  padding-inline: var(--space-2);
 }
 
 .panel-edit-text {
@@ -6908,13 +6951,14 @@ html:has(.settings-page) {
 
 .settings :is(.input, .select) {
   min-height: 1.875rem;
-  padding: 0 var(--space-2);
+  padding-block: 0;
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius);
-  background: var(--surface);
+  background-color: var(--surface);
 }
 
 .settings .input {
+  padding-inline: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }

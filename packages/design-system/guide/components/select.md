@@ -4,7 +4,7 @@ status: drifting
 group: Inputs
 order: 35
 classes: select, filter, filters, add-to, new-thread-workstream
-summary: The browser's own select, in four places with three boxes: Browse's filters, a new thread's workstream, the picked-items bar's Add to…, and Settings' model pickers.
+summary: The browser's own select with Oriel's arrow, in four places with three boxes: Browse's filters, a new thread's workstream, the picked-items bar's Add to…, and Settings' model pickers.
 ---
 
 # Select
@@ -36,6 +36,8 @@ The browser draws the list itself, so the open list looks like the system's, in 
 ## Anatomy and variants
 
 A select is its `<label>` and the `<select>`. The label is visible in Settings, and visually hidden in Browse's filters, whose "any" option says what each one is.
+
+Every select shares one arrow (`select` in `window.css`, OA-316): the browser's own is turned off (`appearance: none`), and Oriel draws a small chevron, two strokes as gradients in `--text-muted`, inset from the right edge by `--select-inset`, the same `--space-2` its words sit from the left. The rule owns the inline padding, the surface and the arrow; a page sets only the box: its height, vertical padding, border and size. So a page rule writes `background-color` and `padding-block`, never the `background` or `padding` shorthand, which would wipe the arrow or let the words run under it.
 
 ```html specimen id=browse-filters title="1. Browse's filters, one of them set"
 <form class="filters" role="search" aria-label="Filter items">
@@ -172,6 +174,25 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 </form>
 ```
 
+```html specimen id=state-hover title="Hover: the arrow goes from muted to the text's colour" state=hover
+<form class="filters" role="search" aria-label="Filter items">
+  <label class="filter">
+    <span class="visually-hidden">Source</span>
+    <select class="ws-hover">
+      <option value="" selected>All sources</option>
+      <option value="jira">Jira</option>
+    </select>
+  </label>
+  <label class="filter">
+    <span class="visually-hidden">Status</span>
+    <select data-set class="ws-hover">
+      <option value="">Any status</option>
+      <option value="in-progress" selected>In progress</option>
+    </select>
+  </label>
+</form>
+```
+
 ```html specimen id=state-focus title="Focus visible: the global ring, 2px out, in Browse" state=focus-visible
 <form class="filters" role="search" aria-label="Filter items">
   <label class="filter">
@@ -217,11 +238,11 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 </div>
 ```
 
-- **Rest:** a bordered box on `--surface`, with the browser's own arrow.
+- **Rest:** a bordered box on `--surface`, with Oriel's arrow in `--text-muted`, as far in from the right as the words are from the left.
 - **Set:** only Browse's filters have it. `[data-set]` changes the border from `--line` to `--line-strong` and the text from `--text-muted` to `--text` (`.filter select[data-set]` in `window.css`), so a filter that narrows the list stands out from those that don't. It's the only "has a value" state of any control in Oriel.
-- **Hover, active:** not styled.
+- **Hover:** the arrow takes `--text` (`select:hover:not(:disabled)` in `window.css`). Active isn't styled; the list opens.
 - **Focus visible:** the global ring, 2px out, in Browse (`:focus-visible` in `window.css`). Settings draws it at 0 offset, on the border (`.settings :is(.input, .select):focus-visible` in `window.css`).
-- **Disabled:** not styled; the browser's own. Settings disables a model picker when no provider is ready and says so in the about line. Add to… is disabled while the picked items are being added.
+- **Disabled:** half opacity, arrow and all, and the default cursor, as a disabled [button](/components/button) (`select:disabled` in `window.css`). Settings disables a model picker when no provider is ready and says so in the about line. Add to… is disabled while the picked items are being added.
 - **Busy, error:** shown beside the select, not on it. A failed add shows in the bar's `.selection-notice`; a refused model shows `.settings-problem` at the top of Settings.
 - **Empty:** a model picker with no current model offers "None" first. Add to… shows only when there are other workstreams and something is picked.
 
@@ -245,6 +266,7 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
 - Browse's filters, selects included: `Filters` in `packages/web/src/window-page.tsx`. CSS `.filters`, `.filter select` and `.filter select[data-set]` in `window.css`.
 - Add to…: `Selection` in `packages/web/src/window-page.tsx`. CSS `.add-to` in `window.css`.
 - A new thread's workstream: `NewThreadPage` in `packages/web/src/thread-page.tsx`. CSS `.new-thread-workstream` in `window.css`, over `.filter select`.
+- The shared arrow, hover and disabled: `select`, `select:hover:not(:disabled)` and `select:disabled` in `window.css`. It's on every select in the window, these four and also a chart's pivot pickers (`.pivot-pick select`), the item panel's choice fields (`.panel-edit-input`) and the selects in a connection's mapping, in Settings.
 - Model pickers: `ModelPicker` in `packages/web/src/settings-page.tsx`, used by `Providers` for Default model and Title model. CSS `.settings :is(.input, .select)`, `.settings :is(.input, .select):focus-visible` and `.settings-field .select` in `window.css`.
 
 ## Drift
@@ -259,6 +281,7 @@ Status **drifting**: one control, three boxes.
 | Focus  | global ring, 2px out                  | global ring, 2px out        | ring at 0 offset               |
 | Label  | visually hidden                       | `aria-label` only           | visible, with an about line    |
 | Class  | none: styled by `.filter select`      | `.add-to`                   | `.select`, only in `.settings` |
+| Arrow  | shared: `select`                      | shared: `select`            | shared: `select`               |
 
 `.select` has no rule of its own outside `.settings`, so it can't be reused anywhere else as it is. Add to… is a menu made of a select because Browse's context menu has no visible opener.
 
