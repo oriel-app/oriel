@@ -110,7 +110,14 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       });
       return;
     case "focusComposer":
-      document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
+      // After the page renders: "Ask about this" opens the chat it focuses.
+      // Under an open item, the composer is the one its dock carries.
+      requestAnimationFrame(() =>
+        (
+          document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??
+          document.querySelector<HTMLTextAreaElement>(".composer textarea")
+        )?.focus(),
+      );
       return;
     case "focusFolded":
       // Once the page shows it folded, as `focusHeading` waits.

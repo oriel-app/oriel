@@ -43,6 +43,9 @@ export function ItemPanel(props: {
   // At its foot, below 1100 over a conversation: that conversation's
   // composer (`PanelDock`).
   dock?: ComponentChildren;
+  // Not beside a conversation: "Ask about this" takes the item to the
+  // window chat, still open (decision 0025).
+  askable?: boolean;
   dispatch: Dispatch;
 }) {
   const { model, place, dispatch } = props;
@@ -145,7 +148,7 @@ export function ItemPanel(props: {
               glimpse?.title ??
               (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
           </h2>
-          {shown && (href || props.workstream || editable(shown)) && (
+          {shown && (href || props.askable || props.workstream || editable(shown)) && (
             <div class="panel-actions">
               {href && (
                 <a
@@ -158,6 +161,15 @@ export function ItemPanel(props: {
                 >
                   Open in {shown.source}
                 </a>
+              )}
+              {props.askable && (
+                <button
+                  type="button"
+                  class="button panel-ask"
+                  onClick={() => dispatch({ type: "askAboutClicked" })}
+                >
+                  Ask about this
+                </button>
               )}
               {editable(shown) && props.edits.form?.item !== shown.id && (
                 <button

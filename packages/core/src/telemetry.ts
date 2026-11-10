@@ -204,6 +204,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The user left Oriel for an item's source: from its panel's button, or by
   // a Cmd/Ctrl or middle click on a link to it.
   | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }
+  // The user asked about an open item from its panel, which took them to the
+  // window chat with it (decision 0025), by its source kind.
+  | { name: "item.asked-about"; source: SourceKind }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
   // A block the agent asked for showed under its reply, by its form
   // (decision 0030).
