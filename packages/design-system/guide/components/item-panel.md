@@ -20,12 +20,13 @@ There is one panel. It belongs to the shell (`div.shell[data-panel]`), not to a 
 ## When to use it
 
 - To show one item without leaving the page: every item link opens it by default. Write item links with `ItemLink` or `ItemKey` in `packages/web/src/parts.tsx`, and the panel comes with them.
-- When the link is in a list, put the list's ids in `ItemListContext`. The panel then gets Previous and Next and its place ("4 of 14"), and ↑ and ↓ step through the list.
+- When the link is in a list, put the list's ids in `ItemListContext`. The panel then gets Previous and Next and its place ("4 of 14"), and ↑ and ↓ step through the list. An answer is a list too: the items it names as chips, in its order ("1 of 2"), so the panel steps through what the answer named (`Reply` in `packages/web/src/thread-page.tsx`).
+- The chip for the open item is marked while it's open (`OpenItemContext` in `packages/web/src/parts.tsx`); see [Chip](/components/chip).
 - When the page is about a workstream (its own page, a thread's page, or Browse adding to one), the panel offers **Add to workstream** for that workstream (`currentWorkstream` in `packages/web/src/root.ts`). Nothing else needs doing.
 
 ## When not to
 
-- Not for anything that isn't an item. A thread, a workstream or a change set is a page. The window chat has its own panel-shaped surface (`.window-chat`), which the item panel covers while it is open.
+- Not for anything that isn't an item. A thread, a workstream or a change set is a page. The window chat has its own panel-shaped surface (`.window-chat`). At 1100px and up, an item opened while it's open takes the window's edge and the chat moves into the page column beside it, with "‹ Window" to put the overview back (the item stays open). From 1100 to 1279px the item narrows so the chat keeps 28rem. Below 1100px the item covers the chat.
 - Not as a second dialog. It doesn't trap focus and doesn't dim the page. A question that must be answered first is a [confirm](/components/confirm).
 - Not for editing the item. The panel reads; changes to an item go through a change set in a thread. A stand-in's item is the one exception, edited in place in its [form](/components/stand-in-panel).
 - Don't nest a list of items in it that opens items in it. A moved item's new key is a link that replaces what the panel shows, which is fine; a list of twenty is Browse's job.

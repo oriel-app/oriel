@@ -31,6 +31,7 @@ tokens motion
 
 - **The item panel** (`.item-panel` in `window.css`) slides in from `--slide-panel` (0.375rem) to the right and fades in, at quick speed (`--duration-quick`) with `--ease-out`: a click on an item should feel answered at once (2026-11-08). Its contents fade in again for each item it shows (`panel-fade`), at the same speed.
 - **The window chat** (`.window-chat` in `window.css`) arrives the same way, but at move speed. On a narrow screen it's a bottom sheet that rises `--space-6` (`@starting-style` in `window.css`).
+- **The window chat beside an item.** At 1100px and up, opening an item from the chat moves the chat into the page column: the item arrives at the window's edge as above, and the chat slides left into the column at move speed with `--ease-out` (its `left` and `right`), over the overview, which is hidden once it's covered. Closing the item reverses it: the overview is back at once, and the chat slides back to the right. Swapping items moves nothing: only the panel's contents fade (`panel-fade`). Nothing waits on the slide.
 - **The sidebar's fold** (`.shell` in `window.css`): its grid column narrows to icons, at move speed.
 - **A change set folding itself** (`.change-set[data-closing]` in `window.css`): once its apply ends on screen and a 1.2s beat has passed, everything under its head closes to nothing and fades, at move speed with `--ease-out`, then it folds. Under reduced motion it folds at once.
 - **The drawer** on a narrow screen slides in from the left, and its scrim fades. Closing, it stays visible until the move ends, then leaves the tab order (`.sidebar` in `window.css`).
@@ -136,9 +137,10 @@ The bead (decision 0056, amended) reads the same query in script (`reducedMotion
 
 The drag card follows the pointer level, with no lean (`reduced` in `drag-card.ts`); dropped, it only fades, and dropped nowhere it goes back to its row at once. Menus only fade, with no scale (`.context-menu` in the block). Arrivals fade, all together, with no rise or stagger (`.arrive`, which takes `panel-fade`).
 
-Two gaps:
+The window chat keeps its fade as the item panel does (`transition-property: opacity`), so beside an item it moves to the column at once, and the overview under it hides at once.
 
-- The window chat is listed for `transition: none`, so under reduced motion it loses its fade too, while the item panel keeps its own. The block's comment promises the fade for "the panel". Giving `.window-chat` the panel's `transition-property: opacity` would match them.
+One gap:
+
 - Not covered, on purpose, as fades and colour: Needs you's `shown` flash, Browse's clusters dimming, the row actions' reveal and the panel's `panel-fade`.
 
 ## Drift

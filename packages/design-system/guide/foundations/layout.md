@@ -15,6 +15,7 @@ Oriel is one window: a sidebar, a page, and sometimes a panel. Its layout tokens
 - **The sidebar** is `--sidebar` wide: 15.5rem, or 3.25rem folded to icons (`.shell[data-folded]`, ⌘\ or Ctrl+\). It's sticky, and scrolls on its own. See [Sidebar](/components/sidebar).
 - **The page** (`.shell-main` in `window.css`) takes the rest. It's a size container called `page`, so what's on it lays out by the page's own width, not the screen's.
 - **The item panel and the window chat** are `--panel` (30rem) wide, fixed to the right. Below 1100px they float over the page with `--shadow`. At 1100px and up the shell sets `--beside: var(--panel)` and the page's right margin makes room, so the panel sits beside it (`.shell[data-panel]` in `window.css`). See [Item panel](/components/item-panel).
+- **The window chat beside an item.** At 1100px and up, an item opened while the window chat is open takes the window's edge, and the chat stands in the page column in the overview's place (`.shell[data-panel][data-chat]`), as a thread's page sits beside the panel. From 1100 to 1279px the item narrows so the chat keeps 28rem: `--panel` is `clamp(24rem, 100vw - var(--sidebar) - 28rem - var(--frame-band), 30rem)`. The app reads the same 1100px query (`besideChat` in `packages/web/src/app.tsx`); below it the item covers the chat, as before.
 
 Inside the page:
 
@@ -47,7 +48,8 @@ There's one screen breakpoint, 760px, and the rest are container queries, so the
 - **932px, the page** (`@container page`): a thread's rail moves under the chat. This fires on a phone and on a laptop with the panel beside the page.
 - **760px, the page** (`@container page`): rows re-grid to two lines, side padding drops to `--space-3`, and less important columns hide.
 - **900px, the overview** (`@container overview (min-width: 900px)`): the overview goes to two columns.
-- **1100px, the screen**: the panel sits beside the page instead of over it.
+- **1100px, the screen**: the panel sits beside the page instead of over it, and the window chat stays beside an open item, in the page column.
+- **1280px, the screen**: below it, with the window chat beside an item, the item narrows to leave the chat 28rem.
 - **`hover: none`**: on a touch screen, actions that show on hover (Make a workstream, a row's remove, Browse's pick) are always shown, some dimmed.
 - **600px**: only the plan usage meters stack. It's the one query under 760px, and it could be the page container.
 
