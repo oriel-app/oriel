@@ -870,6 +870,45 @@ Every state the card goes through, in the order a change set lives them. The sta
 </section>
 ```
 
+```html specimen id=state-open-item title="Its item open in the panel: the line is marked" state=open
+<section class="change-set" data-status="open" data-awaits aria-busy="false" tabindex="-1">
+  <header class="change-set-head">
+    <h2>Proposed change</h2>
+    <span class="change-set-status" role="status">Awaiting review</span>
+  </header>
+  <ul class="diff">
+    <li class="diff-line" data-kind="update">
+      <p class="line-head">
+        <span class="sentence"
+          >Estimate “Pay with a phone wallet on the website” (SYN-23) at 3 points.</span
+        >
+      </p>
+    </li>
+    <li class="diff-line" data-kind="update" data-open>
+      <p class="line-head">
+        <span class="sentence">Estimate “Save a card for next time” (SYN-99) at 3 points.</span>
+      </p>
+      <dl class="fields">
+        <div class="field">
+          <dt>Estimate</dt>
+          <dd class="edited">
+            <div class="side" data-side="after">
+              <span class="side-sign" aria-hidden="true">+</span
+              ><span class="side-text"><span class="visually-hidden">After: </span>3 points</span>
+            </div>
+          </dd>
+        </div>
+      </dl>
+    </li>
+  </ul>
+  <footer class="change-set-actions">
+    <button type="button" class="button primary">Approve and apply</button>
+    <button type="button" class="button">Reject</button>
+    <button type="button" class="quiet-action">Share review link</button>
+  </footer>
+</section>
+```
+
 What each state is, and what it offers:
 
 - **Awaiting review** (`open`): Approve and apply, Reject, Share review link, and × on each line that can be left out. Approve and Reject stay **disabled until the diff has loaded**, because approving sends the diff's hash: the person approves exactly what they were shown, and the server refuses a stale one (`updateThread` in `packages/web/src/thread.ts`). Until then the card says "Reading what each change would replace in its source…", with a spinner, and offers no steps at all, Second look and Share review link included: the diff reads each changed item's current values from its source, which takes seconds on a large set (OA-257). A diff that fails says why, and the steps come back, Approve and Reject still disabled.
@@ -882,6 +921,7 @@ What each state is, and what it offers:
 - **Rejected** (`rejected`): one click, no confirm. The status is struck through, and the set **folds to its head** with its count and **Show**, so a revised change set below isn't buried (OA-90); a link to it unfolds it. Oriel then adds its own note under it and moves focus to the composer, for what was wrong. The [bead](/components/bead) says "You rejected the change in “…”." with **Undo**, which puts it back to awaiting review as it was, its second look too, and Oriel's line "Rejection undone. The change awaits your review." under the first (OA-258). Once the person has said anything to the agent since, the Undo is refused, and the bead says why until dismissed. A rejection on the review link has no Undo.
 - **Reverted:** Revert proposes a new change set, headed **Undo**, nested inside the one it reverts (dashed, inset, `.change-set .change-set` in `window.css`), and reviewed the same way. A revert is never a one-click Undo. While the Undo awaits review, is applying or failed, the set it reverts can't fold; once the Undo is applied or rejected, both fold as an applied set does, and the outer one says "Applied, then undone". A link to the Undo opens the set it sits in.
 - **Opened from a link** (`[data-opened]`): when a link or a search result names the set, the page scrolls it under the head row and focuses it (`perform` in `packages/web/src/effects.ts`). The card shows an accent border and ring instead of the focus ring (`.change-set:focus` in `window.css` has no outline).
+- **Its item open** (`.diff-line[data-open]`): opened from a line's chip, the item shows in the [item panel](/components/item-panel), and its line is marked while it's open, with the focus colour's edge (an inset `--border-thick` shadow, so nothing moves) on `--accent-soft`. A stopped line keeps its `--danger-soft`. The panel steps through the items the lines name ("1 of 3"), and the composer offers the open item as what the next message is about ([Chat input](/components/chat-input#what-it-s-about-looking-at)). Beside the panel, the actions still stick above the composer, so Approve and apply stays in view. The review link's page has no panel, so it never marks one.
 - **Problem:** a refusal of a click shows under the footer, `.change-set-problem`, `role="alert"`, on `--danger-soft`, in the server's words; the page then reads the diff again.
 - **Hover:** each line's × shows on the line's hover; the buttons have their own. **Active** isn't styled.
 - **Disabled:** every step and × is disabled while the set is busy. The × has no disabled look and still turns red on hover (see Drift).
