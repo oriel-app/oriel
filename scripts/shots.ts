@@ -4116,6 +4116,39 @@ const scenes: Scene[] = [
         throw new Error(`The turn should have read SYN-54 by its ID: ${runs}`);
     },
   },
+  // In the window chat, beside the item (OA-333): opened from the answer, the
+  // item is offered, read as the window reads it, never read-only, and the
+  // follow-up keeps its about line. Narrower, the item covers the chat.
+  {
+    name: "looking-window",
+    path: "/",
+    window: true,
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".ask-input").fill("What's holding up saved cards?");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.locator(".window-chat .reply .chip").first().waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await page.locator(".window-chat .reply .chip-link").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      if (!beside(page)) return;
+      const chat = page.locator(".window-chat");
+      await chat
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: "SYN-99" })
+        .waitFor();
+      await expectCount(chat.locator(".ctx-chip", { hasText: "read-only" }), 0);
+      await chat
+        .locator(".chat-input-reads", { hasText: "Reads your whole window, and SYN-99" })
+        .waitFor();
+      await chat.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
+      await chat.getByRole("button", { name: "Send" }).click();
+      await chat.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await expectCount(chat.locator(".user-message .about", { hasText: "read-only" }), 0);
+    },
+  },
 ];
 
 // The desktop app's first run (decision 0038): each screen on a server of
