@@ -104,7 +104,12 @@ async function round(
 const rate = ({ passed, of }: { passed: number; of: number }) =>
   `${passed}/${of}${of ? ` (${Math.round((100 * passed) / of)}%)` : ""}`;
 
-function report(tonight: Night, before: Night | null, notes: readonly string[]): string {
+function report(
+  tonight: Night,
+  before: Night | null,
+  unrecorded: readonly string[],
+  notes: readonly string[],
+): string {
   const lines = [
     `## The night's recording, ${tonight.date}`,
     "",
@@ -133,7 +138,7 @@ function report(tonight: Night, before: Night | null, notes: readonly string[]):
   );
   if (added.length) lines.push(`**New cases:** ${added.map((id) => `\`${id}\``).join(", ")}`);
   lines.push(
-    `**Recorded:** ${ids.length - kept.length} of ${ids.length} cases; the rest kept their cassettes, whose requests didn't change`,
+    `**Recorded:** ${ids.length - kept.length - unrecorded.length} of ${ids.length} cases; ${kept.length} kept their cassettes, whose requests didn't change`,
   );
   lines.push(
     `**Replay:** ${tonight.replay === "pass" ? "passes" : "FAILS: a case failed or wasn't recorded on every draw; the hub decides"}`,
@@ -177,7 +182,8 @@ export async function recordNight(io: NightIo): Promise<{ code: number; text: st
   if (!first.results.length) return { code: 1, text: "the live round ran no case\n" };
   const last = new Map(first.results.map((r) => [r.id, r]));
   const draws = new Map(first.results.map((r) => [r.id, 1]));
-  let usd = first.usd + check.usd;
+  // The check replays and spends nothing; its tokens are old draws'.
+  let usd = first.usd;
   for (let n = 1; n <= redraws; n++) {
     // A kept case's cassettes replay already; drawing it again records nothing.
     const again = [...last.values()]
@@ -249,7 +255,7 @@ export async function recordNight(io: NightIo): Promise<{ code: number; text: st
     replay: strict.code === 0 && !unrecorded.length ? "pass" : "fail",
   };
   writeFileSync(io.nightly, `${JSON.stringify(tonight, null, 2)}\n`);
-  const text = report(tonight, before, notes);
+  const text = report(tonight, before, unrecorded, notes);
   writeFileSync(new URL("summary.md", night), text);
   return { code: tonight.replay === "pass" ? 0 : 1, text };
 }
