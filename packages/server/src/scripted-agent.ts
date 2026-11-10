@@ -222,6 +222,21 @@ const filler = new Set([
 // or reply when asked to "post: …" or "reply: …", a Jira comment when asked
 // to "comment: …", and otherwise a read of every item in the region.
 export function devPlan(input: TurnInput): Step[] {
+  // A message about an item open beside the composer (decision 0062): it
+  // reads the item by its ID, and says whether it may change it.
+  const looked = input.about?.[0];
+  if (looked)
+    return [
+      { text: "I'll read what you're looking at." },
+      {
+        run: `const item = await items.read(${JSON.stringify(looked.id)});\nreturn item.gone ? item.reason : item.title;`,
+      },
+      {
+        text: looked.outside
+          ? `[[${looked.id}]] is outside this workstream, so it's read-only here.`
+          : `[[${looked.id}]] is in this workstream.`,
+      },
+    ];
   if (threadsAsk.test(input.text))
     return [
       { text: "I'll look through your threads." },

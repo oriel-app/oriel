@@ -2771,9 +2771,11 @@ a.replies:hover {
 /* What the next message is about (decision 0062): the item open beside the
    composer, over its field. Left out, or offered beside a draft that keeps
    its own, a chip is dashed. */
+/* min-width: a long title shortens, rather than widen the frame. */
 .ctx {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: var(--space-1) var(--space-2);
   padding: 0 var(--space-1);
@@ -2783,6 +2785,7 @@ a.replies:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: 0;
   max-width: 100%;
   min-height: 1.5rem;
   padding: 0 var(--space-1) 0 var(--space-2);
