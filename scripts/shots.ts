@@ -4203,14 +4203,11 @@ const scenes: Scene[] = [
         await dock.getByRole("button", { name: "Send" }).click();
         // The answer is in once the dock shows other words, with nothing sent
         // and unanswered, and the agent done.
-        await page.waitForFunction((was) => {
+        await page.waitForFunction(`(() => {
           const latest = document.querySelector(".item-panel .panel-dock-latest");
-          return (
-            latest !== null &&
-            latest.textContent !== was &&
-            latest.querySelector(".panel-dock-you, .panel-dock-working") === null
-          );
-        }, before);
+          return latest !== null && latest.textContent !== ${JSON.stringify(before)} &&
+            latest.querySelector(".panel-dock-you, .panel-dock-working") === null;
+        })()`);
         await dock.getByRole("button", { name: "Send" }).waitFor();
         await page.locator(".item-panel .panel-facts").waitFor();
         await expectCount(page.getByRole("textbox", { name: "Message" }), 1);
