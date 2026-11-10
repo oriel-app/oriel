@@ -1,7 +1,7 @@
 // The whole app as one program: where the page is, and each page's own
 // model. Pages update themselves; this routes messages and replies to them,
 // and keeps the workstreams and threads lists the chrome shows.
-import { type LookItem, lookedAt } from "./looking.ts";
+import { type LookItem, type LookingAt, lookedAt } from "./looking.ts";
 import {
   accepted,
   approvedIn,
@@ -568,9 +568,10 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
 }
 
 // Each composer on screen follows the item open beside it (decision 0062):
-// the thread's, or the window chat's first question's.
+// the thread's, the window chat's first question's, the workstream page's
+// Ask box and a new thread's, whose questions each start a thread.
 function looking(model: Model): Model {
-  const { panel, thread, chat } = model;
+  const { panel } = model;
   const open = (threadId: string | null): LookItem | null => {
     if (!panel) return null;
     const under = model.panelUnder;
@@ -580,14 +581,26 @@ function looking(model: Model): Model {
       under: under && under.thread === threadId ? under.seq : null,
     };
   };
-  const ownLooking = thread && lookedAt(thread.lookingAt, open(thread.id), thread.draft);
-  const chatLooking = lookedAt(chat.lookingAt, open(null), chat.draft);
-  if (ownLooking === (thread?.lookingAt ?? null) && chatLooking === chat.lookingAt) return model;
-  return {
-    ...model,
-    thread: thread && ownLooking ? { ...thread, lookingAt: ownLooking } : thread,
-    chat: { ...chat, lookingAt: chatLooking },
+  // A composer as it follows, the same one when nothing changed.
+  const follow = <T extends { lookingAt: LookingAt; draft: string }>(
+    composer: T,
+    threadId: string | null,
+  ): T => {
+    const lookingAt = lookedAt(composer.lookingAt, open(threadId), composer.draft);
+    return lookingAt === composer.lookingAt ? composer : { ...composer, lookingAt };
   };
+  const thread = model.thread && follow(model.thread, model.thread.id);
+  const chat = follow(model.chat, null);
+  const workstream = model.workstream && follow(model.workstream, null);
+  const newThread = model.newThread && follow(model.newThread, null);
+  if (
+    thread === model.thread &&
+    chat === model.chat &&
+    workstream === model.workstream &&
+    newThread === model.newThread
+  )
+    return model;
+  return { ...model, thread, chat, workstream, newThread };
 }
 
 function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {

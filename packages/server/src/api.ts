@@ -18,6 +18,7 @@ import {
   isUlid,
   type Log,
   literal,
+  type LookingAt,
   lookingAt,
   maxItems,
   messageText,
@@ -225,13 +226,26 @@ const droppedBody = object({
     `expected at most ${maxDropped}`,
   ),
 });
-const openThreadBody = object({ text: optional(textValue) });
-// A question in the window chat, with the items open beside it (decision
-// 0062). Their shape is the dispatcher's to check.
+// A thread's first message, and the items open beside it (decision 0062).
+const openThreadBody = object({ text: optional(textValue), about: unknown });
+// A question in the window chat, with the items open beside it.
 const messageBodyValue = object({ text: textValue, about: unknown });
 // A thread from nothing, and what its new workstream is called, if the user
 // named it. How long a name may be is the dispatcher's to check.
-const newThreadBody = object({ text: textValue, workstreamName: optional(string) });
+const newThreadBody = object({
+  text: textValue,
+  workstreamName: optional(string),
+  about: unknown,
+});
+// What a thread's first message is about, checked before the thread is
+// made, so a refused one makes none: the shape `thread.say` takes, as a
+// message in a thread that exists sends it.
+function firstAbout(about: unknown): { about?: LookingAt } {
+  if (about === undefined) return {};
+  const looked = lookingAt(about);
+  if (!looked.ok) throw new Refused(400, "about: expected the items open");
+  return { about: looked.value };
+}
 const tokenBody = object({ token: string });
 // A reason goes with a rejection only. How long a holder's may be is the
 // dispatcher's to check.
@@ -1239,10 +1253,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/workstreams/:id/threads"),
       async run([id = ""], request) {
-        const { text } = await readJson(request, messageBody, openThreadBody);
+        const { text, about } = await readJson(request, messageBody, openThreadBody);
+        const looked = firstAbout(about);
         const opened = checked("thread.open", { workstream: id });
         const { thread } = await deps.dispatch("thread.open", opened, user);
-        if (text !== undefined) await deps.dispatch("thread.say", { thread, text }, user);
+        if (text !== undefined)
+          await deps.dispatch("thread.say", { thread, text, ...looked }, user);
         return json(201, { id: thread });
       },
     },
@@ -1260,14 +1276,15 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/threads"),
       async run(_, request) {
-        const { text, workstreamName } = await readJson(request, messageBody, newThreadBody);
+        const { text, workstreamName, about } = await readJson(request, messageBody, newThreadBody);
+        const looked = firstAbout(about);
         const made = checked("workstream.create", {
           kind: "thread",
           ...(workstreamName === undefined ? {} : { name: workstreamName }),
         });
         const { workstream } = await deps.dispatch("workstream.create", made, user);
         const { thread } = await deps.dispatch("thread.open", { workstream }, user);
-        await deps.dispatch("thread.say", { thread, text }, user);
+        await deps.dispatch("thread.say", { thread, text, ...looked }, user);
         return json(201, { id: thread, workstreamId: workstream });
       },
     },
@@ -1288,12 +1305,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/window-chat/messages"),
       async run(_, request) {
         const { text, about } = await readJson(request, messageBody, messageBodyValue);
-        // Checked before the thread is made, so a refused one makes none.
-        const looked = about === undefined ? undefined : lookingAt(about);
-        if (looked && !looked.ok) throw new Refused(400, "about: expected the items open");
+        const looked = firstAbout(about);
         const { thread, made } = await windowChatThread();
-        const said = { thread, text, ...(looked ? { about: looked.value } : {}) };
-        const { seq } = await deps.dispatch("thread.say", said, user);
+        const { seq } = await deps.dispatch("thread.say", { thread, text, ...looked }, user);
         return json(made ? 201 : 202, { id: thread, seq });
       },
     },

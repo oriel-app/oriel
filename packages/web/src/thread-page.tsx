@@ -23,6 +23,7 @@ import {
   ItemLinksContext,
   ItemListContext,
   Member,
+  OpenItemContext,
   Link,
   Markdown,
   plural,
@@ -306,6 +307,10 @@ export function NewThreadPage({
   const open = startable(workstreams);
   const labels = pickerLabels(open, threads ?? []);
   const picked = open.find((workstream) => workstream.id === model.workstream) ?? null;
+  // The item open beside it goes with the first message (decision 0062). A
+  // new workstream holds nothing, so it's read-only there; a picked one's
+  // items aren't loaded here, and the sent message says which it was.
+  const readOnly = () => picked === null;
   // One picker, shown in one place at a time: CSS hides the other, so only
   // one is ever in the accessibility tree.
   const named = (at: "head" | "rail") =>
@@ -362,6 +367,14 @@ export function NewThreadPage({
             notice={model.notice}
             placeholder={
               picked && picked.size > 0 ? `Ask about ${plural(picked.size, "item")}…` : planPrompt
+            }
+            reads={readsWith(null, model.lookingAt, readOnly)}
+            context={
+              <LookingChips
+                lookingAt={model.lookingAt}
+                readOnly={readOnly}
+                onLooking={(msg) => send({ type: "looking", msg })}
+              />
             }
             onDraft={(text) => send({ type: "draftChanged", text })}
             onSubmit={() => send({ type: "sendClicked", workstream: picked?.id ?? null })}
@@ -1535,7 +1548,8 @@ function Sentence({ line, members }: { line: Line; members?: readonly MemberView
 // and new text with only the changed words marked, and a delete as every
 // field it empties. The lines the change set engine says can be left out
 // (`removable`) offer it: quietly, or plainly beside a change that stopped,
-// as the reason it stopped says.
+// as the reason it stopped says. The line whose item is open in the panel
+// is marked, and the panel steps through the items the lines name.
 export function Diff(props: {
   diff: DiffView;
   busy: boolean;
@@ -1553,101 +1567,106 @@ export function Diff(props: {
     stop: line.error ?? (line.check && "refused" in line.check ? line.check.refused : null),
     fields: line.fields.map(withUnits),
   }));
+  const open = useContext(OpenItemContext);
+  const named = [...new Set(shown.flatMap((line) => (line.target?.url ? [line.target.id] : [])))];
   return (
-    <ul class="diff">
-      {shown.map((line) => (
-        <li
-          key={line.mutationId}
-          class="diff-line"
-          data-kind={line.kind}
-          data-applied={line.applied ? "" : undefined}
-          data-stopped={line.stop ? "" : undefined}
-          data-dismissed={line.dismissed ? "" : undefined}
-        >
-          <Brought brought={line.brought} />
-          {line.kind === "create" && line.fields.length > 0 ? (
-            <NewItem line={line} />
-          ) : (
-            <>
-              <p class="line-head">
-                {line.kind === "delete" && (
-                  <span class="line-mark" data-kind="delete">
-                    Delete
-                  </span>
+    <ItemListContext.Provider value={named}>
+      <ul class="diff">
+        {shown.map((line) => (
+          <li
+            key={line.mutationId}
+            class="diff-line"
+            data-open={(open !== null && line.target?.id === open) || undefined}
+            data-kind={line.kind}
+            data-applied={line.applied ? "" : undefined}
+            data-stopped={line.stop ? "" : undefined}
+            data-dismissed={line.dismissed ? "" : undefined}
+          >
+            <Brought brought={line.brought} />
+            {line.kind === "create" && line.fields.length > 0 ? (
+              <NewItem line={line} />
+            ) : (
+              <>
+                <p class="line-head">
+                  {line.kind === "delete" && (
+                    <span class="line-mark" data-kind="delete">
+                      Delete
+                    </span>
+                  )}
+                  <Sentence line={line} members={props.members} />
+                </p>
+                {line.fields.length > 0 && (
+                  <dl class="fields">
+                    {line.fields.map((field) => (
+                      <div key={field.name} class="field">
+                        <dt>{fieldName(field.name)}</dt>
+                        {line.kind === "delete" ? (
+                          <dd>
+                            <del>
+                              {field.before === null ? (
+                                "—"
+                              ) : (
+                                <Value text={field.before} item={field.items?.before} />
+                              )}
+                            </del>
+                            <span class="arrow" aria-hidden="true">
+                              →
+                            </span>
+                            <ins>{field.after ?? "—"}</ins>
+                          </dd>
+                        ) : (
+                          <dd class="edited">
+                            <Edited field={field} />
+                          </dd>
+                        )}
+                      </div>
+                    ))}
+                  </dl>
                 )}
-                <Sentence line={line} members={props.members} />
+              </>
+            )}
+            {line.check && "later" in line.check && (
+              <p class="line-note" role="note">
+                {line.check.later}
               </p>
-              {line.fields.length > 0 && (
-                <dl class="fields">
-                  {line.fields.map((field) => (
-                    <div key={field.name} class="field">
-                      <dt>{fieldName(field.name)}</dt>
-                      {line.kind === "delete" ? (
-                        <dd>
-                          <del>
-                            {field.before === null ? (
-                              "—"
-                            ) : (
-                              <Value text={field.before} item={field.items?.before} />
-                            )}
-                          </del>
-                          <span class="arrow" aria-hidden="true">
-                            →
-                          </span>
-                          <ins>{field.after ?? "—"}</ins>
-                        </dd>
-                      ) : (
-                        <dd class="edited">
-                          <Edited field={field} />
-                        </dd>
-                      )}
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </>
-          )}
-          {line.check && "later" in line.check && (
-            <p class="line-note" role="note">
-              {line.check.later}
-            </p>
-          )}
-          {line.dismissed && (
-            <p class="line-note" role="note">
-              Not applied: the rest was dismissed.
-            </p>
-          )}
-          {line.stop && (
-            <p class="line-error" role="note">
-              {line.stop}
-              {offered(line.mutationId) && (
+            )}
+            {line.dismissed && (
+              <p class="line-note" role="note">
+                Not applied: the rest was dismissed.
+              </p>
+            )}
+            {line.stop && (
+              <p class="line-error" role="note">
+                {line.stop}
+                {offered(line.mutationId) && (
+                  <button
+                    type="button"
+                    class="quiet-action"
+                    disabled={props.busy}
+                    onClick={() => props.onRemove?.(line.mutationId)}
+                  >
+                    Remove this change
+                  </button>
+                )}
+              </p>
+            )}
+            {!line.stop && offered(line.mutationId) && (
+              <Tooltip text="Leave this change out">
                 <button
                   type="button"
-                  class="quiet-action"
+                  class="remove-line"
                   disabled={props.busy}
+                  aria-label="Leave this change out"
                   onClick={() => props.onRemove?.(line.mutationId)}
                 >
-                  Remove this change
+                  ×
                 </button>
-              )}
-            </p>
-          )}
-          {!line.stop && offered(line.mutationId) && (
-            <Tooltip text="Leave this change out">
-              <button
-                type="button"
-                class="remove-line"
-                disabled={props.busy}
-                aria-label="Leave this change out"
-                onClick={() => props.onRemove?.(line.mutationId)}
-              >
-                ×
-              </button>
-            </Tooltip>
-          )}
-        </li>
-      ))}
-    </ul>
+              </Tooltip>
+            )}
+          </li>
+        ))}
+      </ul>
+    </ItemListContext.Provider>
   );
 }
 

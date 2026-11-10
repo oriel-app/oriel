@@ -1,6 +1,6 @@
 // A workstream: ask about it, see its threads, and curate its items.
 import { useEffect, useRef } from "preact/hooks";
-import { ChatInput } from "./chat-input.tsx";
+import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
 import { ThreadMenu } from "./close-thread.tsx";
 import { EndButtons, WindowUndos } from "./end-workstream.tsx";
 import { deleted, type EndingModel } from "./ending.ts";
@@ -115,6 +115,9 @@ export function WorkstreamPage(props: {
   const members = view.members.filter(
     (member) => !model.removing.some((each) => each.id === member.ref.id),
   );
+  // An item open beside the Ask box that the workstream doesn't hold is
+  // read-only to the thread it starts, which Cite adds it to (decision 0062).
+  const readOnly = (id: string) => !members.some((member) => member.ref.id === id);
   return (
     <DropZone
       class="drop-page"
@@ -170,7 +173,28 @@ export function WorkstreamPage(props: {
           busy={model.pending}
           notice={model.notice}
           placeholder={askPrompt(workstream.size)}
-          reads={`Reads ${plural(workstream.size, "item")} · v${workstream.version}`}
+          reads={readsWith(
+            `Reads ${plural(workstream.size, "item")} · v${workstream.version}`,
+            model.lookingAt,
+            readOnly,
+          )}
+          context={
+            <LookingChips
+              lookingAt={model.lookingAt}
+              readOnly={readOnly}
+              onLooking={(msg) => send({ type: "looking", msg })}
+              onCite={(item) =>
+                dispatch({
+                  type: "panelAdd",
+                  msg: {
+                    type: "addClicked",
+                    item: { id: item.id, key: item.key },
+                    workstream: { id: workstream.id, name: workstream.name },
+                  },
+                })
+              }
+            />
+          }
           onDraft={(text) => send({ type: "draftChanged", text })}
           onSubmit={() => send({ type: "askClicked" })}
         />

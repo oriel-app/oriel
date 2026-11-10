@@ -999,6 +999,9 @@ export type NewThreadModel = {
   // What a new workstream will be called: the user's, unless it's blank or
   // still the default, when Oriel names it.
   workstreamName: string;
+  // What its first message is about: the item open beside it (decision
+  // 0062).
+  lookingAt: LookingAt;
   sending: boolean;
   notice: string | null;
 };
@@ -1011,6 +1014,7 @@ export type NewThreadMsg =
   | { type: "draftChanged"; text: string }
   | { type: "workstreamPicked"; workstream: string | null }
   | { type: "workstreamNamed"; name: string }
+  | { type: "looking"; msg: LookingMsg }
   // `workstream`: the one the picker shows, which may have gone, or been
   // marked done, since it was picked.
   | { type: "sendClicked"; workstream: string | null };
@@ -1020,6 +1024,7 @@ export const initNewThread = (id: number): NewThreadModel => ({
   draft: "",
   workstream: null,
   workstreamName: blankWorkstreamName,
+  lookingAt: notLooking,
   sending: false,
   notice: null,
 });
@@ -1036,18 +1041,25 @@ export function updateNewThread(
       return [{ ...model, workstream: msg.workstream, notice: null }, []];
     case "workstreamNamed":
       return [{ ...model, workstreamName: msg.name }, []];
+    case "looking":
+      return [{ ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) }, []];
     case "sendClicked": {
       const text = model.draft.trim();
       if (text === "" || model.sending) return [model, []];
       const tag = { kind: "threadStarted", draft: model.id } as const;
       const name = model.workstreamName.trim();
       const named = name === "" || name === blankWorkstreamName ? {} : { workstreamName: name };
+      const about = aboutOf(model.lookingAt);
       return [
         { ...model, workstream: msg.workstream, sending: true, notice: null },
         [
           msg.workstream === null
-            ? post("/api/threads", { text, ...named }, tag)
-            : post(`/api/workstreams/${encodeURIComponent(msg.workstream)}/threads`, { text }, tag),
+            ? post("/api/threads", { text, ...named, about }, tag)
+            : post(
+                `/api/workstreams/${encodeURIComponent(msg.workstream)}/threads`,
+                { text, about },
+                tag,
+              ),
         ],
       ];
     }
