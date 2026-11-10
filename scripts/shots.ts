@@ -5269,7 +5269,7 @@ scenes.push(
   // On a workstream thread, an item opened from a change set's line (OA-336):
   // the line is marked, the panel steps through the lines' items, the
   // composer offers it, and beside it Approve and apply stays in view. On a
-  // phone the item is a sheet over the thread, as before.
+  // phone the item is a sheet over the thread, its dock offering it (OA-335).
   {
     name: "panel-thread-ask",
     window: true,
@@ -5282,7 +5282,8 @@ scenes.push(
       if ((await line.getAttribute("data-open")) === null)
         throw new Error("The line the item was opened from should be marked open");
       await page.locator(".panel-place", { hasText: "1 of 3" }).waitFor();
-      await page.locator(".composer .ctx-chip", { hasText: "Looking at" }).waitFor();
+      // The thread's composer, or below 1100 the one docked under the item.
+      await page.locator(".ctx-chip:visible", { hasText: "Looking at" }).waitFor();
       if (!beside(page)) return;
       const approve = page.getByRole("button", { name: "Approve and apply" });
       const box = await approve.boundingBox();
