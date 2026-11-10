@@ -4198,14 +4198,20 @@ const scenes: Scene[] = [
         .locator(".chat-input-reads", { hasText: "Reads your whole window, and SYN-99" })
         .waitFor();
       if (step === "sending") {
-        const before = await dock.locator(".panel-dock-latest").innerText();
+        const before = await dock.locator(".panel-dock-latest").textContent();
         await dock.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
         await dock.getByRole("button", { name: "Send" }).click();
-        await dock.locator(".panel-dock-working").waitFor({ state: "detached" });
-        await dock.locator(".panel-dock-you").waitFor({ state: "detached" });
+        // The answer is in once the dock shows other words, with nothing sent
+        // and unanswered, and the agent done.
+        await page.waitForFunction((was) => {
+          const latest = document.querySelector(".item-panel .panel-dock-latest");
+          return (
+            latest !== null &&
+            latest.textContent !== was &&
+            latest.querySelector(".panel-dock-you, .panel-dock-working") === null
+          );
+        }, before);
         await dock.getByRole("button", { name: "Send" }).waitFor();
-        const after = await dock.locator(".panel-dock-latest").innerText();
-        if (after === before) throw new Error(`The dock should show the new answer: ${after}`);
         await page.locator(".item-panel .panel-facts").waitFor();
         await expectCount(page.getByRole("textbox", { name: "Message" }), 1);
       }
