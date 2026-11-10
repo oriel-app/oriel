@@ -5331,25 +5331,49 @@ scenes.push(
         await page.locator(".composer .ctx-chip", { hasText: "SYN-99" }).waitFor();
       }
       const fromPage = new URL(page.url()).pathname.split("/").at(-1) ?? "";
-      const said = await page.evaluate(async (fromPage) => {
-        const first = async (thread: string) => {
-          const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
-            entries: { kind: string; about?: unknown }[];
+      const said = await page.evaluate(
+        async ({ fromPage, workstream }) => {
+          const first = async (thread: string) => {
+            const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
+              entries: { kind: string; about?: unknown }[];
+            };
+            return view.entries.find((entry) => entry.kind === "user")?.about;
           };
-          return view.entries.find((entry) => entry.kind === "user")?.about;
-        };
-        const made = await fetch("/api/threads", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text: "Plan it", about: [{ id: "jira:SYN-99", under: null }] }),
-        });
-        const { id: fromNothing } = (await made.json()) as { id: string };
-        return { fromPage: await first(fromPage), fromNothing: await first(fromNothing) };
-      }, fromPage);
+          const made = await fetch("/api/threads", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ text: "Plan it", about: [{ id: "jira:SYN-99", under: null }] }),
+          });
+          const { id: fromNothing } = (await made.json()) as { id: string };
+          // One about nothing open is refused before it makes anything.
+          const count = async () =>
+            ((await (await fetch("/api/threads")).json()) as { threads: unknown[] }).threads.length;
+          const before = await count();
+          const refused = await Promise.all(
+            ["/api/threads", `/api/workstreams/${workstream}/threads`].map(async (path) => {
+              const sent = await fetch(path, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ text: "Plan it", about: [{ id: "SYN-99" }] }),
+              });
+              return sent.status;
+            }),
+          );
+          return {
+            fromPage: await first(fromPage),
+            fromNothing: await first(fromNothing),
+            refused,
+            made: (await count()) - before,
+          };
+        },
+        { fromPage, workstream: id },
+      );
       const got = JSON.stringify(said);
       const want = JSON.stringify({
         fromPage: [{ id: "jira:SYN-99", outside: false }],
         fromNothing: [{ id: "jira:SYN-99", outside: true }],
+        refused: [400, 400],
+        made: 0,
       });
       if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
     },
