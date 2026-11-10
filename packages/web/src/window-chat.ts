@@ -22,6 +22,9 @@ export type WindowChatModel = {
   draft: string;
   // A question sent from the bar and not yet answered.
   asking: boolean;
+  // Its words, as sent: the item panel's dock shows them until the answer
+  // starts a thread (dock.tsx), whatever the field holds since.
+  asked: string | null;
   // Whether the chat shows beside the overview. It opens with a question,
   // and closes back to the full-width overview.
   open: boolean;
@@ -55,6 +58,7 @@ export type Question = { kind: StartQuestion; label: string; text: string };
 export const initWindowChat = (): WindowChatModel => ({
   draft: "",
   asking: false,
+  asked: null,
   open: false,
   problem: null,
   lookingAt: notLooking,
@@ -142,7 +146,7 @@ const ask = (
   if (trimmed === "" || state.chat.asking || state.thread?.view?.running) return [state, []];
   const about = looking ? aboutOf(state.chat.lookingAt) : undefined;
   return [
-    { ...state, chat: { ...state.chat, asking: true, open: true, problem: null } },
+    { ...state, chat: { ...state.chat, asking: true, asked: trimmed, open: true, problem: null } },
     [
       post("/api/window-chat/messages", { text: trimmed, about }, { kind: "windowChatAsked" }),
       ...(used ? [report({ name: "window-chat.question-used", question: used })] : []),
@@ -200,7 +204,7 @@ export function windowChatReplied(state: ChatState, msg: Replied): [ChatState, E
       return showing(state, thread);
     }
     case "windowChatAsked": {
-      const chat = { ...state.chat, asking: false };
+      const chat = { ...state.chat, asking: false, asked: null };
       if (!msg.ok) return [{ ...state, chat: { ...chat, problem: errorOf(msg.body) } }, []];
       const { id } = msg.body as { id: string };
       return showing(

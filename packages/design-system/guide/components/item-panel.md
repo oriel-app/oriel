@@ -26,7 +26,7 @@ There is one panel. It belongs to the shell (`div.shell[data-panel]`), not to a 
 
 ## When not to
 
-- Not for anything that isn't an item. A thread, a workstream or a change set is a page. The window chat has its own panel-shaped surface (`.window-chat`). At 1100px and up, an item opened while it's open takes the window's edge and the chat moves into the page column beside it, with "‹ Window" to put the overview back (the item stays open). From 1100 to 1279px the item narrows so the chat keeps 28rem. Below 1100px the item covers the chat.
+- Not for anything that isn't an item. A thread, a workstream or a change set is a page. The window chat has its own panel-shaped surface (`.window-chat`). At 1100px and up, an item opened while it's open takes the window's edge and the chat moves into the page column beside it, with "‹ Window" to put the overview back (the item stays open). From 1100 to 1279px the item narrows so the chat keeps 28rem. Below 1100px the item covers the chat, and carries its composer in a dock (see [The dock](#the-dock-over-a-conversation-below-1100px)).
 - Not as a second dialog. It doesn't trap focus and doesn't dim the page. A question that must be answered first is a [confirm](/components/confirm).
 - Not for editing the item. The panel reads; changes to an item go through a change set in a thread. A stand-in's item is the one exception, edited in place in its [form](/components/stand-in-panel).
 - Don't nest a list of items in it that opens items in it. A moved item's new key is a link that replaces what the panel shows, which is fine; a list of twenty is Browse's job.
@@ -570,10 +570,78 @@ else hide(button);</code></pre>
 **Where it sits.** The panel is `position: fixed` at the window's right edge, the whole window's height, `--panel` wide (30rem), in the [frame](/components/frame)'s material (`--frame`), as the sidebar is on the left: the page column, curved at both top corners, sits inset between the two (2026-11-08). Three widths, by the screen (`@media (min-width: 1100px)` and `@media (max-width: 760px)` in `window.css`):
 
 - **1100px and wider: beside.** `.shell[data-panel]` sets `--beside` to the panel's width and `.shell-main` takes it as a right margin, so the page narrows and nothing is covered. No shadow. A narrowed page can cross its own container queries: a thread's [right rail](/components/right-rail) moves under the chat.
-- **761 to 1099px: over the page's right side,** with `--shadow`, as the drawer casts.
+- **761 to 1099px: over the page's right side,** with `--shadow`, as the drawer casts. Over the window chat or a thread's page, with the conversation's dock at its foot.
 - **760px and narrower: the whole screen,** from edge to edge and over the bar, on `--bg`, square, with no shade: a sheet. Its sides are `--space-3`, as a phone-width page's are.
 
-**Motion.** It arrives at once, with a quick slide and fade, and only moves: "nothing beside or inside it reflows" (`.shell` in `window.css`). The panel's `@starting-style` in `window.css` starts it from `opacity: 0` and `translateX(var(--slide-panel))` (0.375rem), and it moves in over `--duration-quick` (120ms) on `--ease-out`. Its children fade in with `panel-fade` (`.item-panel > *` in `window.css`), again for each item it shows, while the panel itself stays put. Under reduced motion it keeps only the fade (`@media (prefers-reduced-motion: reduce)` in `window.css`). It has no closing animation: it leaves at once. See [Motion](/foundations/motion).
+**Motion.** It arrives at once, with a quick slide and fade, and only moves: "nothing beside or inside it reflows" (`.shell` in `window.css`). The panel's `@starting-style` in `window.css` starts it from `opacity: 0` and `translateX(var(--slide-panel))` (0.375rem), and it moves in over `--duration-quick` (120ms) on `--ease-out`. Its children fade in with `panel-fade` (`.item-panel > *` in `window.css`), again for each item it shows, while the panel itself stays put. Under reduced motion it keeps only the fade (`@media (prefers-reduced-motion: reduce)` in `window.css`). It has no closing animation: it leaves at once. See [Motion](/foundations/motion). The dock rises `--space-1` and fades in with it (`arrive`), and the folded line arrives the same way; under reduced motion both only fade.
+
+### The dock, over a conversation (below 1100px)
+
+Below 1100px the panel covers whatever conversation is open: the overview's window chat, or a thread's page. So it carries that conversation's composer in a dock at its foot (`.panel-dock`, decision 0025 amended by OA-335), and the person can read the item, ask about it and read the answer without closing it.
+
+- **The latest answer's first two lines** (`.panel-dock-latest`), the rest cut. Sent and not yet answered, it shows the person's message (`.panel-dock-you`, "You: …") and "Working…", then the answer as it arrives. Chips in it open their items here.
+- **Chat** (`.panel-dock-chat`) gives the conversation the screen. The item folds to a line above its composer (`.panel-folded`), with **Show**, which puts the item back, and ×, which closes it. Opening another item, or this one again from a chip, unfolds it.
+- **The composer**, the conversation's own [chat input](/components/chat-input), with what the next message is about: "Looking at SYN-99". Sending keeps the item open.
+
+The dock sticks to the panel's foot, edge to edge, in the frame's material, with a line over it, so the item scrolls under it. The conversation's own composer, under the panel, is out of use while the dock carries it: `inert` and hidden (`.chat-dock[inert]`). At 1100px and up there's no dock: the conversation stands beside the item.
+
+```html specimen id=dock width=390 height=640 pad=0 title="On a phone, over the window chat: the dock with the latest answer and the composer"
+<div class="shell" data-folded>
+  <aside class="item-panel" aria-labelledby="item-panel-title-d">
+    <header class="panel-head">
+      <p class="panel-source">Jira · SYN-99</p>
+      <button type="button" class="panel-close" aria-label="Close the panel">×</button>
+      <span role="tooltip" popover="manual" class="tooltip">Close (Esc)</span>
+      <h2 id="item-panel-title-d" class="panel-title" tabindex="-1">Save a card for next time</h2>
+    </header>
+    <p class="panel-read" role="status">Read just now</p>
+    <section class="panel-dock" aria-label="The conversation">
+      <div class="panel-dock-head">
+        <div class="panel-dock-latest">
+          <p>
+            Two stories carry saved cards. SYN-99 has no estimate yet. SYN-104 is halfway, and Greta
+            calls the return URL the tricky part.
+          </p>
+        </div>
+        <button type="button" class="quiet-action panel-dock-chat">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4.5 9.75L8 6.25l3.5 3.5" />
+          </svg>
+          Chat
+        </button>
+      </div>
+      <form class="chat-input" data-lines="grow">
+        <div class="ctx" role="group" aria-label="What your message is about">
+          <span class="ctx-chip"
+            ><span class="ctx-label">Looking at</span
+            ><span class="ctx-name"><b>SYN-99</b> Save a card for next time</span
+            ><button type="button" class="ctx-x" aria-label="Leave SYN-99 out">×</button></span
+          >
+        </div>
+        <textarea
+          class="chat-input-field"
+          rows="2"
+          placeholder="Ask a follow-up"
+          aria-label="Message"
+        ></textarea>
+        <div class="chat-input-foot">
+          <span class="chat-input-reads">Reads your whole window, and SYN-99</span>
+          <button type="submit" class="button" disabled>Send</button>
+        </div>
+      </form>
+    </section>
+  </aside>
+</div>
+```
+
+```html specimen id=folded title="Folded: the item as a line above the conversation's composer"
+<div class="panel-folded" role="group" aria-label="The item open">
+  <span class="panel-folded-name"><b>SYN-99</b> Save a card for next time</span>
+  <button type="button" class="quiet-action" aria-label="Show SYN-99">Show</button>
+  <button type="button" class="panel-folded-close" aria-label="Close SYN-99">×</button>
+  <span role="tooltip" popover="manual" class="tooltip">Close</span>
+</div>
+```
 
 ## States
 
@@ -788,7 +856,8 @@ else hide(button);</code></pre>
 
 ## Where the app uses it
 
-- `ItemPanel` in `packages/web/src/item-panel.tsx` draws the steps, the head, and the failure and read lines; the shell renders it once, from `App` in `packages/web/src/app.tsx`. Add to, notes, blocks and messages: `AddTo`, `PanelBody`, `Block` and `Messages` in `packages/web/src/item-panel.tsx`.
+- `ItemPanel` in `packages/web/src/item-panel.tsx` draws the steps, the head, and the failure and read lines; the shell renders it once, from `App` in `packages/web/src/app.tsx`.
+- The dock: `PanelDock` in `packages/web/src/item-panel.tsx`, in `ItemPanel`'s `dock` slot, reads `PanelDockContext` in `packages/web/src/dock.tsx`, which `App` fills from the conversation under the item (`dockOf` in `packages/web/src/app.tsx`), through the same composer the conversation draws (`windowChatComposer` in `packages/web/src/window-chat-view.tsx`, `threadComposer` in `packages/web/src/thread-page.tsx`). The latest answer is drawn as the thread draws it, by `AnswerText` in `packages/web/src/thread-page.tsx`, and picked by `latestOf` in `packages/web/src/dock.tsx`. The folded line: `FoldedItem` in `packages/web/src/dock.tsx`. CSS `.panel-dock`, `.panel-dock-head`, `.panel-dock-latest`, `.panel-dock-you`, `.panel-dock-chat`, `.panel-folded`, `.panel-folded-name`, `.panel-folded-close` and `.chat-dock[inert]` in `window.css`. Add to, notes, blocks and messages: `AddTo`, `PanelBody`, `Block` and `Messages` in `packages/web/src/item-panel.tsx`.
 - The body's text as the source wrote it: rich text and its blocks by `ProseBlocks` in `packages/web/src/parts.tsx`, and a paragraph's runs, mentions and links by `Inlines` in `packages/web/src/parts.tsx`. They render what a source has already read, as text, never as markup; their look is the body's and `.mention`'s.
 - Opened by `ItemLink` in `packages/web/src/parts.tsx`; which workstream it adds to: `currentWorkstream` in `packages/web/src/root.ts`; when it's behind: `behind` in `packages/web/src/panel.ts`.
 - CSS: the panel and its widths `.shell`, `.item-panel`, `.item-panel > *`, `.shell-main` and `.shell[data-panel]` in `window.css`; the head `.panel-head` in `window.css`; the steps `.panel-steps` in `window.css`; the status lines `.panel-read` in `window.css`; the body `.panel-body` in `window.css`; `.mention` in `window.css`; messages `.panel-message` in `window.css`; `.item-link` in `window.css`.

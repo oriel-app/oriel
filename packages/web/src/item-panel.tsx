@@ -3,9 +3,12 @@
 // read into the same blocks an agent's reply is, and anything else shows as
 // written, line by line, or in the blocks its source's side read it into.
 // Nothing here sets HTML.
-import { Fragment } from "preact";
+import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect, useId, useRef } from "preact/hooks";
+import { ChatInput } from "./chat-input.tsx";
+import { latestOf, PanelDockContext } from "./dock.tsx";
 import { clickTo } from "./nav.ts";
+import { AnswerText } from "./thread-page.tsx";
 import { behind, type CurrentWorkstream, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
 import { addedText, addOf, type PanelAddMsg, type PanelAdds, undoable } from "./panel-adds.ts";
 import { type EditForm, type PanelEditMsg, type PanelEdits, textOf } from "./panel-edits.ts";
@@ -37,6 +40,9 @@ export function ItemPanel(props: {
   adds: PanelAdds;
   // A stand-in's item's form, if open, and its saved edits (decision 0059).
   edits: PanelEdits;
+  // At its foot, below 1100 over a conversation: that conversation's
+  // composer (`PanelDock`).
+  dock?: ComponentChildren;
   dispatch: Dispatch;
 }) {
   const { model, place, dispatch } = props;
@@ -225,7 +231,43 @@ export function ItemPanel(props: {
           shown && <PanelBody view={shown} />
         )}
       </Fragment>
+      {props.dock}
     </aside>
+  );
+}
+
+// The conversation under the item, docked at the panel's foot (dock.tsx):
+// the latest answer's first two lines, or the message just sent while the
+// agent works on it, "Chat" to give the conversation the screen, and its
+// composer, with what the next message is about.
+export function PanelDock() {
+  const dock = useContext(PanelDockContext);
+  if (!dock) return null;
+  // A first question on its way has no thread yet: the chat keeps its
+  // words, as sent, until the answer starts one.
+  const latest =
+    latestOf(dock.view) ?? (dock.asked ? { kind: "sent" as const, text: dock.asked } : null);
+  const working = dock.asked !== null || dock.view?.running === true;
+  return (
+    <section class="panel-dock" aria-label="The conversation">
+      <div class="panel-dock-head">
+        <div class="panel-dock-latest">
+          {latest?.kind === "sent" && <p class="panel-dock-you">You: {latest.text}</p>}
+          {latest?.kind === "answer" && dock.view && (
+            <AnswerText text={latest.text} view={dock.view} />
+          )}
+          {working && latest?.kind !== "answer" && <p class="panel-dock-working">Working…</p>}
+        </div>
+        <button
+          type="button"
+          class="quiet-action panel-dock-chat"
+          onClick={() => dock.onFold(true)}
+        >
+          <StepIcon up /> Chat
+        </button>
+      </div>
+      <ChatInput {...dock.composer} elevation="flat" />
+    </section>
   );
 }
 

@@ -14,20 +14,22 @@ import {
   SendKeyContext,
   TimeFormatContext,
 } from "./parts.tsx";
-import { ItemPanel } from "./item-panel.tsx";
+import { ItemPanel, PanelDock } from "./item-panel.tsx";
+import { type PanelDock as Docked, PanelDockContext } from "./dock.tsx";
 import { MenuIcon, needsYouId, Sidebar } from "./sidebar.tsx";
 import { Closing, closingProblem } from "./close-thread.tsx";
 import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
 import { currentWorkstream, type Model, type Msg } from "./root.ts";
-import { placeIn } from "./panel.ts";
+import { panelName, placeIn } from "./panel.ts";
+import { expected } from "./thread.ts";
 import { addUndos } from "./panel-adds.ts";
 import { editUndos } from "./panel-edits.ts";
 import { approvedUndos } from "./approved.ts";
 import { rejectedUndos } from "./rejected.ts";
 import { movingUndos } from "./moving.ts";
-import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
+import { NewThreadPage, ThreadPage, threadComposer } from "./thread-page.tsx";
 import { BeadStatus } from "./undo-stack.tsx";
 import type { Undos } from "./undos.ts";
 import { useProgram } from "./use-program.ts";
@@ -38,7 +40,7 @@ import { SetupPage } from "./setup-page.tsx";
 import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
 import { ConnectNotices } from "./connect-steps.tsx";
-import { WindowChat } from "./window-chat-view.tsx";
+import { WindowChat, windowChatComposer } from "./window-chat-view.tsx";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [model, dispatch] = useProgram(program);
@@ -52,6 +54,8 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [folded, setFolded] = useState(() => readFolded());
   const [drawer, setDrawer] = useState(false);
   const beside = useMatches(besideChat);
+  const dock = beside ? null : dockOf(model, dispatch);
+  const itemFolded = dock?.folded === true;
   // Closing the drawer by hand gives focus back to the menu that opened it.
   const closeDrawer = () => {
     if (!document.querySelector(".shell[data-drawer]")) return;
@@ -155,65 +159,75 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       <TimeFormatContext.Provider value={timeFormat(model.settings)}>
         <ConnectorsContext.Provider value={model.connectors}>
           <OpenItemContext.Provider value={model.panel?.id ?? null}>
-            <div
-              class="shell"
-              data-folded={folded || undefined}
-              data-drawer={drawer || undefined}
-              data-panel={model.panel ? "" : undefined}
-              data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
-            >
-              <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
-              <div class="frame" aria-hidden="true" />
-              <button
-                type="button"
-                class="drawer-backdrop"
-                tabIndex={-1}
-                aria-hidden="true"
-                onClick={closeDrawer}
-              />
-              <div class="shell-main">
-                <Bar
-                  model={model}
-                  dispatch={dispatch}
-                  open={drawer}
-                  onMenu={() => setDrawer(true)}
+            <PanelDockContext.Provider value={dock}>
+              <div
+                class="shell"
+                data-folded={folded || undefined}
+                data-drawer={drawer || undefined}
+                data-panel={model.panel ? "" : undefined}
+                data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
+              >
+                <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
+                <div class="frame" aria-hidden="true" />
+                <button
+                  type="button"
+                  class="drawer-backdrop"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onClick={closeDrawer}
                 />
-                <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-                  <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
-                </ItemLinksContext.Provider>
-              </div>
-              {model.route.page === "overview" && model.chat.open && (!model.panel || beside) && (
-                <WindowChat
-                  chat={model.chat}
-                  thread={model.thread}
-                  beside={model.panel !== null}
-                  dispatch={dispatch}
-                />
-              )}
-              {model.panel && (
-                <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-                  <ItemPanel
-                    model={model.panel}
-                    place={placeIn(model.panelList, model.panel.id)}
-                    workstream={currentWorkstream(model)}
-                    adds={model.panelAdds}
-                    edits={model.panelEdits}
+                <div class="shell-main">
+                  <Bar
+                    model={model}
                     dispatch={dispatch}
+                    open={drawer}
+                    onMenu={() => setDrawer(true)}
                   />
-                </ItemLinksContext.Provider>
-              )}
-              <Closing model={model.closing} dispatch={dispatch} />
-              <BeadStatus />
-              <Endings
-                model={model.ending}
-                added={added}
-                shownByPage={
-                  model.route.page === "workstream" ||
-                  (model.route.page === "overview" && model.overview !== null)
-                }
-                dispatch={dispatch}
-              />
-            </div>
+                  <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+                    <Page
+                      model={model}
+                      added={added}
+                      onNeedsYou={showNeedsYou}
+                      dispatch={dispatch}
+                    />
+                  </ItemLinksContext.Provider>
+                </div>
+                {model.route.page === "overview" &&
+                  model.chat.open &&
+                  (!model.panel || beside || itemFolded) && (
+                    <WindowChat
+                      chat={model.chat}
+                      thread={model.thread}
+                      beside={model.panel !== null && beside}
+                      dispatch={dispatch}
+                    />
+                  )}
+                {model.panel && !itemFolded && (
+                  <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+                    <ItemPanel
+                      dock={dock && <PanelDock />}
+                      model={model.panel}
+                      place={placeIn(model.panelList, model.panel.id)}
+                      workstream={currentWorkstream(model)}
+                      adds={model.panelAdds}
+                      edits={model.panelEdits}
+                      dispatch={dispatch}
+                    />
+                  </ItemLinksContext.Provider>
+                )}
+                <Closing model={model.closing} dispatch={dispatch} />
+                <BeadStatus />
+                <Endings
+                  model={model.ending}
+                  added={added}
+                  shownByPage={
+                    model.route.page === "workstream" ||
+                    (model.route.page === "overview" && model.overview !== null)
+                  }
+                  dispatch={dispatch}
+                />
+              </div>
+            </PanelDockContext.Provider>
           </OpenItemContext.Provider>
         </ConnectorsContext.Provider>
       </TimeFormatContext.Provider>
@@ -232,6 +246,31 @@ const narrow = "(max-width: 760px)";
 // the item takes the window's edge; window.css says the same. Narrower, the
 // item covers the chat, as it always has.
 const besideChat = "(min-width: 1100px)";
+
+// Below 1100, the conversation the open item lies over, which the panel
+// carries in its dock: the overview's window chat while it's open, or the
+// thread whose page this is (dock.tsx).
+function dockOf(model: Model, dispatch: Dispatch): Docked | null {
+  const { panel, thread, route } = model;
+  if (!panel) return null;
+  const view = thread && expected(thread);
+  const composer =
+    route.page === "overview" && model.chat.open
+      ? windowChatComposer(model.chat, thread, dispatch)
+      : route.page === "thread" && thread && view
+        ? threadComposer(thread, view, dispatch)
+        : null;
+  if (!composer) return null;
+  return {
+    composer,
+    view,
+    asked: route.page === "overview" ? model.chat.asked : null,
+    folded: model.panelFolded,
+    item: panelName(panel),
+    onFold: (folded) => dispatch({ type: "panelFolded", folded }),
+    onClose: () => dispatch({ type: "panelClosed" }),
+  };
+}
 
 // Whether a media query matches, kept as the window resizes.
 function useMatches(query: string): boolean {

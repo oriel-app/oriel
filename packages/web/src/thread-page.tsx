@@ -6,7 +6,8 @@ import { useContext, useEffect, useMemo, useRef } from "preact/hooks";
 import { chipIds } from "./markdown.ts";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
-import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { ChatInput, type Composer, LookingChips, readsWith } from "./chat-input.tsx";
+import { FoldedItem, PanelDockContext } from "./dock.tsx";
 import { notLooking } from "./looking.ts";
 import { watchLatest } from "./effects.ts";
 import { kindOfItem } from "./item-id.ts";
@@ -135,9 +136,6 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
   useEffect(() => watchLatest(send), [model.id]);
   // A decision sent from here shows before the server answers it.
   const view = expected(model);
-  // A held message's words in the composer send as they were held, about
-  // nothing, so it offers nothing while they're there (decision 0062).
-  const looking = model.composing ? notLooking : model.lookingAt;
   if (model.deleted)
     return (
       <main class="page">
@@ -224,46 +222,17 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
             )}
           </ol>
           <Dock>
+            <FoldedItem />
             <ChatInput
+              {...threadComposer(model, view, dispatch)}
               class="composer"
               elevation="raised"
-              label="Message"
               above={
                 <ToReview
                   ids={review.map((set) => set.id)}
                   onShow={(changeSetId) => send({ type: "toReviewClicked", changeSetId })}
                 />
               }
-              draft={model.draft}
-              busy={model.sending}
-              running={view.running}
-              notice={model.notice}
-              placeholder={
-                view.members.length === 0
-                  ? planPrompt
-                  : `Ask about ${plural(view.members.length, "item")}…`
-              }
-              reads={readsWith(readsOf(view), looking, readOnlyIn(view))}
-              context={
-                <LookingChips
-                  lookingAt={looking}
-                  readOnly={readOnlyIn(view)}
-                  onLooking={(msg) => send({ type: "looking", msg })}
-                  onCite={(item) =>
-                    dispatch({
-                      type: "panelAdd",
-                      msg: {
-                        type: "addClicked",
-                        item: { id: item.id, key: item.key },
-                        workstream: { id: view.workstream.id, name: view.workstream.name },
-                      },
-                    })
-                  }
-                />
-              }
-              onDraft={(text) => send({ type: "draftChanged", text })}
-              onSubmit={() => send({ type: "sendClicked" })}
-              onStop={() => send({ type: "stopClicked" })}
             />
           </Dock>
         </main>
@@ -271,6 +240,46 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
       </DropZone>
     </ItemLinksContext.Provider>
   );
+}
+
+// The thread's composer, as its page and the item panel's dock (dock.tsx)
+// both draw it: what it sends, what it reads, and what the next message is
+// about.
+export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: Dispatch): Composer {
+  const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
+  // A held message's words in the composer send as they were held, about
+  // nothing, so it offers nothing while they're there (decision 0062).
+  const looking = model.composing ? notLooking : model.lookingAt;
+  return {
+    label: "Message",
+    draft: model.draft,
+    busy: model.sending,
+    running: view.running,
+    notice: model.notice,
+    placeholder:
+      view.members.length === 0 ? planPrompt : `Ask about ${plural(view.members.length, "item")}…`,
+    reads: readsWith(readsOf(view), looking, readOnlyIn(view)),
+    context: (
+      <LookingChips
+        lookingAt={looking}
+        readOnly={readOnlyIn(view)}
+        onLooking={(msg) => send({ type: "looking", msg })}
+        onCite={(item) =>
+          dispatch({
+            type: "panelAdd",
+            msg: {
+              type: "addClicked",
+              item: { id: item.id, key: item.key },
+              workstream: { id: view.workstream.id, name: view.workstream.name },
+            },
+          })
+        }
+      />
+    ),
+    onDraft: (text) => send({ type: "draftChanged", text }),
+    onSubmit: () => send({ type: "sendClicked" }),
+    onStop: () => send({ type: "stopClicked" }),
+  };
 }
 
 // A thread from nothing, before its first message: the composer, and the
@@ -418,22 +427,29 @@ const startable = (workstreams: readonly WorkstreamSummary[] | null) =>
     (workstream) => workstream.done === null && workstream.origin.kind !== "window",
   );
 
-// An answer. The items it names as chips are a list, in its order, so one
-// opened from it steps through the rest in the panel ("1 of 2").
-function Reply({ text, view }: { text: string; view: ThreadView }) {
+// An answer's text, in the thread or in the item panel's dock. The items
+// it names as chips are a list, in its order, so one opened from it steps
+// through the rest in the panel ("1 of 2").
+export function AnswerText({ text, view }: { text: string; view: ThreadView }) {
   const named = useMemo(
     () => chipIds(text).filter((id) => view.chips[id]?.kind === "item"),
     [text, view.chips],
   );
   return (
+    <ChipsContext.Provider value={view.chips}>
+      <QuotesContext.Provider value={view.quotes}>
+        <ItemListContext.Provider value={named}>
+          <Markdown text={text} linksTo={sites(view)} answer />
+        </ItemListContext.Provider>
+      </QuotesContext.Provider>
+    </ChipsContext.Provider>
+  );
+}
+
+function Reply({ text, view }: { text: string; view: ThreadView }) {
+  return (
     <li class="reply">
-      <ChipsContext.Provider value={view.chips}>
-        <QuotesContext.Provider value={view.quotes}>
-          <ItemListContext.Provider value={named}>
-            <Markdown text={text} linksTo={sites(view)} answer />
-          </ItemListContext.Provider>
-        </QuotesContext.Provider>
-      </ChipsContext.Provider>
+      <AnswerText text={text} view={view} />
     </li>
   );
 }
@@ -1654,8 +1670,11 @@ function Dock({ children }: { children: ComponentChildren }) {
     resized.observe(element);
     return () => resized.disconnect();
   }, []);
+  // While the item panel lies over the thread and carries its composer,
+  // this one is covered: the panel's is the one to type in.
+  const docked = useContext(PanelDockContext);
   return (
-    <div class="chat-dock" ref={dock}>
+    <div class="chat-dock" ref={dock} inert={(docked && !docked.folded) || undefined}>
       {children}
     </div>
   );

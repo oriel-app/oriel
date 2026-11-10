@@ -3,11 +3,14 @@
 // the overview while it has a conversation, over the page's right side, or
 // as a sheet on a narrow window. While an item is open, on a window with
 // room, the chat moves into the page column beside it, and "‹ Window" puts
-// the overview back; narrower, the item covers it. Its composer offers the item open as what
-// the next question is about (decision 0062). Its entries render as a thread's page renders them, blocks included;
-// its fields are the one ChatInput.
+// the overview back; narrower, the item covers it and carries the chat's
+// composer in its dock (dock.tsx). Its composer offers the item open as
+// what the next question is about (decision 0062). Its entries render as a
+// thread's page renders them, blocks included; its fields are the one
+// ChatInput.
 import { useEffect, useRef } from "preact/hooks";
-import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { ChatInput, type Composer, LookingChips, readsWith } from "./chat-input.tsx";
+import { FoldedItem } from "./dock.tsx";
 import { notLooking } from "./looking.ts";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
 import { entriesOf, expected, type ThreadModel, type ThreadMsg } from "./thread.ts";
@@ -122,9 +125,6 @@ export function WindowChat(props: {
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
   const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   const view = thread && expected(thread);
-  // A held message's words in the composer send as they were held, about
-  // nothing, so it offers nothing while they're there (decision 0062).
-  const followUp = !thread || thread.composing ? notLooking : thread.lookingAt;
   const entries = view?.entries.length ?? 0;
   const list = useRef<HTMLOListElement>(null);
   // Each new entry, and the agent at work, shows at the chat's end.
@@ -195,48 +195,62 @@ export function WindowChat(props: {
           </li>
         )}
       </ol>
-      {/* One problem line, the thread's or the chat's own. */}
-      {thread && view ? (
-        <ChatInput
-          class="composer"
-          label="Message"
-          draft={thread.draft}
-          busy={thread.sending}
-          running={view.running}
-          notice={thread.notice ?? chat.problem}
-          placeholder="Ask a follow-up"
-          reads={readsWith("Reads your whole window", followUp, noneReadOnly)}
-          context={
-            <LookingChips
-              lookingAt={followUp}
-              readOnly={noneReadOnly}
-              onLooking={(msg) => sendThread({ type: "looking", msg })}
-            />
-          }
-          onDraft={(text) => sendThread({ type: "draftChanged", text })}
-          onSubmit={() => sendThread({ type: "sendClicked" })}
-          onStop={() => sendThread({ type: "stopClicked" })}
-        />
-      ) : (
-        <ChatInput
-          class="composer"
-          label="Message"
-          draft={chat.draft}
-          busy={chat.asking}
-          notice={chat.problem}
-          placeholder="Ask about your window"
-          reads={readsWith("Reads your whole window", chat.lookingAt, noneReadOnly)}
-          context={
-            <LookingChips
-              lookingAt={chat.lookingAt}
-              readOnly={noneReadOnly}
-              onLooking={(msg) => send({ type: "looking", msg })}
-            />
-          }
-          onDraft={(text) => send({ type: "draftChanged", text })}
-          onSubmit={() => send({ type: "askClicked", chat: true })}
-        />
-      )}
+      <FoldedItem />
+      <ChatInput {...windowChatComposer(chat, thread, dispatch)} class="composer" />
     </aside>
   );
+}
+
+// The window chat's composer, as the chat and the item panel's dock
+// (dock.tsx) both draw it: a follow-up in its thread, or its first
+// question. One problem line, the thread's or the chat's own.
+export function windowChatComposer(
+  chat: WindowChatModel,
+  thread: ThreadModel | null,
+  dispatch: Dispatch,
+): Composer {
+  const view = thread && expected(thread);
+  if (thread && view) {
+    const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
+    // A held message's words in the composer send as they were held, about
+    // nothing, so it offers nothing while they're there (decision 0062).
+    const followUp = thread.composing ? notLooking : thread.lookingAt;
+    return {
+      label: "Message",
+      draft: thread.draft,
+      busy: thread.sending,
+      running: view.running,
+      notice: thread.notice ?? chat.problem,
+      placeholder: "Ask a follow-up",
+      reads: readsWith("Reads your whole window", followUp, noneReadOnly),
+      context: (
+        <LookingChips
+          lookingAt={followUp}
+          readOnly={noneReadOnly}
+          onLooking={(msg) => sendThread({ type: "looking", msg })}
+        />
+      ),
+      onDraft: (text) => sendThread({ type: "draftChanged", text }),
+      onSubmit: () => sendThread({ type: "sendClicked" }),
+      onStop: () => sendThread({ type: "stopClicked" }),
+    };
+  }
+  const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
+  return {
+    label: "Message",
+    draft: chat.draft,
+    busy: chat.asking,
+    notice: chat.problem,
+    placeholder: "Ask about your window",
+    reads: readsWith("Reads your whole window", chat.lookingAt, noneReadOnly),
+    context: (
+      <LookingChips
+        lookingAt={chat.lookingAt}
+        readOnly={noneReadOnly}
+        onLooking={(msg) => send({ type: "looking", msg })}
+      />
+    ),
+    onDraft: (text) => send({ type: "draftChanged", text }),
+    onSubmit: () => send({ type: "askClicked", chat: true }),
+  };
 }
