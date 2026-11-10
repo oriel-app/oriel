@@ -7,6 +7,7 @@ import { chipIds } from "./markdown.ts";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
 import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { notLooking } from "./looking.ts";
 import { watchLatest } from "./effects.ts";
 import { kindOfItem } from "./item-id.ts";
 import {
@@ -134,6 +135,9 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
   useEffect(() => watchLatest(send), [model.id]);
   // A decision sent from here shows before the server answers it.
   const view = expected(model);
+  // A held message's words in the composer send as they were held, about
+  // nothing, so it offers nothing while they're there (decision 0062).
+  const looking = model.composing ? notLooking : model.lookingAt;
   if (model.deleted)
     return (
       <main class="page">
@@ -239,10 +243,10 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
                   ? planPrompt
                   : `Ask about ${plural(view.members.length, "item")}…`
               }
-              reads={readsWith(readsOf(view), model.lookingAt, readOnlyIn(view))}
+              reads={readsWith(readsOf(view), looking, readOnlyIn(view))}
               context={
                 <LookingChips
-                  lookingAt={model.lookingAt}
+                  lookingAt={looking}
                   readOnly={readOnlyIn(view)}
                   onLooking={(msg) => send({ type: "looking", msg })}
                   onCite={(item) =>

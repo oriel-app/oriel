@@ -96,6 +96,19 @@ type Scene = {
   sketch?: true;
 };
 
+// The rail's second item, opened while a draft keeps the first, is offered
+// dashed: from the panel's steps, where the panel lies over the rail; on a
+// phone, whose panel is closed, from the rail. There the item covers the
+// composer until it docks under the item (OA-333), and closing the item
+// takes what it offered.
+async function secondLooked(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1280) >= 761) {
+    await page.keyboard.press("ArrowDown");
+    await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
+  } else await page.locator(".rail a.key").nth(1).click();
+  await page.locator(".ctx-chip[data-off]", { hasText: "+" }).waitFor();
+}
+
 // On a phone the item panel is a sheet over the page, composer and all:
 // closing it shows the composer, which keeps a draft's chip.
 async function closePanelOnPhone(page: Page): Promise<void> {
@@ -2685,19 +2698,19 @@ const scenes: Scene[] = [
           await page.locator(".ctx-chip[data-off]", { hasText: "Not sending" }).waitFor();
         },
       ],
+      ["second", secondLooked],
+      // Added, then left out: it stays, dashed, to add back (Sol, S1).
       [
-        "second",
+        "both",
         async (page: Page) => {
-          // The next item in the rail: from the panel's steps, where the
-          // panel lies over the rail; on a phone, whose panel is closed, from
-          // the rail.
-          if ((page.viewportSize()?.width ?? 1280) >= 761) {
-            await page.keyboard.press("ArrowDown");
-            await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
-          } else await page.locator(".rail a.key").nth(1).click();
-          // On a phone the item covers it, until the composer docks under the
-          // item (OA-333); closing the item takes what it offered.
-          await page.locator(".ctx-chip[data-off]", { hasText: "+" }).waitFor();
+          await secondLooked(page);
+          // On a phone the item lies over it, so the click goes to it alone.
+          await page.locator(".ctx-chip[data-off]", { hasText: "+" }).dispatchEvent("click");
+          await closePanelOnPhone(page);
+          await page.getByRole("button", { name: "Leave SYN-10 out" }).click();
+          await page.locator(".ctx-chip[data-off]", { hasText: "SYN-10" }).waitFor();
+          await page.getByRole("button", { name: "Add back" }).click();
+          await page.getByRole("button", { name: "Leave SYN-10 out" }).waitFor();
         },
       ],
     ] as const

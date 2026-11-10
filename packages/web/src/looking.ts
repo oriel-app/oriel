@@ -47,19 +47,20 @@ export function lookedAt(looking: LookingAt, open: LookItem | null, draft: strin
   const keeps = drafting(draft) && looking.chips.length > 0;
   if (open === null) return keeps ? { ...looking, offered: null, open } : notLooking;
   if (!keeps) return { chips: [{ item: open, on: true }], offered: null, open };
-  const held = looking.chips.some((chip) => chip.item.id === open.id);
+  // A message is about at most four items, as the server takes it.
+  const held = looking.chips.some((chip) => chip.item.id === open.id) || looking.chips.length >= 4;
   return { ...looking, offered: held ? null : open, open };
 }
 
 export function updateLooking(looking: LookingAt, msg: LookingMsg): LookingAt {
   switch (msg.type) {
-    // The first stays, dashed, so the person sees what isn't going; one
-    // added beside it goes.
+    // It stays, dashed, so the person sees what isn't going, and can add
+    // it back.
     case "lookDropped":
       return {
         ...looking,
-        chips: looking.chips.flatMap((chip, i) =>
-          chip.item.id !== msg.id ? [chip] : i === 0 ? [{ ...chip, on: false }] : [],
+        chips: looking.chips.map((chip) =>
+          chip.item.id === msg.id ? { ...chip, on: false } : chip,
         ),
       };
     case "lookAddedBack":
