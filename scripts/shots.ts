@@ -5330,14 +5330,14 @@ scenes.push(
         await page.locator(".item-panel .panel-facts").waitFor();
         await page.locator(".composer .ctx-chip", { hasText: "SYN-99" }).waitFor();
       }
-      const said = await page.evaluate(async () => {
+      const fromPage = new URL(page.url()).pathname.split("/").at(-1) ?? "";
+      const said = await page.evaluate(async (fromPage) => {
         const first = async (thread: string) => {
           const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
             entries: { kind: string; about?: unknown }[];
           };
           return view.entries.find((entry) => entry.kind === "user")?.about;
         };
-        const fromPage = location.pathname.split("/").at(-1) ?? "";
         const made = await fetch("/api/threads", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -5345,7 +5345,7 @@ scenes.push(
         });
         const { id: fromNothing } = (await made.json()) as { id: string };
         return { fromPage: await first(fromPage), fromNothing: await first(fromNothing) };
-      });
+      }, fromPage);
       const got = JSON.stringify(said);
       const want = JSON.stringify({
         fromPage: [{ id: "jira:SYN-99", outside: false }],
