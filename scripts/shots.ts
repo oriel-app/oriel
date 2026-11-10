@@ -3890,21 +3890,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    name: "thread-revised-in-place",
-    path: `/threads/${inPlace.threadId}`,
-    on: inPlace.serving,
-    act: (page) => page.locator(".change-set-revised").waitFor(),
-  },
-  {
-    name: "review-revised-in-place",
-    path: inPlace.review,
-    on: inPlace.serving,
-    act: async (page) => {
-      await page.getByRole("button", { name: "Show the change" }).click();
-      await page.locator(".review-card .review-revised").waitFor();
-    },
-  },
-  {
     // Approving through the link, while it applies.
     name: "review-applying",
     path: new URL(link.url).pathname,
@@ -4311,6 +4296,22 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
       held();
       await dock.locator(".panel-dock-working").waitFor({ state: "detached" });
+    },
+  },
+  // A change set the agent revised in place, and its review link (OA-309).
+  {
+    name: "thread-revised-in-place",
+    path: `/threads/${inPlace.threadId}`,
+    on: inPlace.serving,
+    act: (page) => page.locator(".change-set-revised").waitFor(),
+  },
+  {
+    name: "review-revised-in-place",
+    path: inPlace.review,
+    on: inPlace.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .review-revised").waitFor();
     },
   },
 ];
