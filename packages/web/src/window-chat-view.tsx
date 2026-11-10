@@ -8,6 +8,7 @@
 // its fields are the one ChatInput.
 import { useEffect, useRef } from "preact/hooks";
 import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { notLooking } from "./looking.ts";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
 import { entriesOf, expected, type ThreadModel, type ThreadMsg } from "./thread.ts";
 import { ChatEntryItem, itemsOf } from "./thread-page.tsx";
@@ -121,6 +122,9 @@ export function WindowChat(props: {
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
   const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   const view = thread && expected(thread);
+  // A held message's words in the composer send as they were held, about
+  // nothing, so it offers nothing while they're there (decision 0062).
+  const followUp = !thread || thread.composing ? notLooking : thread.lookingAt;
   const entries = view?.entries.length ?? 0;
   const list = useRef<HTMLOListElement>(null);
   // Each new entry, and the agent at work, shows at the chat's end.
@@ -201,10 +205,10 @@ export function WindowChat(props: {
           running={view.running}
           notice={thread.notice ?? chat.problem}
           placeholder="Ask a follow-up"
-          reads={readsWith("Reads your whole window", thread.lookingAt, noneReadOnly)}
+          reads={readsWith("Reads your whole window", followUp, noneReadOnly)}
           context={
             <LookingChips
-              lookingAt={thread.lookingAt}
+              lookingAt={followUp}
               readOnly={noneReadOnly}
               onLooking={(msg) => sendThread({ type: "looking", msg })}
             />
