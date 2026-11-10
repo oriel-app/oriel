@@ -1,7 +1,8 @@
 // Each tracker's agent side, as text, is byte for byte what it was before
 // core's issue shape built it (OA-327): its module, its writes, its ops'
 // lines, its panel and what it takes in. The golden copies were taken on
-// main at 333c03e8; a change to one is a change to what the agent reads.
+// main at 333c03e8 and live in tests/golden/module-<kind>.txt; a change to one
+// is a change to what the agent reads.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -109,6 +110,9 @@ for (const [kind, epic] of [
   test(`the ${kind}'s agent side reads as it did before core's issue shape built it`, async () => {
     const fixture = fixtures.get(kind);
     assert.ok(fixture);
-    const golden = readFileSync(new URL(`../golden/${kind}.txt`, import.meta.url), "utf8");
+    const golden = readFileSync(
+      new URL(`../../../tests/golden/module-${kind}.txt`, import.meta.url),
+      "utf8",
+    );
     assert.equal(await capture(kind, fixture, probes(epic)), golden);
   });
