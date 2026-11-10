@@ -12,6 +12,7 @@ import {
 import {
   type Draft,
   type Actor,
+  type ChangeSetState,
   type HeldSender,
   type Instant,
   type Log,
@@ -147,9 +148,14 @@ export type TurnDeps = {
   // Tokens spent on a thread outside its chat: its second looks' (decision
   // 0054), which the per-thread cap counts too (SPEC §9).
   alsoSpent?: (threadId: Ulid) => { inputTokens: number; outputTokens: number };
+  // The thread's change sets, newest first, each in the state the window
+  // shows it in, which the agent reads as each turn starts (OA-310).
+  changeSets?: (threadId: Ulid) => Promise<readonly { id: Ulid; state: ChangeSetState }[]>;
 };
 
 const maxSummaryChars = 2_000;
+// How many of the thread's newest change sets a turn reads the state of.
+const maxStates = 20;
 
 // A run as history keeps it: how it ended and what it returned or why it
 // failed, cut short, and for a run that captured changes, what they are.
@@ -378,10 +384,14 @@ export function turns(deps: TurnDeps) {
       const region = workstreams.region(thread.workstreamId, thread.regionVersion);
       if (!region) throw new Error(`no version ${thread.regionVersion} of the thread's workstream`);
       const before = threads.messages(thread.id).filter((message) => message.seq < seq);
+      const sets = (await deps.changeSets?.(thread.id)) ?? [];
+      const states = sets.length
+        ? [{ role: "states" as const, changeSets: sets.slice(0, maxStates), at: deps.now() }]
+        : [];
       const input = {
         thread,
         region,
-        history: history(before, markerText(thread.workstreamId)),
+        history: [...history(before, markerText(thread.workstreamId)), ...states],
         text,
         snapshot: deps.snapshot(),
         spent: plus(spent(before), deps.alsoSpent?.(thread.id)),

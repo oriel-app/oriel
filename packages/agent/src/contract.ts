@@ -7,6 +7,7 @@ import type {
   ChallengeHost,
   ChallengeRun,
   ChangeSets,
+  ChangeSetState,
   Draft,
   Instant,
   Intent,
@@ -64,6 +65,10 @@ export type ChatMessage =
   // the model reads it as Oriel's, never as its own words (OA-91). Its check
   // of an answer's quotes is the window's alone.
   | { role: "note"; note: AgentNote; at: Instant }
+  // Where each of the thread's change sets stands as the turn starts, as the
+  // window shows it, newest first: never stored, so it is current whatever
+  // happened to them between turns (OA-310).
+  | { role: "states"; changeSets: readonly { id: Ulid; state: ChangeSetState }[]; at: Instant }
   // A compact record of a sandbox run, for history. With its script, history
   // replays the run faithfully.
   | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };

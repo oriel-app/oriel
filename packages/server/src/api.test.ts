@@ -300,8 +300,10 @@ test("what stopped and failed turns spent counts toward the next turn", async (t
       inputs.push(input);
       turn += 1;
       if (turn === 1) {
-        // Stopped partway: its done carries the usage so far.
-        await new Promise((resolve) => signal.addEventListener("abort", resolve));
+        // Stopped partway: its done carries the usage so far. As any agent
+        // does, it checks first whether it was stopped before it started.
+        if (!signal.aborted)
+          await new Promise((resolve) => signal.addEventListener("abort", resolve));
         yield { kind: "done", usage: { inputTokens: 7, outputTokens: 1 } };
         return;
       }
