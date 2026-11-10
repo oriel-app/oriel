@@ -603,6 +603,16 @@ function looking(model: Model): Model {
   return { ...model, thread, chat, workstream, newThread };
 }
 
+// A question that starts a thread goes to it with the item it was about
+// still open beside it (decision 0062): the item is the window's, not the
+// page's.
+const keepingItem = (model: Model, effects: Effect[]): Effect[] =>
+  effects.map((effect) =>
+    effect.type === "navigate" && effect.route.page === "thread"
+      ? { ...effect, route: withItem(effect.route, model.route.item ?? null) }
+      : effect,
+  );
+
 function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {
   const rejection = rejectedIn(before, msg);
   if (rejection) {
@@ -1052,7 +1062,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       if (model.newThread?.id !== msg.tag.draft)
         return [model, msg.ok ? [loadWorkstreams, loadThreads] : []];
       const [newThread, effects] = newThreadReplied(model.newThread, msg);
-      return [{ ...model, newThread }, effects];
+      return [{ ...model, newThread }, keepingItem(model, effects)];
     }
     case "connections":
     case "connectPicked":
@@ -1091,7 +1101,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "workstreamSynced":
     case "threadOpened": {
       if (model.workstream === null) return [model, []];
-      const [workstream, effects] = workstreamReplied(model.workstream, msg);
+      const [workstream, replied] = workstreamReplied(model.workstream, msg);
+      const effects = keepingItem(model, replied);
       const moved = msg.tag.kind === "workstreamChanged" || msg.tag.kind === "restored";
       return [{ ...model, workstream }, moved ? [...effects, loadWorkstreams] : effects];
     }

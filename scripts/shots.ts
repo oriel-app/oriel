@@ -5266,6 +5266,94 @@ scenes.push(
       await page.locator(".draft-card .connect-said").waitFor();
     },
   },
+  // On a workstream thread, an item opened from a change set's line (OA-336):
+  // the line is marked, the panel steps through the lines' items, the
+  // composer offers it, and beside it Approve and apply stays in view. On a
+  // phone the item is a sheet over the thread, as before.
+  {
+    name: "panel-thread-ask",
+    window: true,
+    path: `/threads/${thread}`,
+    act: async (page) => {
+      const line = page.locator(".change-set[data-awaits] .diff-line").first();
+      await line.locator(".chip-link").click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await expectCount(page.locator(".diff-line[data-open]"), 1);
+      if ((await line.getAttribute("data-open")) === null)
+        throw new Error("The line the item was opened from should be marked open");
+      await page.locator(".panel-place", { hasText: "1 of 3" }).waitFor();
+      await page.locator(".composer .ctx-chip", { hasText: "Looking at" }).waitFor();
+      if (!beside(page)) return;
+      const approve = page.getByRole("button", { name: "Approve and apply" });
+      const box = await approve.boundingBox();
+      const height = page.viewportSize()?.height ?? 0;
+      if (!box || box.y < 0 || box.y + box.height > height)
+        throw new Error(`Approve and apply should stay in view beside the item: ${box?.y}`);
+    },
+  },
+  // The workstream page's Ask box offers the item open beside it, and the
+  // thread it starts keeps it on its first message, in the region; a thread
+  // from nothing keeps one too, read-only on its empty workstream.
+  {
+    name: "panel-workstream-ask",
+    window: true,
+    path: "/",
+    make: async () => {
+      const on = (await writing()).serving;
+      await post("/api/workstreams", checkout, on);
+      return on;
+    },
+    act: async (page) => {
+      const id = await page.evaluate(async () => {
+        const list = (await (await fetch("/api/workstreams")).json()) as {
+          workstreams: { id: string }[];
+        };
+        return list.workstreams[0]?.id ?? "";
+      });
+      await page.goto(new URL(`/workstreams/${id}`, page.url()).href);
+      // Typed first, so on a phone the chip stays once the sheet closes.
+      const ask = page.locator(".workstream-ask");
+      await ask.getByRole("textbox").fill("Is this blocked on legal?");
+      await page.locator(".workstream-page .members a.key", { hasText: "SYN-99" }).click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await closePanelOnPhone(page);
+      await ask
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: "SYN-99" })
+        .waitFor();
+      await expectCount(ask.locator(".ctx-chip", { hasText: "read-only" }), 0);
+      await ask.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      // The item stays open beside the thread, and its composer offers it.
+      if (beside(page)) {
+        await page.locator(".item-panel .panel-facts").waitFor();
+        await page.locator(".composer .ctx-chip", { hasText: "SYN-99" }).waitFor();
+      }
+      const said = await page.evaluate(async () => {
+        const first = async (thread: string) => {
+          const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
+            entries: { kind: string; about?: unknown }[];
+          };
+          return view.entries.find((entry) => entry.kind === "user")?.about;
+        };
+        const fromPage = location.pathname.split("/").at(-1) ?? "";
+        const made = await fetch("/api/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: "Plan it", about: [{ id: "jira:SYN-99", under: null }] }),
+        });
+        const { id: fromNothing } = (await made.json()) as { id: string };
+        return { fromPage: await first(fromPage), fromNothing: await first(fromNothing) };
+      });
+      const got = JSON.stringify(said);
+      const want = JSON.stringify({
+        fromPage: [{ id: "jira:SYN-99", outside: false }],
+        fromNothing: [{ id: "jira:SYN-99", outside: true }],
+      });
+      if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
+    },
+  },
 );
 
 const widths = asked.values.width?.map(Number) ?? [1280, 390];
