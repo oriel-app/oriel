@@ -63,6 +63,12 @@ export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting
   return [
     ...(hasOriel ? header : header.filter((line) => !line.includes("`workstream`"))),
     ...idUnion("RegionId", scope.ids),
+    ...(scope.looked.length
+      ? [
+          "/** Items the user looked at in this thread, outside this region: read-only. */",
+          ...idUnion("LookedId", scope.looked),
+        ]
+      : []),
     ...itemTypes(scope.docs),
     ...once(scope.sources.flatMap(({ spec, scope: own }) => spec.types(own))),
     ...(hasOriel ? [...orielTypes, ...historyTypes, ...actionTypes] : []),

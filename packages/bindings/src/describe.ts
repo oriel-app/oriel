@@ -20,7 +20,7 @@ import {
 } from "@oriel/core";
 import { intentFns, windowIntentFns } from "./actions.ts";
 import { checkedId, type Fn, orielSpaces } from "./fn.ts";
-import { challengeItemFns, itemFns, searchFn } from "./items.ts";
+import { challengeItemFns, itemFns, lookedItemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
 import { showFn } from "./block.ts";
 import { historyFn } from "./history.ts";
@@ -81,6 +81,9 @@ export const globalsOf = (spaces: readonly string[]): string[] => [...spaces, ..
 export type Scope = {
   spaces: readonly string[];
   ids: readonly ItemId[];
+  // Items the thread's messages were about that aren't in the region, which
+  // `items.read()` reads too, read-only (decision 0062).
+  looked: readonly ItemId[];
   docs: readonly string[];
   sources: { kind: SourceKind; spec: NamespaceSpec; scope: NamespaceScope }[];
 };
@@ -93,8 +96,13 @@ function checkedDoc(kind: SourceKind, doc: string): void {
 
 // IDs reach generated code, so each must have the shape core checks. The
 // kinds are those the item docs and namespaces are given under, in that
-// order.
-export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs = {}): Scope {
+// order. `looking`: what the thread's messages were about.
+export function scopeOf(
+  region: Region,
+  namespaces: Namespaces,
+  items: ItemDocs = {},
+  looking: readonly string[] = [],
+): Scope {
   const kinds = [...new Set([...Object.keys(items), ...Object.keys(namespaces)])];
   const taken = kinds.find((kind) => orielNames.includes(kind));
   if (taken !== undefined)
@@ -107,6 +115,12 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
     if (!ids.includes(checked)) ids.push(checked);
   }
   ids.sort(itemOrder(kinds));
+  const looked: ItemId[] = [];
+  for (const id of looking) {
+    const checked = checkedId(id, names);
+    if (!ids.includes(checked) && !looked.includes(checked)) looked.push(checked);
+  }
+  looked.sort(itemOrder(kinds));
   // A region whose anchor has left it is a region without one.
   const named = region.origin.kind === "cluster" ? region.origin.anchor : null;
   // By source and stable ID, under the handle the region has for it.
@@ -133,7 +147,7 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
     const own = anchor !== null && members.includes(anchor) ? anchor : null;
     return [{ kind, spec, scope: { ids: members, anchor: own } }];
   });
-  return { spaces: spacesOf(kinds), ids, docs, sources };
+  return { spaces: spacesOf(kinds), ids, looked, docs, sources };
 }
 
 // `items`, then each namespace in source order, then Oriel's own (its reads,
@@ -164,7 +178,7 @@ export function describe(
   const window = options.window ? [...windowFns, ...windowIntentFns] : [];
   const waiting = options.waiting ? [previewFn, ...draftFns(options.waiting)] : [];
   return [
-    ...itemFns,
+    ...(scope.looked.length ? lookedItemFns : itemFns),
     ...namespaced,
     ...orielFns,
     ...intentFns,

@@ -217,7 +217,7 @@ async function* turn(
     conversation = deps.provider.converse({
       system: systemPrompt,
       tools: [runTool(declared)],
-      messages: threadMessages(input.history, input.text),
+      messages: threadMessages(input.history, input.text, input.about),
       signal,
       log,
     });

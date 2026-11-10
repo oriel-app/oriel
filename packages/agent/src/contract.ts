@@ -1,6 +1,7 @@
 // The interface the server builds the agent against. The lead owns it: change
 // it there first.
 import type {
+  About,
   ActionLine,
   Bindings,
   Block,
@@ -35,8 +36,10 @@ export type TurnInput = {
   region: Region;
   // Prior messages, oldest first.
   history: ChatMessage[];
-  // The user's message.
+  // The user's message, and the items it is about, open beside the
+  // composer as they sent it (decision 0062).
   text: string;
+  about?: About;
   // The index snapshot this turn reads (`indexStore.snapshot(workspaceId)`);
   // each run records it (SPEC §7). Required: a default of 0 would record
   // "never synced".
@@ -54,7 +57,7 @@ export type TurnInput = {
 };
 
 export type ChatMessage =
-  | { role: "user"; text: string; at: Instant }
+  | { role: "user"; text: string; about?: About; at: Instant }
   | { role: "assistant"; text: string; at: Instant }
   // "added SYN-12", "removed plan.md" (decision 0018).
   | { role: "marker"; text: string; at: Instant }

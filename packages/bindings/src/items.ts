@@ -74,6 +74,26 @@ const readAnyItem: Fn = {
 
 export const challengeItemFns: readonly Fn[] = [readAnyItem, listItems];
 
+// In a thread whose messages were about items outside its region (decision
+// 0062), `items.read()` reads those too, read-only: the host reaches them as
+// it does what search() found, and no write takes them.
+const readLookedItem: Fn = {
+  space: "items",
+  outsideRegion: false,
+  ...read({
+    name: "read",
+    doc: "One item in this region, or one the user looked at, read live.",
+    params: [param("id", "RegionId | LookedId", string)],
+    returns: "Item | Gone",
+    run: async ([id], host: Host) => {
+      const [view] = await host.read([id as ItemId], itemView);
+      return view;
+    },
+  }),
+};
+
+export const lookedItemFns: readonly Fn[] = [readLookedItem, listItems];
+
 export const searchFn: Fn = {
   space: null,
   outsideRegion: true,

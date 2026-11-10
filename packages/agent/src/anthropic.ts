@@ -80,7 +80,20 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 const malformed = (what: string) =>
   new ProviderError(`The model provider sent a response Oriel can't read: ${what}.`);
 
+// The API takes a conversation that opens with the user. One that opens
+// with Oriel's note, as a thread's first message about an open item does
+// (decision 0062), gets a fixed line of Oriel's before it.
+export const threadOpens = "(Oriel: the thread starts here.)";
+
 function toApi(messages: readonly ModelMessage[]): ApiMessage[] {
+  const opening: ApiMessage[] =
+    messages[0]?.role === "assistant"
+      ? [{ role: "user", content: [{ type: "text", text: threadOpens }] }]
+      : [];
+  return [...opening, ...apiMessages(messages)];
+}
+
+function apiMessages(messages: readonly ModelMessage[]): ApiMessage[] {
   return messages.flatMap((message): ApiMessage[] => {
     if (message.role === "user")
       return [{ role: "user", content: [{ type: "text", text: message.text }] }];
