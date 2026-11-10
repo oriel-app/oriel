@@ -3,6 +3,7 @@
 // Bindings build it only for a region holding Jira items, and its functions
 // take only those, or for a region with no items yet, which may only create. The composition root hands it to bindings.
 import {
+  containerRules,
   idUnion,
   type ItemId,
   isNewRef,
@@ -209,7 +210,7 @@ function createStory(scope: JiraScope): NamespaceWrite {
   if (anchor)
     return write({
       name: "createStory",
-      doc: `Create a story in this region's epic. ${doc}`,
+      doc: `Create a story in this region's epic. ${doc} ${containerRules.noNew("an epic")}`,
       op: "createStory",
       creates: true,
       params: [param("story", storyType(null), object(storyFields))],
@@ -222,8 +223,8 @@ function createStory(scope: JiraScope): NamespaceWrite {
   return write({
     name: "createStory",
     doc: epics.length
-      ? `Create a story in one of this region's epics, or in none. ${doc}`
-      : `Create a story. This region holds no epic, so it goes in none. ${doc}`,
+      ? `Create a story in one of this region's epics, or in none. ${doc} ${containerRules.noNew("an epic")} ${containerRules.addFirst("an epic")}`
+      : `Create a story. This region holds no epic, so it goes in none. ${doc} ${containerRules.noNew("an epic")} ${containerRules.addFirst("an epic")}`,
     op: "createStory",
     creates: true,
     params: [
@@ -270,7 +271,7 @@ const createEpic = write({
 const createStoryInNewEpic = (scope: JiraScope) =>
   write({
     name: "createStory",
-    doc: "Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref.",
+    doc: `Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref. ${containerRules.addFirst("an epic")}`,
     op: "createStory",
     creates: true,
     params: [param("story", storyType("NewRef"), object({ ...storyFields, epic: epicField }))],

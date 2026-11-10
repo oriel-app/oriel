@@ -43,8 +43,10 @@ export const linearDeclaration = {
   namespace: (records, context: LinearContext | undefined) => linear.namespace(records, context),
   specs: linear.specs,
   // Its item doc and its namespace, with its team's cycles and team():
-  // 2,808 bytes in OA-278.
-  budget: 2_850,
+  // 2,808 bytes in OA-278. Rose by 131 for createIssue saying only an empty
+  // workstream can create a project, and how to use one outside the region
+  // (OA-312): 2,939.
+  budget: 2_950,
   open: openLinear,
   // The team it reads, by its key; the server's first when absent.
   options: object({

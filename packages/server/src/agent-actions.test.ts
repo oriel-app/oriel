@@ -12,7 +12,13 @@ import {
   threadStore,
   workstreamStore,
 } from "@oriel/db";
-import type { ActionLineView, ChatEntry, ThreadView, WorkstreamView } from "@oriel/web/view";
+import type {
+  ActionLineView,
+  ChatEntry,
+  DiffView,
+  ThreadView,
+  WorkstreamView,
+} from "@oriel/web/view";
 import { dispatcher } from "./actions.ts";
 import { intentsOf } from "./intents.ts";
 import type { Step } from "./scripted-agent.ts";
@@ -284,4 +290,50 @@ test("Undo under the reply puts back what the agent removed, once, and Redo remo
   // A line that isn't there is not found.
   const nowhere = await app.post(undoUrl(undo.action, app.threadId, list.seq, 5), undo.input);
   assert.equal(nowhere.status, 404);
+});
+
+test("a new thread adds an epic it doesn't hold and proposes a story in it in the same turn (OA-312)", async (t) => {
+  const app = await testApp(t, {
+    plan: () => [{ run: "join" }, { run: "story" }],
+    scripts: {
+      // Found by this run's search, so it may join.
+      join: async (bindings) => {
+        await bindings.read("search", ["Boarding passes", 5]);
+        return { intents: [["workstream.add", [{ items: ["jira:SYN-2"] }]]] };
+      },
+      story: async () => ({
+        writes: [
+          ["jira.createStory", [{ summary: "Scan at the gate", epic: "jira:SYN-2" }], "new:1"],
+        ],
+      }),
+    },
+  });
+  const { id: threadId, workstreamId } = json<{ id: string; workstreamId: string }>(
+    await app.post("/api/threads", { text: "Add a story under SYN-2" }),
+  );
+  await app.app.settled();
+  const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  const kinds = view.entries.map((e) => e.kind);
+  // The epic joined, with its Undo and its marker, before the change set the
+  // same turn proposed.
+  const lines = view.entries.flatMap((e) => (e.kind === "actions" ? e.lines : []));
+  assert.deepEqual(
+    lines.map((line) => line.applied),
+    [true],
+  );
+  const marker = view.entries.find((e) => e.kind === "marker");
+  assert.deepEqual(marker?.kind === "marker" && marker.added.map((ref) => ref.id), ["jira:SYN-2"]);
+  assert.ok(kinds.indexOf("marker") < kinds.indexOf("change-set"), kinds.join(", "));
+  const set = view.entries.find((e) => e.kind === "change-set");
+  assert.ok(set?.kind === "change-set", "the turn proposed a change set");
+  const diff = json<DiffView>(await app.post(`/api/change-sets/${set.changeSetId}/diff`));
+  assert.deepEqual(
+    diff.lines.map((line) => [line.kind, line.makes]),
+    [["create", "story"]],
+  );
+  const members = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`)).members;
+  assert.deepEqual(
+    members.map((m) => m.ref.id),
+    ["jira:SYN-2"],
+  );
 });

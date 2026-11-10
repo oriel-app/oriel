@@ -24,6 +24,8 @@ import {
   type Draft,
   type Intent,
   type Instant,
+  isItemId,
+  type ItemId,
   type MutationRecord,
   type Answered,
   type ChallengeHost,
@@ -37,12 +39,13 @@ import {
   type Thread,
   type Ulid,
   ulid,
+  type WorkstreamMember,
 } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
 import { checkRecord, keep, written } from "@oriel/server/challenger";
 import { itemNamed } from "./fixtures.ts";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
-import { buildWorld, caseWorld, type World } from "./world.ts";
+import { buildWorld, caseWorld, member, type World } from "./world.ts";
 
 // The thread's caps (SPEC §9). Generous enough for any case to finish, small
 // enough that a case that loops can't run up a large bill.
@@ -90,7 +93,7 @@ export const system: SystemUnderTest = agentSystem();
 
 async function turn(world: World, input: SystemInput, options: AgentSystemOptions) {
   const newId = counter(input.now);
-  const records = memoryRecords(newId, input.now);
+  const records = memoryRecords(newId, input.now, world.region, (id) => member(input.fixtures, id));
   const answered = new Map<string, Answered>();
   // Every sketch() call, shown or refused.
   let sketches = 0;
@@ -252,8 +255,14 @@ function counter(now: Instant): () => Ulid {
 }
 
 // Runs and change sets in memory. As the change-set engine does, a capture
-// needs its run recorded first.
-function memoryRecords(newId: () => Ulid, now: Instant) {
+// needs its run recorded first. The thread's region gains what the calls
+// applied so far add to its workstream, as the server's would (OA-312).
+function memoryRecords(
+  newId: () => Ulid,
+  now: Instant,
+  base: Region,
+  memberOf: (id: ItemId) => WorkstreamMember,
+) {
   const runs = new Set<Ulid>();
   const sets: CapturedMutation[][] = [];
   const calls: Intent[] = [];
@@ -270,6 +279,18 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
           applied: true as const,
           undo: null,
         }));
+      },
+      region: () => {
+        const items = [...base.items];
+        for (const call of calls) {
+          const { workstream, items: named } = call.input;
+          if (call.action !== "workstream.add" || workstream !== base.workstreamId) continue;
+          for (const id of Array.isArray(named) ? named : [])
+            if (typeof id === "string" && isItemId(id) && !items.some((m) => m.id === id))
+              items.push(memberOf(id));
+        }
+        const grew = items.length > base.items.length;
+        return grew ? { ...base, version: base.version + 1, items } : base;
       },
     },
     runs: { record: (run: Run) => void runs.add(run.id) },

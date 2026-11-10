@@ -6,13 +6,17 @@
 // run's others, and a run that failed proposes nothing. A stopped turn
 // applies and holds nothing. When the turn ends, the change set is captured
 // first, then the intents apply, so the host can refuse one that would
-// break it, then the drafts are held.
+// break it, then the drafts are held. Only a run's additions to the
+// thread's own workstream apply sooner, as the run ends, so the rest of the
+// turn can read and write what joined (OA-312): no later run replaces them.
 import type {
+  ActionLine,
   CapturedMutation,
   ChallengeRun,
   Draft,
   Intent,
   Log,
+  Region,
   RunResult,
   Thread,
   Ulid,
@@ -37,12 +41,59 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 // What a finished run replaced of an earlier run's proposal in the turn.
 export type Replaced = { mutations: number; intents: number; drafts: number };
 
+// Whether an intent adds items to the thread's own workstream.
+const joins = (intent: Intent, thread: Thread) =>
+  intent.action === "workstream.add" && intent.input["workstream"] === thread.workstreamId;
+
+// What a run's additions to the thread's own workstream came to, applied as
+// it ended: the run as the rest of the turn proposes it, without them; the
+// host's lines for them; and the region the turn uses from then on.
+export type Joined = { result: RunResult; lines: ActionLine[]; region: Region };
+
 export function proposal() {
   let writes: { runId: Ulid; mutations: CapturedMutation[] } | null = null;
   let asked: { runId: Ulid; intents: Intent[] } | null = null;
   let drafted: { runId: Ulid; drafts: Draft[] } | null = null;
 
   return {
+    // A run that finished: its additions to the thread's own workstream
+    // apply now, in a turn that isn't stopped or a second look's, and the
+    // turn moves to the version they made. Its other intents wait for the
+    // turn's end, as `ran` takes them.
+    async *joined(
+      deps: Pick<AgentDeps, "actions">,
+      input: Pick<TurnInput, "thread" | "challenge">,
+      region: Region,
+      runId: Ulid,
+      result: RunResult,
+      signal: AbortSignal,
+      log: Log,
+    ): AsyncGenerator<AgentEvent, Joined, undefined> {
+      const { thread } = input;
+      const now = result.intents.filter((intent) => joins(intent, thread));
+      if (result.outcome !== "ok" || !now.length || input.challenge || signal.aborted)
+        return { result, lines: [], region };
+      const rest = { ...result, intents: result.intents.filter((i) => !joins(i, thread)) };
+      try {
+        const lines = await deps.actions.apply({ thread, changeSetId: null }, now);
+        log("agent.joined", {
+          run_id: runId,
+          applied: lines.filter((line) => line.applied).length,
+          refused: lines.filter((line) => !line.applied).length,
+        });
+        yield { kind: "actions", runId, lines };
+        const moved = deps.actions.region(thread);
+        const same = moved?.workstreamId === region.workstreamId;
+        return { result: rest, lines, region: moved && same ? moved : region };
+      } catch (error) {
+        const message = `Oriel couldn't carry out what the agent asked of it: ${errorText(error)}`;
+        log("agent.error", { error: message });
+        yield { kind: "error", message };
+        // They wait for the turn's end, as any other intent does.
+        return { result, lines: [], region };
+      }
+    },
+
     // A run that finished: its writes, its intents and its drafts replace
     // earlier ones.
     ran(runId: Ulid, result: RunResult): Replaced {

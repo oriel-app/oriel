@@ -39,7 +39,7 @@ declare const items: {
 declare const tracker: {
   /** Create an epic. Returns its ref, which createStory can put stories in. */
   createEpic(epic: { summary: string; description?: string }): NewRef;
-  /** Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref. */
+  /** Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref. For an epic outside this region, workstream.add() it, then create in a later run. */
   createStory(story: { summary: string; description?: string; points?: number | null; epic?: NewRef | null }): NewRef;
 };
 declare const workstream: {
@@ -166,7 +166,7 @@ declare const tracker: {
   getItem(id: TrackerId): Promise<TrackerItem | Gone>;
   /** Every tracker item in this region, read live, in RegionId order. */
   listItems(): Promise<readonly (TrackerItem | Gone)[]>;
-  /** Create a story in one of this region's epics, or in none. Returns its ref, which later writes in this run can target. */
+  /** Create a story in one of this region's epics, or in none. Returns its ref, which later writes in this run can target. Only an empty workstream can create an epic. For an epic outside this region, workstream.add() it, then create in a later run. */
   createStory(story: { summary: string; description?: string; points?: number | null; epic?: TrackerEpicId | null }): NewRef;
   /** Set an item's summary. */
   setSummary(id: TrackerTarget, summary: string): void;
@@ -383,7 +383,7 @@ declare const tracker: {
   getItem(id: TrackerId): Promise<TrackerItem | Gone>;
   /** Every tracker item in this region, read live, in RegionId order. */
   listItems(): Promise<readonly (TrackerItem | Gone)[]>;
-  /** Create a story. This region holds no epic, so it goes in none. Returns its ref, which later writes in this run can target. */
+  /** Create a story. This region holds no epic, so it goes in none. Returns its ref, which later writes in this run can target. Only an empty workstream can create an epic. For an epic outside this region, workstream.add() it, then create in a later run. */
   createStory(story: { summary: string; description?: string; points?: number | null }): NewRef;
   /** Set an item's summary. */
   setSummary(id: TrackerTarget, summary: string): void;
@@ -597,7 +597,7 @@ declare const tracker: {
   getItem(id: TrackerId): Promise<TrackerItem | Gone>;
   /** Every tracker item in this region, read live, in RegionId order. */
   listItems(): Promise<readonly (TrackerItem | Gone)[]>;
-  /** Create a story in this region's epic. Returns its ref, which later writes in this run can target. */
+  /** Create a story in this region's epic. Returns its ref, which later writes in this run can target. Only an empty workstream can create an epic. */
   createStory(story: { summary: string; description?: string; points?: number | null }): NewRef;
   /** Set an item's summary. */
   setSummary(id: TrackerTarget, summary: string): void;

@@ -10,7 +10,9 @@
 // turn that finished and captured any, and the intents of the last that
 // recorded any. A later run replaces an earlier one's, as the model is told,
 // and a run that fails proposes nothing. Both settle when the turn ends,
-// however it ends, except on abort.
+// however it ends, except on abort. A run's additions to the thread's own
+// workstream apply as it ends instead, and the runs after it work in the
+// version they made (OA-312).
 import { createHash } from "node:crypto";
 import { type Log, object, type Run, type RunLimits, type RunResult, string } from "@oriel/core";
 import type { Agent, AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
@@ -52,7 +54,10 @@ async function* turn(
   signal: AbortSignal,
   baseLog: Log,
 ): AsyncGenerator<AgentEvent, void, undefined> {
-  const { thread, region } = input;
+  const { thread } = input;
+  // The version of the workstream the turn's runs use: the one it started
+  // in, until a run adds to it.
+  let { region } = input;
   const { limits } = deps;
   const log: Log = (message, fields) => baseLog(message, { thread_id: thread.id, ...fields });
   // This turn's tokens: every finished response, and what a response cut off
@@ -176,15 +181,24 @@ async function* turn(
     // run's outcome, not as a `limit`: the model reads the error and can go on.
     yield { kind: "run.finished", runId, result };
     yield* shown.ran(result);
-    const replaced = proposed.ran(runId, result);
+    const joined = yield* proposed.joined(deps, input, region, runId, result, signal, log);
+    // The model reads the module of the region the rest of the turn uses.
+    const moved = joined.region.version !== region.version;
+    region = joined.region;
+    const now = moved
+      ? deps.bindingsFor(region, thread.id, undefined, challengeOf(input, runId)).dts
+      : undefined;
+    const replaced = proposed.ran(runId, joined.result);
     return {
       callId: call.id,
       content: runResultText(
-        result,
+        joined.result,
         replaced.mutations,
         replaced.intents,
         shown.said,
         replaced.drafts,
+        joined.lines,
+        now,
       ),
       isError: result.outcome !== "ok",
     };

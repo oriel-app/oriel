@@ -11,6 +11,7 @@ import type { ItemId, SourceKind } from "./ids.ts";
 import { isItemId, parseItemId } from "./ids.ts";
 import { issueFacts } from "./issue.ts";
 import {
+  containerRules,
   idUnion,
   type NamespaceFn,
   type NamespaceHost,
@@ -582,12 +583,14 @@ function namespaceOf(
     );
   const returnsRef = "Returns its ref, which later writes in this run can target.";
   const word = container.word;
+  const noNew = containerRules.noNew(container.a);
+  const addFirst = containerRules.addFirst(container.a);
 
   const createIssue = ({ anchor, containers }: Scope): NamespaceWrite => {
     if (anchor)
       return write({
         name: issue.op,
-        doc: `Create ${issue.a} in this region's ${word}. ${returnsRef}`,
+        doc: `Create ${issue.a} in this region's ${word}. ${returnsRef} ${noNew}`,
         op: issue.op,
         creates: true,
         params: [param(issue.word, issueType(null), object(issueChecks))],
@@ -599,8 +602,8 @@ function namespaceOf(
     return write({
       name: issue.op,
       doc: containers.length
-        ? `Create ${issue.a} in one of this region's ${container.plural}, or in none. ${returnsRef}`
-        : `Create ${issue.a}. This region holds no ${word}, so it goes in none. ${returnsRef}`,
+        ? `Create ${issue.a} in one of this region's ${container.plural}, or in none. ${returnsRef} ${noNew} ${addFirst}`
+        : `Create ${issue.a}. This region holds no ${word}, so it goes in none. ${returnsRef} ${noNew} ${addFirst}`,
       op: issue.op,
       creates: true,
       params: [
@@ -638,7 +641,7 @@ function namespaceOf(
 
   const createIssueInNew = write({
     name: issue.op,
-    doc: `Create ${issue.a}, in ${container.a} ${container.op} made earlier in this run, or in none. Returns its ref.`,
+    doc: `Create ${issue.a}, in ${container.a} ${container.op} made earlier in this run, or in none. Returns its ref. ${addFirst}`,
     op: issue.op,
     creates: true,
     params: [

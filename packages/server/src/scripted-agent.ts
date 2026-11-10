@@ -49,7 +49,10 @@ async function* steps(
   input: TurnInput,
   { signal, log }: Parameters<Agent["turn"]>[1],
 ): AsyncGenerator<AgentEvent> {
-  const { thread, region } = input;
+  const { thread } = input;
+  // As for any agent, a run's additions to the thread's own workstream move
+  // the runs after it to the version they made (OA-312).
+  let { region } = input;
   const proposed = proposal();
   const turnShows = turnShown(deps.newId);
   // A run may capture no more than a change set may hold.
@@ -124,7 +127,9 @@ async function* steps(
       break;
     }
     if ("threads" in step) yield { kind: "text", text: chipTo(returned(result)) };
-    proposed.ran(runId, result);
+    const joined = yield* proposed.joined(deps, input, region, runId, result, signal, log);
+    region = joined.region;
+    proposed.ran(runId, joined.result);
   }
   yield* turnShows.settle();
   if (!input.challenge) yield* proposed.settle(deps, thread, signal, log);
