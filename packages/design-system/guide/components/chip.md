@@ -17,6 +17,8 @@ A chip has no box, no fill and no border. It's words with a small icon and a col
 
 There are four kinds, in `data-kind`: `item`, `thread`, `change-set` and `workstream`.
 
+An item's chip is marked while its item is open in the panel (`data-open`, from `OpenItemContext` in `packages/web/src/parts.tsx`): its name underlined in full in `--focus`, and a small open mark after its key, so the person sees which words the item came from. Every chip for that item is marked, and the mark goes when the panel closes or shows another item.
+
 ## When to use it
 
 - In an agent's answer, wherever it names an item, a thread, a change set or a workstream. The agent writes the ID; the chip is how it shows.

@@ -166,6 +166,11 @@ const quotedReply = [
   "> the passenger always keeps the cheaper fare",
 ].join("\n");
 
+// What the agent says when asked about saved cards: two stories, as chips,
+// to open from the window chat and step through.
+const savedCardsReply =
+  "Two stories carry saved cards. [[jira:SYN-99]] has no estimate yet. [[jira:SYN-104]] is halfway.";
+
 // The window chat's answers (decision 0030): each with a block Oriel builds
 // from the overview, in each of its forms, or the rows a search found,
 // which Oriel shows unasked.
@@ -356,6 +361,7 @@ const planning = (input: TurnInput): Step[] => {
     ];
   if (/story points by assignee/i.test(input.text))
     return [{ run: pointsScript }, { text: "Amara and Yuting carry the most points." }];
+  if (/^what's holding up saved cards\b/i.test(input.text)) return [{ text: savedCardsReply }];
   if (/\bsay about itself\b/i.test(input.text)) return [{ text: quotedReply }];
   const answer = windowAnswers.find(([asked]) => asked.test(input.text));
   if (answer) return [{ run: answer[1] }, { text: answer[2] }];
@@ -1688,6 +1694,24 @@ async function askChat(page: Page, question: string, answered: string, on = serv
   await page.locator(".working").first().waitFor({ state: "detached" });
 }
 
+// Asks the window chat about saved cards and opens the first story its
+// answer names, in the panel, as one of the two it named.
+async function openFromAnswer(page: Page) {
+  await askChat(page, "What's holding up saved cards?", ".window-chat .reply .chip");
+  await page.locator(".window-chat .reply .chip-link").first().click();
+  await page.locator(".item-panel .panel-facts").waitFor();
+  await page.locator(".panel-place", { hasText: "1 of 2" }).waitFor();
+}
+
+// Whether the window has room for the window chat beside an open item, as
+// app.tsx's `besideChat` says.
+const beside = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1100;
+
+async function expectCount(found: Locator, count: number) {
+  const n = await found.count();
+  if (n !== count) throw new Error(`Expected ${count} of ${String(found)}, found ${n}`);
+}
+
 const goingOn = (others: boolean) => async () => {
   const { serving } = await writing();
   await post("/api/settings", { afterApprove: "next" }, serving);
@@ -2115,6 +2139,58 @@ const scenes: Scene[] = [
         '.window-chat .quote-from[data-found="false"]',
         quoted,
       );
+    },
+  },
+  // An item opened from the window chat's answer: with room, the chat
+  // stays, in the page column beside the item, its chip marked, and the
+  // panel steps through what the answer named; narrower, the item covers it,
+  // as before. "‹ Window" puts the overview back, the item still open.
+  ...(
+    [
+      ["ask-panel-beside", 1],
+      ["ask-panel-step", 2],
+    ] as const
+  ).map(([name, at]): Scene => ({
+    name,
+    path: "/",
+    window: true,
+    act: async (page) => {
+      await overviewShown(page);
+      await openFromAnswer(page);
+      if (at === 2) {
+        await page.keyboard.press("ArrowDown");
+        await page.locator(".panel-place", { hasText: "2 of 2" }).waitFor();
+        await page.locator(".item-panel .panel-facts").waitFor();
+      }
+      if (!beside(page)) {
+        await page.locator(".window-chat").waitFor({ state: "detached" });
+        return;
+      }
+      const open = page.locator(".window-chat .chip[data-open]");
+      await open.waitFor();
+      await expectCount(open, 1);
+      await page
+        .locator(".window-chat .chip[data-open] .chip-key", {
+          hasText: at === 1 ? "SYN-99" : "SYN-104",
+        })
+        .waitFor();
+      await page.locator(".shell[data-panel][data-chat] .window-chat").waitFor();
+      await page.locator(".overview").waitFor({ state: "hidden" });
+    },
+  })),
+  {
+    name: "ask-panel-window",
+    path: "/",
+    window: true,
+    act: async (page) => {
+      await overviewShown(page);
+      await openFromAnswer(page);
+      if (!beside(page)) return;
+      await page.getByRole("button", { name: "‹ Window" }).click();
+      await page.locator(".window-chat").waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Back to the chat" }).waitFor();
+      await page.locator(".overview").waitFor();
+      await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
   {

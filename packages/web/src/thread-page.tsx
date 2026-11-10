@@ -2,7 +2,8 @@
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
-import { useContext, useEffect, useRef } from "preact/hooks";
+import { useContext, useEffect, useMemo, useRef } from "preact/hooks";
+import { chipIds } from "./markdown.ts";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
 import { ChatInput } from "./chat-input.tsx";
@@ -394,6 +395,26 @@ const startable = (workstreams: readonly WorkstreamSummary[] | null) =>
     (workstream) => workstream.done === null && workstream.origin.kind !== "window",
   );
 
+// An answer. The items it names as chips are a list, in its order, so one
+// opened from it steps through the rest in the panel ("1 of 2").
+function Reply({ text, view }: { text: string; view: ThreadView }) {
+  const named = useMemo(
+    () => chipIds(text).filter((id) => view.chips[id]?.kind === "item"),
+    [text, view.chips],
+  );
+  return (
+    <li class="reply">
+      <ChipsContext.Provider value={view.chips}>
+        <QuotesContext.Provider value={view.quotes}>
+          <ItemListContext.Provider value={named}>
+            <Markdown text={text} linksTo={sites(view)} answer />
+          </ItemListContext.Provider>
+        </QuotesContext.Provider>
+      </ChipsContext.Provider>
+    </li>
+  );
+}
+
 export function ChatEntryItem(props: {
   entry: Entry;
   model: ThreadModel;
@@ -405,15 +426,7 @@ export function ChatEntryItem(props: {
     case "user":
       return <li class="user-message">{entry.text}</li>;
     case "reply":
-      return (
-        <li class="reply">
-          <ChipsContext.Provider value={props.view.chips}>
-            <QuotesContext.Provider value={props.view.quotes}>
-              <Markdown text={entry.text} linksTo={sites(props.view)} answer />
-            </QuotesContext.Provider>
-          </ChipsContext.Provider>
-        </li>
-      );
+      return <Reply text={entry.text} view={props.view} />;
     case "marker":
       return (
         <li class="marker" role="note">

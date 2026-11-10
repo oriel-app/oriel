@@ -879,6 +879,10 @@ The overview as a person opens it on a normal morning: the sidebar with what nee
 </div>
 ```
 
+## With the window chat and an item open
+
+The window chat opens over the page's right side. When the person opens an item from it, a chip in an answer, on a screen 1100px wide or more, the item takes the window's edge and the chat moves into the page column in the overview's place (`.shell[data-panel][data-chat]`), so the conversation and the item are on screen together, as on a thread's page. The chip stays marked ([Chip](/components/chip)), and the panel steps through the items that answer named ("1 of 2"). "‹ Window", in the chat's head where × was, puts the overview back with the item still open, and the ask bar offers "Back to the chat". Closing the item puts the chat back over the page's right side. From 1100 to 1279px the item narrows so the chat keeps 28rem; below 1100px the item covers the chat, as it always has. See [Layout](/foundations/layout) and [Motion](/foundations/motion); the shots are `ask-panel-beside`, `ask-panel-step` and `ask-panel-window`.
+
 ## Built from
 
 - [Sidebar](/components/sidebar): the shell, the head, search and New thread, Window, Needs you, Workstreams, Done, Sources and Settings; and at 390, the bar with its menu.
