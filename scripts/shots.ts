@@ -60,7 +60,7 @@ import { devPlan, scriptedAgent, type Step } from "../packages/server/src/script
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
-import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
+import { defaultSettings, memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
 import { connectionsOf } from "../packages/server/src/connections.ts";
 import { indexStore, open as openDb } from "../packages/db/src/index.ts";
@@ -420,7 +420,10 @@ const scripted = (deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]) =>
 // left listening to keep the process alive. One given neither an agent nor
 // models gets the scripted dev agent, as it would, its runs' time fixed.
 const started: Serving[] = [];
-const start = async (...[ports, options]: Parameters<typeof serve>) => {
+const start = async (...[ports, given]: Parameters<typeof serve>) => {
+  // Paths show from the shots' own home, as from the person's (OA-315); a
+  // first run keeps the home of its stubs.
+  const options = given && !given.setup ? { home: shotsHome, ...given } : given;
   const serving = await serve(
     ports,
     options && !options.agent && !options.models
@@ -435,12 +438,12 @@ const start = async (...[ports, options]: Parameters<typeof serve>) => {
 // connection's ID, fixed: a file's ID hashes it and items sort by ID, so a
 // new one each shoot would reorder the files. Each of those servers starts
 // on a database where the folder was connected under this ID and then
-// disconnected, so connecting it in the window revives the ID. Settings
-// shows its path, so that's fixed too: in this checkout's shots/.
-const notesHome = fileURLToPath(new URL("../shots/.notes/", import.meta.url));
-rmSync(notesHome, { recursive: true, force: true });
-mkdirSync(notesHome, { recursive: true });
-const notes = join(realpathSync(notesHome), "Launch notes");
+// disconnected, so connecting it in the window revives the ID. It's in a
+// home of the shots' own, never the Mac's, which the window shows as `~`.
+const shotsHome = join(realpathSync(mkdtempSync(join(tmpdir(), "oriel-shots-home-"))), "sam");
+keepUntilDone(dirname(shotsHome));
+mkdirSync(shotsHome);
+const notes = join(shotsHome, "Launch notes");
 const notesId: Ulid = ulid(Date.UTC(2026, 0, 1), new Uint8Array(10));
 const notesDb = async (): Promise<string> => {
   const dir = mkdtempSync(join(tmpdir(), "oriel-shots-db-"));
@@ -701,6 +704,14 @@ const configured = async (settings: Partial<Settings> = {}) => {
 const settingsServer = await configured();
 const settingsLarge = await configured({ textSize: "large" });
 const settingsNext = await configured({ afterApprove: "next" });
+// A Claude Code kept at a path in the person's home, which shows from `~`.
+const settingsPath = await configured({
+  providers: defaultSettings.providers.map((provider) =>
+    provider.kind === "claude-code"
+      ? { ...provider, path: join(shotsHome, ".local", "bin", "claude") }
+      : provider,
+  ),
+});
 rmSync(codexBin, { recursive: true, force: true });
 
 // A request as the window sends it, each in a later millisecond than the
@@ -1810,10 +1821,12 @@ const scenes: Scene[] = [
   {
     name: "settings-path",
     path: "/settings",
-    on: settingsServer,
+    on: settingsPath,
     act: async (page) => {
-      await page.getByRole("button", { name: "Use a Claude Code at another path" }).click();
-      await page.getByRole("textbox", { name: "Path to Claude Code" }).waitFor();
+      const path = page.getByRole("textbox", { name: "Path to Claude Code" });
+      await path.waitFor();
+      if ((await path.inputValue()) !== "~/.local/bin/claude")
+        throw new Error("the saved path doesn't show from ~");
     },
   },
   // Moving between sections holds the frame still: the title, the
@@ -5248,7 +5261,6 @@ try {
   await inFlight.approving;
   for (const serving of started) await serving.close();
   removeHomes();
-  rmSync(dirname(notes), { recursive: true, force: true });
 }
 
 // The onboarding budget (SPEC §4; decisions 0038 and 0059), as fast as a
