@@ -1105,6 +1105,9 @@ export type Entry =
   | { kind: "block"; seq: number; block: BlockView }
   | { kind: "sketch"; seq: number; sketch: SketchView }
   | { kind: "change-set"; seq: number; changeSetId: string }
+  // Where a change set showed before the agent revised it (OA-309): the
+  // card shows once, under the reply that revised it last.
+  | { kind: "revised"; seq: number; changeSetId: string }
   | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
       kind: "held";
@@ -1175,9 +1178,16 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
       case "draft":
         out.push(entry);
         break;
-      case "change-set":
-        out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });
+      case "change-set": {
+        const { changeSetId } = entry;
+        const before = out.findIndex(
+          (b) => b.kind === "change-set" && b.changeSetId === changeSetId,
+        );
+        const earlier = out[before];
+        if (earlier) out[before] = { kind: "revised", seq: earlier.seq, changeSetId };
+        out.push({ kind: "change-set", seq: entry.seq, changeSetId });
         break;
+      }
       // The markers its own changes left just before say what its lines
       // say, so they fold in; the rail says the version they moved it to,
       // as it does for every marker.

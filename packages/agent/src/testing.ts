@@ -277,7 +277,21 @@ export function memoryRecords(newId: () => Ulid) {
           revertOf: null,
           createdAt: t0,
           completedAt: null,
+          revisedAt: null,
         };
+        changeSets.push({ changeSet, mutations: [...mutations] });
+        return changeSet;
+      },
+      // Any change set it captured in that thread, as the engine's would allow.
+      async revisable(id, threadId) {
+        const found = changeSets.findLast(({ changeSet }) => changeSet.id === id)?.changeSet;
+        return found?.threadId === threadId ? null : "not this thread's";
+      },
+      // A revision is recorded as one more capture under the same ID.
+      async revise(id, ref, mutations) {
+        const before = changeSets.findLast(({ changeSet }) => changeSet.id === id);
+        if (!before) throw new Error(`no change set ${id}`);
+        const changeSet: ChangeSet = { ...before.changeSet, runId: ref.id, revisedAt: t0 };
         changeSets.push({ changeSet, mutations: [...mutations] });
         return changeSet;
       },

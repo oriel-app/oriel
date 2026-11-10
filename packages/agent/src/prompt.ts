@@ -264,7 +264,8 @@ const drafts = (count: number) => (count === 1 ? "1 draft" : `${count} drafts`);
 // earlier run's; `shown`, Oriel's line for each block and sketch; `joined`,
 // the host's lines for its additions to the thread's own workstream, which
 // applied as it ended (OA-312), and `declared`, the module of the region
-// they made, which the rest of the turn runs against. No run ID, timing or
+// they made, which the rest of the turn runs against; `revises`, the change
+// set its writes revise (OA-309). No run ID, timing or
 // other value a replay can't reproduce.
 export function runResultText(
   result: RunResult,
@@ -274,6 +275,7 @@ export function runResultText(
   replacedDrafts = 0,
   joined: readonly ActionLine[] = [],
   declared?: string,
+  revises: Ulid | null = null,
 ): string {
   const lines = result.transcript.flatMap(entry);
   const count = result.mutations.length;
@@ -289,10 +291,13 @@ export function runResultText(
   lines.push(...shown);
   if (count) {
     lines.push(`Captured ${changes(count)}:`, ...mutationLines(result.mutations));
+    const then = revises
+      ? `replace the changes of ${revises} when this turn ends, which keeps its ID and review link for the user to review again`
+      : "become the change set the user reviews when this turn ends";
     lines.push(
       replaced
-        ? `They replace the ${changes(replaced)} an earlier run in this turn captured, and become the change set the user reviews when this turn ends.`
-        : "They become the change set the user reviews when this turn ends, unless a later run in this turn captures changes instead.",
+        ? `They replace the ${changes(replaced)} an earlier run in this turn captured, and ${then}.`
+        : `They ${then}, unless a later run in this turn captures changes instead.`,
       ...capturedRules,
     );
   }

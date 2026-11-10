@@ -1,0 +1,1 @@
+- OA-309: every region's module declares `thread.revise(changeSet)` (+210 B on the base module), so every case's request hash changes; a run that revises says so in its result.

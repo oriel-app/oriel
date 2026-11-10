@@ -36,6 +36,7 @@ import {
   optional,
   parseItemId,
   refine,
+  orielRunModel,
   type RunRef,
   type SourceKind,
   SourceRefused,
@@ -1723,6 +1724,94 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return url;
   };
 
+  // A run's reference, checked, of a run in that thread.
+  const ranIn = (run: unknown): RunRef => {
+    const owner = runRef(run, "$.run");
+    if (!owner.ok) throw invalid("run", owner.issues);
+    if (!rows.runExists(owner.value))
+      throw new ChangeSetError("not-found", `no run ${owner.value.id} in that thread`);
+    return owner.value;
+  };
+
+  // What a run captured, checked as every path that takes it in checks it
+  // (a capture, a second look's suggestion added, the agent's revision):
+  // each against its source's catalogue, after `before`, the rows it
+  // follows, none an op that only reverts, and every item it names in the
+  // region run `runId` used. Numbered after `before`.
+  const captured = (
+    mutations: unknown,
+    before: readonly Draft[],
+    runId: Ulid | null,
+    workspaceId: Ulid,
+  ): { m: Checked; seq: number }[] => {
+    const parsed = array(capturedMutation)(mutations, "$.mutations");
+    if (!parsed.ok) throw invalid("mutations", parsed.issues);
+    if (parsed.value.length === 0)
+      throw new ChangeSetError("invalid", "a change set needs at least one mutation");
+    const added = check(specs, [...before, ...parsed.value])
+      .slice(before.length)
+      .map((m, i) => ({ m, seq: before.length + i + 1 }));
+    const revertOnly = added.find(({ m }) => m.spec.revertOnly);
+    if (revertOnly)
+      throw new ChangeSetError(
+        "invalid",
+        `mutation ${revertOnly.seq} (${revertOnly.m.op}): exists only to revert a change, so a run can't ask for it`,
+      );
+    const region = rows.region(runId, workspaceId);
+    const outside = outsideRegion(added, (handle) => region.has(handle), true);
+    if (outside) throw new ChangeSetError("refused", outside);
+    return added;
+  };
+
+  // Rewrites an undecided change set's rows, as adding a second look's
+  // suggestions and the agent's revision do: `drop` leaves, `add` joins
+  // after the rows that stay, and the diff shown before no longer stands
+  // for what is left. The caller holds the transaction and has checked both.
+  const rewrite = (
+    current: ChangeSet,
+    drop: readonly MutationRecord[],
+    add: readonly { m: Checked }[],
+  ): void => {
+    for (const m of drop) rows.remove(current.id, m.id);
+    const gone = new Set(drop.map((m) => m.id));
+    const last = Math.max(0, ...current.mutations.filter((m) => !gone.has(m.id)).map((m) => m.seq));
+    add.forEach(({ m }, i) =>
+      rows.insertMutation(current.workspaceId, current.id, {
+        id: ulid(at().ms),
+        seq: last + i + 1,
+        op: m.op,
+        target: m.target,
+        ref: m.ref,
+        ...(m.into === undefined ? {} : { into: m.into }),
+        args: m.args,
+        reverts: null,
+      }),
+    );
+    rows.clearPreviews(current.id);
+  };
+
+  // Why the agent in thread `threadId` may not revise `set`, or null
+  // (OA-309): only a change set its own thread's agent proposed, not a
+  // revert or a proposal of Oriel's own, that nobody has decided on and
+  // nothing of has been sent.
+  const unrevisable = (set: ChangeSet | null, threadId: Ulid): string | null => {
+    if (
+      !set ||
+      set.threadId !== threadId ||
+      set.runId === null ||
+      set.revertOf !== null ||
+      rows.runModel(set.runId) === orielRunModel
+    )
+      return "only a change set you proposed in this thread can be revised";
+    // A decision an edit voided would stand again if a revision put back
+    // the rows it was made on: only a set nobody ever decided on is revised.
+    if (set.decision !== null || rows.everDecided(set.id))
+      return `change set ${set.id} was decided on already, so only the user can change it`;
+    if (set.mutations.some((m) => m.status !== "pending"))
+      return `change set ${set.id} has started applying, so it can't change any more`;
+    return null;
+  };
+
   // Inserts a change set and its mutations; the caller holds the transaction.
   const insertAll = (
     set: { id: Ulid; workspaceId: Ulid; threadId: Ulid; runId: Ulid | null; revertOf: Ulid | null },
@@ -1746,39 +1835,19 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
   return {
     async capture(run, mutations) {
-      const owner = runRef(run, "$.run");
-      if (!owner.ok) throw invalid("run", owner.issues);
-      const parsed = array(capturedMutation)(mutations, "$.mutations");
-      if (!parsed.ok) throw invalid("mutations", parsed.issues);
-      if (parsed.value.length === 0)
-        throw new ChangeSetError("invalid", "a change set needs at least one mutation");
-      if (!rows.runExists(owner.value))
-        throw new ChangeSetError("not-found", `no run ${owner.value.id} in that thread`);
-      const checked = check(specs, parsed.value);
-      const revertOnly = checked.findIndex((m) => m.spec.revertOnly);
-      if (revertOnly >= 0)
-        throw new ChangeSetError(
-          "invalid",
-          `mutation ${revertOnly + 1} (${checked[revertOnly]?.op}): exists only to revert a change, so a run can't ask for it`,
-        );
-      const region = rows.region(owner.value.id, owner.value.workspaceId);
-      const outside = outsideRegion(
-        checked.map((m, i) => ({ m, seq: i + 1 })),
-        (handle) => region.has(handle),
-        true,
-      );
-      if (outside) throw new ChangeSetError("refused", outside);
+      const owner = ranIn(run);
+      const checked = captured(mutations, [], owner.id, owner.workspaceId);
       const id = ulid(at().ms);
       transaction(db, () =>
         insertAll(
           {
             id,
-            workspaceId: owner.value.workspaceId,
-            threadId: owner.value.threadId,
-            runId: owner.value.id,
+            workspaceId: owner.workspaceId,
+            threadId: owner.threadId,
+            runId: owner.id,
             revertOf: null,
           },
-          checked.map((m) => ({ ...m, reverts: null })),
+          checked.map(({ m }) => ({ ...m, reverts: null })),
         ),
       );
       return mustLoad(id);
@@ -1818,34 +1887,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           throw new ChangeSetError("refused", "this change set has started applying");
         if (current.mutations.length + parsed.value.length > max)
           throw new ChangeSetError("refused", `a change set holds at most ${max} changes`);
-        const all = check(specs, [...current.mutations, ...parsed.value]);
-        const added = all
-          .slice(current.mutations.length)
-          .map((m, i) => ({ m, seq: current.mutations.length + i + 1 }));
-        const revertOnly = added.find(({ m }) => m.spec.revertOnly);
-        if (revertOnly)
-          throw new ChangeSetError(
-            "invalid",
-            `mutation ${revertOnly.seq} (${revertOnly.m.op}): exists only to revert a change`,
-          );
-        const region = rows.region(current.runId, current.workspaceId);
-        const outside = outsideRegion(added, (handle) => region.has(handle), true);
-        if (outside) throw new ChangeSetError("refused", outside);
-        const last = Math.max(0, ...current.mutations.map((m) => m.seq));
-        added.forEach(({ m }, i) =>
-          rows.insertMutation(current.workspaceId, current.id, {
-            id: ulid(at().ms),
-            seq: last + i + 1,
-            op: m.op,
-            target: m.target,
-            ref: null,
-            ...(m.into === undefined ? {} : { into: m.into }),
-            args: m.args,
-            reverts: null,
-          }),
-        );
-        // The diff shown before no longer stands for these rows.
-        rows.clearPreviews(current.id);
+        const added = captured(parsed.value, current.mutations, current.runId, current.workspaceId);
+        rewrite(current, [], added);
         return current;
       });
       deps.emit({
@@ -1855,6 +1898,37 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         changeSetId: set.id,
       });
       return mustLoad(id);
+    },
+
+    async revisable(id, threadId) {
+      const set = rows.load(id);
+      return set ? (busy(set)?.message ?? unrevisable(set, threadId)) : unrevisable(null, threadId);
+    },
+
+    async revise(id, run, mutations) {
+      const owner = ranIn(run);
+      const set = transaction(db, () => {
+        const current = mustLoad(id);
+        const pre = busy(current);
+        if (pre) refuse(pre);
+        const why = unrevisable(current, owner.threadId);
+        if (why !== null) throw new ChangeSetError("refused", why);
+        // Checked as a capture is, against the region the revising run used,
+        // which its rows resolve in from now on.
+        const checked = captured(mutations, [], owner.id, owner.workspaceId);
+        rewrite(current, current.mutations, checked);
+        rows.markRevised(current.id, owner.id, at().now);
+        return mustLoad(current.id);
+      });
+      deps.emit({
+        name: "changeset.revised",
+        at: deps.now(),
+        workspaceId: set.workspaceId,
+        changeSetId: set.id,
+        threadId: set.threadId,
+        mutations: set.mutations.length,
+      });
+      return set;
     },
 
     changes: (set, known) => changesOf(set, specs, known),

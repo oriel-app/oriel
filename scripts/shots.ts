@@ -1006,6 +1006,22 @@ const toReject = await post<{ url: string }>(
   {},
 );
 
+// A change set the agent revised in place before anyone decided, with the
+// review link minted before the revision (OA-309).
+const inPlace = await (async () => {
+  const serving = await start(0);
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  const threadId = await ask("Which stories here still need estimates?", serving, workstreamId);
+  const minted = await post<{ url: string }>(
+    `/api/change-sets/${await changeSetOf(serving, threadId)}/review-link`,
+    {},
+    serving,
+  );
+  await post(`/api/threads/${threadId}/messages`, { text: "Make it 5 points instead" }, serving);
+  await serving.app.settled();
+  return { serving, threadId, review: new URL(minted.url).pathname };
+})();
+
 // Two change sets awaiting review in one thread: opened at the later, the
 // earlier is out of view above, and a pill says so (OA-260).
 const twoToReview = await (async () => {
@@ -3871,6 +3887,21 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
       await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
+    name: "thread-revised-in-place",
+    path: `/threads/${inPlace.threadId}`,
+    on: inPlace.serving,
+    act: (page) => page.locator(".change-set-revised").waitFor(),
+  },
+  {
+    name: "review-revised-in-place",
+    path: inPlace.review,
+    on: inPlace.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .review-revised").waitFor();
     },
   },
   {

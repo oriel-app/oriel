@@ -60,6 +60,7 @@ const changeSetRow = object({
   revert_of: nullable(ulidValue),
   created_at: instantValue,
   completed_at: nullable(instantValue),
+  revised_at: nullable(instantValue),
 });
 const mutationRow = object({
   id: ulidValue,
@@ -132,7 +133,7 @@ export type Store = ReturnType<typeof store>;
 // and writes; the rules live in change-sets.ts.
 export function store(db: DatabaseSync) {
   const selectChangeSet = db.prepare(
-    "select id, workspace_id, thread_id, run_id, revert_of, created_at, completed_at from change_sets where id = ?",
+    "select id, workspace_id, thread_id, run_id, revert_of, created_at, completed_at, revised_at from change_sets where id = ?",
   );
   const selectMutations = db.prepare(`
     select id, change_set_id, seq, op, target, ref, create_kind, args, preview, status, applied, error,
@@ -145,12 +146,16 @@ export function store(db: DatabaseSync) {
   const selectLatestDecision = db.prepare(`
     select id, kind, via, by_name, hash, at, undone_at from decisions
     where change_set_id = ? order by seq desc limit 1`);
+  const selectStandingDecision = db.prepare(
+    "select exists (select 1 from decisions where change_set_id = ? and undone_at is null) as found",
+  );
   const markUndone = db.prepare(
     "update decisions set undone_at = ? where id = ? and undone_at is null",
   );
   const selectNextDecisionSeq = db.prepare(
     "select coalesce(max(seq), 0) + 1 as next from decisions where change_set_id = ?",
   );
+  const markRevised = db.prepare("update change_sets set run_id = ?, revised_at = ? where id = ?");
   const markCompleted = db.prepare(`
     update change_sets set completed_at = ?
     where id = ? and completed_at is null
@@ -166,6 +171,7 @@ export function store(db: DatabaseSync) {
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
   // The workstream a run's thread is on, and the version of it the run used.
+  const selectRunModel = db.prepare("select model from runs where id = ?");
   const selectRunRegion = db.prepare(`
     select t.workstream_id, r.region_version from runs r join threads t on t.id = r.thread_id
     where r.id = ? and r.workspace_id = ?`);
@@ -301,6 +307,7 @@ export function store(db: DatabaseSync) {
         revertOf: row.revert_of,
         createdAt: row.created_at,
         completedAt: row.completed_at,
+        revisedAt: row.revised_at,
       };
     },
 
@@ -321,6 +328,19 @@ export function store(db: DatabaseSync) {
       return selectOfThread
         .all(threadId)
         .map((raw) => parse(object({ id: ulidValue }), raw, "change_sets").id);
+    },
+
+    // Whether anyone decided on it and nobody undid that, whatever its hash
+    // then: an edit voids an approval only while the rows differ from what
+    // was approved.
+    everDecided(changeSetId: Ulid): boolean {
+      return parse(foundRow, selectStandingDecision.get(changeSetId), "decisions").found > 0;
+    },
+
+    // The model a run recorded, or null for no such run.
+    runModel(runId: Ulid): string | null {
+      const row = selectRunModel.get(runId);
+      return row ? parse(object({ model: string }), row, "runs").model : null;
     },
 
     runExists(run: { id: Ulid; threadId: Ulid; workspaceId: Ulid }): boolean {
@@ -406,6 +426,12 @@ export function store(db: DatabaseSync) {
 
     setArgs(changeSetId: Ulid, mutationId: Ulid, args: unknown): void {
       updateArgs.run(JSON.stringify(args), mutationId, changeSetId);
+    },
+
+    // The agent revised it (OA-309): its rows are now `runId`'s, whose
+    // region checks and resolves them.
+    markRevised(changeSetId: Ulid, runId: Ulid, at: Instant): void {
+      markRevised.run(runId, at, changeSetId);
     },
 
     remove(changeSetId: Ulid, mutationId: Ulid): void {

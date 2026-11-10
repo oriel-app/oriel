@@ -75,6 +75,9 @@ export type ChangeSet = {
   // edit that left out the last unapplied change, or a revert that dropped
   // the unsent ones. Null until then. A thread's "done" counts from this.
   completedAt: Instant | null;
+  // When the agent last revised it in place (OA-309): a later turn's run
+  // replaced its changes. Null if it never was.
+  revisedAt: Instant | null;
 };
 
 // What a person can do with a change set as it stands, and nothing the
@@ -176,6 +179,15 @@ export interface ChangeSets {
   // person reviews the new diff before approving.
   // `max`: the most changes a change set may hold (SPEC §9).
   extend(id: Ulid, mutations: readonly CapturedMutation[], max: number): Promise<ChangeSet>;
+  // Why the agent in thread `threadId` may not revise change set `id`, or
+  // null (OA-309, decision 0024): only one its own thread's agent proposed,
+  // not a revert or a proposal of Oriel's own, that nobody has decided on
+  // and nothing of has been sent.
+  revisable(id: Ulid, threadId: Ulid): Promise<string | null>;
+  // Replaces every change of such a change set with what `run`, in its
+  // thread, captured, checked as a capture is. Its ID and review link stay;
+  // its hash changes, so an approval of the old diff is refused as stale.
+  revise(id: Ulid, run: RunRef, mutations: readonly CapturedMutation[]): Promise<ChangeSet>;
   // What it made or proposes, one line per change, in its diff's own words,
   // read from its rows and `known`, never from a source (`changesOf`).
   changes(set: ChangeSet, known: Known): Promise<ChangeRead[]>;

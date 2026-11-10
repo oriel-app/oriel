@@ -681,7 +681,9 @@ export type ChatEntry = { seq: number; at: string } & (
   // or what a run found outside the workstream (the escape hatch).
   | { kind: "block"; block: BlockView }
   | { kind: "sketch"; sketch: SketchView }
-  | { kind: "change-set"; changeSetId: string }
+  // `revised`: a later turn's revision of a change set an earlier entry
+  // shows (OA-309).
+  | { kind: "change-set"; changeSetId: string; revised?: true }
   // What Oriel did with the actions the agent asked for, under its reply.
   | { kind: "actions"; lines: ActionLineView[] }
   // A message from anyone but the user, which only they can send to the
@@ -769,6 +771,9 @@ export type ChangeSetView = {
   // stops a revert that way.
   cannotUndo?: string;
   createdAt: string;
+  // When the agent last revised it in place, replacing its changes (OA-309);
+  // null if it never did. Its ID and review link stayed.
+  revisedAt: string | null;
   // Oriel's latest second look at it, in the thread only, never on a review
   // link (decision 0054): null while the person hasn't asked for one;
   // absent once it is decided, or where no model runs the agent.

@@ -9,17 +9,20 @@
 // break it, then the drafts are held. Only a run's additions to the
 // thread's own workstream apply sooner, as the run ends, so the rest of the
 // turn can read and write what joined (OA-312): no later run replaces them.
-import type {
-  ActionLine,
-  CapturedMutation,
-  ChallengeRun,
-  Draft,
-  Intent,
-  Log,
-  Region,
-  RunResult,
-  Thread,
-  Ulid,
+// A run that called `thread.revise()` makes its writes replace that change
+// set's instead of making a new one, which keeps its ID and review link
+// (OA-309).
+import {
+  type ActionLine,
+  type CapturedMutation,
+  type ChallengeRun,
+  type Draft,
+  type Intent,
+  type Log,
+  type Region,
+  type RunResult,
+  type Thread,
+  type Ulid,
 } from "@oriel/core";
 import type { AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
 
@@ -51,11 +54,37 @@ const joins = (intent: Intent, thread: Thread) =>
 export type Joined = { result: RunResult; lines: ActionLine[]; region: Region };
 
 export function proposal() {
-  let writes: { runId: Ulid; mutations: CapturedMutation[] } | null = null;
+  let writes: { runId: Ulid; mutations: CapturedMutation[]; revises: Ulid | null } | null = null;
+  // The change set each run asked to revise, by run.
+  const revising = new Map<Ulid, Ulid>();
   let asked: { runId: Ulid; intents: Intent[] } | null = null;
   let drafted: { runId: Ulid; drafts: Draft[] } | null = null;
 
   return {
+    // What a run's bindings get besides its region: a second look's
+    // `challenge`, or, in any other turn, `revise`, which checks the change
+    // set the run names and, if the agent may revise it, makes the run's
+    // writes revise it.
+    runOptions(
+      deps: Pick<AgentDeps, "changeSets">,
+      input: Pick<TurnInput, "thread" | "challenge">,
+      runId: Ulid,
+    ): { challenge?: ChallengeRun; revise?: (id: string) => Promise<string> } {
+      const challenge = challengeOf(input, runId);
+      if (challenge) return challenge;
+      return {
+        revise: async (id) => {
+          const why = await deps.changeSets.revisable(id as Ulid, input.thread.id);
+          if (why !== null) return `Oriel won't revise ${id}: ${why}.`;
+          revising.set(runId, id as Ulid);
+          return `This run's writes will replace the changes of ${id} when this turn ends.`;
+        },
+      };
+    },
+
+    // The change set a run asked to revise, if any.
+    revises: (runId: Ulid): Ulid | null => revising.get(runId) ?? null,
+
     // A run that finished: its additions to the thread's own workstream
     // apply now, in a turn that isn't stopped or a second look's, and the
     // turn moves to the version they made. Its other intents wait for the
@@ -101,7 +130,7 @@ export function proposal() {
       if (result.outcome !== "ok") return replaced;
       if (result.mutations.length) {
         replaced.mutations = writes?.mutations.length ?? 0;
-        writes = { runId, mutations: result.mutations };
+        writes = { runId, mutations: result.mutations, revises: revising.get(runId) ?? null };
       }
       if (result.intents.length) {
         replaced.intents = asked?.intents.length ?? 0;
@@ -125,21 +154,28 @@ export function proposal() {
       if (signal.aborted) return;
       let changeSetId: Ulid | null = null;
       if (writes) {
-        const { runId, mutations } = writes;
+        const { runId, mutations, revises } = writes;
+        const run = { id: runId, threadId: thread.id, workspaceId: thread.workspaceId };
         try {
-          const changeSet = await deps.changeSets.capture(
-            { id: runId, threadId: thread.id, workspaceId: thread.workspaceId },
-            mutations,
-          );
+          const changeSet = revises
+            ? await deps.changeSets.revise(revises, run, mutations)
+            : await deps.changeSets.capture(run, mutations);
           changeSetId = changeSet.id;
           log("agent.change-set", {
             run_id: runId,
             change_set_id: changeSet.id,
             mutations: mutations.length,
+            revised: revises !== null,
           });
-          yield { kind: "change-set", changeSetId: changeSet.id };
+          yield {
+            kind: "change-set",
+            changeSetId: changeSet.id,
+            ...(revises && { revised: true }),
+          };
         } catch (error) {
-          const message = `The proposed changes couldn't be saved for review: ${errorText(error)}`;
+          const message = revises
+            ? `Change set ${revises} couldn't be revised: ${errorText(error)}`
+            : `The proposed changes couldn't be saved for review: ${errorText(error)}`;
           log("agent.error", { error: message });
           yield { kind: "error", message };
         }

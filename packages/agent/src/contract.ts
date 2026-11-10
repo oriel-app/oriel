@@ -101,8 +101,10 @@ export type AgentEvent =
   // A sketch a run asked for and Oriel refused, by why, for telemetry; the
   // run's result told the agent what to change.
   | { kind: "sketch.refused"; runId: Ulid; reason: SketchRefusal }
-  // Captured mutations awaiting approval.
-  | { kind: "change-set"; changeSetId: Ulid }
+  // Captured mutations awaiting approval. `revised`: they replaced those of
+  // the thread's change set `changeSetId`, which an earlier turn proposed
+  // (OA-309).
+  | { kind: "change-set"; changeSetId: Ulid; revised?: true }
   // What became of the intents the turn's last run (`runId`) recorded,
   // applied or refused, one line each: the host's record, shown under the
   // agent's reply (decision 0024). Or of the additions to the thread's own
@@ -140,10 +142,11 @@ export type AgentDeps = {
     region: Region,
     thread: Ulid,
     shown?: Shown,
-    options?: { challenge?: ChallengeRun },
+    options?: { challenge?: ChallengeRun; revise?: (id: string) => Promise<string> },
   ) => Bindings;
-  // Captured mutations become a change set.
-  changeSets: Pick<ChangeSets, "capture">;
+  // Captured mutations become a change set, or revise one the agent
+  // proposed in the thread earlier, once it may (OA-309).
+  changeSets: Pick<ChangeSets, "capture" | "revise" | "revisable">;
   // Applies a turn's intents as the thread's agent, once its change set, if
   // it proposed one, is captured; says what it applied and what it refused.
   // A run's additions to the thread's own workstream apply as the run ends

@@ -295,6 +295,13 @@ function ReviewChange(props: {
   return (
     <section class="review-card">
       <h1 class="page-title">Review this change</h1>
+      {/* Whoever saw it before can tell it changed (OA-309). */}
+      {view.changeSet.revisedAt !== null && (
+        <p class="review-revised">
+          Revised <Stamp at={view.changeSet.revisedAt} />. If you saw it before, it has changed
+          since: this is the change as it is now.
+        </p>
+      )}
       {counted && <p class="review-writes">{counted}</p>}
       <Diff diff={view.diff} busy={false} />
       {dismissing?.kind === "dismiss" && dismissing.warnings.length > 0 && (

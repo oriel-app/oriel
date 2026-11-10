@@ -31,3 +31,8 @@ export type Run = {
 };
 
 export type RunRef = Pick<Run, "id" | "threadId" | "workspaceId">;
+
+// The model a run records when Oriel made it itself, to propose a change set
+// of its own, such as moving a stand-in's items: no agent ran it, so no
+// agent may revise what it proposed (OA-309).
+export const orielRunModel = "oriel";

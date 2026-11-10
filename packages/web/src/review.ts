@@ -167,8 +167,13 @@ export function reviewReplied(model: ReviewModel, msg: Replied): [ReviewModel, E
     return [{ ...model, stage: "open", view: msg.body as ReviewView }, []];
   }
   if (msg.tag.kind === "reviewDecided") {
+    // Refused, as when the change changed after the page showed it (OA-309):
+    // the page shows it as it is now, with why.
     if (!msg.ok)
-      return [{ ...model, stage: "open", outcome: null, problem: errorOf(msg.body) }, []];
+      return [
+        { ...model, stage: "open", outcome: null, problem: errorOf(msg.body) },
+        [post("/api/review/open", { token: model.token }, { kind: "reviewOpened" })],
+      ];
     // A decision can stand while applying it didn't: the reply says why.
     const { changeSet, problem, warnings } = msg.body as {
       changeSet: ChangeSetView;

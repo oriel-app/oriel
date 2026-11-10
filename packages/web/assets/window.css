@@ -3761,6 +3761,11 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
+/* The agent revised it in place (OA-309): said with the status, kept on one line. */
+.change-set-revised {
+  white-space: nowrap;
+}
+
 /* What Approve writes, counted from the diff. */
 .change-set-writes {
   margin-right: auto;
@@ -4550,6 +4555,13 @@ button.ctx-chip:hover {
 
 .review-card .review-writes {
   margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+}
+
+/* The agent revised it since it was first proposed (OA-309). */
+.review-card .review-revised {
+  margin: var(--space-1) 0 0;
+  color: var(--text-faint);
   font-size: var(--text-sm);
 }
 

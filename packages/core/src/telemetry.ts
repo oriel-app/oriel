@@ -146,6 +146,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "cluster.opened" }
   | { name: "cluster.closed" }
   | { name: "changeset.edited"; changeSetId: Ulid }
+  // The agent revised its own undecided change set in place (OA-309):
+  // `mutations`, how many changes it holds now.
+  | { name: "changeset.revised"; changeSetId: Ulid; threadId: Ulid; mutations: number }
   | {
       name: "changeset.decided";
       changeSetId: Ulid;

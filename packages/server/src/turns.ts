@@ -241,7 +241,9 @@ export function history(
     // The turn's changes became a change set: the run that captured them
     // says which, so a note about it later is plain (OA-86).
     if (event.value.kind === "change-set" && capturing)
-      capturing.summary += `; they are change set ${event.value.changeSetId}`;
+      capturing.summary += event.value.revised
+        ? `; they replaced the changes of change set ${event.value.changeSetId}`
+        : `; they are change set ${event.value.changeSetId}`;
     if (event.value.kind === "done") capturing = null;
     if (event.value.kind === "actions")
       out.push({ role: "actions", text: actionsText(event.value.lines), at: message.at });

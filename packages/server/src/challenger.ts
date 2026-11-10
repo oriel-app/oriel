@@ -399,6 +399,16 @@ export function challenger(deps: ChallengerDeps) {
     return work;
   };
 
+  // Whether a suggestion the person added is in the change set still: an
+  // edit, or the agent's revision (OA-309), may have taken it out since.
+  const holds = (set: ChangeSet, m: CapturedMutation): boolean =>
+    set.mutations.some(
+      (row) =>
+        row.op === m.op &&
+        row.target === m.target &&
+        JSON.stringify(row.args) === JSON.stringify(m.args),
+    );
+
   const stale = (challenge: Challenge, set: ChangeSet): boolean => {
     const now = staleness(challenge, { hash: set.hash, updatedAt: deps.asOf() });
     return now.diff || now.items.length > 0;
@@ -475,10 +485,10 @@ export function challenger(deps: ChallengerDeps) {
         id: latest.id,
         state: latest.state,
         findings: latest.findings,
-        companions: latest.companions.map((_, place) => ({
+        companions: latest.companions.map((companion, place) => ({
           place,
           sentence: said[place]?.sentence ?? "A change Oriel can't describe.",
-          added: latest.added.includes(place),
+          added: latest.added.includes(place) && holds(set, companion),
         })),
         coverage: latest.coverage,
         stale: staleness(latest, { hash: set.hash, updatedAt: deps.asOf() }),
@@ -512,7 +522,12 @@ export function challenger(deps: ChallengerDeps) {
       if (changes.some((change) => change === undefined))
         throw new RangeError("no such suggested change");
       const keys = places.map((place) => `${challengeId}:${place}`);
-      if (places.some((place) => look.added.includes(place)) || keys.some((key) => adding.has(key)))
+      const current = await deps.changeSets.get(changeSetId);
+      const already = (place: number) => {
+        const companion = look.companions[place];
+        return look.added.includes(place) && !!current && !!companion && holds(current, companion);
+      };
+      if (places.some(already) || keys.some((key) => adding.has(key)))
         throw new RangeError("that change was already added");
       for (const key of keys) adding.add(key);
       let set: ChangeSet;

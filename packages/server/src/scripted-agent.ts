@@ -7,7 +7,7 @@
 // blocks and sketches its runs ask for show under its reply, as for any
 // agent (`turnShown`).
 import { createHash } from "node:crypto";
-import { challengeOf, proposal, turnShown } from "@oriel/agent";
+import { proposal, turnShown } from "@oriel/agent";
 import { type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
 import { type Agent, type ServerAgentDeps, type AgentEvent, type TurnInput } from "./agent.ts";
 
@@ -75,7 +75,7 @@ async function* steps(
     const runId = deps.newId();
     yield { kind: "run.started", runId, script };
     const shown = turnShows.run(runId, (asked) =>
-      deps.bindingsFor(region, thread.id, asked, challengeOf(input, runId)),
+      deps.bindingsFor(region, thread.id, asked, proposed.runOptions(deps, input, runId)),
     );
     const { bindings } = shown;
     const startedAt = deps.now();
@@ -145,6 +145,19 @@ const unestimated = stories.flatMap((story) =>
   story.gone || story.points !== null || story.issueType === "Epic" ? [] : [story.id],
 );
 for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, 3);
+return unestimated.slice(0, 3);`;
+
+// Revises the change set this thread's agent proposed and nobody has
+// decided on to `points` each (OA-309): Oriel takes only its own thread's.
+const reviseScript = (
+  points: number,
+) => `const waiting = (await thread.changeSets()).filter((set) => set.state === "pending");
+for (const set of waiting) await thread.revise(set.id);
+const stories = await jira.listItems();
+const unestimated = stories.flatMap((story) =>
+  story.gone || story.points !== null || story.issueType === "Epic" ? [] : [story.id],
+);
+for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, ${points});
 return unestimated.slice(0, 3);`;
 
 // Takes out of the workstream what Jira no longer has.
@@ -294,6 +307,13 @@ export function devPlan(input: TurnInput): Step[] {
       { run: tidyScript(/\bclose\b/i.test(input.text)) },
     ];
   }
+  const instead = /\b(\d+) points? instead\b/i.exec(input.text);
+  if (instead)
+    return [
+      { text: `I'll change the estimates I proposed to ${instead[1]} points.` },
+      { run: reviseScript(Number(instead[1])) },
+      { text: "The change below is revised. Nothing is written until you approve it." },
+    ];
   if (/\b(estimate|estimates|points|unestimated)\b/i.test(input.text)) {
     const jira = input.region.items.some((item) => parseItemId(item.id)?.kind === "jira");
     if (!jira)
