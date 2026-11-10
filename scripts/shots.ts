@@ -5297,6 +5297,8 @@ scenes.push(
   {
     name: "panel-workstream-ask",
     window: true,
+    // Its refused abouts log their 400s.
+    refused: 400,
     path: "/",
     make: async () => {
       const on = (await writing()).serving;
