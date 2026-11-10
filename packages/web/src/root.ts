@@ -1246,12 +1246,14 @@ function closed(model: Model, msg: Replied): [Model, Effect[]] {
 }
 
 // Whether the open item's panel offers "Ask about this": not beside a
-// conversation, whose composer already offers it (a thread's page, or the
-// overview's window chat open), and not with no AI to ask.
+// conversation, whose composer already offers it (a thread's page, a new
+// thread's, whose draft leaving would drop, or the overview's window chat
+// open), and not with no AI to ask.
 export function askable(model: Model): boolean {
   const { route } = model;
   if (route.item === undefined || noAi(model.settings)) return false;
-  return route.page !== "thread" && !(route.page === "overview" && model.chat.open);
+  if (route.page === "thread" || route.page === "new-thread") return false;
+  return !(route.page === "overview" && model.chat.open);
 }
 
 // The workstream the page is about, which the panel's item can be added to:
