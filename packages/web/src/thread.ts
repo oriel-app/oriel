@@ -7,6 +7,7 @@ import {
   type LookingAt,
   type LookingMsg,
   notLooking,
+  lookingReported,
   updateLooking,
 } from "./looking.ts";
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
@@ -320,7 +321,10 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
     case "looking":
-      return [{ ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) }, []];
+      return [
+        { ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) },
+        lookingReported(msg.msg),
+      ];
     // Sending takes the page to the latest entry, where what was said and the
     // reply to it show, and keeps it there. Words Edit put here from a held
     // message that still waits send it.
@@ -1108,7 +1112,10 @@ export function updateNewThread(
     case "workstreamNamed":
       return [{ ...model, workstreamName: msg.name }, []];
     case "looking":
-      return [{ ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) }, []];
+      return [
+        { ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) },
+        lookingReported(msg.msg),
+      ];
     case "sendClicked": {
       const text = model.draft.trim();
       if (text === "" || model.sending) return [model, []];

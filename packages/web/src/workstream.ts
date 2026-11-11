@@ -9,6 +9,7 @@ import {
   type LookingAt,
   type LookingMsg,
   notLooking,
+  lookingReported,
   updateLooking,
 } from "./looking.ts";
 import type { Msg } from "./root.ts";
@@ -101,7 +102,10 @@ export function updateWorkstream(
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
     case "looking":
-      return [{ ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) }, []];
+      return [
+        { ...model, lookingAt: updateLooking(model.lookingAt, msg.msg) },
+        lookingReported(msg.msg),
+      ];
     case "askClicked": {
       const text = model.draft.trim();
       if (text === "" || model.pending) return [model, []];

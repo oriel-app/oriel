@@ -779,6 +779,7 @@ export function Member({
   adding,
   inRegion = false,
   moving,
+  carried,
 }: {
   member: MemberView;
   onRemove?: () => void;
@@ -789,6 +790,9 @@ export function Member({
   // On a workstream's page: the row drags to another workstream in the
   // sidebar, and its menu moves it as a keyboard can (moving.ts).
   moving?: { item: CarriedItem; menu: MenuItem[] };
+  // Elsewhere, such as a thread's rail: the row drags, onto a composer or
+  // a workstream in the sidebar, with no menu.
+  carried?: CarriedItem;
 }) {
   const { ref, row } = member;
   const cells = (
@@ -844,7 +848,12 @@ export function Member({
       </li>
     );
   return (
-    <li class={row ? "member" : "member gone"} data-item={ref.id}>
+    <li
+      class={row ? "member" : "member gone"}
+      data-item={ref.id}
+      data-movable={carried && true}
+      {...(carried ? dragMove(carried) : {})}
+    >
       {cells}
     </li>
   );

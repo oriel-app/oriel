@@ -7,6 +7,7 @@ import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect, useId, useRef } from "preact/hooks";
 import { ChatInput } from "./chat-input.tsx";
 import { latestOf, PanelDockContext } from "./dock.tsx";
+import { dragMove } from "./drag-move.ts";
 import { clickTo } from "./nav.ts";
 import { AnswerText } from "./thread-page.tsx";
 import { behind, type CurrentWorkstream, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
@@ -129,7 +130,20 @@ export function ItemPanel(props: {
         </nav>
       )}
       <Fragment key={model.id}>
-        <header class="panel-head">
+        {/* The item drags as its row does: onto a composer, or onto a
+            workstream in the sidebar, which it joins (drag-move.ts). */}
+        <header
+          class="panel-head"
+          {...(shown
+            ? dragMove({
+                kind: "item",
+                id: shown.id,
+                key: keyLabel(shown, connectors),
+                title: shown.title,
+                from: null,
+              })
+            : {})}
+        >
           <p class="panel-source">
             {shown ? `${shown.source} · ${keyLabel(shown, connectors)}` : (glimpse?.key ?? "Item")}
           </p>

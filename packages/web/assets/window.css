@@ -2736,6 +2736,15 @@ a.replies:hover {
     var(--shadow);
 }
 
+/* An item's row over it (drag-move.ts), which it takes into Looking at:
+   drawn as the drop veil is. */
+.chat-input[data-drop-over],
+.chat-input[data-drop-over]:focus-within {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 var(--border-thick) var(--accent);
+}
+
 .chat-input-field {
   width: 100%;
   min-width: 0;
@@ -4939,12 +4948,14 @@ button.ctx-chip:hover {
   font-weight: var(--weight-strong);
 }
 
-/* Moving an item between workstreams (moving.ts): a workstream's item row
-   and a Browse row drag; a workstream in the sidebar, and the Workstreams
-   heading, take the drop, drawn as the veil is while one is over them. The
-   row's menu lays its cells out as the row does. */
+/* Moving an item between workstreams (moving.ts): a workstream's item row,
+   a thread's rail row, a Browse row and the item panel's head drag; a
+   workstream in the sidebar, and the Workstreams heading, take the drop,
+   drawn as the veil is while one is over them, as a composer takes one
+   into Looking at. The row's menu lays its cells out as the row does. */
 .member[data-movable],
-.item[draggable="true"] {
+.item[draggable="true"],
+.panel-head[draggable="true"] {
   cursor: grab;
 }
 

@@ -6,7 +6,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { chipIds } from "./markdown.ts";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
-import { ChatInput, type Composer, LookingChips, readsWith } from "./chat-input.tsx";
+import { ChatInput, type Composer, readsWith } from "./chat-input.tsx";
 import { FoldedItem, PanelDockContext } from "./dock.tsx";
 import { notLooking } from "./looking.ts";
 import { watchLatest } from "./effects.ts";
@@ -254,7 +254,8 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
 export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: Dispatch): Composer {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   // A held message's words in the composer send as they were held, about
-  // nothing, so it offers nothing while they're there (decision 0062).
+  // nothing, so it offers nothing, and takes no drop, while they're there
+  // (decision 0062).
   const looking = model.composing ? notLooking : model.lookingAt;
   return {
     label: "Message",
@@ -265,23 +266,22 @@ export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: D
     placeholder:
       view.members.length === 0 ? planPrompt : `Ask about ${plural(view.members.length, "item")}…`,
     reads: readsWith(readsOf(view), looking, readOnlyIn(view)),
-    context: (
-      <LookingChips
-        lookingAt={looking}
-        readOnly={readOnlyIn(view)}
-        onLooking={(msg) => send({ type: "looking", msg })}
-        onCite={(item) =>
-          dispatch({
-            type: "panelAdd",
-            msg: {
-              type: "addClicked",
-              item: { id: item.id, key: item.key },
-              workstream: { id: view.workstream.id, name: view.workstream.name },
-            },
-          })
-        }
-      />
-    ),
+    looking: model.composing
+      ? undefined
+      : {
+          lookingAt: looking,
+          readOnly: readOnlyIn(view),
+          onLooking: (msg) => send({ type: "looking", msg }),
+          onCite: (item) =>
+            dispatch({
+              type: "panelAdd",
+              msg: {
+                type: "addClicked",
+                item: { id: item.id, key: item.key },
+                workstream: { id: view.workstream.id, name: view.workstream.name },
+              },
+            }),
+        },
     onDraft: (text) => send({ type: "draftChanged", text }),
     onSubmit: () => send({ type: "sendClicked" }),
     onStop: () => send({ type: "stopClicked" }),
@@ -374,13 +374,11 @@ export function NewThreadPage({
               picked && picked.size > 0 ? `Ask about ${plural(picked.size, "item")}…` : planPrompt
             }
             reads={readsWith(null, model.lookingAt, readOnly)}
-            context={
-              <LookingChips
-                lookingAt={model.lookingAt}
-                readOnly={readOnly}
-                onLooking={(msg) => send({ type: "looking", msg })}
-              />
-            }
+            looking={{
+              lookingAt: model.lookingAt,
+              readOnly,
+              onLooking: (msg) => send({ type: "looking", msg }),
+            }}
             onDraft={(text) => send({ type: "draftChanged", text })}
             onSubmit={() => send({ type: "sendClicked", workstream: picked?.id ?? null })}
           />
@@ -1865,7 +1863,17 @@ function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
       <ItemListContext.Provider value={view.members.map((member) => member.ref.id)}>
         <ul class="members compact">
           {view.members.map((member) => (
-            <Member key={member.ref.id} member={member} />
+            <Member
+              key={member.ref.id}
+              member={member}
+              carried={{
+                kind: "item",
+                id: member.ref.id,
+                key: member.ref.key,
+                title: member.row?.title ?? member.ref.title ?? null,
+                from: { id: view.workstream.id, name: view.workstream.name },
+              }}
+            />
           ))}
         </ul>
       </ItemListContext.Provider>

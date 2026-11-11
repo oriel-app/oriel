@@ -1,6 +1,6 @@
 // A workstream: ask about it, see its threads, and curate its items.
 import { useEffect, useRef } from "preact/hooks";
-import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { ChatInput, readsWith } from "./chat-input.tsx";
 import { ThreadMenu } from "./close-thread.tsx";
 import { EndButtons, WindowUndos } from "./end-workstream.tsx";
 import { deleted, type EndingModel } from "./ending.ts";
@@ -208,23 +208,20 @@ export function WorkstreamPage(props: {
             model.lookingAt,
             readOnly,
           )}
-          context={
-            <LookingChips
-              lookingAt={model.lookingAt}
-              readOnly={readOnly}
-              onLooking={(msg) => send({ type: "looking", msg })}
-              onCite={(item) =>
-                dispatch({
-                  type: "panelAdd",
-                  msg: {
-                    type: "addClicked",
-                    item: { id: item.id, key: item.key },
-                    workstream: { id: workstream.id, name: workstream.name },
-                  },
-                })
-              }
-            />
-          }
+          looking={{
+            lookingAt: model.lookingAt,
+            readOnly,
+            onLooking: (msg) => send({ type: "looking", msg }),
+            onCite: (item) =>
+              dispatch({
+                type: "panelAdd",
+                msg: {
+                  type: "addClicked",
+                  item: { id: item.id, key: item.key },
+                  workstream: { id: workstream.id, name: workstream.name },
+                },
+              }),
+          }}
           onDraft={(text) => send({ type: "draftChanged", text })}
           onSubmit={() => send({ type: "askClicked" })}
         />

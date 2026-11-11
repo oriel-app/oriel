@@ -5,7 +5,11 @@
 // offered dashed, which + adds, so a typed question never changes subject
 // behind the person's back. Closing the item takes it only if nothing is
 // typed. Sent, the message keeps its items, by ID; looking adds nothing to
-// the workstream.
+// the workstream. An item's row dropped on the composer (drag-move.ts) goes
+// in as + puts it, and stays while other items open and close beside it,
+// until the message is sent.
+
+import { type Effect, report } from "./http.ts";
 
 // An item as the composer names it: its key, and its title once the panel
 // has read it. `under`: the chat entry it was opened from, in this thread.
@@ -13,7 +17,8 @@ export type LookItem = { id: string; key: string; title: string | null; under: n
 
 export type LookingAt = {
   // What the next message is about, in order; `on` false: Not sending.
-  chips: readonly { item: LookItem; on: boolean }[];
+  // `placed`: dropped on the composer, not the item open beside it.
+  chips: readonly { item: LookItem; on: boolean; placed?: true }[];
   // The item open beside a draft that keeps its own, offered dashed.
   offered: LookItem | null;
   // The item open beside the composer, as it last saw it.
@@ -23,11 +28,15 @@ export type LookingAt = {
 export type LookingMsg =
   | { type: "lookDropped"; id: string }
   | { type: "lookAddedBack"; id: string }
-  | { type: "lookOfferedAdded" };
+  | { type: "lookOfferedAdded" }
+  | { type: "lookPlaced"; item: LookItem };
 
 export const notLooking: LookingAt = { chips: [], offered: null, open: null };
 
 const drafting = (draft: string) => draft.trim() !== "";
+
+// A message is about at most four items, as the server takes it.
+const most = 4;
 
 const same = (a: LookItem | null, b: LookItem | null) =>
   a?.id === b?.id && a?.title === b?.title && a?.under === b?.under;
@@ -45,12 +54,30 @@ export function lookedAt(looking: LookingAt, open: LookItem | null, draft: strin
     };
   }
   const keeps = drafting(draft) && looking.chips.length > 0;
-  if (open === null) return keeps ? { ...looking, offered: null, open } : notLooking;
-  if (!keeps) return { chips: [{ item: open, on: true }], offered: null, open };
-  // A message is about at most four items, as the server takes it.
-  const held = looking.chips.some((chip) => chip.item.id === open.id) || looking.chips.length >= 4;
+  if (open === null) {
+    if (keeps) return { ...looking, offered: null, open };
+    const placed = looking.chips.filter((chip) => chip.placed);
+    return placed.length ? { chips: placed, offered: null, open } : notLooking;
+  }
+  if (!keeps) {
+    // What was dropped on the composer stays; the open item takes the
+    // place of the one open before.
+    const placed = looking.chips.filter((chip) => chip.placed && chip.item.id !== open.id);
+    return placed.length < most
+      ? { chips: [{ item: open, on: true }, ...placed], offered: null, open }
+      : { chips: placed, offered: open, open };
+  }
+  const held =
+    looking.chips.some((chip) => chip.item.id === open.id) || looking.chips.length >= most;
   return { ...looking, offered: held ? null : open, open };
 }
+
+// Whether an item dropped on the composer would change what the next message
+// is about: one there and sent already, or a fifth, wouldn't.
+export const placeable = (looking: LookingAt, id: string): boolean => {
+  const chip = looking.chips.find((chip) => chip.item.id === id);
+  return chip ? !chip.on : looking.chips.length < most;
+};
 
 export function updateLooking(looking: LookingAt, msg: LookingMsg): LookingAt {
   switch (msg.type) {
@@ -75,8 +102,27 @@ export function updateLooking(looking: LookingAt, msg: LookingMsg): LookingAt {
       if (!offered) return looking;
       return { ...looking, chips: [...looking.chips, { item: offered, on: true }], offered: null };
     }
+    // Dropped on the composer: one left out goes back in; one offered, or
+    // none there yet, goes in as + puts it.
+    case "lookPlaced": {
+      const { item } = msg;
+      if (!placeable(looking, item.id)) return looking;
+      if (looking.chips.some((chip) => chip.item.id === item.id))
+        return updateLooking(looking, { type: "lookAddedBack", id: item.id });
+      return {
+        ...looking,
+        chips: [...looking.chips, { item, on: true, placed: true }],
+        offered: looking.offered?.id === item.id ? null : looking.offered,
+      };
+    }
   }
 }
+
+// What the server hears of it: an item dropped on a composer, by its source.
+export const lookingReported = (msg: LookingMsg): Effect[] =>
+  msg.type === "lookPlaced"
+    ? [report({ name: "item.dropped-on-composer", item: msg.item.id })]
+    : [];
 
 // Once a message is sent, the composer offers the item still open.
 export const looked = (looking: LookingAt): LookingAt =>
