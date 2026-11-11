@@ -3408,7 +3408,7 @@ const scenes: Scene[] = [
   {
     name: "thread-behind",
     path: `/threads/${answered}`,
-    act: (page) => page.locator(".rail-note").waitFor(),
+    act: (page) => page.locator(".sync-now").waitFor(),
   },
   {
     name: "thread-sync",
@@ -3416,7 +3416,7 @@ const scenes: Scene[] = [
     on: syncing,
     act: async (page) => {
       await leftBehind(page);
-      await page.getByRole("button", { name: "Sync this thread with its workstream" }).click();
+      await page.getByRole("button", { name: "Sync workstream now" }).click();
       await page.locator(".sync-now").waitFor({ state: "detached" });
       await page.locator(".chat .marker").last().waitFor();
     },

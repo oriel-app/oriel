@@ -2,7 +2,7 @@
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
-import { useContext, useEffect, useMemo, useRef } from "preact/hooks";
+import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { chipIds } from "./markdown.ts";
 import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { namedOnce, type Observe, sourcesOf, watchStuck, writes } from "./change-set.ts";
@@ -1709,36 +1709,45 @@ export function readsOf(view: ThreadView): string | null {
   return `Reads ${plural(view.members.length, "item")} · v${view.regionVersion}`;
 }
 
-// The region the thread works in: its workstream at one version. Behind
-// it, the thread catches up with the next message, or with Sync now, which
-// waits while a turn runs: the turn works in the version it started in.
+// The region the thread works in: its workstream at one version, and when
+// it last synced with it. The title is the workstream as it is now. Behind
+// it, the thread catches up with the next message, or with Sync workstream
+// now, which waits while a turn runs: the turn works in the version it
+// started in.
 function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
   const { view } = props;
   const behind = view.regionVersion < view.workstream.version;
   const waits = view.running || props.syncing;
+  const count = behind ? (view.workstream.items ?? 0) : view.members.length;
+  // "Synced 2 min ago" stays true as the page sits open.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const minute = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(minute);
+  }, []);
   return (
     <aside class="rail" aria-label="This thread's items">
       <h2 class="rail-title">
-        {plural(view.members.length, "item")} · v{view.regionVersion}
+        {plural(count, "item")} · v{view.workstream.version}
       </h2>
-      {behind && (
-        <p class="rail-note">
-          Workstream will update on next{" "}
-          <span class="rail-note-end">
-            send
+      <p class="rail-sync">
+        Synced{" "}
+        <span class="rail-sync-end">
+          <Stamp at={view.syncedAt} />
+          {behind && (
             <Tooltip
               text={
                 props.syncing
                   ? "Syncing…"
                   : view.running
                     ? "Syncs once the agent has answered"
-                    : "Sync this thread with its workstream"
+                    : "Sync workstream now"
               }
             >
               <button
                 type="button"
                 class="sync-now"
-                aria-label="Sync this thread with its workstream"
+                aria-label="Sync workstream now"
                 aria-disabled={waits || undefined}
                 aria-busy={props.syncing || undefined}
                 onClick={() => {
@@ -1748,9 +1757,9 @@ function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
                 <SyncIcon />
               </button>
             </Tooltip>
-          </span>
-        </p>
-      )}
+          )}
+        </span>
+      </p>
       {view.move ? (
         <MovedTo went={view.move.went} />
       ) : (

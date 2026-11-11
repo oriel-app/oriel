@@ -22,7 +22,7 @@ Many marks still use the browser's own `title` attribute instead: chips, state d
 - On every [icon button](/components/icon-button): its name is invisible, so the tooltip says it to a pointer.
 - To give a control's shortcut: "Close (Esc)", "Previous (↑)", "Hide the sidebar (⌘\)".
 - To say more than the control's label has room for: "Make a workstream of all 12 items in Checkout v2: phone wallets and saved cards as they are now", "New thread: start from nothing, such as a plan for a new epic".
-- To say why a control waits: Sync now's "Syncs once the agent has answered".
+- To say why a control waits: Sync workstream now's "Syncs once the agent has answered".
 
 ## When not to
 
@@ -127,7 +127,7 @@ Try these: rest the pointer on a control for 400ms, or Tab to it.
     <span id="tip-live-new" role="tooltip" popover="manual" class="tooltip"
       >New thread: start from nothing, such as a plan for a new epic</span
     >
-    <button type="button" class="sync-now" aria-label="Sync this thread with its workstream">
+    <button type="button" class="sync-now" aria-label="Sync workstream now">
       <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
         <path
           d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5"
@@ -136,7 +136,7 @@ Try these: rest the pointer on a control for 400ms, or Tab to it.
       </svg>
     </button>
     <span role="tooltip" popover="manual" class="tooltip" aria-hidden="true"
-      >Sync this thread with its workstream</span
+      >Sync workstream now</span
     >
     <button type="button" class="quiet-action" aria-describedby="tip-live-make">
       Make a workstream
@@ -177,7 +177,7 @@ The third tip only repeats its control's name, so it's `aria-hidden` and the but
 - **Shown:** on pointer rest (400ms, `delay` in `packages/web/src/tooltip.tsx`), or at once on focus when the control matches `:focus-visible`. A click's focus doesn't show it.
 - **Gone:** on pointer leave, pointer down, blur, any scroll, or Escape. Escape is caught on the way down and still does its other job, such as closing the item panel.
 - **Touch:** a touch pointer never shows it.
-- **Hover, focus, active, disabled** apply to the control, not the tip. A `disabled` button can't be focused, so its tip shows only on hover; Sync now uses `aria-disabled` so its "Syncs once the agent has answered" reaches the keyboard too.
+- **Hover, focus, active, disabled** apply to the control, not the tip. A `disabled` button can't be focused, so its tip shows only on hover; Sync workstream now uses `aria-disabled` so its "Syncs once the agent has answered" reaches the keyboard too.
 - **Motion:** none. It appears and goes at once; there's no fade to hold still under reduced motion.
 - **Error, empty, loading:** don't apply.
 
@@ -204,7 +204,7 @@ The third tip only repeats its control's name, so it's `aria-hidden` and the but
 - A workstream's header and rows: `EndButtons` in `packages/web/src/end-workstream.tsx` and `Member` in `packages/web/src/parts.tsx`.
 - The sidebar: the fold, Search threads and New thread (`Sidebar` and `ThreadSearch` in `packages/web/src/sidebar.tsx`).
 - Browse's Make a workstream: `Cluster` in `packages/web/src/window-page.tsx`.
-- A thread: Leave this change out and Sync now (`Diff` and `Region` in `packages/web/src/thread-page.tsx`).
+- A thread: Leave this change out and Sync workstream now (`Diff` and `Region` in `packages/web/src/thread-page.tsx`).
 - Native titles: chips (`Chip` in `packages/web/src/parts.tsx`), state dots and counts (`WorkstreamEntry` in `packages/web/src/sidebar.tsx`), the status bar (`StatusBar` in `packages/web/src/window-page.tsx`), type marks (`TypeMark` in `packages/web/src/parts.tsx`), times (`Stamp` in `packages/web/src/parts.tsx`).
 
 ## Drift

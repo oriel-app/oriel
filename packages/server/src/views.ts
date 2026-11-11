@@ -805,10 +805,23 @@ export function views(deps: ViewDeps) {
       return {
         id,
         title: title(id),
-        workstream: { id: workstream.id, name: workstream.name, version: workstream.version },
+        workstream: {
+          id: workstream.id,
+          name: workstream.name,
+          version: workstream.version,
+          // Behind, how many items the workstream holds now, of those shown.
+          ...(thread.regionVersion < workstream.version && {
+            items: (
+              workstreams.region(thread.workstreamId, workstream.version)?.items ?? []
+            ).filter((member) => deps.shown?.(member.id) ?? true).length,
+          }),
+        },
         state: thread.state,
         doneBy: thread.doneBy,
         regionVersion: thread.regionVersion,
+        // When the thread last moved to its workstream's version: its last
+        // marker, or when it opened.
+        syncedAt: messages.findLast((m) => m.role === "marker")?.at ?? thread.createdAt,
         members: members(region?.items ?? []),
         ...moveOf(messages),
         entries,

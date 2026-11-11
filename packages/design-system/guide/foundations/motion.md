@@ -81,7 +81,7 @@ The browser draws a `<select>`'s list itself (see [Select](/components/select)),
 
 - the working dot beside "Working…" in a thread and the window chat (`.working .working-dot` in `window.css`);
 - a state dot whose thread waits on the agent mid-turn or on an apply (`.state-dot:is([data-waiting="agent"], [data-waiting="apply"])` in `window.css`);
-- Sync now's icon while it syncs (`.sync-now[aria-busy] .icon` in `window.css`);
+- Sync workstream now's icon while it syncs (`.sync-now[aria-busy] .icon` in `window.css`);
 - the bead's working dot (`.bead-dot` in `window.css`).
 
 Nothing else pulses. "Only an agent mid-turn, or a change set applying, pulses; a change set to review or stalled applying, or a reason held for the person, stands out" (`.state-dot:is([data-waiting="agent"], [data-waiting="apply"])` in `window.css`). Something waiting on the person is the accent and holds still. A pulse is never for attention.

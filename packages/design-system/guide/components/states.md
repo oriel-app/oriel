@@ -134,7 +134,7 @@ And one borrowed class: Settings › Connections says "Nothing is connected yet.
 | `.cli-waiting` + `.spinner`       | Providers, connect steps, first run | "Looking for it on this Mac…" (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`) | spinner         | `role="status"` |
 | "Syncing…" in `.sources-line`     | the sidebar's Sources               | "Syncing…" (`Sources` in `packages/web/src/sidebar.tsx`)                          | accent text     | no              |
 
-The thread rail's Sync now button pulses its icon while it syncs (`.sync-now[aria-busy] .icon` in `window.css`).
+The thread rail's Sync workstream now button pulses its icon while it syncs (`.sync-now[aria-busy] .icon` in `window.css`).
 
 ```html specimen id=loading title="Loading and working, each as its page draws it"
 <div class="ws-stack">
