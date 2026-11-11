@@ -478,6 +478,12 @@ const handlers = {
       deps.now(),
     );
     const added = (change?.added ?? []).map((member) => member.id);
+    // A window chat's workstream that gains a member is a real workstream,
+    // and its chat that workstream's thread (decision 0027): the window
+    // starts a fresh chat (OA-347).
+    if (added.length && workstream.origin.kind === "window")
+      for (const { thread } of deps.threads.ofWorkstream(workstream.id, deps.now()))
+        deps.threads.moveWindowChat(thread.id);
     return {
       output: { added },
       undo: added.length

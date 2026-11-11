@@ -722,6 +722,13 @@ export function threadStore(db: DatabaseSync) {
       windowChat().leave.run(id, now);
     },
 
+    // The window chat moved into its workstream, which gained a member: it
+    // is that workstream's ordinary thread from now on, out of the window,
+    // where New chat never reaches it (OA-347).
+    moveWindowChat(id: Ulid): void {
+      windowChat().forget.run(id);
+    },
+
     list(workspaceId: Ulid, now: Instant): ThreadSummary[] {
       return ids(selectByWorkspace.all(workspaceId)).map((id) => summary(id, now));
     },
