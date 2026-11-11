@@ -152,8 +152,9 @@ export type Effect =
   // `replace`, takes the current page's place in it. `stay`: the page stays
   // where it is scrolled, as when only the panel beside it changes.
   | { type: "navigate"; route: Route; replace?: true; stay?: true }
-  // Scrolls a thread's page to its latest entry.
-  | { type: "showLatest" }
+  // Scrolls a thread's page, or the window chat, to its latest entry.
+  // `smooth`: it glides there, unless the person asked for reduced motion.
+  | { type: "showLatest"; smooth?: true }
   // Scrolls a thread's page to one of its change sets, at the top, and
   // puts focus on its heading. `smooth`: it glides there, unless the person
   // asked for reduced motion.

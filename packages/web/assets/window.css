@@ -4353,9 +4353,14 @@ button.ctx-chip:hover {
   visibility: hidden;
 }
 
-/* A change set to review out of view: a pill floating just over the
-   composer, clear of the bead at the top, that goes to it (OA-260). */
-.to-review {
+/* Pills floating just over a chat's composer, clear of the bead at the
+   top: a change set to review out of view (OA-260), and a new message
+   below while the person reads further up (OA-350). */
+.window-chat > .chat-input {
+  position: relative;
+}
+
+.composer-pills {
   position: absolute;
   bottom: calc(100% + var(--space-2));
   left: 50%;
@@ -4366,7 +4371,7 @@ button.ctx-chip:hover {
   transform: translateX(-50%);
 }
 
-.to-review-pill {
+:is(.to-review-pill, .new-message-pill) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -4386,6 +4391,16 @@ button.ctx-chip:hover {
 
 .to-review-pill:hover {
   background: var(--accent-soft);
+}
+
+/* Nothing to do but read it: the window's ink, not the accent. */
+.new-message-pill {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.new-message-pill:hover {
+  background: var(--surface-hover);
 }
 
 @keyframes to-review-in {
@@ -8163,7 +8178,8 @@ a.button.primary {
   .bead-count,
   .bead-dot,
   .bead-mark :is(path, rect),
-  .to-review-pill {
+  .to-review-pill,
+  .new-message-pill {
     animation: none;
   }
 

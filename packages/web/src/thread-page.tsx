@@ -36,6 +36,7 @@ import {
 import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { Tooltip } from "./tooltip.tsx";
+import { NewMessage } from "./new-message.tsx";
 import { ToReview } from "./to-review.tsx";
 import { SecondLook } from "./second-look.tsx";
 import { lines, type Piece } from "./text-diff.ts";
@@ -57,6 +58,7 @@ import {
   type ThreadModel,
   type ThreadMsg,
   blankWorkstreamName,
+  unseen,
 } from "./thread.ts";
 import { maxNameChars } from "./update.ts";
 import {
@@ -229,10 +231,13 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
               class="composer"
               elevation="raised"
               above={
-                <ToReview
-                  ids={review.map((set) => set.id)}
-                  onShow={(changeSetId) => send({ type: "toReviewClicked", changeSetId })}
-                />
+                <div class="composer-pills">
+                  <ToReview
+                    ids={review.map((set) => set.id)}
+                    onShow={(changeSetId) => send({ type: "toReviewClicked", changeSetId })}
+                  />
+                  {unseen(model) && <NewMessage onShow={() => send({ type: "latestClicked" })} />}
+                </div>
               }
             />
           </Dock>
