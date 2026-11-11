@@ -4565,6 +4565,21 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
+/* The reviewer's decision was refused: the change was altered since the
+   page showed it (OA-309). */
+.review-card .review-altered {
+  margin: var(--space-2) 0 0;
+}
+.review-card .review-altered p:not(.review-altered-lead) {
+  margin: 0;
+  color: var(--text);
+}
+.review-card .review-altered p.review-altered-lead {
+  margin: 0;
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+}
+
 /* The reviewer's answer, a row of its own above the note and the name. */
 .review-answer {
   flex-basis: 100%;

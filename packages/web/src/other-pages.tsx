@@ -295,12 +295,27 @@ function ReviewChange(props: {
   return (
     <section class="review-card">
       <h1 class="page-title">Review this change</h1>
-      {/* Whoever saw it before can tell it changed (OA-309). */}
-      {view.changeSet.revisedAt !== null && (
-        <p class="review-revised">
-          Revised <Stamp at={view.changeSet.revisedAt} />. If you saw it before, it has changed
-          since: this is the change as it is now.
-        </p>
+      {/* A decision refused because the change was altered since the page
+          showed it (OA-309); otherwise, whoever saw it before can tell. */}
+      {model.altered ? (
+        <div class="review-altered" role="alert">
+          <p class="review-altered-lead">Your review was not saved.</p>
+          <p>
+            {model.altered.at === null ? (
+              "The change set was altered before your review. Please look again."
+            ) : (
+              <>
+                The change set was altered <Stamp at={model.altered.at} />. Please re-review.
+              </>
+            )}
+          </p>
+        </div>
+      ) : (
+        view.changeSet.revisedAt !== null && (
+          <p class="review-revised">
+            Revised <Stamp at={view.changeSet.revisedAt} />.
+          </p>
+        )
       )}
       {counted && <p class="review-writes">{counted}</p>}
       <Diff diff={view.diff} busy={false} />
