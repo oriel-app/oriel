@@ -3,7 +3,7 @@ title: Chat input
 status: stable
 group: Inputs
 order: 20
-classes: chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-notice, ask-starts, ask-question, headline-asks, chat-dock, overview-dock, workstream-ask, ctx, ctx-chip, ctx-label, ctx-name, ctx-x, ctx-action
+classes: chat-input, chat-input-field, chat-input-foot, chat-input-reads, chat-input-notice, ask-starts, ask-question, headline-asks, rail-starts, chat-dock, overview-dock, workstream-ask, ctx, ctx-chip, ctx-label, ctx-name, ctx-x, ctx-action
 summary: Where a person asks the agent: one ChatInput for the overview's composer, the window chat, a thread's composer and a workstream's Ask box, with the same frame, focus, problem line and foot.
 ---
 
@@ -43,7 +43,7 @@ A frame holding the field, then its foot, then at most one line for a problem.
 - **Stop:** a `.button` in Send's place while the agent runs.
 - **Notice** (`.chat-input-notice`): one `role="alert"` line in `--danger`, inside the frame.
 - **Dock** (`.chat-dock`): a thread's composer sits in it, and the overview's (`.overview-dock`). It sticks at the page's foot and fades from the page's colour over what scrolls under it. A thread's writes `--dock-cover` on the thread, so a change set's actions can stick just above it. The overview's is 44rem (`--chat`) wide, centred, as a thread's column is.
-- **Questions to start from** (`.ask-question`): filled buttons, so they never read as a field, beside the overview's headlines (`.headline-asks`). One no headline on screen holds, such as the empty window's plan (decision 0059), sits in the composer's frame (`.ask-starts`), where Looking at goes, while no item is in view.
+- **Questions to start from** (`.ask-question`): filled buttons, so they never read as a field, beside the overview's headlines (`.headline-asks`) until a chat starts, in a short form that names nothing the headline names. Once one has, none shows on the overview: a new chat's empty state shows them all, whole, stacked over the rail's composer (`.rail-starts`), with no other text. One no headline on screen holds, such as the empty window's plan (decision 0059), sits in the composer's frame (`.ask-starts`), where Looking at goes, while no item is in view.
 
 ```html specimen id=overview title="The overview's composer, raised, in its dock, with the empty window's plan in its frame"
 <div class="chat-dock overview-dock">
@@ -64,6 +64,18 @@ A frame holding the field, then its foot, then at most one line for a problem.
       <button type="submit" class="button" disabled>Ask</button>
     </div>
   </form>
+</div>
+```
+
+```html specimen id=new-chat title="A new chat's empty state: every question to start from, whole"
+<div style="max-width: 24rem">
+  <div class="rail-starts" role="group" aria-label="Questions to start from">
+    <button type="button" class="ask-question">
+      Chart what moved since I looked, by workstream
+    </button>
+    <button type="button" class="ask-question">What moved in Checkout v2?</button>
+    <button type="button" class="ask-question">Why is Gift cards stalled?</button>
+  </div>
 </div>
 ```
 
@@ -268,12 +280,12 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
 - The foot says what the agent will read, in Oriel's own counts: "Reads 17 items · v3", "Reads your whole window". A thread behind its workstream says "Reads its workstream at v4", which the next message catches up with (`readsOf` in `packages/web/src/thread-page.tsx`). A thread with no items says nothing.
 - The button says **Ask** where a question starts something, **Send** inside a conversation.
 - A problem says what happened and what to do: "Claude Code stopped before it answered. Send again to retry." Not "Error" or "Something went wrong".
-- Questions to start from are whole questions in sentence case, about the person's own workstreams, beside the headline each comes from, with no caption: "What moved in Payments?", "Why is Checkout v2 stalled?".
+- Questions to start from are whole questions in sentence case, about the person's own workstreams, with no caption. Beside the headline each comes from, a short form names nothing the headline does: "What moved in it?", "Why is it stalled?", "Chart what moved", "Should it become a workstream?". In a new chat they're whole: "What moved in Payments?", "Why is Checkout v2 stalled?". Both come from one table, `questionLabel` and `questionShort` in `packages/web/src/questions.ts`; the whole label titles the thread a question starts.
 
 ## Where the app uses it
 
 - The component: `ChatInput` in `packages/web/src/chat-input.tsx`. CSS `.chat-input`, `.chat-input-field`, `.chat-input-foot`, `.chat-input-reads`, `.chat-input-notice` and `.chat-input[data-off]` in `window.css`.
-- The overview's composer: `OverviewComposer` in `packages/web/src/window-chat-view.tsx`, with its props from `windowChatComposer`, mounted at the foot by `OverviewPage` in `packages/web/src/overview-page.tsx`. Its questions: `QuestionButton` in the same file, placed by `Headline`; CSS `.overview-dock`, `.ask-starts`, `.headline-asks` and `.ask-question` in `window.css`.
+- The overview's composer: `OverviewComposer` in `packages/web/src/window-chat-view.tsx`, with its props from `windowChatComposer`, mounted at the foot by `OverviewPage` in `packages/web/src/overview-page.tsx`. Its questions: `QuestionButton` in the same file, placed by `Headline`; CSS `.overview-dock`, `.ask-starts`, `.headline-asks` and `.ask-question` in `window.css`. A new chat's: `WindowChat`, from `startQuestions` in `packages/web/src/app.tsx`; CSS `.rail-starts`.
 - The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`, at the rail's foot, which imports only `ChatInput` for them, with its props from `windowChatComposer`. `OverviewComposer` draws nothing while the chat is open.
 - In the item panel's dock, over the window chat at every width, and over a thread's page below 1100px: the conversation under the item hands its composer's props (`Composer` in `packages/web/src/chat-input.tsx`, from `windowChatComposer` or `threadComposer`) to `PanelDock` in `packages/web/src/item-panel.tsx`, which draws the same `ChatInput`, flat. See [Item panel](/components/item-panel#the-dock).
 - The thread composer: `ThreadPage` and `NewThreadPage` in `packages/web/src/thread-page.tsx`, inside `Dock`, with the thread's props from `threadComposer`. While the item panel's dock carries it, `Dock` is `inert` and hidden. CSS `.chat-dock` in `window.css`. `composer` stays on the frame as a placement hook: the pill for a change set out of view (`ToReview`) and `focusComposer` find it.

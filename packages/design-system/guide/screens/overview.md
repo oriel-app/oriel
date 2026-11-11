@@ -428,7 +428,7 @@ The overview as a person opens it on a normal morning: the sidebar with what nee
           >
           <span class="headline-asks"
             ><button type="button" class="ask-question" aria-describedby="headline-top">
-              Should Vehicle and freight reservations become a workstream?
+              Should it become a workstream?
             </button></span
           >
         </p>
