@@ -5545,6 +5545,8 @@ scenes.push(
   ...(["", "-added"] as const).map((step): Scene => ({
     name: `empty-suggests${step}`,
     path: "/",
+    // The refused add logs its 409.
+    ...(step === "-added" && { refused: 409 }),
     make: async () => {
       const on = (await writing()).serving;
       const made = await post<{ workstreamId: string }>(
@@ -5578,16 +5580,25 @@ scenes.push(
       if (JSON.stringify(got) !== JSON.stringify(want))
         throw new Error(`Suggested ${got.join(", ")}; expected ${want.join(", ")}`);
       if (step === "") return;
-      await page.getByRole("button", { name: "Add SYN-104" }).click();
+      // A refused add says so here, and its row stays to try again.
+      await page.route(/\/api\/workstreams\/[0-9A-Z]{26}\/add$/, (route) =>
+        route.fulfill({ status: 409, json: { error: "It moved." } }),
+      );
+      await page.getByRole("button", { name: "Add SYN-99" }).click();
+      await page.getByRole("alert").filter({ hasText: "Couldn't add SYN-99" }).waitFor();
+      await page.getByRole("button", { name: "Add SYN-99" }).waitFor();
+      await page.unrouteAll();
+      await page.getByRole("button", { name: "Add SYN-99" }).click();
       await page
         .locator(".workstream-page .members:not(:has(.add-member)) .member", {
-          hasText: "SYN-104",
+          hasText: "SYN-99",
         })
         .waitFor();
-      await page.getByRole("button", { name: /^Undo: Added SYN-104/ }).waitFor();
+      await page.getByRole("button", { name: /^Undo: Added SYN-99/ }).waitFor();
+      await expectCount(page.getByRole("alert").filter({ hasText: "Couldn't add" }), 0);
       const left = await keys();
-      if (JSON.stringify(left) !== JSON.stringify(want.filter((key) => key !== "SYN-104")))
-        throw new Error(`After adding SYN-104, suggested ${left.join(", ")}`);
+      if (JSON.stringify(left) !== JSON.stringify(want.filter((key) => key !== "SYN-99")))
+        throw new Error(`After adding SYN-99, suggested ${left.join(", ")}`);
     },
   })),
 );

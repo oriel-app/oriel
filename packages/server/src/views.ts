@@ -756,12 +756,15 @@ export function views(deps: ViewDeps) {
   };
 
   // What an empty workstream suggests adding (OA-348): the items its
-  // threads' answers named as chips, in the order they were named, then the
+  // threads' answers named as chips, in the order they were named, oldest
+  // thread first, then the
   // top of Not in a workstream yet, each once, as live items it shows.
   const suggested = async (workstreamId: Ulid): Promise<MemberView[]> => {
     const { byId } = lookup();
+    // Oldest thread first: `ofWorkstream` lists the newest first.
     const named = threads
       .ofWorkstream(workstreamId, deps.now())
+      .toReversed()
       .flatMap(({ thread }) =>
         answered(
           threads

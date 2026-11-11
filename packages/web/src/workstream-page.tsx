@@ -127,6 +127,12 @@ export function WorkstreamPage(props: {
     const going = add?.pending === "add" || add?.done != null;
     return !going && !members.some((member) => member.ref.id === each.ref.id);
   });
+  // An add from here the server refused, which the panel may not be open to
+  // say: its row stays, to try again.
+  const refused = suggested.flatMap((each) => {
+    const problem = addOf(props.adds, { item: each.ref.id, workstreamId: workstream.id })?.problem;
+    return problem ? [`Couldn't add ${each.ref.key}: ${problem}`] : [];
+  });
   // Through the panel's add, so its Undo is one more note in the stack.
   const add = (member: MemberView) => {
     handOn(suggestions.current, member.ref.id, ".add-member");
@@ -272,6 +278,11 @@ export function WorkstreamPage(props: {
                   ))}
                 </ul>
               </ItemListContext.Provider>
+              {refused.map((said) => (
+                <p key={said} class="rail-empty" role="alert">
+                  {said}
+                </p>
+              ))}
             </>
           )}
           {/* After the lists, so the keyboard reaches them from the last row. */}
