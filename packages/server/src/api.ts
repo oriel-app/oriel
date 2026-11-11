@@ -81,7 +81,7 @@ import { type Setup, SetupRefused } from "./setup/setup.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
-import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import { NothingFailed, NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import type { NoticedService } from "./noticed.ts";
 import type { OutsideTools } from "./mcp/tokens.ts";
 import type { Door } from "./app.ts";
@@ -1413,6 +1413,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     },
     {
       method: "POST",
+      path: at("/threads/:id/retry"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("thread.retry", { thread: id });
+        const { seq } = await deps.dispatch("thread.retry", input, user);
+        return json(202, { seq });
+      },
+    },
+    {
+      method: "POST",
       path: at("/threads/:id/stop"),
       async run([id = ""], request) {
         await readJson(request, smallBody, emptyBody);
@@ -1745,7 +1755,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       if (
         error instanceof ThreadBusy ||
         error instanceof ThreadLimit ||
-        error instanceof NothingHeld
+        error instanceof NothingHeld ||
+        error instanceof NothingFailed
       )
         return problem(409, error.message);
       if (error instanceof ActionError) return problem(actionStatus[error.code], error.message);

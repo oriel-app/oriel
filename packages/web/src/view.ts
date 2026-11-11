@@ -730,7 +730,9 @@ export type ChatEntry = { seq: number; at: string } & (
   // Oriel's own line about what someone did, never the agent's (OA-91).
   | { kind: "note"; note: NoteView }
   | { kind: "limit"; reason: string }
-  | { kind: "error"; message: string }
+  // `tryAgain`: the last turn failed with it before the agent did
+  // anything, and Try again answers its message again.
+  | { kind: "error"; message: string; tryAgain?: true }
   | { kind: "done" }
 );
 

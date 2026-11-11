@@ -1418,6 +1418,10 @@ button.nav-more {
   color: var(--danger);
 }
 
+.notice > .button {
+  margin-inline-start: var(--space-3);
+}
+
 .notice[data-tone="limit"] {
   padding: var(--space-2) var(--space-3);
   border: var(--border-thin) solid var(--derived-line);

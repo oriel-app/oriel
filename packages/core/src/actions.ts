@@ -352,6 +352,21 @@ export const actions = {
     },
     closed: { agent: unsaid, tool: untold },
   },
+  // Try again, under a turn that failed before the agent did anything: the
+  // same message, answered again.
+  "thread.retry": {
+    doc: "Answers again the message whose turn failed in a thread.",
+    input: object({ thread: threadId }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "It changes nothing to undo: the turn answers the message the user already sent.",
+    },
+    closed: {
+      agent: "A turn that failed has ended, and with it the agent's part in it.",
+      tool: "Answering the user's message again is the user's call about their own turn, which steered words shouldn't make (decision 0058).",
+    },
+  },
   "thread.stop": {
     doc: "Stops the turn running in a thread.",
     input: object({ thread: threadId }),

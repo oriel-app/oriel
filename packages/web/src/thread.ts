@@ -115,6 +115,8 @@ export type ThreadMsg =
   | { type: "looking"; msg: LookingMsg }
   | { type: "sendClicked" }
   | { type: "stopClicked" }
+  // Try again, under the error a failed turn ended with.
+  | { type: "tryAgainClicked" }
   | { type: "doneClicked" }
   // Sync now: the thread catches up with its workstream without a message.
   | { type: "syncClicked" }
@@ -340,6 +342,12 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         ],
       ];
     }
+    case "tryAgainClicked":
+      if (model.sending || model.view?.running !== false) return [model, []];
+      return [
+        { ...model, sending: true, notice: null, atLatest: true },
+        [post(`/api/threads/${model.id}/retry`, {}, { kind: "retried", threadId: model.id })],
+      ];
     case "stopClicked":
       return [
         model,
@@ -799,6 +807,9 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       const { statuses } = tag;
       return threadReplied(settled, { ...msg, tag: { kind: "thread", id: model.id, statuses } });
     }
+    case "retried":
+      if (tag.threadId !== model.id) return [model, []];
+      return [{ ...model, sending: false, notice: msg.ok ? null : errorOf(msg.body) }, []];
     case "threadAction":
       if (tag.threadId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
@@ -1174,7 +1185,7 @@ export type Entry =
     }
   | Extract<ChatEntry, { kind: "draft" }>
   | Extract<ChatEntry, { kind: "continue" }>
-  | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string }
+  | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string; tryAgain?: true }
   | { kind: "note"; seq: number; note: NoteView };
 
 export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
@@ -1258,7 +1269,13 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
         out.push({ kind: "notice", seq: entry.seq, tone: "limit", text: entry.reason });
         break;
       case "error":
-        out.push({ kind: "notice", seq: entry.seq, tone: "error", text: entry.message });
+        out.push({
+          kind: "notice",
+          seq: entry.seq,
+          tone: "error",
+          text: entry.message,
+          ...(entry.tryAgain && { tryAgain: true as const }),
+        });
         break;
       // A turn has ended: a run it started and never finished was stopped.
       case "done":
