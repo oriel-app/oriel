@@ -2820,7 +2820,9 @@ const scenes: Scene[] = [
   {
     name: "workstream-empty",
     path: `/workstreams/${emptied.id}`,
-    act: (page) => page.locator(".workstream-page .rail-empty").waitFor(),
+    // With nothing named in a thread, it suggests the top of Not in a
+    // workstream yet (OA-348).
+    act: (page) => page.locator(".workstream-page .add-member").first().waitFor(),
   },
   {
     // Two items removed with ×, each undoable for a few seconds.
