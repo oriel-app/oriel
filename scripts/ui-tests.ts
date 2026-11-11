@@ -5,6 +5,7 @@
 // --test` of its own, with its own servers, taking every nth test.
 // `pnpm ui-test ask-panel-` takes only the tests whose names start so, and
 // `--workers <n>` sets how many run at once.
+// Not `ui-test.ts`: `node --test` would take that name for a test file.
 import { fork } from "node:child_process";
 import { availableParallelism } from "node:os";
 import { createInterface } from "node:readline";

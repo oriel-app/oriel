@@ -12,7 +12,7 @@ on:
       - "packages/design-system/**"
       - "scripts/shots.ts"
       - "scripts/shots-first-run.ts"
-      - "scripts/ui-test.ts"
+      - "scripts/ui-tests.ts"
       - ".github/workflows/ui.yml"
   push:
     branches: [main]
@@ -21,7 +21,7 @@ on:
       - "packages/design-system/**"
       - "scripts/shots.ts"
       - "scripts/shots-first-run.ts"
-      - "scripts/ui-test.ts"
+      - "scripts/ui-tests.ts"
       - ".github/workflows/ui.yml"
 
 permissions:
