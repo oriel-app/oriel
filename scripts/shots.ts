@@ -1714,13 +1714,34 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
-// A server of the questions-* scene's own, with three epics' workstreams,
-// so the overview has a headline for each question to start from.
+// A server of the questions-* scene's own, with three epics' workstreams
+// made two days ago and one story of checkout's moved since, so the
+// overview has a headline for each question to start from.
 let questioning = server;
 const questioned = async () => {
-  questioning = (await writing()).serving;
+  let ahead = 0;
+  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  questioning = await start(0, {
+    db: ":memory:",
+    sources: {
+      jira: {
+        mode: "memory",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        fetch: site.fetch,
+      },
+    },
+    now: () => instant(new Date(Date.now() + ahead)),
+    agent: (deps) => scripted(deps, planning),
+  });
+  await syncKind("jira", questioning);
   for (const cluster of ["10001", "10002", "10003"])
     await post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster }, questioning);
+  const { seq } = await call<{ seq: number }>(questioning, "GET", "/api/overview");
+  await post("/api/overview/leave", { seq }, questioning);
+  ahead = 2 * 86_400_000;
+  site.edit("SYN-23", { status: "Done" });
+  await syncKind("jira", questioning);
   return questioning;
 };
 
@@ -4575,7 +4596,7 @@ const scenes: Scene[] = [
         await page
           .locator(".overview-headline .ask-question", { hasText: "Why is it stalled?" })
           .click();
-        await page.locator(".window-chat .chat-entry").first().waitFor();
+        await page.locator(".window-chat .user-message").first().waitFor();
         await page.locator(".working").first().waitFor({ state: "detached" });
         await expectCount(page.locator(".overview .ask-question"), 0);
         const { thread } = await call<{ thread: string }>(questioning, "GET", "/api/window-chat");
