@@ -192,6 +192,9 @@ const quotedReply = [
   "> the passenger always keeps the cheaper fare",
 ].join("\n");
 
+// The workstream the empty-suggests scenes open, made with their server.
+let emptyWorkstream = "";
+
 // What the agent says when asked about saved cards: two stories, as chips,
 // to open from the window chat and step through.
 const savedCardsReply =
@@ -5534,6 +5537,57 @@ scenes.push(
             .waitFor();
         await page.locator(".item-panel .panel-facts").waitFor();
       }
+    },
+  })),
+  // An empty workstream suggests items (OA-348): what its thread's answer
+  // named, in that order, then the top of Not in a workstream yet; each
+  // added with its +, which leaves the rest to add, and an Undo.
+  ...(["", "-added"] as const).map((step): Scene => ({
+    name: `empty-suggests${step}`,
+    path: "/",
+    make: async () => {
+      const on = (await writing()).serving;
+      const made = await post<{ workstreamId: string }>(
+        "/api/threads",
+        { text: "What's holding up saved cards?" },
+        on,
+      );
+      await on.app.settled();
+      emptyWorkstream = made.workstreamId;
+      return on;
+    },
+    act: async (page) => {
+      await page.goto(new URL(`/workstreams/${emptyWorkstream}`, page.url()).href);
+      const rows = page.locator(".workstream-page .members:has(.add-member) .member");
+      await rows.first().waitFor();
+      const keys = async () =>
+        (await rows.locator(".key").allTextContents()).map((key) => key.trim());
+      const top = await page.evaluate(async () => {
+        type Subject = { kind: string; item?: { key: string }; lead?: { key: string } | null };
+        const view = (await (await fetch("/api/overview")).json()) as {
+          candidates: { rows: { subject: Subject }[] };
+        };
+        return view.candidates.rows.flatMap(({ subject }) => {
+          const key = subject.kind === "item" ? subject.item?.key : subject.lead?.key;
+          return key ? [key] : [];
+        });
+      });
+      const named = ["SYN-99", "SYN-104"];
+      const want = [...new Set([...named, ...top])].slice(0, 5);
+      const got = await keys();
+      if (JSON.stringify(got) !== JSON.stringify(want))
+        throw new Error(`Suggested ${got.join(", ")}; expected ${want.join(", ")}`);
+      if (step === "") return;
+      await page.getByRole("button", { name: "Add SYN-104" }).click();
+      await page
+        .locator(".workstream-page .members:not(:has(.add-member)) .member", {
+          hasText: "SYN-104",
+        })
+        .waitFor();
+      await page.getByRole("button", { name: /^Undo: Added SYN-104/ }).waitFor();
+      const left = await keys();
+      if (JSON.stringify(left) !== JSON.stringify(want.filter((key) => key !== "SYN-104")))
+        throw new Error(`After adding SYN-104, suggested ${left.join(", ")}`);
     },
   })),
 );

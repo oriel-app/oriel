@@ -487,6 +487,9 @@ export type WorkstreamView = {
   members: MemberView[];
   changes: WorkstreamChangeView[];
   threads: ThreadSummaryView[];
+  // While it holds no items, a few to add (OA-348): what its threads'
+  // answers named, then the top of Not in a workstream yet.
+  suggested?: MemberView[];
 };
 
 export type WorkstreamsView = { workstreams: WorkstreamSummary[] };
