@@ -343,6 +343,16 @@ export function turns(deps: TurnDeps) {
       deps.emit({ name: "sketch.refused", at, workspaceId, threadId, reason: event.reason });
   };
 
+  const landed = (threadId: Ulid, written: string) => {
+    if (!threads.get(threadId, deps.now())) return;
+    threads.setTitle(threadId, written, deps.now());
+    const thread = threads.get(threadId, deps.now());
+    const workstream = thread && workstreams.get(thread.workstreamId);
+    if (workstream?.origin.kind === "window")
+      workstreams.rename(workstream.id, nameOf(written), "oriel");
+    publish(threadId, { type: "status", running: running.has(threadId) });
+  };
+
   // Titles the thread from its first message, beside its first turn. The
   // title lands whenever it arrives, and every page watching hears; if it
   // never does, the thread keeps the clipped message as its title.
@@ -358,17 +368,7 @@ export function turns(deps: TurnDeps) {
           log("title: unusable answer", {});
           return;
         }
-        // One deleted meanwhile takes none.
-        if (!threads.get(threadId, deps.now())) return;
-        threads.setTitle(threadId, written, deps.now());
-        // A window chat's workstream takes its title, so kept chats read as
-        // what they were about, until the user names it (the store keeps
-        // their name).
-        const thread = threads.get(threadId, deps.now());
-        const workstream = thread && workstreams.get(thread.workstreamId);
-        if (workstream?.origin.kind === "window")
-          workstreams.rename(workstream.id, nameOf(written), "oriel");
-        publish(threadId, { type: "status", running: running.has(threadId) });
+        landed(threadId, written);
       })
       .catch((error: unknown) => {
         if (!signal.aborted)
@@ -513,7 +513,7 @@ export function turns(deps: TurnDeps) {
     });
     running.set(threadId, { controller, done, by });
     publish(threadId, { type: "status", running: true });
-    if (first) title(threadId, text);
+    if (first && threads.title(threadId) === null) title(threadId, text);
     return { seq: said.seq, at: now, workspaceId: thread.workspaceId };
   };
 
@@ -669,6 +669,8 @@ export function turns(deps: TurnDeps) {
     },
 
     say,
+
+    titled: landed,
 
     // A change set of the thread was rejected. The thread says so and asks
     // what was wrong, in a line Oriel writes with no model call: the agent reads it

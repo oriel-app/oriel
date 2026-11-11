@@ -36,6 +36,7 @@ import {
   union,
   unknown,
   type Validator,
+  type StartQuestion,
   startQuestions,
   toolName,
 } from "@oriel/core";
@@ -73,6 +74,8 @@ import {
 } from "./actions.ts";
 import type { LinePlace } from "./intents.ts";
 import { resolveDropped } from "./dropped.ts";
+import { itemRef } from "./overview.ts";
+import { aboutItem, aboutWorkstream, questionLabel } from "@oriel/web/questions";
 import { type SettingsService, SettingsRefused, settingsChange } from "./settings.ts";
 import { type Setup, SetupRefused } from "./setup/setup.ts";
 import type { ItemPanels } from "./panel.ts";
@@ -229,7 +232,17 @@ const droppedBody = object({
 // A thread's first message, and the items open beside it (decision 0062).
 const openThreadBody = object({ text: optional(textValue), about: unknown });
 // A question in the window chat, with the items open beside it.
-const messageBodyValue = object({ text: textValue, about: unknown });
+const startQuestionValue = union(...startQuestions.map((question) => literal(question)));
+const messageBodyValue = object({
+  text: textValue,
+  about: unknown,
+  question: optional(
+    object({
+      kind: startQuestionValue,
+      subject: optional(refine(string, (id) => id.length <= 255, "expected an ID")),
+    }),
+  ),
+});
 // A thread from nothing, and what its new workstream is called, if the user
 // named it. How long a name may be is the dispatcher's to check.
 const newThreadBody = object({
@@ -357,7 +370,7 @@ const windowEvent = union(
   }),
   object({
     name: literal("window-chat.question-used"),
-    question: union(...startQuestions.map((question) => literal(question))),
+    question: startQuestionValue,
   }),
   // The first run's Show details, copied for someone helping the person.
   object({
@@ -478,6 +491,21 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!thread || thread.workspaceId !== deps.workspaceId)
       throw new Refused(404, "no such thread");
     return thread;
+  };
+  // Rebuilt from Oriel's own data by kind and subject ID, never taken from the page.
+  const questionTitle = (kind: StartQuestion, subject: string | undefined): string | null => {
+    let name = "";
+    if (aboutWorkstream.includes(kind)) {
+      const workstream = subject === undefined ? null : workstreams.get(subject as Ulid);
+      if (!workstream || workstream.workspaceId !== deps.workspaceId) return null;
+      name = workstream.name;
+    } else if (aboutItem.includes(kind)) {
+      const record = deps.records().find((one) => one.id === subject);
+      if (!record) return null;
+      const ref = itemRef(record);
+      name = ref.title ?? ref.key;
+    }
+    return questionLabel(kind, name);
   };
   // The window chat a question goes to: the one open, or the first of a new
   // one, on an empty workstream of its own.
@@ -1308,9 +1336,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/window-chat/messages"),
       async run(_, request) {
-        const { text, about } = await readJson(request, messageBody, messageBodyValue);
+        const { text, about, question } = await readJson(request, messageBody, messageBodyValue);
         const looked = firstAbout(about);
         const { thread, made } = await windowChatThread();
+        const title = made && question && questionTitle(question.kind, question.subject);
+        if (title) turns.titled(thread, title);
         const { seq } = await deps.dispatch("thread.say", { thread, text, ...looked }, user);
         return json(made ? 201 : 202, { id: thread, seq });
       },
