@@ -1243,9 +1243,10 @@ const handlers = {
         ? undefined
         : deps.threads.messages(chat.id, seq - 1).find((message) => message.seq === seq);
     if (said?.role !== "user") throw new ActionError("not-found", "no message of the user's there");
-    const about = [
-      ...new Set([item, ...(said.about ?? []).map((each) => each.id)]),
-    ].slice(0, maxAbout);
+    const about = [...new Set([item, ...(said.about ?? []).map((each) => each.id)])].slice(
+      0,
+      maxAbout,
+    );
     const events: Counted[] = [];
     let workstream = deps.holding?.(item)?.id ?? null;
     const made = workstream === null;
@@ -1273,7 +1274,12 @@ const handlers = {
       about: about.map((each) => ({ id: each, under: null })),
     };
     const sent = deps.turns.carry(to, from, said.text);
-    if (sent) events.push({ name: "question.asked", threadId: to, held: { from: from.kind, edited: false } });
+    if (sent)
+      events.push({
+        name: "question.asked",
+        threadId: to,
+        held: { from: from.kind, edited: false },
+      });
     deps.publish({ thread: to });
     // Any Continue offered in the chat settles as it is left.
     const offer = (held: Held) => "draft" in held && held.draft.action === "window.continue";

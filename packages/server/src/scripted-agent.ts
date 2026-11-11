@@ -246,7 +246,10 @@ export function devPlan(input: TurnInput): Step[] {
     const id = JSON.stringify(looked.id);
     if (changeAsk.test(input.text) && parseItemId(looked.id)?.kind === "jira") {
       if (input.windowChat)
-        return [{ run: `window.continue({ item: ${id} });` }, { text: "Its workstream can change it." }];
+        return [
+          { run: `window.continue({ item: ${id} });` },
+          { text: "Its workstream can change it." },
+        ];
       return [
         ...(looked.outside
           ? [
@@ -260,7 +263,9 @@ export function devPlan(input: TurnInput): Step[] {
     }
     return [
       { text: "I'll read what you're looking at." },
-      { run: `const item = await items.read(${id});\nreturn item.gone ? item.reason : item.title;` },
+      {
+        run: `const item = await items.read(${id});\nreturn item.gone ? item.reason : item.title;`,
+      },
       {
         text: looked.outside
           ? `[[${looked.id}]] is outside this workstream.`

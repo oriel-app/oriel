@@ -516,7 +516,11 @@ export function views(deps: ViewDeps) {
           ? { about: message.about.map(({ id, outside }) => ({ id, outside })) }
           : {}),
       };
-    if (message.role === "held" && "draft" in message && message.draft.action === "window.continue") {
+    if (
+      message.role === "held" &&
+      "draft" in message &&
+      message.draft.action === "window.continue"
+    ) {
       // Continue in…, drawn from Oriel's own data: the item, and the
       // workstream the request goes on in, or went on in, by its name now.
       const { draft, outcome } = message;

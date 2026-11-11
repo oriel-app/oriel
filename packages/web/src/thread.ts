@@ -600,11 +600,15 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       return [
         { ...model, settling: [...model.settling, seq], notice: null },
         [
-          post(`/api/threads/${model.id}/held/${seq}/apply`, {}, {
-            kind: "continued",
-            threadId: model.id,
-            seq,
-          }),
+          post(
+            `/api/threads/${model.id}/held/${seq}/apply`,
+            {},
+            {
+              kind: "continued",
+              threadId: model.id,
+              seq,
+            },
+          ),
         ],
       ];
     }
@@ -883,7 +887,10 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       const settling = model.settling.filter((seq) => seq !== tag.seq);
       if (!msg.ok) return [{ ...model, settling, notice: errorOf(msg.body) }, [refresh(model)]];
       const { thread } = msg.body as { thread: string };
-      return [{ ...model, settling }, [{ type: "navigate", route: { page: "thread", id: thread } }]];
+      return [
+        { ...model, settling },
+        [{ type: "navigate", route: { page: "thread", id: thread } }],
+      ];
     }
     // Applied, the draft keeps its Undo here; refused, as when its
     // connection couldn't be read that way, it stays held, with why.

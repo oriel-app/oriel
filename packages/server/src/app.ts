@@ -1716,7 +1716,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // its connection has, and its name the connection's. Continue in…
   // replaces nothing, so it never goes stale; its name is its item's.
   const drafted = (draft: Draft): { over: unknown; name: string } | null => {
-    if (draft.action === "window.continue") return { over: null, name: String(draft.input["item"]) };
+    if (draft.action === "window.continue")
+      return { over: null, name: String(draft.input["item"]) };
     const id = draft.input["connection"];
     const connection = typeof id === "string" && isUlid(id) ? connections.get(id) : null;
     if (!connection || connection.disconnectedAt !== null) return null;

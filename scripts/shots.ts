@@ -4144,7 +4144,7 @@ const scenes: Scene[] = [
       await page.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
       await closePanelOnPhone(page);
       await page.getByRole("button", { name: "Send" }).click();
-      await page.locator(".reply", { hasText: "read-only here" }).waitFor();
+      await page.locator(".reply", { hasText: "outside this workstream" }).waitFor();
       await page.reload();
       await page.locator(".user-message .about", { hasText: "read-only" }).waitFor();
       const said = await page.evaluate(async (thread) => {
@@ -5536,6 +5536,71 @@ scenes.push(
       }
     },
   })),
+);
+
+// Asked to change the item it's looking at (decision 0062). The window
+// chat offers one Continue, under a one-line reply, and pressing it lands in
+// a thread on a workstream made for the item, with the request sent and its
+// change set proposed. A thread adds an item outside its region, with Undo,
+// and proposes the change in the same turn. Each on a server of its own.
+const continued = async (page: Page, press: boolean) => {
+  await page.locator(".item-panel .panel-facts").waitFor();
+  await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
+  await page.waitForURL((url) => url.pathname === "/" && url.searchParams.has("item"));
+  await page.locator(".item-panel .panel-facts").waitFor();
+  const composer = beside(page)
+    ? page.locator(".window-chat > .chat-input")
+    : page.locator(".item-panel .panel-dock");
+  await composer.locator(".ctx-chip", { hasText: "Looking at" }).waitFor();
+  await composer.getByRole("textbox", { name: "Message" }).fill("Estimate it at 3 points");
+  await composer.getByRole("button", { name: /^(Send|Ask)$/ }).click();
+  await page.locator(".working").first().waitFor({ state: "detached" });
+  if (!beside(page))
+    await page.locator(".item-panel").getByRole("button", { name: "Chat" }).click();
+  const offer = page.locator(".window-chat .continue-block button");
+  await offer.waitFor();
+  if (!press) return;
+  await offer.click();
+  await page.waitForURL((url) => url.pathname.startsWith("/threads/"));
+  await page.locator(".held-from", { hasText: "From the window chat" }).waitFor();
+  await page.locator(".change-set-block").waitFor();
+  await page.locator(".working").first().waitFor({ state: "detached" });
+};
+scenes.push(
+  ...(["offer", "landed"] as const).map((step): Scene => ({
+    name: `continue-${step}`,
+    window: true,
+    path: `/${outsideItem}`,
+    make: async () => (await writing()).serving,
+    act: (page) => continued(page, step === "landed"),
+  })),
+  {
+    name: "continue-thread",
+    window: true,
+    path: "/",
+    make: async () => {
+      const on = (await writing()).serving;
+      const { id } = await post<{ id: string }>("/api/workstreams", checkout, on);
+      await ask("What's left before checkout ships?", on, id);
+      return on;
+    },
+    act: async (page) => {
+      const id = await page.evaluate(async () => {
+        const { threads } = (await (await fetch("/api/threads")).json()) as {
+          threads: { id: string }[];
+        };
+        return threads[0]?.id ?? "";
+      });
+      await page.goto(new URL(`/threads/${id}${outsideItem}`, page.url()).href);
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("textbox", { name: "Message" }).fill("Estimate it at 3 points");
+      await closePanelOnPhone(page);
+      await page.getByRole("button", { name: "Send" }).click();
+      await page.locator(".actions-block .undo-action").waitFor();
+      await page.locator(".change-set-block").waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+    },
+  },
 );
 
 // Opens Browse's first cluster and its first item in the panel, and says
