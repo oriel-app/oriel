@@ -549,7 +549,7 @@ function EntryBody(props: EntryProps) {
     case "revised":
       return (
         <li class="oriel-note" role="note">
-          <p>The agent revised this change. It shows below, under the reply that revised it.</p>
+          <p>The agent revised this change.</p>
         </li>
       );
     case "actions":
