@@ -160,7 +160,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       // not what changed meanwhile.
       let opened = false;
       events.onopen = () => {
-        if (opened) dispatch({ type: "streamReopened" });
+        if (opened) dispatch({ type: "streamReopened", stream: "thread" });
         opened = true;
       };
       return;
@@ -171,8 +171,13 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       threadsMoved = new EventSource("/api/threads/events");
       threadsMoved.onmessage = () => dispatch({ type: "threadsMoved" });
       // A move may have landed before the stream opened, or while it was
-      // down: the server tells only what happens while it's open.
-      threadsMoved.onopen = () => dispatch({ type: "threadsMoved" });
+      // down: the server tells only what happens while it's open. Every open
+      // after the first is Oriel answering again.
+      let opened = false;
+      threadsMoved.onopen = () => {
+        dispatch(opened ? { type: "streamReopened", stream: "threads" } : { type: "threadsMoved" });
+        opened = true;
+      };
       return;
     }
     case "unwatchThreads":

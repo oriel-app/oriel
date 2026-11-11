@@ -1,0 +1,58 @@
+// Oriel answers again after it couldn't be reached, as after a restart: every
+// page hears it here, from whichever stream it watches reconnecting.
+import { reached } from "./http.ts";
+import { updatePanel } from "./panel.ts";
+import type { Effect } from "./http.ts";
+import type { Model } from "./root.ts";
+
+// Nothing on any page still says Oriel can't be reached: what a request sent
+// meanwhile did, if anything, shows in what loads again. Other notices stay.
+export function cameBack(model: Model): [Model, Effect[]] {
+  const { overview, chat, window, workstream, newThread, closing, ending, moving } = model;
+  const { approved, rejected, panelAdds, panelEdits, settings, setup, connections } = model;
+  const [panel, reading] =
+    model.panel?.status === "failed" && reached(model.panel.problem) === null
+      ? updatePanel(model.panel, { type: "readAgainClicked" })
+      : [model.panel, []];
+  const failedApply = approved.failed && reached(approved.failed.why) && approved.failed;
+  const undoRefused = rejected.problem && reached(rejected.problem.said) && rejected.problem;
+  return [
+    {
+      ...model,
+      overview: overview && {
+        ...overview,
+        problem: reached(overview.problem),
+        noticedProblem: reached(overview.noticedProblem),
+        failed: reached(overview.failed),
+      },
+      chat: { ...chat, problem: reached(chat.problem) },
+      window: window && { ...window, notice: reached(window.notice) },
+      workstream: workstream && { ...workstream, notice: reached(workstream.notice) },
+      newThread: newThread && { ...newThread, notice: reached(newThread.notice) },
+      closing: { ...closing, problem: reached(closing.problem) },
+      ending: { ...ending, problem: reached(ending.problem) },
+      moving: { ...moving, problem: reached(moving.problem) },
+      approved: { ...approved, failed: failedApply || null },
+      rejected: { ...rejected, problem: undoRefused || null },
+      panel,
+      panelAdds: {
+        ...panelAdds,
+        adds: panelAdds.adds.map((add) => ({ ...add, problem: reached(add.problem) })),
+      },
+      panelEdits: {
+        ...panelEdits,
+        form: panelEdits.form && { ...panelEdits.form, problem: reached(panelEdits.form.problem) },
+        saved: panelEdits.saved.map((edit) => ({ ...edit, problem: reached(edit.problem) })),
+      },
+      settings: { ...settings, problem: reached(settings.problem) },
+      setup: { ...setup, problem: reached(setup.problem) },
+      connections: {
+        ...connections,
+        problems: Object.fromEntries(
+          Object.entries(connections.problems).filter(([, said]) => reached(said) !== null),
+        ),
+      },
+    },
+    reading,
+  ];
+}
