@@ -11,7 +11,7 @@ Adds: none
 - **Retrying waits only** in a behaviour test: a locator's `waitFor`, `waitForURL`, `until`. No timers and no counted frames.
 - **CI's ui job runs `pnpm ui-check` and `pnpm ui-test`,** never `pnpm shots`. It is still path-filtered and not required.
 - **The whole set is shot once a night on main** and by hand: a builder shoots their change's own scenes, and the whole set when the brief asks for it.
-- **The budget.** `pnpm ui-test` finishes in under 3 minutes on CI. A whole set takes under half of the 2026-11-11 time on the maintainer's Mac. To get there, a scene's steps run once per width, and it is shot light and then dark from the same page. A scene's own server closes after its shots.
+- **The budget.** `pnpm ui-test` finishes in under 3 minutes on CI. A whole set takes under half of the 2026-11-11 time on the maintainer's Mac. To get there, each width runs at once in a process of its own, and a scene's steps run once per width, shot light and then dark from the same page. A scene's own server closes after its shots.
 
 **Why.**
 
