@@ -1420,6 +1420,7 @@ button.nav-more {
 
 .notice > .button {
   margin-inline-start: var(--space-3);
+  color: var(--text);
 }
 
 .notice[data-tone="limit"] {

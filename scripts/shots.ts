@@ -2001,6 +2001,39 @@ if (!backlog?.at) return null;
 source.configure({ connection: waiting.connection, options: { tabs: [{ at: backlog.at, header: 1, end: "blank", hidden: false, key: "A", title: "B", status: "C", states: { todo: ["To do"], "in-progress": ["In progress", "In review", "Blocked"], done: ["Done"] }, assignee: "D", estimate: "F" }] } });
 return waiting.why;`;
 
+// A turn that couldn't reach the model (OA-227): the agent's first turn
+// fails as the loop says a connection that failed after its retries, and
+// the next answers.
+let failedIn = "";
+const failingOn = async () => {
+  let turns = 0;
+  const serving = await start(0, {
+    db: ":memory:",
+    sources: { jira: { mode: "fixture" } },
+    agent: (deps) => {
+      const answers = scripted(deps, () => [{ text: "Three stories here still need estimates." }]);
+      return {
+        async *turn(input, options) {
+          if (turns++ > 0) return yield* answers.turn(input, options);
+          yield {
+            kind: "error",
+            message: "Oriel couldn't reach the model provider: fetch failed (ECONNRESET)",
+          };
+          yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
+        },
+      };
+    },
+  });
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  failedIn = await ask("Which stories here still need estimates?", serving, workstreamId);
+  return serving;
+};
+const tryAgain = (page: Page) => page.getByRole("button", { name: "Try again" });
+const failedShown = async (page: Page) => {
+  await page.goto(new URL(`/threads/${failedIn}`, page.url()).href);
+  await page.locator('.notice[data-tone="error"]', { has: tryAgain(page) }).waitFor();
+};
+
 // A server of its own for Make a workstream on the overview: each pass of
 // the scenes deletes what the last one made first.
 const suggesting = (await writing({ mode: "fixture" })).serving;
@@ -4644,6 +4677,24 @@ const scenes: Scene[] = [
       },
     };
   }),
+  // A turn that couldn't reach the model offers Try again (OA-227), which
+  // answers the same message in the same thread, once, and offers it no more.
+  { name: "turn-failed", path: "/", make: failingOn, act: failedShown },
+  {
+    name: "turn-failed-again",
+    path: "/",
+    make: failingOn,
+    act: async (page) => {
+      await failedShown(page);
+      await tryAgain(page).click();
+      await page
+        .locator(".reply", { hasText: "Three stories here still need estimates." })
+        .waitFor();
+      await tryAgain(page).waitFor({ state: "detached" });
+      const asked = page.locator(".user-message", { hasText: "Which stories here still need" });
+      if ((await asked.count()) !== 1) throw new Error("Try again said the message twice");
+    },
+  },
 ];
 
 // The window chat moving into its workstream, each way in (OA-355), with no
