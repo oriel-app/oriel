@@ -5900,8 +5900,12 @@ scenes.push(
           return;
         }
         // Pressed while the answer may still be arriving: the chat glides to
-        // its end and stays there for the rest.
-        await pill.click();
+        // its end and stays there for the rest. Pressed where it shows, as a
+        // person would: `click` scrolls it into view first, which on a
+        // thread's page takes the window to its end, and the pill with it.
+        const box = await pill.boundingBox();
+        if (!box) throw new Error("the New message pill isn't on screen");
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
         await pill.waitFor({ state: "detached" });
         await answered(replies + 1);
         await until(page, `Math.abs(${below}) <= 1`);
