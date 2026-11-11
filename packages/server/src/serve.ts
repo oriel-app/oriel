@@ -46,16 +46,24 @@ export function bodyReader(req: IncomingMessage): (limit: number) => Promise<str
   };
 }
 
-async function send(res: ServerResponse, method: string, reply: Reply): Promise<void> {
+export async function send(res: ServerResponse, method: string, reply: Reply): Promise<void> {
   res.writeHead(reply.status, reply.headers);
   if (!reply.stream) {
     res.end(method === "HEAD" ? undefined : reply.body);
     return;
   }
   const stream = reply.stream[Symbol.asyncIterator]();
-  // A client that leaves ends the stream, which lets go of what it watched.
-  res.once("close", () => void stream.return?.());
-  if (method === "HEAD") {
+  // A client that leaves ends the stream, which lets go of what it watched,
+  // and stops waiting for it to read: whenever it leaves, before the reply
+  // was ready included.
+  const left = new AbortController();
+  const leave = () => {
+    left.abort();
+    void stream.return?.();
+  };
+  if (res.closed) leave();
+  else res.once("close", leave);
+  if (method === "HEAD" || left.signal.aborted) {
     await stream.return?.();
     res.end();
     return;
@@ -64,10 +72,16 @@ async function send(res: ServerResponse, method: string, reply: Reply): Promise<
   if (reply.body.length) res.write(reply.body);
   for (;;) {
     const next = await stream.next();
-    if (next.done || res.destroyed) break;
-    if (!res.write(next.value)) await once(res, "drain");
+    if (next.done || left.signal.aborted) break;
+    if (res.write(next.value)) continue;
+    // Rejects once the client has left, or the response errs.
+    const drained = await once(res, "drain", { signal: left.signal }).then(
+      () => true,
+      () => false,
+    );
+    if (!drained) break;
   }
-  res.end();
+  if (!left.signal.aborted) res.end();
 }
 
 export type ServeOptions = {
