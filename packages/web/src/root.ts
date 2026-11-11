@@ -358,8 +358,7 @@ const workspaceChanged = (model: Model): Effect[] => [
   // which a look of its own changes.
   loadConnections,
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
-  // The window chat too, which may have moved into its workstream (OA-347).
-  ...(model.route.page === "overview" ? [loadOverview, loadNoticed, loadWindowChat] : []),
+  ...(model.route.page === "overview" ? [loadOverview, loadNoticed] : []),
   // The first run's overview ends with the first workstream made.
   ...(model.setup.view?.firstRun?.firstRun ? [loadSetup] : []),
   // A thread shown whose chips name a thread, a change set or a workstream,

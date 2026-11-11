@@ -2103,7 +2103,9 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await post("/api/window-chat/new", {});
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
+      await loaded;
       await overviewShown(page);
     },
   },
@@ -2193,7 +2195,9 @@ const scenes: Scene[] = [
         const reply = (await (await route.fetch()).json()) as Record<string, unknown>;
         await route.fulfill({ json: { ...reply, pins } });
       });
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
+      await loaded;
       await overviewShown(page);
       await page.locator(".pinned .answer-block").nth(4).waitFor();
     },
@@ -2297,7 +2301,9 @@ const scenes: Scene[] = [
       );
       for (const { id } of workstreams)
         await post(`/api/workstreams/${id}/delete`, { threads: 0 }, suggesting);
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
+      await loaded;
       await overviewShown(page);
       const row = page.locator(".overview-candidate", { hasText: "Cancellation alert sent" });
       await row.hover();
@@ -4372,7 +4378,12 @@ const scenes: Scene[] = [
       await page
         .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
         .waitFor();
-      await page.locator(".window-chat .window-chat-empty").waitFor();
+      // On screen until the overview loads again, which shows a fresh chat.
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
+      await page.reload();
+      await loaded;
+      await overviewShown(page);
+      await page.getByRole("button", { name: "Back to the chat" }).waitFor({ state: "detached" });
     },
   },
 ];
