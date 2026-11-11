@@ -6159,6 +6159,21 @@ button.ctx-chip:hover {
   background: var(--accent-soft);
 }
 
+/* Where a request carried on by Continue in… came from (decision 0062):
+   one quiet line over the user's message, linking back. */
+.held-from {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Continue in…: one button under the window chat's reply, and once pressed,
+   a link to where the request went on. */
+.continue-block {
+  display: flex;
+  margin: var(--space-1) 0 var(--space-2);
+}
+
 .held-by .state-chip {
   margin-left: auto;
   background: var(--surface);

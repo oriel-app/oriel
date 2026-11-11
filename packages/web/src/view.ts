@@ -313,7 +313,11 @@ export type ThreadStateId = (typeof threadStates)[number];
 // Who a held message is from: a review link's holder, by the name they
 // typed, giving why they rejected a change set. Each kind of sender is one
 // variant, as the server's HeldSender has them.
-export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
+export type HeldFrom =
+  | { kind: "review-link"; by: string; changeSetId: string }
+  // The user's own request, carried on from the window chat by Continue
+  // in… (decision 0027).
+  | { kind: "window-chat"; chatId: string };
 
 // One of Oriel's lines in a thread, as the server's OrielNote has them:
 // a change set of the thread was rejected, here or on its review link, and
@@ -355,7 +359,9 @@ export const waitsOnUser = (waiting: WaitingOn | null): boolean =>
 // Whether a held message in the chat waits on the user.
 export const holding = (entries: readonly ChatEntry[]): boolean =>
   entries.some(
-    (entry) => (entry.kind === "held" || entry.kind === "draft") && entry.outcome === null,
+    (entry) =>
+      (entry.kind === "held" || entry.kind === "draft" || entry.kind === "continue") &&
+      entry.outcome === null,
   );
 
 // Whether a change set awaits review: it offers a step besides a revert,
@@ -705,6 +711,17 @@ export type ChatEntry = { seq: number; at: string } & (
       // What applying it does to the items the connection has (OA-232).
       said: string[];
       stale: boolean;
+      outcome: "applied" | "discarded" | null;
+    }
+  // A draft of Continue in… (decision 0062): one button that carries the
+  // user's request about `item` to a thread on `workstream`, the one that
+  // holds it, or a new one named for it when null. Applied, `thread` is
+  // where it went on, and `workstream` that thread's.
+  | {
+      kind: "continue";
+      item: ItemRef;
+      workstream: string | null;
+      thread: string | null;
       outcome: "applied" | "discarded" | null;
     }
   // Oriel's own line about what someone did, never the agent's (OA-91).

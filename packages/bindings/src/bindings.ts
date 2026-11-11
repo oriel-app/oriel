@@ -247,18 +247,30 @@ export function bindingsFor(
 
     draft(fn, args) {
       const entry = byPath.get(fn);
-      if (entry?.kind !== "draft" || !waiting)
+      if (entry?.kind !== "draft" || (entry.space === "source" && !waiting))
         throw new Error(`${JSON.stringify(fn)} isn't a draft here`);
       try {
         // Checked as an intent is, against the action's own declaration,
-        // then by the connector's validator, as the composition root has it.
-        return waiting.check(
-          intended(entry, args, {
-            workstream: region.workstreamId,
-            thread: options.thread ?? null,
-            reaches: () => false,
-          }),
-        );
+        // then a source's by the connector's validator, as the composition
+        // root has it.
+        const drafted = intended(entry, args, {
+          workstream: region.workstreamId,
+          thread: options.thread ?? null,
+          reaches: () => false,
+        });
+        if (waiting && entry.space === "source") return waiting.check(drafted);
+        // Continue in… carries on a request about an item the user chose:
+        // one their messages were about, or one in the region, never one a
+        // read found, which synced text could have steered it to.
+        const item = drafted.input["item"];
+        if (
+          typeof item !== "string" ||
+          !(members.has(item) || scope.looked.includes(item as never))
+        )
+          throw new RangeError(
+            `${JSON.stringify(item)} isn't an item the user's message was about`,
+          );
+        return drafted;
       } catch (error) {
         throw named(fn, error);
       }

@@ -145,6 +145,9 @@ export type ThreadMsg =
   | { type: "heldApplyClicked"; seq: number }
   | { type: "heldOptionEdited"; seq: number; option: string; text: string }
   | { type: "heldUndoClicked"; seq: number }
+  // Continue in… (decision 0062): the request goes on in a thread on its
+  // item's workstream, which the page then opens.
+  | { type: "continueClicked"; seq: number }
   // What the agent did in Oriel, undone from the list under its reply, or
   // done again: the line at `index` in the list at `seq`.
   | { type: "lineUndoClicked"; seq: number; index: number }
@@ -588,6 +591,27 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         ],
       ];
     }
+    case "continueClicked": {
+      const { seq } = msg;
+      const offered = model.view?.entries.some(
+        (entry) => entry.kind === "continue" && entry.seq === seq && entry.outcome === null,
+      );
+      if (!offered || model.settling.includes(seq)) return [model, []];
+      return [
+        { ...model, settling: [...model.settling, seq], notice: null },
+        [
+          post(
+            `/api/threads/${model.id}/held/${seq}/apply`,
+            {},
+            {
+              kind: "continued",
+              threadId: model.id,
+              seq,
+            },
+          ),
+        ],
+      ];
+    }
     case "heldUndoClicked": {
       const { seq } = msg;
       const undo = model.applied[seq];
@@ -856,6 +880,18 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         [refresh(model)],
       ];
     }
+    // Continued, the page opens the thread it went on in; refused, the
+    // offer stays, with why.
+    case "continued": {
+      if (tag.threadId !== model.id) return [model, []];
+      const settling = model.settling.filter((seq) => seq !== tag.seq);
+      if (!msg.ok) return [{ ...model, settling, notice: errorOf(msg.body) }, [refresh(model)]];
+      const { thread } = msg.body as { thread: string };
+      return [
+        { ...model, settling },
+        [{ type: "navigate", route: { page: "thread", id: thread } }],
+      ];
+    }
     // Applied, the draft keeps its Undo here; refused, as when its
     // connection couldn't be read that way, it stays held, with why.
     case "draftApplied":
@@ -1117,6 +1153,7 @@ export type Entry =
       outcome: "sent" | "discarded" | null;
     }
   | Extract<ChatEntry, { kind: "draft" }>
+  | Extract<ChatEntry, { kind: "continue" }>
   | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string }
   | { kind: "note"; seq: number; note: NoteView };
 
@@ -1176,6 +1213,7 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
         break;
       case "held":
       case "draft":
+      case "continue":
         out.push(entry);
         break;
       case "change-set": {

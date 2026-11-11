@@ -40,6 +40,8 @@ export type TurnInput = {
   // composer as they sent it (decision 0062).
   text: string;
   about?: About;
+  // The thread is the window chat, which changes no item (decision 0062).
+  windowChat?: true;
   // The index snapshot this turn reads (`indexStore.snapshot(workspaceId)`);
   // each run records it (SPEC §7). Required: a default of 0 would record
   // "never synced".

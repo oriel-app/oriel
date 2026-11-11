@@ -3,7 +3,7 @@ title: Thread messages
 status: stable
 group: Thread
 order: 60
-classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, about, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
+classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, about, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-from, continue-block, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
 summary: What a thread's conversation holds, entry by entry: the person's message, the agent's reply, its runs, Oriel's own lines, held messages and drafts, and "Working…".
 ---
 
@@ -29,6 +29,7 @@ One renderer, `ChatEntryItem` in `packages/web/src/thread-page.tsx`, draws every
 | A note                  | `li.oriel-note`                                | Oriel's                                                   |
 | A limit or an error     | `li.notice`                                    | Oriel's                                                   |
 | A held message, a draft | `li.held-block` > `section.held-message`       | someone else's, or the agent's draft, held for the person |
+| Continue in…            | `li.continue-block` > `button`, then `a`       | the agent's draft, one button for the person              |
 | Working…                | `li.working`                                   | Oriel's                                                   |
 
 ## When to use it
@@ -617,6 +618,27 @@ A draft of the agent's (decision 0051): one of the person's own actions, such as
 ```
 
 The drafted value is `<span class="draft-to">` in the app (`DraftCard` in `packages/web/src/thread-page.tsx`); that class has no rules, so it's left off here.
+
+### Continue in…
+
+The window chat changes no item (decision 0062). Asked to change one, the agent drafts Continue in…, and the chat shows it as **one button** under its one-line reply: "Continue in" the workstream that holds the item, or "a new workstream", named for it, when none does. No note or caption explains it: the button is the guidance. Pressed, the request goes on in a thread there, sent as the person's, and the page opens it; the button becomes a quiet link to that thread.
+
+In the thread it lands in, the request is a held message from the window chat, already sent, so only **where it came from** shows, in `p.held-from` over the person's message, linking back to the chat.
+
+```html specimen id=continue title="Continue in…: offered, pressed, and where it landed"
+<ol class="chat">
+  <li class="reply"><p>Its workstream can change it.</p></li>
+  <li class="continue-block">
+    <button type="button" class="button primary">Continue in a new workstream</button>
+  </li>
+  <li class="continue-block">
+    <a class="quiet-action" href="#">Continued in Weather disruptions ›</a>
+  </li>
+  <li class="held-block" data-outcome="sent">
+    <p class="held-from"><a href="#">From the window chat</a></p>
+  </li>
+</ol>
+```
 
 ### The window chat's head
 

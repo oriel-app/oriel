@@ -1,7 +1,8 @@
 // A thread: a workstream, a chat and change sets (decision 0018). It is pinned to
 // its workstream and works in one version of it, its region. Its state is derived
 // from what happened in it, never stored (packages/db derives it).
-import { holderName, maxReasonChars } from "./actions.ts";
+import { lookingAt } from "./about.ts";
+import { holderName, maxMessageChars, maxReasonChars } from "./actions.ts";
 import { type Instant, isUlid, type Ulid } from "./ids.ts";
 import {
   array,
@@ -44,13 +45,21 @@ export type Thread = {
 // before the reason reaches the agent, as it couldn't as it was held
 // (mid-turn), and never does for an Undo. Another thread's agent (OA-89) and
 // an outside tool (OA-75) join here, each as one more variant and its limit
-// below.
+// below. The window chat's is the user's own request, carried on by Continue
+// in… (decision 0027): `seq` is its place in the window chat `chat`, and
+// `about` what it was about there, so it is about the same items here.
 export const heldSender = union(
   object({
     kind: literal("review-link"),
     by: holderName,
     changeSet: refine(string, isUlid, "expected a change set ID"),
     askFirst: boolean,
+  }),
+  object({
+    kind: literal("window-chat"),
+    chat: refine(string, isUlid, "expected a thread ID"),
+    seq: refine(number, (n) => Number.isInteger(n) && n > 0, "expected a chat entry's place"),
+    about: lookingAt,
   }),
 );
 export type HeldSender = Infer<typeof heldSender>;
@@ -59,6 +68,7 @@ export type HeldSender = Infer<typeof heldSender>;
 // controls, it is capped at.
 export const maxHeldChars: Record<HeldSender["kind"], number> = {
   "review-link": maxReasonChars,
+  "window-chat": maxMessageChars,
 };
 
 // What a held message says: not blank, and within its sender's limit.

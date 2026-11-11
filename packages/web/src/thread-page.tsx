@@ -570,6 +570,12 @@ function EntryBody(props: EntryProps) {
           <DraftCard block={entry} model={props.model} send={props.send} />
         </li>
       );
+    case "continue":
+      return entry.outcome === "discarded" ? null : (
+        <li class="continue-block">
+          <ContinueOffer block={entry} model={props.model} send={props.send} />
+        </li>
+      );
     case "note":
       return (
         <li class="oriel-note" role="note">
@@ -688,7 +694,8 @@ export const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 
 // Who a held message is from, each kind of sender in its own words. A
-// review link may be held by anyone.
+// review link may be held by anyone. The window chat's is the user's own
+// request, carried on by Continue in…, which links back.
 function heldFrom(from: HeldFrom) {
   switch (from.kind) {
     case "review-link":
@@ -697,7 +704,50 @@ function heldFrom(from: HeldFrom) {
           <strong>{from.by}</strong> rejected this on the review link, and wrote:
         </>
       );
+    case "window-chat":
+      return <WindowChatLink id={from.chatId} />;
   }
+}
+
+function WindowChatLink({ id }: { id: string }) {
+  const dispatch = useContext(ItemLinksContext)?.dispatch;
+  const text = "From the window chat";
+  return dispatch ? (
+    <Link route={{ page: "thread", id }} dispatch={dispatch}>
+      {text}
+    </Link>
+  ) : (
+    text
+  );
+}
+
+// Continue in… (decision 0062): the window chat changes no item, so the
+// agent offers one button that carries the request to a thread on the
+// item's workstream, or a new one named for it. Pressed, it links there.
+function ContinueOffer(props: {
+  block: Extract<Entry, { kind: "continue" }>;
+  model: ThreadModel;
+  send: (msg: ThreadMsg) => void;
+}) {
+  const { block, model, send } = props;
+  const dispatch = useContext(ItemLinksContext)?.dispatch;
+  const where = block.workstream ?? "a new workstream";
+  if (block.outcome === "applied" && block.thread && dispatch)
+    return (
+      <Link route={{ page: "thread", id: block.thread }} dispatch={dispatch} class="quiet-action">
+        Continued in {where} ›
+      </Link>
+    );
+  return (
+    <button
+      type="button"
+      class="button primary"
+      disabled={model.settling.includes(block.seq) || block.outcome !== null}
+      onClick={() => send({ type: "continueClicked", seq: block.seq })}
+    >
+      Continue in {where}
+    </button>
+  );
 }
 
 // A message from anyone but the user, tinted and edged as their move. The
@@ -715,6 +765,10 @@ function HeldMessage(props: {
   const editing = block.outcome === null && model.composing?.seq === seq;
   const busy = model.settling.includes(seq);
   const sendable = !busy && !view.running && (!editing || model.draft.trim() !== "");
+  // Carried on from the window chat and sent there, it is the user's
+  // message below: only where it came from shows.
+  if (block.from.kind === "window-chat" && block.outcome === "sent")
+    return <p class="held-from">{heldFrom(block.from)}</p>;
   return (
     <section class="held-message" aria-busy={busy}>
       <p class="held-by">

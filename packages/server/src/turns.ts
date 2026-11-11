@@ -404,6 +404,7 @@ export function turns(deps: TurnDeps) {
         history: [...history(before, markerText(thread.workstreamId)), ...states],
         text: said.text,
         ...(said.about ? { about: said.about } : {}),
+        ...(threads.isWindowChat(thread.id) ? { windowChat: true as const } : {}),
         snapshot: deps.snapshot(),
         spent: plus(spent(before), deps.alsoSpent?.(thread.id)),
       };
@@ -588,6 +589,15 @@ export function turns(deps: TurnDeps) {
 
     holdDrafts,
 
+    // Continue in… (decision 0027): the user's request from the window chat,
+    // held in the thread it continues in, as from the window chat, then sent
+    // there as theirs, as Send to agent sends it. Null when it holds nothing.
+    carry(threadId: Ulid, from: Extract<HeldSender, { kind: "window-chat" }>, text: string) {
+      hold(threadId, from, text);
+      const held = threads.held(threadId).at(-1);
+      return held ? this.sendHeld(threadId, held.seq) : null;
+    },
+
     // Who started the thread's running turn, or null with none running.
     startedBy: (threadId: Ulid): Actor | null => running.get(threadId)?.by ?? null,
 
@@ -713,8 +723,10 @@ export function turns(deps: TurnDeps) {
       if (held.from.kind === "review-link" && held.from.askFirst && !capped)
         ask(threadId, held.from.changeSet, "review-link");
       const sent = text ?? held.text;
-      // Sent on, the words and the turn are the user's.
-      const { seq } = start(threadId, sent, { kind: "user" });
+      // Sent on, the words and the turn are the user's; a request carried
+      // on from the window chat is about what it was about there.
+      const about = held.from.kind === "window-chat" ? held.from.about : undefined;
+      const { seq } = start(threadId, sent, { kind: "user" }, about);
       threads.settle(threadId, at, "sent");
       return { seq, from: held.from, edited: sent !== held.text };
     },

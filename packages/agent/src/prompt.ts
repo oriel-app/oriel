@@ -91,6 +91,7 @@ export function threadMessages(
   history: readonly ChatMessage[],
   text: string,
   about?: About,
+  windowChat = false,
 ): ModelMessage[] {
   const messages: ModelMessage[] = [];
   let pending: { calls: ToolCall[]; results: ToolResult[] } | null = null;
@@ -109,7 +110,7 @@ export function threadMessages(
     if (!what?.length) return;
     pending ??= { calls: [], results: [] };
     pending.calls.push({ id, name: runToolName, input: { script: aboutScript } });
-    pending.results.push({ callId: id, content: aboutText(what), isError: false });
+    pending.results.push({ callId: id, content: aboutText(what, windowChat), isError: false });
   };
   history.forEach((message, i) => {
     if (message.role === "assistant" && !message.text.trim()) return;
@@ -158,8 +159,12 @@ export function threadMessages(
 const aboutScript = "// Oriel's note of what the user's next message is about. Not a run.";
 
 // What a message is about, as the agent reads it: the items by ID, and
-// which it may change. Looking at an item adds nothing to the workstream.
-export function aboutText(about: About): string {
+// which it may change. Looking at an item adds nothing to the workstream;
+// asked to change one outside the region, the agent adds it first, with
+// Undo, and its next run may write it (OA-312). The window chat changes no
+// item: there it drafts Continue in…, whose button carries the request to
+// a thread on the item's workstream (decision 0062).
+export function aboutText(about: About, windowChat = false): string {
   const ids = (list: About) => list.map((each) => each.id).join(", ");
   const inside = about.filter((each) => !each.outside);
   const outside = about.filter((each) => each.outside);
@@ -168,7 +173,9 @@ export function aboutText(about: About): string {
     ...(inside.length ? [`In this region: ${ids(inside)}.`] : []),
     ...(outside.length
       ? [
-          `Outside this region, read-only: ${ids(outside)}. Propose no change to them; looking adds nothing to the workstream.`,
+          windowChat
+            ? `Read-only here: ${ids(outside)}. Asked to change one, draft window.continue({ item }) and reply in one short line: its button carries the request to a thread that can.`
+            : `Outside this region, read-only until added: ${ids(outside)}. Asked to change one, workstream.add() it, then propose the change in a later run.`,
         ]
       : []),
   ].join("\n");

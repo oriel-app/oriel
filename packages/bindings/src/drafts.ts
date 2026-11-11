@@ -58,16 +58,18 @@ export const previewFn: Fn = {
   }),
 };
 
-// Each draftable action, in registry order, with its input as the
-// composition root types it.
-export function draftFns(waiting: Waiting): DraftFn[] {
+// Each draftable action of `spaces`, in registry order, with its input as
+// the composition root types it: a source's while a connection waits, with
+// `waiting`'s types; the window chat's own always (decision 0062).
+export function draftFns(spaces: readonly DraftFn["space"][], waiting?: Waiting): DraftFn[] {
   return (Object.keys(actions) as ActionName[]).flatMap((action) => {
     const declared: ActionDeclaration = actions[action];
     if (!declared.draftable) return [];
     const [space, name] = action.split(".");
-    if (space !== "source" || name === undefined)
-      throw new Error(`${action}: a draftable action is a source's, for now`);
-    const { type, optional } = agentType(action, waiting.types.fields);
+    if ((space !== "source" && space !== "window") || name === undefined)
+      throw new Error(`${action}: a draftable action is a source's or the window chat's`);
+    if (!spaces.includes(space)) return [];
+    const { type, optional } = agentType(action, waiting?.types.fields);
     return [
       {
         kind: "draft",

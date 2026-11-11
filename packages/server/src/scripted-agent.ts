@@ -192,6 +192,8 @@ return first ?? null;`;
 const commentAsk = /^\s*comment\b[:\s]*([\s\S]*)$/i;
 
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
+// A request to change what the message is about.
+const changeAsk = /\b(?:change|close|set|reassign|assign|estimate|update|edit|rename)\b/i;
 const threadsAsk = /^\s*where\b/i;
 
 // A reply naming the first thing thread.find() returned as a chip, as the
@@ -236,20 +238,41 @@ const filler = new Set([
 // to "comment: …", and otherwise a read of every item in the region.
 export function devPlan(input: TurnInput): Step[] {
   // A message about an item open beside the composer (decision 0062): it
-  // reads the item by its ID, and says whether it may change it.
+  // reads the item by its ID. Asked to change a Jira story, it proposes 3
+  // points: in the window chat, through Continue in…; outside the region,
+  // once it has added the story to the workstream.
   const looked = input.about?.[0];
-  if (looked)
+  if (looked) {
+    const id = JSON.stringify(looked.id);
+    if (changeAsk.test(input.text) && parseItemId(looked.id)?.kind === "jira") {
+      if (input.windowChat)
+        return [
+          { run: `window.continue({ item: ${id} });` },
+          { text: "Its workstream can change it." },
+        ];
+      return [
+        ...(looked.outside
+          ? [
+              { text: `I'll add [[${looked.id}]] to this workstream to change it.` },
+              { run: `workstream.add({ items: [${id}] });` },
+            ]
+          : []),
+        { run: `jira.setEstimate(${id}, 3);` },
+        { text: "The proposed change is below. Nothing is written until you approve it." },
+      ];
+    }
     return [
       { text: "I'll read what you're looking at." },
       {
-        run: `const item = await items.read(${JSON.stringify(looked.id)});\nreturn item.gone ? item.reason : item.title;`,
+        run: `const item = await items.read(${id});\nreturn item.gone ? item.reason : item.title;`,
       },
       {
         text: looked.outside
-          ? `[[${looked.id}]] is outside this workstream, so it's read-only here.`
+          ? `[[${looked.id}]] is outside this workstream.`
           : `[[${looked.id}]] is in this workstream.`,
       },
     ];
+  }
   if (threadsAsk.test(input.text))
     return [
       { text: "I'll look through your threads." },

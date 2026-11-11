@@ -175,8 +175,8 @@ export function describe(
     }),
   );
   if (options.challenge) return [...challengeItemFns, ...namespaced, ...challengeFns, searchFn];
-  const window = options.window ? [...windowFns, ...windowIntentFns] : [];
-  const waiting = options.waiting ? [previewFn, ...draftFns(options.waiting)] : [];
+  const window = options.window ? [...windowFns, ...draftFns(["window"]), ...windowIntentFns] : [];
+  const waiting = options.waiting ? [previewFn, ...draftFns(["source"], options.waiting)] : [];
   return [
     ...(scope.looked.length ? lookedItemFns : itemFns),
     ...namespaced,

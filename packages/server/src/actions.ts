@@ -27,13 +27,14 @@ import {
   clusterMembers,
   type Instant,
   type ItemId,
+  maxAbout,
   maxReasonChars,
   parseItemId,
   type TelemetryEvent,
   type Ulid,
 } from "@oriel/core";
 import { sendLeaseMs } from "@oriel/changeset";
-import type { Move, WorkstreamStore, ThreadStore } from "@oriel/db";
+import type { Held, Move, WorkstreamStore, ThreadStore } from "@oriel/db";
 import { type ConnectionView, type GroupingId, isGroupingId } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
 import type { NoticedService } from "./noticed.ts";
@@ -95,7 +96,10 @@ export type ActionDeps = {
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
   // What becomes of a thread's chat: the user's message, which starts a
   // turn; a message held in it, whoever it is from; and its running turn.
-  turns: Pick<Turns, "say" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld">;
+  turns: Pick<
+    Turns,
+    "say" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld" | "carry"
+  >;
   changeSets: ChangeSets;
   // Second looks at change sets (decision 0054): one taken when the person
   // asks, changes one suggested, added, and one dismissed (OA-257). Absent
@@ -159,6 +163,10 @@ export type ActionDeps = {
   // settled into the headers above them, read from the source now; it
   // throws why the draft no longer fits. As drafted when absent.
   settle?(draft: Draft): Promise<Record<string, unknown>>;
+  // The open workstream holding an item, as the overview lists it: what
+  // Continue in… carries a request about it to (decision 0062). Absent,
+  // none does.
+  holding?(item: ItemId): { id: Ulid; name: string } | null;
   // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
   // A thread's change sets still to apply, pending or approved: whether
@@ -321,10 +329,14 @@ const fixedFields = (action: ActionName): string[] =>
 
 // What in a thread waits on the user, in words, or null: a change set to
 // decide, or a message held for them.
-async function waitsOn(deps: ActionDeps, threadId: Ulid): Promise<string | null> {
+async function waitsOn(
+  deps: ActionDeps,
+  threadId: Ulid,
+  settles: (held: Held) => boolean = () => false,
+): Promise<string | null> {
   if ((await deps.unsettled(threadId)).some((set) => set.waits))
     return "a change set in it waits on you";
-  const held = deps.threads.held(threadId);
+  const held = deps.threads.held(threadId).filter((each) => !settles(each));
   if (held.some((each) => "from" in each)) return "a message held in it waits on you";
   if (held.length > 0) return "a draft of the agent's in it waits on you";
   return null;
@@ -402,6 +414,22 @@ async function newWorkstream(
     list,
     size: list.length,
   };
+}
+
+// The window chat left, by New chat or Continue in…: the rail starts a
+// fresh one, and the old one is marked done, unless something in it still
+// waits on the user, which `settles` leaves out (decision 0027).
+async function leaveChat(
+  deps: ActionDeps,
+  actor: Actor,
+  chat: Ulid,
+  via: "new-chat" | "continue",
+  settles?: (held: Held) => boolean,
+): Promise<{ kept: boolean; events: Counted[] }> {
+  deps.threads.leaveWindowChat(chat, deps.now());
+  const kept = (await waitsOn(deps, chat, settles)) !== null;
+  const done = kept ? null : await markDone({ thread: chat, via }, actor, deps);
+  return { kept, events: !done || done.events === "counted" ? [] : done.events };
 }
 
 // Marks a thread done: from its page or a list, by the agent or a tool, or
@@ -772,10 +800,16 @@ const handlers = {
     const input = checked(action, settled as Fields<typeof action>);
     const handler = handlers[action] as Handler<typeof action>;
     const called = await handler(input, actor, deps, actor);
-    const output = called.output as SourceOutcome;
-    if (!("connection" in output)) throw new ActionError("refused", output.problem);
-    // Kept as it applied, edited or not: the options the connection has now.
-    if (!deps.threads.applied(thread.id, seq, { ...input, options: output.connection.options }))
+    const output = called.output as SourceOutcome | { thread: Ulid; workstream: Ulid };
+    if (!("connection" in output) && "problem" in output)
+      throw new ActionError("refused", output.problem);
+    // Kept as it applied, edited or not: the options the connection has now,
+    // or the thread a request continued in.
+    const as =
+      "connection" in output
+        ? { ...input, options: output.connection.options }
+        : { ...input, to: output.thread };
+    if (!deps.threads.applied(thread.id, seq, as))
       throw new ActionError("conflict", "it was settled meanwhile");
     const events = called.events === "counted" ? [] : called.events;
     return {
@@ -1187,15 +1221,84 @@ const handlers = {
     const thread = deps.threads.windowChat(deps.workspaceId, deps.now());
     if (!thread) return { output: { left: null }, undo: null, changed: null, events: [] };
     deps.turns.stop(thread.id);
-    deps.threads.leaveWindowChat(thread.id, deps.now());
-    const kept = (await waitsOn(deps, thread.id)) !== null;
-    const done = kept ? null : await markDone({ thread: thread.id, via: "new-chat" }, actor, deps);
-    const counted = !done || done.events === "counted" ? [] : done.events;
+    const { kept, events } = await leaveChat(deps, actor, thread.id, "new-chat");
     return {
       output: { left: thread.id },
       undo: null,
       changed: { thread: thread.id },
-      events: [...counted, { name: "window-chat.new-chat", threadId: thread.id, kept }],
+      events: [...events, { name: "window-chat.new-chat", threadId: thread.id, kept }],
+    };
+  },
+
+  // Continue in…: the user's request in the window chat goes on in a thread
+  // on the item's open workstream, or on a new one named for it, held there
+  // as from the window chat and sent as theirs, about what it was about and
+  // the item. The window chat is left as New chat leaves it (decision 0027);
+  // a Continue offered in it settles with it.
+  "window.continue": async ({ thread: id, item, seq }, actor, deps) => {
+    const chat = mustThread(deps, id);
+    if (!deps.threads.isWindowChat(chat.id))
+      throw new ActionError("refused", "only the window chat continues elsewhere");
+    const said =
+      seq === undefined
+        ? undefined
+        : deps.threads.messages(chat.id, seq - 1).find((message) => message.seq === seq);
+    if (said?.role !== "user") throw new ActionError("not-found", "no message of the user's there");
+    const about = [...new Set([item, ...(said.about ?? []).map((each) => each.id)])].slice(
+      0,
+      maxAbout,
+    );
+    const events: Counted[] = [];
+    let workstream = deps.holding?.(item)?.id ?? null;
+    const made = workstream === null;
+    if (workstream === null) {
+      const record = deps.records().find((each) => each.id === item);
+      const key = parseItemId(item)?.key ?? item;
+      const create = handlers["workstream.create"] as Handler<"workstream.create">;
+      const created = await create(
+        { kind: "picked", name: nameOf(record?.title ?? "") || key, items: [item] },
+        actor,
+        deps,
+        actor,
+      );
+      if (created.events !== "counted") events.push(...created.events);
+      workstream = (created.output as { workstream: Ulid }).workstream;
+    }
+    const open = handlers["thread.open"] as Handler<"thread.open">;
+    const opened = await open({ workstream }, actor, deps, actor);
+    if (opened.events !== "counted") events.push(...opened.events);
+    const to = (opened.output as { thread: Ulid }).thread;
+    const from = {
+      kind: "window-chat" as const,
+      chat: chat.id,
+      seq: said.seq,
+      about: about.map((each) => ({ id: each, under: null })),
+    };
+    const sent = deps.turns.carry(to, from, said.text);
+    if (sent)
+      events.push({
+        name: "question.asked",
+        threadId: to,
+        held: { from: from.kind, edited: false },
+      });
+    deps.publish({ thread: to });
+    // Left as New chat leaves it: its turn stops, so none holds a draft later.
+    deps.turns.stop(chat.id);
+    // Any Continue offered in the chat settles as it is left.
+    const offer = (held: Held) => "draft" in held && held.draft.action === "window.continue";
+    const left = await leaveChat(deps, actor, chat.id, "continue", offer);
+    events.push(...left.events, {
+      name: "window-chat.continued",
+      threadId: chat.id,
+      to,
+      made,
+      kept: left.kept,
+    });
+    return {
+      output: { thread: to, workstream },
+      undo: null,
+      changed: { thread: chat.id, chat: true },
+      events,
     };
   },
 
