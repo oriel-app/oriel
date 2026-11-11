@@ -4377,7 +4377,7 @@ const scenes: Scene[] = [
       await page.getByRole("button", { name: "Ask", exact: true }).click();
       await page
         .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
-        .waitFor();
+        .waitFor({ state: "attached" });
       // On screen until the overview loads again, which shows a fresh chat.
       const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
