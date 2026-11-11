@@ -300,14 +300,17 @@ export const actions = {
   // as the user's message, about the item. `seq`: that message in the
   // window chat, which Oriel fills in as it holds the agent's draft.
   "window.continue": {
-    doc: "Continues the user's request in a thread on the item's workstream.",
+    doc: "Continues the request in the item's workstream.",
     input: object({ thread: threadId, item: itemId, seq: optional(seq) }),
     class: {
       kind: "direct",
       inverse: null,
       why: "It opens a thread and sends the user's own words there; only deleting the thread erases them.",
     },
-    userOnly: { seq: "Oriel names the message the draft answers." },
+    userOnly: {
+      thread: "Oriel names the window chat it continues.",
+      seq: "Oriel names the message the draft answers.",
+    },
     closed: { agent: unsaid, tool: untold },
     draftable: "window",
   },

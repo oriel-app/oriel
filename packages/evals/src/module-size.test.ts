@@ -76,7 +76,14 @@ test("the window chat's window namespace adds within its budget, in its module o
   const start = chat.indexOf("declare const source: {");
   const off = chat.slice(start, chat.indexOf("\n};\n", start) + 4);
   assert.ok(shape(off) <= turning, `source.off adds ${shape(off)} bytes`);
-  const added = shape(chat.replace(off, "")) - shape(plain);
+  // window.continue()'s draft, Continue in… (decision 0062), has its own
+  // budget too: 131 bytes in OA-332's story, the hub's to approve.
+  const continuing = 140;
+  const doc = chat.lastIndexOf("  /**", chat.indexOf("  continue(input"));
+  const cont = chat.slice(doc, chat.indexOf("\n", chat.indexOf("  continue(input")) + 1);
+  assert.match(cont, /^  \/\*\* Drafts, for the user to apply: continues/);
+  assert.ok(shape(cont) <= continuing, `window.continue adds ${shape(cont)} bytes`);
+  const added = shape(chat.replace(off, "").replace(cont, "")) - shape(plain);
   assert.ok(added > 0 && added <= window, `window adds ${added} bytes`);
 });
 
