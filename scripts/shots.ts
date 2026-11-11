@@ -5536,6 +5536,59 @@ scenes.push(
       }
     },
   })),
+  // A chat follows what arrives only at its latest entry (OA-350): read
+  // further up, a new message leaves the place alone and a pill says it
+  // came; the pill takes the chat to it, and from there it follows again.
+  // A thread's page scrolls the window, the window chat its own entries.
+  // Each on a server of its own, as their messages change its threads.
+  ...(["thread", "window"] as const).flatMap((chat) =>
+    (["kept", "shown"] as const).map((step): Scene => ({
+      name: `chat-new-message-${chat}${step === "shown" ? "-shown" : ""}`,
+      window: true,
+      path: "/",
+      make: () => longChat(chat),
+      act: async (page) => {
+        if (chat === "thread") await page.goto(new URL(`/threads/${following}`, page.url()).href);
+        else await page.getByRole("button", { name: "Back to the chat" }).click();
+        await page.locator(".reply").first().waitFor();
+        const { at, below, top } = chatScroll[chat];
+        await page.evaluate(top);
+        const replies = await page.locator(".reply").count();
+        const say = () =>
+          page.evaluate(
+            async ({ id, text }) => {
+              await fetch(`/api/threads/${id}/messages`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ text }),
+              });
+            },
+            { id: following, text: savedCards },
+          );
+        const answered = async (count: number) => {
+          await until(page, `document.querySelectorAll(".reply").length >= ${count}`);
+          await page.locator(".working").first().waitFor({ state: "detached" });
+        };
+        const pill = page.locator(".new-message-pill");
+        await say();
+        await pill.waitFor();
+        await answered(replies + 1);
+        const moved = await page.evaluate(at);
+        if (moved !== 0)
+          throw new Error(`A new message moved the chat read from its top: ${moved}`);
+        await pill.waitFor();
+        if (step === "kept") return;
+        await pill.click();
+        await pill.waitFor({ state: "detached" });
+        await until(page, `Math.abs(${below}) <= 1`);
+        // At the latest entry, the chat follows what comes.
+        await say();
+        await answered(replies + 2);
+        await until(page, `Math.abs(${below}) <= 1`);
+        await expectCount(pill, 0);
+      },
+    })),
+  ),
 );
 
 // Asked to change the item it's looking at (decision 0062). The window
@@ -5603,6 +5656,23 @@ scenes.push(
   },
 );
 
+// A chat taller than the window, on a server of its own: a thread's, or the
+// window chat's, eight questions and answers long. `following` is its thread.
+const savedCards = "What's holding up saved cards?";
+let following = "";
+async function longChat(chat: "thread" | "window"): Promise<Serving> {
+  const on = (await writing()).serving;
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, on);
+  following = chat === "thread" ? await ask(savedCards, on, workstreamId) : "";
+  for (let n = chat === "thread" ? 1 : 0; n < 8; n++) {
+    const path =
+      chat === "thread" ? `/api/threads/${following}/messages` : "/api/window-chat/messages";
+    following = (await post<{ id?: string }>(path, { text: savedCards }, on)).id ?? following;
+    await on.app.settled();
+  }
+  return on;
+}
+
 // Opens Browse's first cluster and its first item in the panel, and says
 // the item's key.
 async function openInBrowse(page: Page): Promise<string> {
@@ -5634,6 +5704,43 @@ const toTop = `(async () => {
     await new Promise((frame) => requestAnimationFrame(frame));
   }
 })()`;
+
+// Waits, frame by frame, until a condition in the browser holds. Not
+// `waitForFunction`, whose polling evaluates the string, which the window's
+// content security policy refuses.
+async function until(page: Page, condition: string): Promise<void> {
+  const held = await page.evaluate(`(async () => {
+  for (let frames = 0; frames < 600; frames++) {
+    if (${condition}) return true;
+    await new Promise((frame) => requestAnimationFrame(frame));
+  }
+  return false;
+})()`);
+  if (held !== true) throw new Error(`Never held: ${condition}`);
+}
+
+// Where a chat is scrolled to, how far its end is below what shows, and a
+// script that scrolls it to its top until it stays there, in the browser.
+const entries = `document.querySelector(".window-chat-entries")`;
+const chatScroll = {
+  thread: {
+    at: "scrollY",
+    below: `document.querySelector("main.thread").getBoundingClientRect().bottom - innerHeight`,
+    top: toTop,
+  },
+  window: {
+    at: `${entries}.scrollTop`,
+    below: `(${entries}.scrollHeight - ${entries}.clientHeight - ${entries}.scrollTop)`,
+    top: `(async () => {
+  for (let still = 0, frames = 0; still < 3 && frames < 120; frames++) {
+    const chat = ${entries};
+    if (chat.scrollTop === 0) still++;
+    else [still] = [0, (chat.scrollTop = 0)];
+    await new Promise((frame) => requestAnimationFrame(frame));
+  }
+})()`,
+  },
+} as const;
 
 const unnudged = `document.querySelectorAll(".sidebar").forEach((sidebar) => {
   if (sidebar.scrollTop > 0 && sidebar.scrollTop < 4) sidebar.scrollTop = 0;

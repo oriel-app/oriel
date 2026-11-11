@@ -3,7 +3,7 @@ title: Change set to review, out of view
 status: stable
 group: Thread
 order: 67
-classes: to-review, to-review-pill
+classes: to-review-pill
 summary: A small pill floating over a thread's composer while a change set awaiting review is mostly above or below what's on screen; it goes to the nearest one.
 ---
 
@@ -21,7 +21,7 @@ It's drawn by `ToReview` in `packages/web/src/to-review.tsx`. Where each change 
 
 ## When not to
 
-- Not for anything else out of view, such as a held message, a draft or the latest entry. The page keeps the latest entry in view by itself.
+- Not for anything else out of view, such as a held message or a draft. What arrives below while the person reads further up has [its own pill](/components/new-message).
 - Not as a second note. What the person just did goes in [the bead](/components/bead), at the top.
 - Not in the window chat or on a review link's page: neither scrolls through several change sets.
 
@@ -33,7 +33,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 <main class="thread">
   <div class="chat-dock">
     <form class="chat-input" data-lines="grow" data-elevation="raised">
-      <div class="to-review">
+      <div class="composer-pills">
         <button type="button" class="to-review-pill">
           <span aria-hidden="true">↑</span>1 change set to review above
         </button>
@@ -57,7 +57,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 <main class="thread">
   <div class="chat-dock">
     <form class="chat-input" data-lines="grow" data-elevation="raised">
-      <div class="to-review">
+      <div class="composer-pills">
         <button type="button" class="to-review-pill">
           <span aria-hidden="true">↑</span>2 change sets to review above
         </button>
@@ -80,7 +80,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 </main>
 ```
 
-- **The column** (`.to-review`): absolute, over the composer (the thread's dock is sticky, so it holds it), centred. It never covers the composer, the bead at the top, or the selection bar, which isn't on a thread's page.
+- **The column** (`.composer-pills`, on [New message](/components/new-message)'s page): absolute, over the composer (the thread's dock is sticky, so it holds it), centred. It never covers the composer, the bead at the top, or the selection bar, which isn't on a thread's page. New message, when it shows, is last, nearest the composer.
 - **A pill** (`.to-review-pill`): `--surface`, a `--border-thin` hairline in `--accent`, `--radius-lg`, `--shadow`; `--text-sm`, medium, in `--accent`, on one line. The accent means "your move": a change set to review.
 
 ## States
@@ -89,7 +89,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 <main class="thread">
   <div class="chat-dock">
     <form class="chat-input" data-lines="grow" data-elevation="raised">
-      <div class="to-review">
+      <div class="composer-pills">
         <button type="button" class="to-review-pill ws-hover">
           <span aria-hidden="true">↓</span>1 change set to review below
         </button>
@@ -130,4 +130,4 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 
 - `ToReview` in `packages/web/src/to-review.tsx`, given the thread's change sets awaiting review by `ThreadPage` in `packages/web/src/thread-page.tsx`, and drawn by `ChatInput` over its field. A click sends `toReviewClicked`; `goingTo` in `packages/web/src/thread.ts` asks for the glide.
 - With After you approve set to go on, `approvedIn` in `packages/web/src/approved.ts` glides the same way to the next change set to review in the same thread (`nextToReview` in `packages/web/src/thread.ts`) before it moves to another thread.
-- CSS `.to-review` and `.to-review-pill` in `window.css`.
+- CSS `.to-review-pill` in `window.css`, in `.composer-pills`.
