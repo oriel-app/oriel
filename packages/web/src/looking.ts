@@ -61,11 +61,11 @@ export function lookedAt(looking: LookingAt, open: LookItem | null, draft: strin
   }
   if (!keeps) {
     // What was dropped on the composer stays; the open item takes the
-    // place of the one open before.
-    const placed = looking.chips.filter((chip) => chip.placed && chip.item.id !== open.id);
-    return placed.length < most
-      ? { chips: [{ item: open, on: true }, ...placed], offered: null, open }
-      : { chips: placed, offered: open, open };
+    // place of the one open before, and with four there, waits.
+    const placed = looking.chips.filter((chip) => chip.placed);
+    if (placed.length >= most || placed.some((chip) => chip.item.id === open.id))
+      return { chips: placed, offered: null, open };
+    return { chips: [{ item: open, on: true }, ...placed], offered: null, open };
   }
   const held =
     looking.chips.some((chip) => chip.item.id === open.id) || looking.chips.length >= most;
@@ -99,7 +99,7 @@ export function updateLooking(looking: LookingAt, msg: LookingMsg): LookingAt {
       };
     case "lookOfferedAdded": {
       const { offered } = looking;
-      if (!offered) return looking;
+      if (!offered || looking.chips.length >= most) return looking;
       return { ...looking, chips: [...looking.chips, { item: offered, on: true }], offered: null };
     }
     // Dropped on the composer: one left out goes back in; one offered, or
@@ -108,7 +108,12 @@ export function updateLooking(looking: LookingAt, msg: LookingMsg): LookingAt {
       const { item } = msg;
       if (!placeable(looking, item.id)) return looking;
       if (looking.chips.some((chip) => chip.item.id === item.id))
-        return updateLooking(looking, { type: "lookAddedBack", id: item.id });
+        return {
+          ...looking,
+          chips: looking.chips.map((chip) =>
+            chip.item.id === item.id ? { ...chip, on: true, placed: true } : chip,
+          ),
+        };
       return {
         ...looking,
         chips: [...looking.chips, { item, on: true, placed: true }],
