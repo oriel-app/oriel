@@ -156,12 +156,15 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
         // Our own server's events, in the shape view.ts declares.
         dispatch({ type: "streamed", event: JSON.parse(message.data) as StreamEvent });
       };
-      // Every open after the first is a reconnect, which replays entries but
-      // not what changed meanwhile.
-      let opened = false;
+      // An open after the stream dropped, or after its first try failed, is
+      // Oriel answering again: entries replay, but not what changed meanwhile.
+      let lost = false;
+      events.onerror = () => {
+        lost = true;
+      };
       events.onopen = () => {
-        if (opened) dispatch({ type: "streamReopened", stream: "thread" });
-        opened = true;
+        if (lost) dispatch({ type: "streamReopened", stream: "thread" });
+        lost = false;
       };
       return;
     }
@@ -171,12 +174,16 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       threadsMoved = new EventSource("/api/threads/events");
       threadsMoved.onmessage = () => dispatch({ type: "threadsMoved" });
       // A move may have landed before the stream opened, or while it was
-      // down: the server tells only what happens while it's open. Every open
-      // after the first is Oriel answering again.
-      let opened = false;
+      // down: the server tells only what happens while it's open. An open
+      // after it dropped, or after its first try failed, is Oriel answering
+      // again.
+      let lost = false;
+      threadsMoved.onerror = () => {
+        lost = true;
+      };
       threadsMoved.onopen = () => {
-        dispatch(opened ? { type: "streamReopened", stream: "threads" } : { type: "threadsMoved" });
-        opened = true;
+        dispatch(lost ? { type: "streamReopened", stream: "threads" } : { type: "threadsMoved" });
+        lost = false;
       };
       return;
     }

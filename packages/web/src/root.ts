@@ -960,7 +960,12 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [window, loading] = back.window
         ? updateWindow(back.window, { type: "retryClicked" })
         : [null, []];
-      const page = back.route.page === "settings" ? [loadSettings, loadUsage, loadSetup] : [];
+      const page =
+        back.route.page === "settings"
+          ? [loadSettings, loadUsage, loadSetup]
+          : back.route.page === "overview"
+            ? [loadWindowChat]
+            : [];
       return [{ ...back, window }, [...reading, ...loading, ...page, ...workspaceChanged(back)]];
     }
     case "streamed": {

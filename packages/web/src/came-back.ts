@@ -48,11 +48,26 @@ export function cameBack(model: Model): [Model, Effect[]] {
       setup: { ...setup, problem: reached(setup.problem) },
       connections: {
         ...connections,
-        problems: Object.fromEntries(
-          Object.entries(connections.problems).filter(([, said]) => reached(said) !== null),
-        ),
+        problems: stillSaid(connections.problems),
+        switchProblems: stillSaid(connections.switchProblems),
+        forms: each(connections.forms, (form) => ({ ...form, problem: reached(form.problem) })),
+        settings: each(connections.settings, (setting) => ({
+          ...setting,
+          problem: reached(setting.problem),
+          unread: reached(setting.unread),
+        })),
+        edits: each(connections.edits, (editing) => ({
+          ...editing,
+          redrawn: { ...editing.redrawn, problem: reached(editing.redrawn.problem) },
+        })),
       },
     },
     reading,
   ];
 }
+
+const each = <T>(byKey: Readonly<Record<string, T>>, back: (value: T) => T): Record<string, T> =>
+  Object.fromEntries(Object.entries(byKey).map(([key, value]) => [key, back(value)]));
+
+const stillSaid = (byKey: Readonly<Record<string, string>>): Record<string, string> =>
+  Object.fromEntries(Object.entries(byKey).filter(([, said]) => reached(said) !== null));
