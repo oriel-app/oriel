@@ -863,11 +863,15 @@ export type ThreadView = {
   // The window chat's thread (decision 0027), which the user's turn alone
   // doesn't put in Needs you.
   windowChat?: true;
-  workstream: { id: string; name: string; version: number };
+  // `items`: while the thread is behind it, how many items the workstream
+  // holds now, which the rail's title says.
+  workstream: { id: string; name: string; version: number; items?: number };
   state: ThreadStateId;
   doneBy: "applied" | "marked" | null;
-  // The workstream version the thread works in.
+  // The workstream version the thread works in, and when it moved there:
+  // the thread's last sync with its workstream, or when it opened.
   regionVersion: number;
+  syncedAt: string;
   members: MemberView[];
   // Oriel's thread for moving a stand-in's issues into a kind that turned
   // on (decision 0059), whose items go to the workstreams that held the

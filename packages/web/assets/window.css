@@ -7,9 +7,12 @@ html {
   /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
   --rail: 15rem;
-  /* A thread's rail at the window's edge, in the sidebar's material, with
-     the sidebar's sides. */
-  --rail-beside: calc(var(--rail) + 2 * var(--space-3));
+  /* The sidebar, open. */
+  --sidebar-open: 15.5rem;
+  /* A thread's rail at the window's edge, in the sidebar's material: with
+     the frame's band beside the column, as wide as the open sidebar, so the
+     two read as a pair. */
+  --rail-beside: calc(var(--sidebar-open) - var(--frame-band));
   --chat: 44rem;
   /* Every column's first line: how far down it starts, and how tall it is,
      its contents centred, so the sidebar, the page, the rail and the panel
@@ -486,7 +489,7 @@ a {
 /* The sidebar stays on screen as the page scrolls; the frame, painted
    here, runs the page's whole height beside it, however long the page. */
 .shell {
-  --sidebar: 15.5rem;
+  --sidebar: var(--sidebar-open);
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
   min-height: 100vh;
@@ -4403,31 +4406,40 @@ button.ctx-chip:hover {
   min-height: var(--head-row);
 }
 
-.rail-note {
+.rail-note,
+.rail-sync {
   margin: 0 0 var(--space-2);
   color: var(--text-faint);
   font-size: var(--text-sm);
 }
 
-/* Behind its workstream: a short line, and Sync now right after its last
-   word, which it never leaves. */
-.rail-note-end {
+/* When the thread last synced with its workstream; behind it, Sync
+   workstream now right after the time, which it never leaves. */
+.rail-sync-end {
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
 }
 
+/* The icon at the line's own size, centred on it; the button reaches past
+   the line, so the line keeps its height. */
 .sync-now {
   display: inline-grid;
   place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.5rem;
+  height: 1.5rem;
   margin: -0.25rem 0 -0.25rem var(--space-1);
   padding: 0;
-  vertical-align: middle;
   border: 0;
   border-radius: var(--radius);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
+}
+
+.sync-now .icon {
+  width: 1.125em;
+  height: 1.125em;
 }
 
 .sync-now:hover:not([aria-disabled]) {
@@ -4672,7 +4684,10 @@ button.ctx-chip:hover {
     z-index: var(--layer-sticky);
     width: var(--rail-beside);
     max-height: none;
-    padding: calc(var(--bar-height) + var(--inset-top)) var(--space-3) var(--space-3);
+    /* The sidebar's sides, mirrored: the band beside the column is part of
+       the rail's inner side. */
+    padding: calc(var(--bar-height) + var(--inset-top)) var(--space-3) var(--space-3)
+      calc(var(--space-3) - var(--frame-band));
     background: var(--frame);
   }
 }

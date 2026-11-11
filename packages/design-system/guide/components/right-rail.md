@@ -3,17 +3,17 @@ title: Right rail
 status: stable
 group: Surfaces
 order: 61
-classes: thread-layout, thread, rail, rail-title, rail-note, rail-note-end, sync-now, members, compact, member, member-title, gone, type, key, source-link, item-link, status, replies, icon
-summary: The column beside a thread's chat that lists the items the thread works on, at one version of its workstream, with Sync now when the workstream has moved on.
+classes: thread-layout, thread, rail, rail-title, rail-sync, rail-sync-end, rail-note, sync-now, members, compact, member, member-title, gone, type, key, source-link, item-link, status, replies, icon
+summary: The column beside a thread's chat that lists the items the thread works on, at one version of its workstream, when it last synced with it, and Sync workstream now when the workstream has moved on.
 ---
 
 # Right rail
 
 ## What it is
 
-The column on the right of a thread's page: "the region this thread works in" (`.rail` in `window.css`). A thread works on its workstream's items as they were at one version. The rail says how many items and which version ("17 items · v3"), lists them, and says when the workstream has moved on since.
+The column on the right of a thread's page: "the region this thread works in" (`.rail` in `window.css`). A thread works on its workstream's items as they were at one version. The rail says how many items its workstream holds and at which version ("17 items · v3"), when the thread last synced with it ("Synced 2 min ago"), and lists the thread's items; once the workstream has moved on since, it offers Sync workstream now.
 
-"Behind it, the thread catches up with the next message, or with Sync now, which waits while a turn runs: the turn works in the version it started in" (`Region` in `packages/web/src/thread-page.tsx`).
+"Behind it, the thread catches up with the next message, or with Sync workstream now, which waits while a turn runs: the turn works in the version it started in" (`Region` in `packages/web/src/thread-page.tsx`).
 
 It is an `aside.rail` labelled "This thread's items", the second column of `.thread-layout` beside `main.thread`. Its rows are the same `Member` rows a workstream's page lists, drawn compact: a type mark, a key and a title, with no status and no Remove.
 
@@ -23,7 +23,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 - On a thread's page, always, including a new thread before its first message, where it holds the workstream picker, with the new workstream's title under it while the picker is on "New workstream", and the picked workstream's count once one with items is picked.
 - To show which items a question in the thread is about. Each row opens its item in the [item panel](/components/item-panel), with Previous and Next through the rail's list.
-- To say the thread is behind its workstream, and offer Sync now.
+- To say when the thread last synced with its workstream, and, behind it, offer Sync workstream now.
 
 ## When not to
 
@@ -33,10 +33,11 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 ## Anatomy and variants
 
-1. **Title** (`h2.rail-title`): "{N} items · v{version}" in small caps, faint, one `--head-row` tall so it lines up with the crumb on the left.
-2. **Note** (`p.rail-note`), at most one: behind its workstream, with Sync now at the end of its last word; or the empty line.
-3. **Items** (`ul.members.compact`): one `li.member` per item, a grid of the type mark (0.5rem), the key and the title, 1.75rem tall, `--text-sm`, with no frame and no separators. The status is hidden. A Slack message's replies take a column of their own (`grid-auto-flow: column`).
-4. **Not in the index** (`li.member.gone`): an item the index no longer has. Its title is its last known one, or "Not in the index", faint and italic, and its type mark is the plain grey square.
+1. **Title** (`h2.rail-title`): "{N} items · v{version}", the workstream as it is now, in small caps, faint, one `--head-row` tall so it lines up with the crumb on the left.
+2. **Sync line** (`p.rail-sync`): "Synced 2 min ago", the time as Settings' time format writes it, its date and time on hover (`Stamp`). Behind its workstream, **Sync workstream now** (`button.sync-now`, the sync icon, its name in its tooltip) follows the time, which it never leaves (`.rail-sync-end` is `nowrap`).
+3. **Note** (`p.rail-note`), at most one: the empty line, or a move's line.
+4. **Items** (`ul.members.compact`): one `li.member` per item, a grid of the type mark (0.5rem), the key and the title, 1.75rem tall, `--text-sm`, with no frame and no separators. The status is hidden. A Slack message's replies take a column of their own (`grid-auto-flow: column`).
+5. **Not in the index** (`li.member.gone`): an item the index no longer has. Its title is its last known one, or "Not in the index", faint and italic, and its type mark is the plain grey square.
 
 ```html specimen id=layout screen height=560 title="Beside the chat, on a wide page (a 1280 screen, page only)"
 <div class="thread-layout">
@@ -60,6 +61,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
   </main>
   <aside class="rail" aria-label="This thread's items">
     <h2 class="rail-title">17 items · v3</h2>
+    <p class="rail-sync">Synced <time datetime="2026-11-10T09:58:00Z">2 min ago</time></p>
     <ul class="members compact">
       <li class="member">
         <span class="type" data-type="epic" title="Epic"></span
@@ -109,7 +111,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 </div>
 ```
 
-```html specimen id=behind screen height=300 title="Behind its workstream: the note, with Sync now after its last word"
+```html specimen id=behind screen height=300 title="Behind its workstream: Sync workstream now after the time"
 <div class="thread-layout">
   <main class="thread">
     <header class="thread-head">
@@ -123,15 +125,12 @@ There is no generated summary in the rail. It holds the title line, at most one 
     </header>
   </main>
   <aside class="rail" aria-label="This thread's items">
-    <h2 class="rail-title">16 items · v2</h2>
-    <p class="rail-note">
-      Workstream will update on next
-      <span class="rail-note-end"
-        >send<button
-          type="button"
-          class="sync-now"
-          aria-label="Sync this thread with its workstream"
-        >
+    <h2 class="rail-title">17 items · v3</h2>
+    <p class="rail-sync">
+      Synced
+      <span class="rail-sync-end"
+        ><time datetime="2026-11-10T09:58:00Z">2 min ago</time
+        ><button type="button" class="sync-now" aria-label="Sync workstream now">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
             <path
               d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5"
@@ -139,7 +138,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
             <path d="M13.5 2.5v4h-4M2.5 13.5v-4h4" />
           </svg></button
         ><span role="tooltip" popover="manual" class="tooltip" aria-hidden="true"
-          >Sync this thread with its workstream</span
+          >Sync workstream now</span
         ></span
       >
     </p>
@@ -168,6 +167,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 <div class="ws-stack">
   <aside class="rail" aria-label="This thread's items">
     <h2 class="rail-title">0 items · v1</h2>
+    <p class="rail-sync">Synced <time datetime="2026-11-10T09:58:00Z">2 min ago</time></p>
     <p class="rail-note">No items yet. What a change set here creates joins this workstream.</p>
     <ul class="members compact"></ul>
   </aside>
@@ -188,6 +188,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
   <div class="thread-layout">
     <aside class="rail" aria-label="This thread's items">
       <h2 class="rail-title">6 items · v3</h2>
+      <p class="rail-sync">Synced <time datetime="2026-11-10T09:58:00Z">2 min ago</time></p>
       <ul class="members compact">
         <li class="member">
           <span class="type" data-type="epic" title="Epic"></span
@@ -225,18 +226,19 @@ There is no generated summary in the rail. It holds the title line, at most one 
 </div>
 ```
 
-**Wide.** At 1280px and up (`@media (min-width: 1280px)` in `window.css`), where the column beside it stays wider than a narrow page with the sidebar open, the rail leaves the page: it's fixed at the window's right edge, the window's height, `--rail-beside` wide (the rail and the sidebar's `--space-3` each side), on `--frame`, as the sidebar is on the left, and `.shell:has(.rail)` sets `--beside` to its width, so the page column sits inset between the two and the chat has it to itself (2026-11-08). The [item panel](/components/item-panel) covers it while it's open.
+**Wide.** At 1280px and up (`@media (min-width: 1280px)` in `window.css`), where the column beside it stays wider than a narrow page with the sidebar open, the rail leaves the page: it's fixed at the window's right edge, the window's height, `--rail-beside` wide, which with the frame's band beside the column makes it as wide as the open sidebar (`--sidebar-open`), its sides the sidebar's `--space-3` mirrored (the band counts in its inner side), on `--frame`, as the sidebar is on the left, so the two read as a pair, and `.shell:has(.rail)` sets `--beside` to its width, so the page column sits inset between the two and the chat has it to itself (2026-11-08). The [item panel](/components/item-panel) covers it while it's open.
 
 **Narrow.** Below 1280px: "A narrow page, on a narrow screen or beside the panel: the rails move inline, and rows wrap to two lines. The region moves under the chat before the rows wrap, where a 1180px screen leaves the page beside the sidebar" (`@container page (max-width: 932px)` in `window.css`). Under `@container page (max-width: 932px)` the layout is one column, the rail is no longer sticky, and its rows become a wrapping line of type marks and keys, titles hidden. The workshop's frames are `page` containers too, so any rail specimen narrower than 932px draws this form. The container is `.shell-main`, so opening the [item panel](/components/item-panel) beside the page can move the rail under the chat on a wide screen.
 
 ## States
 
-```html specimen id=state-sync title="Sync now: rest, hover, focus, waiting on a turn, and syncing" state=rest
+```html specimen id=state-sync title="Sync workstream now: rest, hover, focus, waiting on a turn, and syncing" state=rest
 <div class="ws-stack">
-  <p class="rail-note">
-    Rest: Workstream will update on next
-    <span class="rail-note-end"
-      >send<button type="button" class="sync-now" aria-label="Sync this thread with its workstream">
+  <p class="rail-sync">
+    Rest: Synced
+    <span class="rail-sync-end"
+      ><time datetime="2026-11-10T09:58:00Z">2 min ago</time
+      ><button type="button" class="sync-now" aria-label="Sync workstream now">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
           <path
             d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5"
@@ -245,14 +247,11 @@ There is no generated summary in the rail. It holds the title line, at most one 
         </svg></button
     ></span>
   </p>
-  <p class="rail-note">
-    Hover: Workstream will update on next
-    <span class="rail-note-end"
-      >send<button
-        type="button"
-        class="sync-now ws-hover"
-        aria-label="Sync this thread with its workstream"
-      >
+  <p class="rail-sync">
+    Hover: Synced
+    <span class="rail-sync-end"
+      ><time datetime="2026-11-10T09:58:00Z">2 min ago</time
+      ><button type="button" class="sync-now ws-hover" aria-label="Sync workstream now">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
           <path
             d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5"
@@ -261,14 +260,11 @@ There is no generated summary in the rail. It holds the title line, at most one 
         </svg></button
     ></span>
   </p>
-  <p class="rail-note">
-    Focus visible: Workstream will update on next
-    <span class="rail-note-end"
-      >send<button
-        type="button"
-        class="sync-now ws-focus-visible"
-        aria-label="Sync this thread with its workstream"
-      >
+  <p class="rail-sync">
+    Focus visible: Synced
+    <span class="rail-sync-end"
+      ><time datetime="2026-11-10T09:58:00Z">2 min ago</time
+      ><button type="button" class="sync-now ws-focus-visible" aria-label="Sync workstream now">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
           <path
             d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5"
@@ -277,15 +273,11 @@ There is no generated summary in the rail. It holds the title line, at most one 
         </svg></button
     ></span>
   </p>
-  <p class="rail-note">
-    Waiting, a turn runs: Workstream will update on next
-    <span class="rail-note-end"
-      >send<button
-        type="button"
-        class="sync-now"
-        aria-label="Sync this thread with its workstream"
-        aria-disabled="true"
-      >
+  <p class="rail-sync">
+    Waiting, a turn runs: Synced
+    <span class="rail-sync-end"
+      ><time datetime="2026-11-10T09:58:00Z">2 min ago</time
+      ><button type="button" class="sync-now" aria-label="Sync workstream now" aria-disabled="true">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
           <path
             d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5"
@@ -297,13 +289,14 @@ There is no generated summary in the rail. It holds the title line, at most one 
       ></span
     >
   </p>
-  <p class="rail-note">
-    Syncing: Workstream will update on next
-    <span class="rail-note-end"
-      >send<button
+  <p class="rail-sync">
+    Syncing: Synced
+    <span class="rail-sync-end"
+      ><time datetime="2026-11-10T09:58:00Z">2 min ago</time
+      ><button
         type="button"
         class="sync-now"
-        aria-label="Sync this thread with its workstream"
+        aria-label="Sync workstream now"
         aria-disabled="true"
         aria-busy="true"
       >
@@ -336,12 +329,12 @@ There is no generated summary in the rail. It holds the title line, at most one 
 </ul>
 ```
 
-- **Rest** is the title and the list. The rows aren't hover targets: only the key is a link, and it turns accent and underlined on hover (`.source-link:hover` in `window.css`). **Focus-visible** on a key or on Sync now is the global ring.
-- **Hover** on Sync now is `--surface-hover` behind `--text`, only while it can act (`.sync-now:hover:not([aria-disabled])` in `window.css`).
-- **Disabled** is `aria-disabled="true"` on Sync now, at 0.5, while a turn runs or a sync is under way (`.sync-now[aria-disabled]` in `window.css`). It stays in the tab order so its tooltip can say why; clicks do nothing.
+- **Rest** is the title and the list. The rows aren't hover targets: only the key is a link, and it turns accent and underlined on hover (`.source-link:hover` in `window.css`). **Focus-visible** on a key or on Sync workstream now is the global ring.
+- **Hover** on Sync workstream now is `--surface-hover` behind `--text`, only while it can act (`.sync-now:hover:not([aria-disabled])` in `window.css`).
+- **Disabled** is `aria-disabled="true"` on Sync workstream now, at 0.5, while a turn runs or a sync is under way (`.sync-now[aria-disabled]` in `window.css`). It stays in the tab order so its tooltip can say why; clicks do nothing.
 - **Busy**: syncing sets `aria-busy="true"` too, and the icon pulses (`.sync-now[aria-busy] .icon` in `window.css`), and holds still under reduced motion. The tooltip says "Syncing…".
-- **Stale** is the behind note itself: the region's version is older than the workstream's.
-- **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1". A new thread's rail says nothing of items: a new thread never has its own, so it holds only the workstream picker, and the picked workstream's count once one with items is picked. The behind note wins over the empty one. Oriel's thread for moving the stand-in tracker's issues into a tracker that turned on says, in place of the empty note, "What this change creates goes to the workstreams that hold the issues it makes again.", and once it applied, "Its items went to {workstreams}." (decision 0059, OA-278); its own workstream then ends, done.
+- **Stale**: the region's version is older than the workstream's. The title already says the workstream's count and version, the list still the thread's items, and Sync workstream now follows the time; once it syncs, the list catches up.
+- **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1" and the sync line. A new thread's rail says nothing of syncing or of items: a new thread never has its own, so it holds only the workstream picker, and the picked workstream's count once one with items is picked. Behind its workstream, Sync workstream now shows in place of the empty note. Oriel's thread for moving the stand-in tracker's issues into a tracker that turned on says, in place of the empty note, "What this change creates goes to the workstreams that hold the issues it makes again.", and once it applied, "Its items went to {workstreams}." (decision 0059, OA-278); its own workstream then ends, done.
 - **Error** and **loading** have no look of their own: the rail comes with the thread's page, which has its own loading and error lines.
 - **Active** isn't styled.
 
@@ -349,13 +342,14 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 - `aside.rail` with `aria-label="This thread's items"`, after the chat in the source, so Tab reaches it after the composer.
 - Each key is the item's link. A plain click or Enter opens the [item panel](/components/item-panel); the rail's ids are its list, so ↑ and ↓ step through them there. Cmd/Ctrl-click opens the source. An item with no web page is a `button.item-link` that opens only in the panel.
-- Sync now is a `button` labelled "Sync this thread with its workstream". It uses `aria-disabled`, not `disabled`, so it keeps focus and its [tooltip](/components/tooltip): "Sync this thread with its workstream", "Syncs once the agent has answered" while a turn runs, "Syncing…" while it syncs. `aria-busy` marks the sync.
+- Sync workstream now is a `button` labelled "Sync workstream now". It uses `aria-disabled`, not `disabled`, so it keeps focus and its [tooltip](/components/tooltip): "Sync workstream now", "Syncs once the agent has answered" while a turn runs, "Syncing…" while it syncs. `aria-busy` marks the sync.
 - The behind note isn't a live region: it appears when the page learns the workstream moved, without an announcement.
 
 ## Content
 
-- Title: "{N} items · v{version}" by `plural()`, so "1 item · v1". Shown in small caps by the class; write it in sentence case.
-- Behind: "Workstream will update on next send", with Sync now after "send", which it never leaves (`.rail-note-end` is `nowrap`).
+- Title: "{N} items · v{version}" by `plural()`, so "1 item · v1": the workstream's count and version now, never a second number elsewhere in the rail (the maintainer, 2026-11-10). Shown in small caps by the class; write it in sentence case.
+- Synced: "Synced {time}", the time by `Stamp` as Settings' time format writes it ("Synced just now", "Synced 2 min ago", or a date and time), its date and time on hover; the time moves on each minute while the page is open. It's when the thread last moved to its workstream's version: its last marker, or when it opened (`syncedAt`).
+- Behind: the same "Synced {time}", with the sync icon after the time; its tooltip, "Sync workstream now", is its name.
 - Empty: the two lines above, quoted exactly.
 - A gone item: its last known title, or "Not in the index".
 - Keys are the source's keys, as `keyLabel` writes them: "SYN-23", or "Message" for a Slack message.
@@ -364,7 +358,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 - `Region` in `packages/web/src/thread-page.tsx`, rendered by `ThreadPage`. The new thread's rail: `NewThreadPage` in `packages/web/src/thread-page.tsx`.
 - Rows: `Member` in `packages/web/src/parts.tsx`, without `onRemove`.
-- CSS: `.thread-layout`, `.rail`, `.rail > .rail-title`, `.rail-note`, `.rail-note-end` and `.sync-now` in `window.css`; the compact rows, `.members.compact` in `window.css`; the shared `.rail-title` in `window.css`; and the narrow form, under `@container page (max-width: 932px)` in `window.css`.
+- CSS: `.thread-layout`, `.rail`, `.rail > .rail-title`, `.rail-sync`, `.rail-sync-end`, `.rail-note` and `.sync-now` in `window.css`; the compact rows, `.members.compact` in `window.css`; the shared `.rail-title` in `window.css`; and the narrow form, under `@container page (max-width: 932px)` in `window.css`.
 
 Two small inconsistencies, neither worth a drift status of its own:
 

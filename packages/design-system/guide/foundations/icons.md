@@ -44,7 +44,7 @@ The convention:
       />
     </svg>
   </button>
-  <button type="button" class="sync-now" aria-label="Sync this thread with its workstream">
+  <button type="button" class="sync-now" aria-label="Sync workstream now">
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5" />
       <path d="M13.5 2.5v4h-4M2.5 13.5v-4h4" />

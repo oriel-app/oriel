@@ -293,6 +293,7 @@ export const threadView = (over: Partial<ThreadView> = {}): ThreadView => ({
   state: "working",
   doneBy: null,
   regionVersion: 1,
+  syncedAt: "2026-01-01T09:00:00.000Z",
   members: [],
   entries: [],
   lastSeq: 0,
