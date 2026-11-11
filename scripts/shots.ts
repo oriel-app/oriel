@@ -264,6 +264,15 @@ await show({ read: "window.overview", from: "workstreams", form: "bars", label: 
 await show({ read: "window.overview", from: "workstreams", form: "table", columns: ["name", "size", "moved", "idleDays"] });`,
     "Here they are, with how long each has been quiet.",
   ],
+  // The window chat gathers what it found into its own workstream, which
+  // moves the chat into it (OA-347).
+  [
+    /^gather the vehicle stories/i,
+    `const found = await search("vehicle", 6);
+workstream.add({ items: found.map((item) => item.id) });
+return found.length;`,
+    "They're a workstream now, and this chat is its thread.",
+  ],
   [
     /become a workstream/i,
     `return (await search("vehicle", 6)).length;`,
@@ -4347,6 +4356,23 @@ const scenes: Scene[] = [
       await page.getByLabel("Your name").fill("Ann");
       await page.locator(".review-actions button").click();
       await page.locator(".review-card .review-altered").waitFor();
+    },
+  },
+  // The window chat moved into its workstream (OA-347): the window starts a
+  // fresh chat, and the thread is the user's turn in the sidebar.
+  {
+    name: "window-moved",
+    path: "/",
+    window: true,
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".ask-input").fill("Gather the vehicle stories into a workstream");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page
+        .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
+        .waitFor();
+      await page.locator(".window-chat .window-chat-empty").waitFor();
     },
   },
 ];
