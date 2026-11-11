@@ -3,7 +3,7 @@ title: List rows
 status: drifting
 group: Rows
 order: 50
-classes: overview-rows, overview-row, overview-title, overview-sub, overview-workstream, overview-workstream-name, overview-spark, overview-moved, overview-quiet, overview-last, overview-workstream-detail, overview-moved-items, overview-signal, overview-candidates, overview-group, overview-rule, derived-tag, derived-note, overview-candidate, overview-make, overview-person, overview-more, status-bar, segment, done, in-progress, todo, empty, clusters, stale, cluster, cluster-head, picked, pick, anchor-pick, cluster-toggle, chevron, cluster-name, cluster-label, cluster-details, origin, derived, cluster-meta, count, points-sum, unestimated, make-workstream, items, item, title, points, idle, assignee, none, avatar, replies, more-items, more-count, no-items, items-loading, members, member, member-title, gone, remove-member, type, key, source-link, status, state-chip, thread-list, thread-link, thread-link-title, thread-link-workstream, thread-link-at, pager, pager-where, history, changes, quiet-action, tooltip
+classes: overview-rows, overview-row, overview-title, overview-sub, overview-workstream, overview-workstream-name, overview-spark, overview-moved, overview-quiet, overview-last, overview-workstream-detail, overview-moved-items, overview-signal, overview-candidates, overview-group, overview-rule, derived-tag, derived-note, overview-candidate, overview-make, overview-person, overview-more, status-bar, segment, done, in-progress, todo, empty, clusters, stale, cluster, cluster-head, picked, pick, anchor-pick, cluster-toggle, chevron, cluster-name, cluster-label, cluster-details, origin, derived, cluster-meta, count, points-sum, unestimated, make-workstream, items, item, title, points, idle, assignee, none, avatar, replies, more-items, more-count, no-items, items-loading, members, member, member-title, gone, remove-member, add-member, suggested-title, type, key, source-link, status, state-chip, thread-list, thread-link, thread-link-title, thread-link-workstream, thread-link-at, pager, pager-where, history, changes, quiet-action, tooltip
 summary: One line per thing in a list: a workstream on the overview, a candidate under its rule, a person, a Browse cluster and its items, a workstream's items, and threads. Several shapes, each for one kind of list.
 ---
 
@@ -618,6 +618,24 @@ A grid of `0.5rem 4.5rem minmax(0,1fr) auto 1.5rem` (`.member` in `window.css`):
 - **Gone** (`.member.gone`): the index no longer has it. Its title is the last one known, or "Not in the index", faint and italic; its type mark is the plain grey square.
 - **Remove** (`.remove-member`): a text "×", hidden until the row is pointed at or the × itself has keyboard focus; danger on hover. Its tooltip says "Remove {key} from this workstream".
 - The rail draws the same `Member` without the ×, as `.members.compact`; see [Right rail](/components/right-rail).
+
+An empty workstream's suggestions are the same rows, under a `.suggested-title` (a `.section-title` that sits `--space-4` below a list before it), with a + where the × would be.
+
+```html specimen id=suggested title="Suggested items, each with its +"
+<h3 class="section-title suggested-title">Suggested</h3>
+<ul class="members">
+  <li class="member" data-item="jira:SYN-99">
+    <span class="type" data-type="story" title="Story"></span>
+    <span class="key">SYN-99</span>
+    <span class="member-title">Save a card for next time</span>
+    <span class="status" data-category="todo">To Do</span>
+    <button type="button" class="add-member" aria-label="Add SYN-99">+</button>
+    <span role="tooltip" popover="manual" class="tooltip">Add SYN-99 to “Saved cards”</span>
+  </li>
+</ul>
+```
+
+- **Add** (`.add-member`): a text "+", always shown, accent on hover. Its tooltip says "Add {key} to “{name}”".
 
 ### Thread rows
 
