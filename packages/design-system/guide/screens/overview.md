@@ -8,7 +8,7 @@ summary: The window's overview as a person opens it, with the sidebar beside it,
 
 ## What it shows
 
-The overview as a person opens it on a normal morning: the sidebar with what needs them, the view tabs and the counts strip, the ask bar with a question to start from, the review links nobody has opened, a headline, every open workstream with its status bar, what isn't in a workstream yet under the Oriel rule that found it, and who has work in progress. Nothing has moved in this window for a while, so every spark is flat and every row says "none moved".
+The overview as a person opens it on a normal morning: the sidebar with what needs them, the view tabs and the counts strip, a headline with its question to start from and the review links nobody has opened, every open workstream with its status bar, what isn't in a workstream yet under the Oriel rule that found it, and who has work in progress, the two columns' heads on one line, and the composer at the page's foot. Nothing has moved in this window for a while, so every spark is flat and every row says "none moved".
 
 ```html specimen id=screen title="The overview, with the sidebar" screen height=900
 <div class="shell">
@@ -406,53 +406,43 @@ The overview as a person opens it on a normal morning: the sidebar with what nee
           <span class="overview-stat"><strong>16</strong> not in a workstream</span>
         </p>
       </div>
-      <section class="ask" aria-label="Ask about your window">
-        <form class="chat-input" data-lines="one" data-size="lg" data-marked>
-          <input
-            type="text"
-            class="chat-input-field"
-            placeholder="Ask about your window"
-            aria-label="Ask about your window"
-          />
-          <div class="chat-input-foot">
-            <span class="chat-input-reads">Reads your whole window</span>
-            <button type="submit" class="button" disabled>Ask</button>
-          </div>
-        </form>
-        <h2 class="ask-starts-head">Questions to start from</h2>
-        <ul class="ask-questions">
-          <li>
-            <button type="button" class="ask-question">
+      <section
+        class="overview-headlines"
+        data-questions
+        data-section="headlines"
+        aria-label="Headlines"
+      >
+        <p class="overview-headline" data-headline="top">
+          <span class="overview-headline-label" title="Oriel rule: An epic no workstream holds"
+            >Top not in a workstream</span
+          >
+          <span class="overview-headline-body" id="headline-top"
+            ><a
+              class="overview-title"
+              href="https://ferrowick.atlassian.net/browse/SYN-4"
+              target="_blank"
+              rel="noopener noreferrer"
+              ><span class="key">SYN-4</span> Vehicle and freight reservations</a
+            >
+            <span class="overview-sub">Jira · 2 changed this week</span></span
+          >
+          <span class="headline-asks"
+            ><button type="button" class="ask-question" aria-describedby="headline-top">
               Should Vehicle and freight reservations become a workstream?
-            </button>
-          </li>
-        </ul>
+            </button></span
+          >
+        </p>
+        <p class="overview-headline" data-headline="unopened">
+          <span class="overview-headline-label">3 review links not opened</span>
+          <span class="overview-headline-body review-links"
+            ><a class="overview-title" href="/threads/t-estimates"
+              >Which stories here still need estimates?</a
+            ><button type="button" class="overview-more">2 more</button></span
+          >
+        </p>
       </section>
       <div class="overview-columns">
         <div class="overview-main">
-          <p class="overview-note">
-            3 review links sent and not opened yet:
-            <a href="/threads/t-estimates">Which stories here still need estimates?</a>;
-            <a href="/threads/t-rename">Rename the epic and plan gift cards in it</a>;
-            <a href="/threads/t-plan-gift">Plan gift cards</a>
-          </p>
-          <section class="overview-headlines" data-section="headlines" aria-label="Headlines">
-            <p class="overview-headline" data-headline="top">
-              <span class="overview-headline-label" title="Oriel rule: An epic no workstream holds"
-                >Top not in a workstream</span
-              >
-              <span class="overview-headline-body"
-                ><a
-                  class="overview-title"
-                  href="https://ferrowick.atlassian.net/browse/SYN-4"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  ><span class="key">SYN-4</span> Vehicle and freight reservations</a
-                >
-                <span class="overview-sub">Jira · 2 changed this week</span></span
-              >
-            </p>
-          </section>
           <section class="overview-section" data-section="workstreams" aria-label="Workstreams">
             <h2 class="overview-head">
               <span>Workstreams</span><span class="overview-count">6</span>
@@ -874,6 +864,20 @@ The overview as a person opens it on a normal morning: the sidebar with what nee
           </section>
         </div>
       </div>
+      <div class="chat-dock overview-dock">
+        <form class="chat-input" data-elevation="raised">
+          <textarea
+            class="chat-input-field"
+            rows="2"
+            placeholder="Ask about your window"
+            aria-label="Message"
+          ></textarea>
+          <div class="chat-input-foot">
+            <span class="chat-input-reads">Reads your whole window</span>
+            <button type="submit" class="button" disabled>Ask</button>
+          </div>
+        </form>
+      </div>
     </main>
   </div>
 </div>
@@ -881,16 +885,16 @@ The overview as a person opens it on a normal morning: the sidebar with what nee
 
 ## With the window chat and an item open
 
-The window chat opens over the page's right side. When the person opens an item from it, a chip in an answer, on a screen 1100px wide or more, the item takes the window's edge and the chat moves into the page column in the overview's place (`.shell[data-panel][data-chat]`), so the conversation and the item are on screen together, as on a thread's page. The chip stays marked ([Chip](/components/chip)), and the panel steps through the items that answer named ("1 of 2"). "‹ Window", in the chat's head where × was, puts the overview back with the item still open, and the ask bar offers "Back to the chat". Closing the item puts the chat back over the page's right side. From 1100 to 1279px the item narrows so the chat keeps 28rem; below 1100px the item covers the chat, as it always has. See [Layout](/foundations/layout) and [Motion](/foundations/motion); the shots are `ask-panel-beside`, `ask-panel-step` and `ask-panel-window`.
+The window chat opens over the page's right side. When the person opens an item from it, a chip in an answer, on a screen 1100px wide or more, the item takes the window's edge and the chat moves into the page column in the overview's place (`.shell[data-panel][data-chat]`), so the conversation and the item are on screen together, as on a thread's page. The chip stays marked ([Chip](/components/chip)), and the panel steps through the items that answer named ("1 of 2"). "‹ Window", in the chat's head where × was, puts the overview back with the item still open, and the composer at the foot offers "Back to the chat". Closing the item puts the chat back over the page's right side. From 1100 to 1279px the item narrows so the chat keeps 28rem; below 1100px the item covers the chat, as it always has. See [Layout](/foundations/layout) and [Motion](/foundations/motion); the shots are `ask-panel-beside`, `ask-panel-step` and `ask-panel-window`.
 
 ## Built from
 
 - [Sidebar](/components/sidebar): the shell, the head, search and New thread, Window, Needs you, Workstreams, Done, Sources and Settings; and at 390, the bar with its menu.
 - [Tabs](/components/tabs): Overview and Browse.
 - [Page head](/components/page-head): the top strip and its counts.
-- [Chat input](/components/chat-input): the ask bar and its questions to start from.
+- [Chat input](/components/chat-input): the composer at the page's foot, and the questions to start from beside their headlines.
 - [Button](/components/button): Ask, and Make a workstream.
-- [Overview sections](/components/overview-section): the columns, each section's head and count, the unopened note and the headline.
+- [Overview sections](/components/overview-section): the columns, each section's head and count, the headlines with the review links' one, and the page's one spacing rule.
 - [List rows](/components/list-row): the workstream, candidate and person rows.
 - [Meter](/components/meter): the status bars and the sparks.
 - [State chip, status and counts](/components/badge): the state dots, what each thread waits on, and the counts.

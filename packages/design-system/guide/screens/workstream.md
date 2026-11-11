@@ -416,7 +416,7 @@ A workstream's page, opened from the sidebar, where it is the current row with i
         </div>
         <p class="workstream-origin">Copied from a cluster in the epic grouping · 17 items · v3</p>
       </header>
-      <form class="chat-input workstream-ask" data-lines="grow">
+      <form class="chat-input workstream-ask">
         <textarea
           class="chat-input-field"
           rows="2"
@@ -909,7 +909,7 @@ A program the person connected to Oriel's MCP door (decision 0058) changes a wor
 ## Notes for review
 
 - **Two pills side by side.** The threads' `.state-chip` and the items' `.status` are on one page, a section apart, with different corners (`--radius-lg` against `--radius-sm`) and different colour maps: "Done" is the same green in both, but "In Progress" and "Your turn" share a blue that means two things. See [State chip, status and counts](/components/badge#drift).
-- **The Ask box isn't the ask bar.** The overview's ask bar is a one-line field with the button beside it; here it's a two-row `textarea` in a `.composer` with Ask inside its frame, a copy of the thread's composer. Same job, two shapes; see [Chat input](/components/chat-input).
+- **The Ask box is flat.** The overview's composer is a thread's, raised in a dock at the page's foot; here the same `ChatInput` sits flat under the head. See [Chat input](/components/chat-input).
 - **At 390 an item loses its status.** Window.css drops `.member .status` and `.thread-link-at` on a narrow screen, so a phone shows which items are in the workstream but not whether any is done; the threads keep their chips. The name, an `<input>`, is cut mid-word ("…phone wallets and sa") with no ellipsis, since a field can't have one.
 - **Remove × is hidden until hover.** A keyboard user meets 17 × buttons in the tab order, one per item, each visible only while focused. That's the app's choice; the tooltip names the key ("Remove SYN-23 from this workstream").
 - **The page column is narrower than the overview's.** `.page` caps the column at 52rem and centres it, so at 1280 the workstream has room either side, while the overview runs the full width of `.shell-main`. Going from one to the other, the content's left edge moves about 100px right. The sidebar is the same on both.

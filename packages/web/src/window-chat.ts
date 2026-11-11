@@ -1,5 +1,5 @@
-// The window chat (decisions 0027 and 0030): asked from the bar under the
-// overview's counts strip, and answered beside the overview while it has a
+// The window chat (decisions 0027 and 0030): asked from the composer at the
+// overview's foot, and answered beside the overview while it has a
 // conversation. Its thread is the root's `thread` while the overview is on
 // screen, so its chat, stream and change sets work as on a thread's page.
 // Opening the overview makes nothing: the first question makes the thread,
@@ -15,12 +15,12 @@ import {
   updateLooking,
 } from "./looking.ts";
 import { initThread, type ThreadModel } from "./thread.ts";
-import type { OverviewView } from "./view.ts";
+import type { HeadlineView, OverviewView } from "./view.ts";
 
 export type WindowChatModel = {
-  // What the ask bar holds.
+  // What the overview's composer holds.
   draft: string;
-  // A question sent from the bar and not yet answered.
+  // A question sent from the composer and not yet answered.
   asking: boolean;
   // Its words, as sent: the item panel's dock shows them until the answer
   // starts a thread (dock.tsx), whatever the field holds since.
@@ -30,14 +30,13 @@ export type WindowChatModel = {
   open: boolean;
   problem: string | null;
   // What the chat's first question is about: the item open beside it
-  // (decision 0062). The ask bar sends none, as it shows none.
+  // (decision 0062), as the composer shows it.
   lookingAt: LookingAt;
 };
 
 export type WindowChatMsg =
   | { type: "draftChanged"; text: string }
-  // `chat`: from the chat's own field, which shows what it's looking at.
-  | { type: "askClicked"; chat?: true }
+  | { type: "askClicked" }
   | { type: "looking"; msg: LookingMsg }
   | { type: "questionPicked"; question: Question }
   | { type: "newChatClicked" }
@@ -53,7 +52,14 @@ export type WindowChatMsg =
 // a tool result can't go with a chat's first message yet, which Cite
 // (OA-137) needs too, and a sync between the click and the read could move
 // the headline to another row.
-export type Question = { kind: StartQuestion; label: string; text: string };
+// `headline`: the overview headline it sits beside; none, such as the empty
+// window's plan, sits in the composer's frame.
+export type Question = {
+  kind: StartQuestion;
+  label: string;
+  text: string;
+  headline?: HeadlineView["id"];
+};
 
 export const initWindowChat = (): WindowChatModel => ({
   draft: "",
@@ -98,6 +104,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
           kind: "chart-moved",
           label: "Chart what moved since I looked, by workstream",
           text: "Chart what moved since I looked, by workstream",
+          headline: "moved",
         }
       : null,
     moved?.kind === "workstream"
@@ -105,6 +112,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
           kind: "moved-most",
           label: `What moved in ${moved.name}?`,
           text: "What moved in the workstream that moved most since I looked?",
+          headline: "moved",
         }
       : null,
     quiet?.kind === "workstream"
@@ -112,6 +120,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
           kind: "stalled",
           label: `Why is ${quiet.name} stalled?`,
           text: "Why has the workstream that's been quiet longest stalled?",
+          headline: "quiet",
         }
       : null,
     topName && !firstRun
@@ -119,6 +128,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
           kind: "candidates",
           label: `Should ${topName} become a workstream?`,
           text: "Should the top item not in a workstream yet become one?",
+          headline: "top",
         }
       : null,
   ];
@@ -128,6 +138,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
           kind: "make-candidate",
           label: `Make ${topName} a workstream`,
           text: `Make a workstream of the top candidate in Not in a workstream yet, ${top.item.id}, with all its items.`,
+          headline: "top",
         }
       : null;
   return [make, ...asked].filter((question) => question !== null);
@@ -160,7 +171,7 @@ export function updateWindowChat(state: ChatState, msg: WindowChatMsg): [ChatSta
     case "draftChanged":
       return [{ ...state, chat: { ...chat, draft: msg.text } }, []];
     case "askClicked":
-      return ask(state, chat.draft, null, msg.chat === true);
+      return ask(state, chat.draft, null, true);
     case "looking":
       return [
         { ...state, chat: { ...chat, lookingAt: updateLooking(chat.lookingAt, msg.msg) } },

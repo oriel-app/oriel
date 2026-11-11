@@ -612,7 +612,7 @@ The dock sticks to the panel's foot, edge to edge, in the frame's material, with
           Chat
         </button>
       </div>
-      <form class="chat-input" data-lines="grow">
+      <form class="chat-input">
         <div class="ctx" role="group" aria-label="What your message is about">
           <span class="ctx-chip"
             ><span class="ctx-label">Looking at</span

@@ -135,10 +135,9 @@ Graphite rounds them 4px, 6px and 8px. Broadsheet squares them: 0, 2px and 4px.
 ## Borders and rules
 
 - `--border-thin` (1px): every hairline. A row's divider, a field's edge, a list frame.
-- `--border-thick` (2px): the focus ring, Broadsheet's section rule and ask-bar mark, a quote's bar, and Oriel's own notes.
+- `--border-thick` (2px): the focus ring, Broadsheet's section rule, a quote's bar, and Oriel's own notes.
 - `--section-rule`: the rule above an overview section's head. Graphite: a thin `--line-strong`. Broadsheet: a thick rule in `--text`.
 - `--list-frame`: the border round an overview list. Graphite frames each list in `--line`, on `--list-bg` (its surface). Broadsheet has none, and its lists sit open on the page.
-- `--ask-mark`: the ask bar's start edge. None in Graphite, a thick accent rule in Broadsheet (`.chat-input[data-marked]` in `window.css`).
 
 A border's width is always a token. "A ring (a shadow with no blur, in a token's colour) is a border, not elevation" (decision 0034), so a `box-shadow: 0 0 0 var(--border-thin) var(--line)` ring is fine.
 

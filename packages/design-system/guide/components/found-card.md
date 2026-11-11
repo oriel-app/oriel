@@ -39,7 +39,7 @@ When what Oriel finds changes, a server appearing or going, the overview shows *
 
 ## When to use it
 
-- When the servers Oriel finds in the agent change, on the overview, under the ask bar.
+- When the servers Oriel finds in the agent change, on the overview, under the counts strip.
 - The rows alone, wherever a person turns on what Oriel found: the card, and the first run's **See what Oriel found**.
 
 ## When not to

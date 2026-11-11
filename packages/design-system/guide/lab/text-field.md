@@ -242,7 +242,7 @@ The sidebar's input is also a `combobox` over its results (`ThreadSearch` in `pa
 
 ### Growing textareas
 
-Two textareas grow by different means today. The chat input uses `field-sizing: content` (`.chat-input[data-lines="grow"] .chat-input-field` in `window.css`). A draft's option counts the drafted text's lines in JS, from two to eight (`DraftCard` in `packages/web/src/thread-page.tsx`), once: it doesn't grow while the person types. A held message has no edit field of its own: Edit moves its words into the composer.
+Two textareas grow by different means today. The chat input uses `field-sizing: content` (`.chat-input-field` in `window.css`). A draft's option counts the drafted text's lines in JS, from two to eight (`DraftCard` in `packages/web/src/thread-page.tsx`), once: it doesn't grow while the person types. A held message has no edit field of its own: Edit moves its words into the composer.
 
 The proposal: every `textarea.text-field-input` grows, from two lines to eight, then scrolls, with `field-sizing: content` inside `@supports`. The floor and the ceiling are in `lh`, so they follow the text size. Where the engine has no `field-sizing`, the `rows` attribute holds and the handle stays (`resize: vertical`). Type in the specimen to see it.
 

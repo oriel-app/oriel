@@ -321,7 +321,6 @@ export const themeTokens = [
   "--list-frame",
   "--row",
   "--row-pad",
-  "--ask-mark",
   "--space-1",
   "--space-2",
   "--space-3",

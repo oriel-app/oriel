@@ -523,7 +523,7 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
           </li>
         </ol>
         <div class="chat-dock">
-          <form class="chat-input" data-lines="grow" data-elevation="raised">
+          <form class="chat-input" data-elevation="raised">
             <textarea
               class="chat-input-field"
               rows="2"
