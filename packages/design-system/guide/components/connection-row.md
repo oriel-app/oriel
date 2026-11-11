@@ -470,10 +470,7 @@ This specimen is also the Settings frame a screen draws: `main.page` with its `.
     <div class="settings-body">
       <section class="settings-section" aria-labelledby="settings-connections">
         <h2 id="settings-connections" class="settings-title">Connections</h2>
-        <p class="settings-lede">
-          Everything Oriel reads, one row each. A change applies at once, and the next sync reads
-          with it.
-        </p>
+        <p class="settings-lede">A change applies at once, and the next sync reads with it.</p>
         <ul class="provider-rows">
           <li class="provider-row connection-row" id="connection-jira" data-status="ready">
             <span class="provider-icon" aria-hidden="true">J</span>
