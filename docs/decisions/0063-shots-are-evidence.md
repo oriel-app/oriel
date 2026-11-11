@@ -15,7 +15,7 @@ Adds: none
 
 **Why.**
 
-- A whole set was about 1,200 shots and took 14 minutes on the Mac. Every builder changing the window ran it twice, and CI ran it on each window PR, though fewer than 40 scenes checked anything.
+- A whole set was 1,236 shots and took 749 and 806 seconds on the Mac (2026-11-11); now 247 and 252. Every builder changing the window ran it twice, and CI ran it on each window PR, though fewer than 40 scenes checked anything.
 - A picture can't fail for the right reason. A raster speck or a self-scrolling page fails it, and a broken behaviour it doesn't show passes it. A person reading before/after pictures catches what they show. A test catches what they don't: a count, a position, a time, what the server holds.
 - With one scene list, a check can't drift from the state its picture shows.
 
