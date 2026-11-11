@@ -264,6 +264,15 @@ await show({ read: "window.overview", from: "workstreams", form: "bars", label: 
 await show({ read: "window.overview", from: "workstreams", form: "table", columns: ["name", "size", "moved", "idleDays"] });`,
     "Here they are, with how long each has been quiet.",
   ],
+  // The window chat gathers what it found into its own workstream, which
+  // moves the chat into it (OA-347).
+  [
+    /^gather the vehicle stories/i,
+    `const found = await search("vehicle", 6);
+workstream.add({ items: found.map((item) => item.id) });
+return found.length;`,
+    "They're a workstream now, and this chat is its thread.",
+  ],
   [
     /become a workstream/i,
     `return (await search("vehicle", 6)).length;`,
@@ -2094,7 +2103,9 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await post("/api/window-chat/new", {});
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
+      await loaded;
       await overviewShown(page);
     },
   },
@@ -2184,7 +2195,9 @@ const scenes: Scene[] = [
         const reply = (await (await route.fetch()).json()) as Record<string, unknown>;
         await route.fulfill({ json: { ...reply, pins } });
       });
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
+      await loaded;
       await overviewShown(page);
       await page.locator(".pinned .answer-block").nth(4).waitFor();
     },
@@ -2288,7 +2301,9 @@ const scenes: Scene[] = [
       );
       for (const { id } of workstreams)
         await post(`/api/workstreams/${id}/delete`, { threads: 0 }, suggesting);
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
       await page.reload();
+      await loaded;
       await overviewShown(page);
       const row = page.locator(".overview-candidate", { hasText: "Cancellation alert sent" });
       await row.hover();
@@ -4347,6 +4362,28 @@ const scenes: Scene[] = [
       await page.getByLabel("Your name").fill("Ann");
       await page.locator(".review-actions button").click();
       await page.locator(".review-card .review-altered").waitFor();
+    },
+  },
+  // The window chat moved into its workstream (OA-347): the window starts a
+  // fresh chat, and the thread is the user's turn in the sidebar.
+  {
+    name: "window-moved",
+    path: "/",
+    window: true,
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".ask-input").fill("Gather the vehicle stories into a workstream");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page
+        .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
+        .waitFor({ state: "attached" });
+      // On screen until the overview loads again, which shows a fresh chat.
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
+      await page.reload();
+      await loaded;
+      await overviewShown(page);
+      await page.getByRole("button", { name: "Back to the chat" }).waitFor({ state: "detached" });
     },
   },
 ];
