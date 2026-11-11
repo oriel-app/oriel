@@ -60,12 +60,17 @@ function once(lines: readonly string[]): string[] {
 export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting): string {
   // A second look's module has none of Oriel's own namespaces.
   const hasOriel = fns.some((fn) => fn.space === "workstream" || fn.space === "thread");
+  // The window chat changes no item; a thread may add one to change it
+  // (decision 0062).
+  const window = fns.some((fn) => fn.space === "window");
   return [
     ...(hasOriel ? header : header.filter((line) => !line.includes("`workstream`"))),
     ...idUnion("RegionId", scope.ids),
     ...(scope.looked.length
       ? [
-          "/** Items the user looked at in this thread, outside this region: read-only. */",
+          window
+            ? "/** Items the user looked at in this thread, outside this region: read-only. */"
+            : "/** Items the user looked at in this thread, outside this region: read-only until workstream.add() joins them. */",
           ...idUnion("LookedId", scope.looked),
         ]
       : []),
