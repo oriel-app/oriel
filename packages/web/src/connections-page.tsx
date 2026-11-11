@@ -56,10 +56,7 @@ export function Connections(props: {
         <h2 id="settings-connections" class="settings-title">
           Connections
         </h2>
-        <p class="settings-lede">
-          Everything Oriel reads, one row each. A change applies at once, and the next sync reads
-          with it.
-        </p>
+        <p class="settings-lede">A change applies at once, and the next sync reads with it.</p>
         {view.connections.length === 0 ? (
           <p class="settings-field-about">Nothing is connected yet.</p>
         ) : (
