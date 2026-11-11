@@ -1,6 +1,6 @@
 # 0062 A message says what it is about: looking at an item adds nothing
 
-Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged.
+Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged. Amended 2026-11-10 (epic OA-332): asked to change an item outside the region, a thread adds it first, and the window chat offers Continue in….
 
 Adds: none
 
@@ -32,3 +32,12 @@ Adds: none
 - OA-137's cite can carry its item to the agent the same way, without a second pipe.
 - Story OA-333 keeps the window chat beside an open item; until it lands, the window chat's chip shows once the item closes with words typed.
 - Telemetry: none new. What a message is about is never counted by its items.
+
+**Amended 2026-11-10 (epic OA-332).** Asked to change the item they're looking at ("close it", "reassign to Dana"), the agent could only say it couldn't. The maintainer picked the option where the agent proposes and one click makes it possible, and added: "i dont need a bunch of explainer text. the UI should guide people without them having to read flavor text."
+
+- **In a thread, the agent adds it first.** An item outside the region stays read-only until it joins the workstream. Oriel's note says so: "read-only until added", and asked to change one, the agent adds it with `workstream.add()`, then proposes the change in a later run of the same turn (OA-312). The person sees it join, with its Undo and its marker, and the change set says the agent put it there. A thread that looked outside its region declares its `LookedId` "read-only until workstream.add() joins them". Looking alone still adds nothing: the agent adds an item only when asked to change it.
+- **The window chat hands off.** It changes no item. Asked to change one, the agent drafts Continue in…, `window.continue({ item })`, a draft (0051) that shows as one button under its one-line reply: "Continue in" the open workstream that holds the item, or "a new workstream" when none does. Pressing it makes that workstream, named for the item, if needed; opens a thread on it; holds the person's request there as a message from the window chat (a new `HeldSender`, 0024), and sends it as theirs, about the same items, so the agent there does the above. The page opens that thread, which shows only "From the window chat" over the message, linking back. The window chat is left as New chat leaves it (0027), marked done with `via: "continue"` unless something else in it waits; a Continue offered in it settles with it. This is 0027's Continue in…, for one request; picking an exchange to quote stays 0027's.
+- **No explainer.** No footer line, caption or tooltip says why the chat can't change an item. The button is the guidance.
+- **Unchanged:** a source's write still binds only the region's IDs, and the change-set engine still checks its targets against the region. The draft names an item the run reached; Oriel, not the agent, names the window chat and the message it continues.
+- **Costs:** the base module and system prompt are unchanged. Every window chat's module gains `window.continue()`: 131 bytes, on a budget of its own (140), as `source.off`'s is. The note for an outside item is 27 bytes longer in a thread; in the window chat it's 52 bytes longer than it was. A thread that looked outside its region has 34 bytes more in its module.
+- **Telemetry:** `window-chat.continued` (SPEC §7's "Continue in used"): the chat, the thread it went on in, whether a workstream was made, and whether the chat stayed working. `thread.marked-done` gains `via: "continue"`.
