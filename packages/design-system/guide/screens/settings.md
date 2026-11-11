@@ -319,10 +319,6 @@ At 390 the sidebar becomes the bar with its menu, and the sections become a wrap
             <h2 id="settings-appearance" class="settings-title">Appearance</h2>
             <fieldset class="settings-field">
               <legend class="settings-field-name">Theme</legend>
-              <span class="settings-field-about"
-                >How Oriel looks, light or dark as your system is. It changes nothing Oriel
-                shows.</span
-              >
               <div class="choices">
                 <label class="choice"
                   ><input type="radio" name="settings-theme" value="graphite" checked />Graphite
@@ -335,7 +331,6 @@ At 390 the sidebar becomes the bar with its menu, and the sections become a wrap
             </fieldset>
             <fieldset class="settings-field">
               <legend class="settings-field-name">Text size</legend>
-              <span class="settings-field-about">The size of everything in the window.</span>
               <div class="choices">
                 <label class="choice"
                   ><input type="radio" name="settings-text-size" value="small" />Small</label
@@ -377,4 +372,4 @@ How a setting is laid out and saved is the [Forms](/patterns/forms) pattern.
 - The Theme and Text size here are drawn checked at Graphite and Default whatever this workshop's bar is set to: a specimen has no script to read it. In the app the checked radio is the person's saved choice (`Appearance` in `packages/web/src/settings-page.tsx`).
 - The section list is the sidebar's `.nav-link`, so the current section is raised exactly as the current sidebar row is. On this page both are raised at once: Settings in the sidebar's foot and Appearance in the list. That's consistent, but two raised rows side by side compete; worth a look.
 - The app's page is `main.page.settings-page`; window.css has no rule for `.settings-page`, so the screen leaves it off, as the component pages do.
-- Light or dark isn't a setting: it stays the system's choice (decision 0034), and Theme's about line says so. A review link's page always has the default look, whatever the person picked here (decision 0041).
+- Light or dark isn't a setting: it stays the system's choice (decision 0034). A review link's page always has the default look, whatever the person picked here (decision 0041).

@@ -14,7 +14,7 @@ summary: Native checkboxes to pick items in Browse, and native radios to pick on
 Oriel uses the browser's own checkbox and radio, tinted with `accent-color: var(--accent)`. It draws no box or dot of its own. There are two shapes:
 
 - **The pick checkbox** (`.pick`): picks an item in Browse, to make a workstream of it or add it to one. A cluster's epic gets one too (`.pick.anchor-pick`), which picks the epic itself, not its items. "The checkbox waits until the row is pointed at, or something is picked" (`.pick` in `window.css`). These are the only checkboxes in the app.
-- **The radio list** (`.choices` of `.choice`): a setting picked from a few, as radio buttons, under a field's name and its about line. Settings › General, Appearance and Asking use it, and so does each connection's "How often it syncs".
+- **The radio list** (`.choices` of `.choice`): a setting picked from a few, as radio buttons, under a field's name and an optional about line. Settings › General, Appearance and Asking use it, and so does each connection's "How often it syncs".
 
 The proposed versions of these controls, in modern CSS, are in the [checkbox and radio lab](/lab/checkbox-radio).
 
@@ -122,7 +122,7 @@ The checkbox sits in its own 1.25rem column at the row's start, in a `<label cla
 
 ### The radio list, in Settings
 
-A `<fieldset class="settings-field">` whose `<legend class="settings-field-name">` names the setting, then its about line, then one `<label class="choice">` per option with the radio first. The radios share a `name`, `settings-{name}` by default.
+A `<fieldset class="settings-field">` whose `<legend class="settings-field-name">` names the setting, then its optional about line, then one `<label class="choice">` per option with the radio first. The radios share a `name`, `settings-{name}` by default.
 
 ```html specimen id=choices title="A radio list: Settings › General, Times"
 <fieldset class="settings-field">
@@ -297,4 +297,4 @@ Status **drifting**.
 - The first run's `.cli-picked` is a third "picked" look, and not a control.
 - No radio or checkbox has a disabled look of Oriel's own.
 
-**Until a ChoiceList component lands, copy Choices** for a setting: `Choices` in `packages/web/src/settings-page.tsx` is exported, so import it. The [drift report](/drift) has the proposal, and the [lab](/lab/checkbox-radio) has modern-CSS versions of both.
+**Until a ChoiceList component lands, copy Choices** for a setting: `Choices` in `packages/web/src/settings-page.tsx` is exported, so import it. Its `about` explanation is optional; omit it when the label and options are enough. The [drift report](/drift) has the proposal, and the [lab](/lab/checkbox-radio) has modern-CSS versions of both.

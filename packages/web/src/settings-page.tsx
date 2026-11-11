@@ -206,7 +206,7 @@ function Providers(props: {
         />
         <ModelPicker
           label="Title model"
-          about="Writes each thread's title from its first message."
+          about="Uses the first message."
           view={view}
           value={view.titleModel}
           onPick={(titleModel) => change({ titleModel })}
@@ -371,7 +371,7 @@ function CliPath(props: {
 
 function ModelPicker(props: {
   label: string;
-  about: string;
+  about?: string;
   view: SettingsView;
   value: ModelPick | null;
   onPick(pick: ModelPick): void;
@@ -379,12 +379,11 @@ function ModelPicker(props: {
   const { view, value } = props;
   const key = (pick: ModelPick) => `${pick.provider} ${pick.model}`;
   const options = view.models;
+  const about = options.length === 0 ? "Turn on a provider that's ready to pick one." : props.about;
   return (
     <label class="settings-field">
       <span class="settings-field-name">{props.label}</span>
-      <span class="settings-field-about">
-        {options.length === 0 ? "Turn on a provider that's ready to pick one." : props.about}
-      </span>
+      {about && <span class="settings-field-about">{about}</span>}
       <select
         class="select"
         disabled={options.length === 0}
@@ -476,7 +475,6 @@ function Appearance(props: { view: SettingsView; change(change: SettingsChange):
       </h2>
       <Choices
         name="Theme"
-        about="How Oriel looks, light or dark as your system is. It changes nothing Oriel shows."
         options={view.themes.map((theme, i) => ({
           value: theme,
           label: i === 0 ? `${themeName(theme)} (the default)` : themeName(theme),
@@ -486,7 +484,6 @@ function Appearance(props: { view: SettingsView; change(change: SettingsChange):
       />
       <Choices
         name="Text size"
-        about="The size of everything in the window."
         options={Object.entries(textSizeNames).map(([value, label]) => ({ value, label }))}
         value={view.textSize}
         onPick={(textSize) => change({ textSize: textSize as TextSize })}
@@ -552,7 +549,7 @@ function Notifications(props: { view: SettingsView; change(change: SettingsChang
 export function Choices(props: {
   name: string;
   group?: string;
-  about: string;
+  about?: string;
   options: { value: string; label: string }[];
   value: string;
   onPick(value: string): void;
@@ -561,7 +558,7 @@ export function Choices(props: {
   return (
     <fieldset class="settings-field">
       <legend class="settings-field-name">{props.name}</legend>
-      <span class="settings-field-about">{props.about}</span>
+      {props.about && <span class="settings-field-about">{props.about}</span>}
       <div class="choices">
         {props.options.map((option) => (
           <label key={option.value} class="choice">

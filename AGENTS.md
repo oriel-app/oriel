@@ -2,6 +2,8 @@
 
 Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `docs/decisions/`.
 
+No UI copy that merely restates a visible label or obvious interaction.
+
 ## Commands
 
 - `pnpm check`: typecheck, lint, unit tests, repo checks. It must be green before you say done; report its output, not "tests pass".
