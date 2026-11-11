@@ -545,6 +545,13 @@ function EntryBody(props: EntryProps) {
         </li>
       );
     }
+    // The card moved under the reply that revised it.
+    case "revised":
+      return (
+        <li class="oriel-note" role="note">
+          <p>The agent revised this change.</p>
+        </li>
+      );
     case "actions":
       return (
         <li class="actions-block" aria-label="What the agent did in Oriel">
@@ -1044,6 +1051,13 @@ function ChangeSet(props: {
           set.decision.via === "review-link" &&
           ` by ${set.decision.by} via review link`}
         {reverts.some((revert) => revert.status === "applied") && ", then undone"}
+        {/* Someone who saw the old diff can tell it changed (OA-309). */}
+        {set.revisedAt !== null && (
+          <span class="change-set-revised">
+            {" · revised "}
+            <Stamp at={set.revisedAt} />
+          </span>
+        )}
         {/* Said once, as it folds itself after its apply ended here. */}
         {shut && model.landed.includes(set.id) && (
           <span class="visually-hidden">

@@ -143,7 +143,11 @@ export const agentEvent: Validator<AgentEvent> = union(
   object({ kind: literal("block.refused"), runId: ulidValue }),
   object({ kind: literal("sketch"), runId: ulidValue, sketch: storedSketch }),
   object({ kind: literal("sketch.refused"), runId: ulidValue, reason: sketchRefusal }),
-  object({ kind: literal("change-set"), changeSetId: ulidValue }),
+  object({
+    kind: literal("change-set"),
+    changeSetId: ulidValue,
+    revised: optional(literal(true)),
+  }),
   object({ kind: literal("actions"), runId: ulidValue, lines: array(actionLine) }),
   object({ kind: literal("limit"), reason: string }),
   object({ kind: literal("error"), message: string }),

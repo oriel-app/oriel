@@ -42,6 +42,9 @@ export type Host = NamespaceHost &
     // Whether this run may read an item: it is in the region, or this run's
     // search() found it.
     reaches(id: string): boolean;
+    // Makes this run's writes revise the thread's change set `id`, in a
+    // thread's turn only (OA-309): says whether it will, and if not why.
+    revise?(id: string): Promise<string>;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named

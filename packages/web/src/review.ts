@@ -19,6 +19,12 @@ export type ReviewModel = {
   outcome: "approved" | "rejected" | "dismissed" | null;
   warnings: readonly string[];
   problem: string | null;
+  // The change as the reviewer's refused decision saw it, until the page
+  // opens it again.
+  reviewed: { hash: string; revisedAt: string | null } | null;
+  // The reviewer's decision was refused because the change was altered
+  // since the page showed it: when, if the agent's revision did it.
+  altered: { at: string | null } | null;
 };
 
 // The steps a review link can take: deciding, and dismissing what is left.
@@ -88,6 +94,8 @@ export function initReview(token: string): [ReviewModel, Effect[]] {
       outcome: null,
       warnings: [],
       problem: null,
+      reviewed: null,
+      altered: null,
     },
     [],
   ];
@@ -156,7 +164,7 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
               },
               { kind: "reviewDecided" },
             );
-      return [{ ...model, stage: "deciding", outcome, problem: null }, [request]];
+      return [{ ...model, stage: "deciding", outcome, problem: null, altered: null }, [request]];
     }
   }
 }
@@ -164,11 +172,44 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
 export function reviewReplied(model: ReviewModel, msg: Replied): [ReviewModel, Effect[]] {
   if (msg.tag.kind === "reviewOpened") {
     if (!msg.ok) return [{ ...model, stage: "dead", problem: errorOf(msg.body) }, []];
-    return [{ ...model, stage: "open", view: msg.body as ReviewView }, []];
+    const view = msg.body as ReviewView;
+    const { reviewed } = model;
+    // Opened again after a refused decision, and the change isn't what the
+    // reviewer decided on: their review wasn't saved, and the page says so
+    // instead of the refusal.
+    if (reviewed && view.diff.hash !== reviewed.hash) {
+      const { revisedAt } = view.changeSet;
+      return [
+        {
+          ...model,
+          stage: "open",
+          view,
+          reviewed: null,
+          problem: null,
+          altered: { at: revisedAt !== reviewed.revisedAt ? revisedAt : null },
+        },
+        [],
+      ];
+    }
+    return [{ ...model, stage: "open", view, reviewed: null }, []];
   }
   if (msg.tag.kind === "reviewDecided") {
+    // Refused, as when the change changed after the page showed it (OA-309):
+    // the page shows it as it is now, with why.
     if (!msg.ok)
-      return [{ ...model, stage: "open", outcome: null, problem: errorOf(msg.body) }, []];
+      return [
+        {
+          ...model,
+          stage: "open",
+          outcome: null,
+          problem: errorOf(msg.body),
+          reviewed: model.view && {
+            hash: model.view.diff.hash,
+            revisedAt: model.view.changeSet.revisedAt,
+          },
+        },
+        [post("/api/review/open", { token: model.token }, { kind: "reviewOpened" })],
+      ];
     // A decision can stand while applying it didn't: the reply says why.
     const { changeSet, problem, warnings } = msg.body as {
       changeSet: ChangeSetView;

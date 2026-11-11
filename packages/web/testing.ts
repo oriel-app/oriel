@@ -236,6 +236,7 @@ export const changeSetView = (over: Partial<ChangeSetView> = {}): ChangeSetView 
   revertOf: null,
   reverts: [],
   createdAt: at,
+  revisedAt: null,
   ...over,
 });
 

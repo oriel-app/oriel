@@ -225,6 +225,7 @@ export function changeSetView(
     reverts: all.filter((other) => other.revertOf === set.id).map((other) => other.id),
     ...(cannotUndo !== null && { cannotUndo }),
     createdAt: set.createdAt,
+    revisedAt: set.revisedAt,
   };
 }
 
@@ -629,7 +630,12 @@ export function views(deps: ViewDeps) {
         return { ...at, kind: "sketch", sketch: { src, height } };
       }
       case "change-set":
-        return { ...at, kind: "change-set", changeSetId: event.changeSetId };
+        return {
+          ...at,
+          kind: "change-set",
+          changeSetId: event.changeSetId,
+          ...(event.revised && { revised: true as const }),
+        };
       case "actions":
         return {
           ...at,

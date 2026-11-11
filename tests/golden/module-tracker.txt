@@ -63,6 +63,8 @@ declare const thread: {
   list(): Promise<readonly OrielThread[]>;
   /** A thread's change sets, or every thread's, newest first: what each wrote where. */
   changeSets(thread?: string): Promise<readonly OrielChangeSet[]>;
+  /** To change a change set you proposed in this thread that nobody has decided on: this run's writes replace its changes, and it keeps its ID and review link. */
+  revise(changeSet: string): Promise<string>;
   /** Threads and change sets by name, what was said and what was written, best first. */
   find(query: string, limit?: number): Promise<readonly ThreadFound[]>;
   /** Marks a thread done. */
@@ -202,6 +204,8 @@ declare const thread: {
   list(): Promise<readonly OrielThread[]>;
   /** A thread's change sets, or every thread's, newest first: what each wrote where. */
   changeSets(thread?: string): Promise<readonly OrielChangeSet[]>;
+  /** To change a change set you proposed in this thread that nobody has decided on: this run's writes replace its changes, and it keeps its ID and review link. */
+  revise(changeSet: string): Promise<string>;
   /** Threads and change sets by name, what was said and what was written, best first. */
   find(query: string, limit?: number): Promise<readonly ThreadFound[]>;
   /** Marks a thread done. */
@@ -419,6 +423,8 @@ declare const thread: {
   list(): Promise<readonly OrielThread[]>;
   /** A thread's change sets, or every thread's, newest first: what each wrote where. */
   changeSets(thread?: string): Promise<readonly OrielChangeSet[]>;
+  /** To change a change set you proposed in this thread that nobody has decided on: this run's writes replace its changes, and it keeps its ID and review link. */
+  revise(changeSet: string): Promise<string>;
   /** Threads and change sets by name, what was said and what was written, best first. */
   find(query: string, limit?: number): Promise<readonly ThreadFound[]>;
   /** Marks a thread done. */
@@ -633,6 +639,8 @@ declare const thread: {
   list(): Promise<readonly OrielThread[]>;
   /** A thread's change sets, or every thread's, newest first: what each wrote where. */
   changeSets(thread?: string): Promise<readonly OrielChangeSet[]>;
+  /** To change a change set you proposed in this thread that nobody has decided on: this run's writes replace its changes, and it keeps its ID and review link. */
+  revise(changeSet: string): Promise<string>;
   /** Threads and change sets by name, what was said and what was written, best first. */
   find(query: string, limit?: number): Promise<readonly ThreadFound[]>;
   /** Marks a thread done. */

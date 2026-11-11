@@ -138,7 +138,7 @@ async function* turn(
     // Its bindings, with show() and sketch(), each read they answer noted
     // for blocks.
     const shown = turnShows.run(runId, (asked) =>
-      deps.bindingsFor(region, thread.id, asked, challengeOf(input, runId)),
+      deps.bindingsFor(region, thread.id, asked, proposed.runOptions(deps, input, runId)),
     );
     const { bindings } = shown;
     const startedAt = deps.now();
@@ -199,6 +199,7 @@ async function* turn(
         replaced.drafts,
         joined.lines,
         now,
+        proposed.revises(runId),
       ),
       isError: result.outcome !== "ok",
     };

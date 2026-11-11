@@ -1006,6 +1006,38 @@ const toReject = await post<{ url: string }>(
   {},
 );
 
+// A change set the agent proposed, on a server of its own, and its review
+// link; and the agent's revision of it in place (OA-309).
+const proposedInPlace = async () => {
+  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  const serving = await start(0, {
+    db: ":memory:",
+    sources: { jira: { mode: "fixture", fetch: site.fetch } },
+  });
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  const threadId = await ask("Which stories here still need estimates?", serving, workstreamId);
+  const minted = await post<{ url: string }>(
+    `/api/change-sets/${await changeSetOf(serving, threadId)}/review-link`,
+    {},
+    serving,
+  );
+  return { serving, threadId, review: new URL(minted.url).pathname };
+};
+const reviseInPlace = async ({
+  serving,
+  threadId,
+}: Awaited<ReturnType<typeof proposedInPlace>>) => {
+  await post(`/api/threads/${threadId}/messages`, { text: "Make it 5 points instead" }, serving);
+  await serving.app.settled();
+};
+// Revised before anyone decided, with the link minted before the revision.
+const inPlace = await (async () => {
+  const proposed = await proposedInPlace();
+  await reviseInPlace(proposed);
+  return proposed;
+})();
+let altering = inPlace;
+
 // Two change sets awaiting review in one thread: opened at the later, the
 // earlier is out of view above, and a pill says so (OA-260).
 const twoToReview = await (async () => {
@@ -4280,6 +4312,41 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
       held();
       await dock.locator(".panel-dock-working").waitFor({ state: "detached" });
+    },
+  },
+  // A change set the agent revised in place, and its review link (OA-309).
+  {
+    name: "thread-revised-in-place",
+    path: `/threads/${inPlace.threadId}`,
+    on: inPlace.serving,
+    act: (page) => page.locator(".change-set-revised").waitFor(),
+  },
+  {
+    name: "review-revised-in-place",
+    path: inPlace.review,
+    on: inPlace.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .review-revised").waitFor();
+    },
+  },
+  // The page showed the change, the agent revised it, and then the reviewer
+  // approved what they saw: not saved, and the page says so (OA-309).
+  {
+    name: "review-altered",
+    path: "/",
+    make: async () => (altering = await proposedInPlace()).serving,
+    refused: 409,
+    act: async (page) => {
+      await page.goto(new URL(altering.review, altering.serving.url).href);
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .diff").waitFor();
+      await reviseInPlace(altering);
+      const answer = page.getByRole("radio", { name: /^Approve/ });
+      if (await answer.count()) await answer.first().check();
+      await page.getByLabel("Your name").fill("Ann");
+      await page.locator(".review-actions button").click();
+      await page.locator(".review-card .review-altered").waitFor();
     },
   },
 ];

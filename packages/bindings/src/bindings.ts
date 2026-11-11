@@ -72,6 +72,9 @@ export function bindingsFor(
     // the region's reads and writes, `challenge` and search() (decision
     // 0054).
     challenge?: ChallengeRun;
+    // A thread's turn: makes this run's writes revise one of the thread's
+    // change sets instead of making a new one (OA-309).
+    revise?: (id: string) => Promise<string>;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items, options.looking);
@@ -114,6 +117,7 @@ export function bindingsFor(
     show: options.shown?.show ?? (() => notShown("blocks")),
     sketch: options.shown?.sketch ?? (() => notShown("sketches")),
     ...(options.challenge ? { challenge: options.challenge } : {}),
+    ...(options.revise ? { revise: options.revise } : {}),
     reaches: (id) => members.has(id) || found.has(id),
     // Each read gets its own, below, which says what it reached.
     overview: async () => {

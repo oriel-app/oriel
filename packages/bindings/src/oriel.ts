@@ -68,6 +68,23 @@ const changeSets: Fn = {
   }),
 };
 
+// The agent's revision of its own change set (OA-309): this run's writes
+// replace its changes when the turn ends, instead of making a new one. The
+// host checks the set now and the engine again then.
+const changeSetId = refine(string, isUlid, "expected a change set's id");
+const reviseChangeSet: Fn = {
+  space: "thread",
+  outsideRegion: false,
+  ...read({
+    name: "revise",
+    doc: "To change a change set you proposed in this thread that nobody has decided on: this run's writes replace its changes, and it keeps its ID and review link.",
+    params: [param("changeSet", "string", changeSetId)],
+    returns: "string",
+    run: async ([id], host: Host) =>
+      host.revise ? host.revise(id) : "Oriel revises a change set only in a thread's turn.",
+  }),
+};
+
 const findThreads: Fn = {
   space: "thread",
   outsideRegion: true,
@@ -81,7 +98,13 @@ const findThreads: Fn = {
   }),
 };
 
-export const orielFns: readonly Fn[] = [listWorkstreams, listThreads, changeSets, findThreads];
+export const orielFns: readonly Fn[] = [
+  listWorkstreams,
+  listThreads,
+  changeSets,
+  reviseChangeSet,
+  findThreads,
+];
 
 // A union of string literals, as TypeScript writes one.
 const union = (values: readonly string[]) => values.map((v) => JSON.stringify(v)).join(" | ");

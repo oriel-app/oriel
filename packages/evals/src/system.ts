@@ -122,6 +122,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         ...(world.waiting ? { waiting: world.waiting } : {}),
         history: world.history,
         ...(run?.challenge ? { challenge: run.challenge } : {}),
+        ...(run?.revise ? { revise: run.revise } : {}),
       });
       // What each read answered, so the blocks grader can build each block
       // again from its read.
@@ -265,6 +266,7 @@ function memoryRecords(
 ) {
   const runs = new Set<Ulid>();
   const sets: CapturedMutation[][] = [];
+  const made = new Map<string, ChangeSet>();
   const calls: Intent[] = [];
   const held: Draft[] = [];
   const recorder: Pick<AgentDeps, "runs" | "changeSets" | "actions" | "drafts"> = {
@@ -325,7 +327,21 @@ function memoryRecords(
           revertOf: null,
           createdAt: now,
           completedAt: null,
+          revisedAt: null,
         };
+        made.set(id, changeSet);
+        return changeSet;
+      },
+      async revisable(id, threadId) {
+        return made.get(id)?.threadId === threadId ? null : "not this thread's";
+      },
+      // A revision is graded as the turn's change set, as a capture is.
+      async revise(id, ref, mutations) {
+        const before = made.get(id);
+        if (!before || !runs.has(ref.id)) throw new Error(`no change set ${id}`);
+        sets.push([...mutations]);
+        const changeSet: ChangeSet = { ...before, runId: ref.id, revisedAt: now };
+        made.set(id, changeSet);
         return changeSet;
       },
     },

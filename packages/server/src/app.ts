@@ -18,6 +18,7 @@ import {
   type Draft,
   type FieldReader,
   noOptionsYet,
+  orielRunModel,
   type PreviewTable,
   readsNow,
   type ReviewEdit,
@@ -1755,7 +1756,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     region: Region,
     thread?: Ulid,
     shown?: Shown,
-    run?: { challenge?: ChallengeRun },
+    run?: { challenge?: ChallengeRun; revise?: (id: string) => Promise<string> },
   ) =>
     bindingsFor(region, {
       reader,
@@ -1772,6 +1773,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(thread ? { thread } : {}),
       ...(shown ? { shown } : {}),
       ...(run?.challenge ? { challenge: run.challenge } : { looking: lookedIn(thread) }),
+      ...(run?.revise ? { revise: run.revise } : {}),
       // The window chat reads the overview, as the page shows it, and the
       // previews of connections that wait for their options.
       ...(thread && threads.isWindowChat(thread) ? windowChat() : {}),
@@ -1881,7 +1883,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   const agentDeps: ServerAgentDeps = {
     sandbox,
     bindingsFor: regionBindings,
-    changeSets: { capture: (run, mutations) => sets.capture(run, mutations) },
+    changeSets: {
+      capture: (run, mutations) => sets.capture(run, mutations),
+      revise: (id, run, mutations) => sets.revise(id, run, mutations),
+      revisable: (id, threadId) => sets.revisable(id, threadId),
+    },
     actions: {
       apply: (turn, recorded) => {
         if (!intents) throw new Error("Oriel's actions aren't ready yet");
@@ -2203,7 +2209,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             regionVersion: 1,
             systemPromptHash: "oriel",
             dtsHash: "oriel",
-            model: "oriel",
+            model: orielRunModel,
             inputTokens: 0,
             outputTokens: 0,
             wallMs: 0,
