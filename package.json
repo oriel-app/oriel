@@ -18,6 +18,7 @@
     "drive": "node scripts/drive.ts",
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts",
     "shots:diff": "node scripts/shots-diff.ts",
+    "ui-test": "pnpm --filter @oriel/web build && node scripts/ui-test.ts",
     "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts",
     "desktop": "node packages/desktop/src/bundle.ts",
     "desktop:try": "node scripts/desktop-try.ts",

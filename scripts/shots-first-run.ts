@@ -193,6 +193,9 @@ const holds: (() => void)[] = [];
 export const releaseAll = () => {
   for (const release of holds.splice(0)) release();
 };
+// The servers that hold something up until `releaseAll`, which close only
+// then: let go while closing, what they held would finish on a closed server.
+export const holdsUp = new WeakSet<Serving>();
 export const removeHomes = () => {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 };
@@ -440,6 +443,8 @@ export async function firstRunServer(
     await postTo(serving, "/api/settings/look", {});
     await postTo(serving, "/api/servers/look", {});
   }
+  if (options.stillLooking || options.install === "waits" || options.login === "waits")
+    holdsUp.add(serving);
   return serving;
 }
 

@@ -1,6 +1,10 @@
-// `pnpm shots`: screenshots of every screen, for looking at. A tool, not a
-// test. It drives the installed Chrome, downloads no browser, and writes PNGs
-// to the gitignored shots/. `pnpm shots` builds the web app first.
+// `pnpm shots`: screenshots of every screen, for looking at: evidence for a
+// person, not a test (decision 0063). It drives the installed Chrome,
+// downloads no browser, and writes PNGs to the gitignored shots/. `pnpm
+// shots` builds the web app first. Each scene's steps run once a width, and
+// it's shot light, then dark from the same page. The scenes that check
+// behaviour are the window's behaviour tests too: `pnpm ui-test` runs them
+// with `--test`, with no picture (see `check`).
 //
 // The servers run on the SYN fixture in memory, with the scripted agent,
 // whose runs go to the real sandbox (Deno). Most write to SYN as a Jira site
@@ -13,7 +17,8 @@
 // servers of its own, with stand-ins of the source servers a person's agent
 // lists (decision 0059), and the onboarding is timed on it, from the first
 // screen to an approved change, counting the word "token" on each screen,
-// where it never may be. Another reads the Slack fixture's picked channel. Three more hand a story to the
+// where it never may be, as a behaviour test. Another reads the Slack
+// fixture's picked channel. Three more hand a story to the
 // team: one change set moves it in Jira and posts in Slack's channel,
 // proposed on one, approved on the next, and reverted on the last (OA-28).
 // One more has 120 more stories in SYN's checkout epic, so Browse pages them.
@@ -25,7 +30,7 @@
 //
 // `pnpm shots --width 1440 panel-` takes only the scenes whose names
 // start with `panel-`, at 1440px wide; with neither, every scene at 1280px
-// and 390px, and the onboarding. `--theme broadsheet` picks that theme in
+// and 390px. `--theme broadsheet` picks that theme in
 // each scene's settings, as the person would, and writes to
 // shots/broadsheet/; with none, the default theme, to shots/. `--text-size
 // large` sets that Text size in each scene's settings too, and writes to a
@@ -39,6 +44,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { fork } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,6 +78,7 @@ import { history as pastWeeks, weekAt, weeks } from "./history-world.ts";
 import {
   type FirstRunOptions,
   firstRunServer,
+  holdsUp,
   keepUntilDone,
   releaseAll,
   removeHomes,
@@ -94,6 +101,12 @@ type Scene = {
   window?: true;
   // It shows a sketch, whose sandbox refuses the pinned clock's script.
   sketch?: true;
+  // What its behaviour test checks, if it has one (decision 0063): `pnpm
+  // ui-test` runs its steps and its `check`s, light, at 1280 and at any
+  // other width in `testAt`, and takes no picture; `pnpm shots` takes its
+  // pictures and skips its checks.
+  test?: string;
+  testAt?: readonly number[];
 };
 
 // The rail's second item, opened while a draft keeps the first, is offered
@@ -107,7 +120,10 @@ async function secondLooked(page: Page): Promise<void> {
     await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
     // Shot once its read is in, not before.
     await page.locator(".item-panel .panel-facts").waitFor();
-  } else await page.locator(".rail a.key").nth(1).click();
+  } else {
+    await page.locator(".rail a.key").nth(1).click();
+    await page.locator(".item-panel .panel-facts").waitFor();
+  }
   // Below 1100 the panel's dock carries the composer, and the thread's own,
   // under the panel, is hidden (OA-335).
   await page.locator(".ctx-chip[data-off]:visible", { hasText: "+" }).waitFor();
@@ -128,9 +144,53 @@ const asked = parseArgs({
     width: { type: "string", multiple: true },
     theme: { type: "string" },
     "text-size": { type: "string" },
+    // The behaviour tests, from `pnpm ui-test`, which gives each worker its
+    // lane: `--lane 2/4` runs every fourth test from the second.
+    test: { type: "boolean" },
+    lane: { type: "string" },
   },
   allowPositionals: true,
 });
+const testing = asked.values.test === true;
+
+// Every width at once, each in a process of its own, with servers of its
+// own: a width's scenes never see what another's did.
+const givenWidths = asked.values.width ?? ["1280", "390"];
+if (!testing && givenWidths.length > 1) {
+  const rest = process.argv
+    .slice(2)
+    .filter((arg, at, all) => !arg.startsWith("--width") && all[at - 1] !== "--width");
+  const codes = await Promise.all(
+    givenWidths.map(
+      (width) =>
+        new Promise<number>((done) =>
+          fork(fileURLToPath(import.meta.url), ["--width", width, ...rest], {
+            stdio: "inherit",
+          }).on("exit", (code) => done(code ?? 1)),
+        ),
+    ),
+  );
+  process.exit(codes.every((code) => code === 0) ? 0 : 1);
+}
+
+// The scene running now, whose checks run only as its behaviour test.
+let acting: Scene | null = null;
+// A check on behaviour, which a picture can't show: how many there are of
+// something, where it sits, how long it took, what the server holds. Its
+// behaviour test runs it; a shot skips it. A check only reads, so the
+// steps after it, and the picture, are the same either way.
+async function check(what: () => unknown): Promise<void> {
+  if (testing) await what();
+  else untested();
+}
+const untested = () => {
+  if (acting && !acting.test) problems.push(`${acting.name} checks behaviour but names no test`);
+};
+// A check: it shows at once, not after a wait. A shot just waits for it.
+const atOnce = () => {
+  untested();
+  return testing ? { timeout: 500 } : {};
+};
 const theme = asked.values.theme ?? defaultTheme;
 const themes = themeNames(
   readFileSync(new URL("../packages/web/assets/window.css", import.meta.url), "utf8"),
@@ -1575,8 +1635,29 @@ const pointerAway = (page: Page) => page.mouse.move(1, 1);
 
 // Shot mid-gesture, a swiped row is as far as the wheel's events had got;
 // once the wheel is idle it settles on its stop, the same each time.
+// A thread's page scrolls itself to its latest entry, and again as its
+// change sets' diffs arrive. Settled once nothing on it is loading and it
+// has held still, its scroll and its height, for three frames: what a scene
+// does next isn't undone by it, and a shot finds it where it rests.
+const threadSettled = (page: Page) =>
+  until(
+    page,
+    `(() => {
+  const at = [scrollY, document.documentElement.scrollHeight, !document.querySelector(".loading")].join();
+  window.stillFor = at === window.stillAt ? (window.stillFor ?? 0) + 1 : 0;
+  window.stillAt = at;
+  return window.stillFor >= 3 && !document.querySelector(".loading");
+})()`,
+  );
 const swipeSettled = (row: Locator) =>
   row.and(row.page().locator(".swipe[data-open]:not([data-dragging])")).waitFor();
+// A trackpad's sideways swipe on the row under the pointer, past its first
+// stop: a row adds up its wheel's deltas, and ends the gesture once they've
+// stopped for 140ms (swipe.tsx), so a few large ones, sent back to back,
+// pull as far as many small ones and leave no gap that ends it early.
+async function swipeLeft(page: Page): Promise<void> {
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(120, 0);
+}
 
 async function openSidebar(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) > 760) return;
@@ -1662,8 +1743,7 @@ const renameInSidebar = async (page: Page, save: boolean) => {
   await page.locator(".nav-workstream-menu .nav-link:focus").waitFor();
   if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
   await page.locator(".overview-workstream-name", { hasText: "Checkout wallets" }).waitFor();
-  if ((await page.locator(".nav-name", { hasText: "New workstream" }).count()) > 0)
-    throw new Error("The sidebar still shows the old name.");
+  await expectCount(page.locator(".nav-name", { hasText: "New workstream" }), 0);
 };
 const moving = async () => {
   const { serving } = await writing();
@@ -1795,10 +1875,12 @@ let docking = server;
 // app.tsx's `besideChat` says.
 const beside = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1100;
 
-async function expectCount(found: Locator, count: number) {
-  const n = await found.count();
-  if (n !== count) throw new Error(`Expected ${count} of ${String(found)}, found ${n}`);
-}
+// A check: there are `count` of what's found, now.
+const expectCount = (found: Locator, count: number) =>
+  check(async () => {
+    const n = await found.count();
+    if (n !== count) throw new Error(`Expected ${count} of ${String(found)}, found ${n}`);
+  });
 
 const goingOn = (others: boolean) => async () => {
   const { serving } = await writing();
@@ -1843,21 +1925,23 @@ return waiting.why;`;
 const suggesting = (await writing({ mode: "fixture" })).serving;
 
 // No API-key way in (decision 0059): nothing on the page offers one.
-const noApiKey = async (page: Page) => {
-  const said = await page.evaluate<string>("document.body.innerText");
-  if (/API key|per question|console\.anthropic/i.test(said))
-    throw new Error("the page still offers an API key");
-};
+const noApiKey = (page: Page) =>
+  check(async () => {
+    const said = await page.evaluate<string>("document.body.innerText");
+    if (/API key|per question|console\.anthropic/i.test(said))
+      throw new Error("the page still offers an API key");
+  });
 const scenes: Scene[] = [
   // Settings (OA-181): its sections, each a page; Providers first, its rows
   // without the plan, which Usage shows.
   {
     name: "settings-providers",
+    test: "Providers' rows show no plan usage, and nothing offers an API key",
     path: "/settings",
     on: settingsServer,
     act: async (page) => {
       await page.locator("#provider-codex .provider-state", { hasText: "Ready" }).waitFor();
-      if (await page.locator(".plan-usage").count()) throw new Error("usage on Providers' rows");
+      await expectCount(page.locator(".plan-usage"), 0);
       await noApiKey(page);
     },
   },
@@ -1869,19 +1953,24 @@ const scenes: Scene[] = [
   },
   {
     name: "settings-path",
+    test: "a saved path shows from ~",
     path: "/settings",
     on: settingsPath,
     act: async (page) => {
       const path = page.getByRole("textbox", { name: "Path to Claude Code" });
       await path.waitFor();
-      if ((await path.inputValue()) !== "~/.local/bin/claude")
-        throw new Error("the saved path doesn't show from ~");
+      await check(async () => {
+        if ((await path.inputValue()) !== "~/.local/bin/claude")
+          throw new Error("the saved path doesn't show from ~");
+      });
     },
   },
   // Moving between sections holds the frame still: the title, the
   // sections' list and the column stay where they were.
   {
     name: "settings-steady",
+    test: "moving between Settings' sections holds the title, the list and the column still",
+    testAt: [390],
     path: "/settings",
     on: settingsServer,
     act: async (page) => {
@@ -1895,16 +1984,18 @@ const scenes: Scene[] = [
           }),
         );
       await page.locator("#provider-codex .provider-state", { hasText: "Ready" }).waitFor();
-      const before = (await frame()).join(" ");
-      for (const name of ["General", "Connections", "Usage", "Providers"]) {
-        await page
-          .getByRole("navigation", { name: "Settings" })
-          .getByRole("link", { name })
-          .click();
-        await page.locator(".settings-title", { hasText: name }).first().waitFor();
-        const now = (await frame()).join(" ");
-        if (now !== before) throw new Error(`${name} moves the frame: ${before} to ${now}`);
-      }
+      await check(async () => {
+        const before = (await frame()).join(" ");
+        for (const name of ["General", "Connections", "Usage", "Providers"]) {
+          await page
+            .getByRole("navigation", { name: "Settings" })
+            .getByRole("link", { name })
+            .click();
+          await page.locator(".settings-title", { hasText: name }).first().waitFor();
+          const now = (await frame()).join(" ");
+          if (now !== before) throw new Error(`${name} moves the frame: ${before} to ${now}`);
+        }
+      });
       await page
         .getByRole("navigation", { name: "Settings" })
         .getByRole("link", { name: "General" })
@@ -1914,6 +2005,7 @@ const scenes: Scene[] = [
   // The sidebar folded: Settings' sections keep their own width.
   {
     name: "settings-folded",
+    test: "with the sidebar folded, each of Settings' sections fills the list's width",
     path: "/settings/general",
     on: settingsServer,
     act: async (page) => {
@@ -1925,10 +2017,12 @@ const scenes: Scene[] = [
       // Wide, each fills the list's column; narrow, they're tabs, as wide as
       // their words.
       if ((page.viewportSize()?.width ?? 0) <= 760) return;
-      const list = await page.locator(".settings-sections").boundingBox();
-      const link = await page.locator(".settings-sections .nav-link").first().boundingBox();
-      if (!list || !link || link.width < list.width - 1)
-        throw new Error(`Settings' sections squashed: ${link?.width} of ${list?.width}`);
+      await check(async () => {
+        const list = await page.locator(".settings-sections").boundingBox();
+        const link = await page.locator(".settings-sections .nav-link").first().boundingBox();
+        if (!list || !link || link.width < list.width - 1)
+          throw new Error(`Settings' sections squashed: ${link?.width} of ${list?.width}`);
+      });
     },
   },
   {
@@ -1983,6 +2077,8 @@ const scenes: Scene[] = [
     act: async (page) => {
       await approveIt(page);
       await page.locator(beadSays, { hasText: "All caught up." }).waitFor();
+      // After a beat, the applied change set folds itself to a line.
+      await page.locator(".change-set[data-folded]").waitFor();
     },
   },
   // Applied while the page watched: after a beat it folds itself to one
@@ -2015,6 +2111,8 @@ const scenes: Scene[] = [
   // stays until dismissed.
   {
     name: "bead-failed",
+    test: "a failed apply's note keeps every word for a screen reader, cut short with an ellipsis on a phone, its Dismiss whole",
+    testAt: [390],
     window: true,
     path: "/",
     make: stoppingOn,
@@ -2024,12 +2122,13 @@ const scenes: Scene[] = [
       // Cut short to fit a phone, its sentence ends in an ellipsis, and
       // keeps every word for a screen reader, as the alert says it; its
       // Dismiss is whole.
-      const said = await page.evaluate<{
-        words: string;
-        alert: string;
-        cut: boolean;
-        dismiss: boolean;
-      }>(`(() => {
+      await check(async () => {
+        const said = await page.evaluate<{
+          words: string;
+          alert: string;
+          cut: boolean;
+          dismiss: boolean;
+        }>(`(() => {
         const said = document.querySelector(".bead-layer .bead-said");
         return {
           words: said.textContent,
@@ -2040,9 +2139,10 @@ const scenes: Scene[] = [
           ),
         };
       })()`);
-      const narrow = (page.viewportSize()?.width ?? 0) <= 760;
-      if (said.words !== said.alert || (narrow && !said.cut) || !said.dismiss)
-        throw new Error(`The bead's failure lost words or its action: ${JSON.stringify(said)}`);
+        const narrow = (page.viewportSize()?.width ?? 0) <= 760;
+        if (said.words !== said.alert || (narrow && !said.cut) || !said.dismiss)
+          throw new Error(`The bead's failure lost words or its action: ${JSON.stringify(said)}`);
+      });
       await page.evaluate("scrollTo(0, 0)");
     },
   },
@@ -2246,6 +2346,7 @@ const scenes: Scene[] = [
     ] as const
   ).map(([name, at]): Scene => ({
     name,
+    test: "an item opened from the window chat's answer stands beside the chat, its chip the one marked open",
     path: "/",
     window: true,
     act: async (page) => {
@@ -2749,6 +2850,7 @@ const scenes: Scene[] = [
     path: `/threads/${thread}`,
     act: async (page) => {
       await page.locator(".rail .members").waitFor();
+      await threadSettled(page);
       await page.locator(".rail a.key").first().click();
       await page.locator(".item-panel .panel-facts").waitFor();
     },
@@ -2962,10 +3064,7 @@ const scenes: Scene[] = [
       await openSidebar(page);
       const row = page.locator(".nav-workstream-menu .swipe").first();
       await row.hover();
-      for (let i = 0; i < 48; i++) {
-        await page.mouse.wheel(10, 0);
-        await page.waitForTimeout(16);
-      }
+      await swipeLeft(page);
       await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
       await swipeSettled(row);
     },
@@ -3109,7 +3208,14 @@ const scenes: Scene[] = [
   // A workstream renamed in place from its menu in the sidebar: the field,
   // then, after Enter, the new name in the sidebar and on the overview.
   { name: "rename-field", path: "/", make: renaming, act: (page) => renameInSidebar(page, false) },
-  { name: "rename-saved", path: "/", make: renaming, act: (page) => renameInSidebar(page, true) },
+  {
+    name: "rename-saved",
+    test: "a workstream renamed in the sidebar shows its new name there and on the overview, and not the old",
+    testAt: [390],
+    path: "/",
+    make: renaming,
+    act: (page) => renameInSidebar(page, true),
+  },
   // Refused, off its page, after a visit to it: the window's problem says
   // why, and the old name comes back.
   {
@@ -3158,6 +3264,7 @@ const scenes: Scene[] = [
   // (OA-314). Times are events' own, which the pinned clock leaves alone.
   {
     name: "drag-move-nowhere",
+    test: "a row dropped over nothing is taken by the page and back within 150ms, and the bead says nothing",
     path: "/",
     make: moving,
     act: async (page) => {
@@ -3167,7 +3274,8 @@ const scenes: Scene[] = [
       await page.mouse.down();
       await page.mouse.move(900, 640, { steps: 8 });
       await page.locator(".drag-card").waitFor({ state: "attached" });
-      await page.evaluate(`{
+      await check(() =>
+        page.evaluate(`{
         const root = document.documentElement;
         let start = null;
         const ended = (event) => {
@@ -3182,18 +3290,22 @@ const scenes: Scene[] = [
           root.dataset.settledIn = String(Math.round(new Event("settled").timeStamp - start));
         });
         watch.observe(document.body, { childList: true, subtree: true, attributes: true });
-      }`);
-      await page.mouse.up();
-      const root = page.locator("html[data-settled-in]");
-      await root.waitFor({ state: "attached" });
-      const took = Number(await root.getAttribute("data-settled-in"));
-      const taken = (await page.locator("html[data-drop-taken]").count()) > 0;
-      await page.evaluate(
-        "document.documentElement.removeAttribute('data-settled-in'), document.documentElement.removeAttribute('data-drop-taken')",
+      }`),
       );
-      if (!taken) throw new Error("the page refused the drop, so the system slides it back");
-      if (took > 150) throw new Error(`the card took ${took}ms to go back, over 150ms`);
-      if ((await page.locator(beadSays).count()) > 0) throw new Error("the bead says something");
+      await page.mouse.up();
+      await page.locator(".drag-card, [data-lifted]").first().waitFor({ state: "detached" });
+      await check(async () => {
+        const root = page.locator("html[data-settled-in]");
+        await root.waitFor({ state: "attached" });
+        const took = Number(await root.getAttribute("data-settled-in"));
+        const taken = (await page.locator("html[data-drop-taken]").count()) > 0;
+        await page.evaluate(
+          "document.documentElement.removeAttribute('data-settled-in'), document.documentElement.removeAttribute('data-drop-taken')",
+        );
+        if (!taken) throw new Error("the page refused the drop, so the system slides it back");
+        if (took > 150) throw new Error(`the card took ${took}ms to go back, over 150ms`);
+      });
+      await expectCount(page.locator(beadSays), 0);
       await sidebarWorkstream(page, "Checkout polish")
         .locator(".nav-count", { hasText: /^3$/ })
         .waitFor({ state: "attached" });
@@ -3224,6 +3336,8 @@ const scenes: Scene[] = [
   // the one it came from.
   {
     name: "drag-move-new",
+    test: "a row dropped on Create new workstream makes one named for it, which it leaves the old one for",
+    testAt: [390],
     path: "/",
     make: moving,
     act: async (page) => {
@@ -3237,9 +3351,11 @@ const scenes: Scene[] = [
       await page.waitForURL((url) => !url.pathname.endsWith(moveFrom));
       await movingRow(page).waitFor();
       await page.locator(".workstream-page .member").nth(1).waitFor({ state: "detached" });
-      const name = await page.getByRole("textbox", { name: "Workstream name" }).inputValue();
-      if (name !== "Pay with a phone wallet on the website")
-        throw new Error(`the new workstream is named ${name}`);
+      await check(async () => {
+        const name = await page.getByRole("textbox", { name: "Workstream name" }).inputValue();
+        if (name !== "Pay with a phone wallet on the website")
+          throw new Error(`the new workstream is named ${name}`);
+      });
       await sidebarWorkstream(page, "Checkout polish")
         .locator(".nav-count", { hasText: /^2$/ })
         .waitFor({ state: "attached" });
@@ -3248,6 +3364,8 @@ const scenes: Scene[] = [
   // Cancel: nothing changed, and nothing says it did.
   {
     name: "drag-move-cancel",
+    test: "a cancelled drop changes nothing and says nothing",
+    testAt: [390],
     path: "/",
     make: moving,
     act: async (page) => {
@@ -3262,9 +3380,8 @@ const scenes: Scene[] = [
       await sidebarWorkstream(page, "Gift cards")
         .locator(".nav-count", { hasText: /^1$/ })
         .waitFor({ state: "attached" });
-      if ((await page.locator(beadSays).count()) > 0) throw new Error("the bead says something");
-      if ((await page.locator(".sidebar .nav-workstream").count()) !== 2)
-        throw new Error("a workstream was made");
+      await expectCount(page.locator(beadSays), 0);
+      await expectCount(page.locator(".sidebar .nav-workstream"), 2);
       await pointerAway(page);
     },
   },
@@ -3332,11 +3449,7 @@ const scenes: Scene[] = [
       await page.locator(".sidebar-workstreams .nav-workstream").first().waitFor();
       const row = page.locator(".sidebar-needs .swipe").first();
       await row.hover();
-      // At twice the pixel density each step moves half as far.
-      for (let i = 0; i < 48; i++) {
-        await page.mouse.wheel(10, 0);
-        await page.waitForTimeout(16);
-      }
+      await swipeLeft(page);
       await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
       await swipeSettled(row);
     },
@@ -3591,6 +3704,7 @@ const scenes: Scene[] = [
   // Sent: the thread starts in the workstream picked for it, not a new one.
   {
     name: "new-thread-picked",
+    test: "a new thread starts in the workstream picked for it, from a picker whose options differ, with one New workstream",
     path: "/threads/new",
     // Two threads from nothing first: their workstreams, not named yet, are
     // picked by their threads' titles, never as a second "New workstream".
@@ -3611,18 +3725,23 @@ const scenes: Scene[] = [
         return workstreams;
       });
       const picked = listed.find((each) => each.origin.kind === "cluster");
-      if (!picked || listed.length !== 3)
-        throw new Error(`the scene's server should have three workstreams, not ${listed.length}`);
+      if (!picked) throw new Error("the scene's server has no workstream to pick");
+      await check(() => {
+        if (listed.length !== 3)
+          throw new Error(`the scene's server should have three workstreams, not ${listed.length}`);
+      });
       const picker = page.getByRole("combobox", { name: "Workstream" });
       await picker.locator("option").nth(listed.length).waitFor({ state: "attached" });
-      const options = await picker.locator("option").allTextContents();
-      if (
-        options.filter((option) => option === "New workstream").length !== 1 ||
-        new Set(options).size !== options.length
-      )
-        throw new Error(
-          `The picker's options should differ, with one default: ${options.join(" | ")}`,
-        );
+      await check(async () => {
+        const options = await picker.locator("option").allTextContents();
+        if (
+          options.filter((option) => option === "New workstream").length !== 1 ||
+          new Set(options).size !== options.length
+        )
+          throw new Error(
+            `The picker's options should differ, with one default: ${options.join(" | ")}`,
+          );
+      });
       await picker.selectOption({ label: picked.name });
       // Only a new workstream is named here.
       await page.getByRole("textbox", { name: "Workstream title" }).waitFor({ state: "detached" });
@@ -3632,19 +3751,24 @@ const scenes: Scene[] = [
       await page.getByRole("button", { name: "Send" }).click();
       await page.waitForURL(/\/threads\/(?!new)[^/?#]+$/);
       const id = new URL(page.url()).pathname.split("/").pop() ?? "";
-      const [thread, all] = await page.evaluate(
-        async (id) =>
-          Promise.all([
-            (await fetch(`/api/threads/${id}`)).json(),
-            (await fetch("/api/workstreams")).json(),
-          ]) as Promise<[{ workstream: { id: string } }, { workstreams: unknown[] }]>,
-        id,
-      );
-      if (thread.workstream.id !== picked.id || all.workstreams.length !== listed.length)
-        throw new Error(
-          `The new thread went to ${thread.workstream.id}, with ${all.workstreams.length} workstreams, not ${picked.id}`,
+      await check(async () => {
+        const [thread, all] = await page.evaluate(
+          async (id) =>
+            Promise.all([
+              (await fetch(`/api/threads/${id}`)).json(),
+              (await fetch("/api/workstreams")).json(),
+            ]) as Promise<[{ workstream: { id: string } }, { workstreams: unknown[] }]>,
+          id,
         );
+        if (thread.workstream.id !== picked.id || all.workstreams.length !== listed.length)
+          throw new Error(
+            `The new thread went to ${thread.workstream.id}, with ${all.workstreams.length} workstreams, not ${picked.id}`,
+          );
+      });
       await page.locator(".thread-head .crumb").filter({ hasText: picked.name }).waitFor();
+      // Shot once it's answered, and the page has followed the answer.
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await threadSettled(page);
     },
   },
   // The default picked: the new workstream's title, under the picker, or under
@@ -3661,13 +3785,16 @@ const scenes: Scene[] = [
   // the sidebar shows.
   {
     name: "new-thread-named",
+    test: "a new workstream's title starts as New workstream, and the thread makes it under the name typed",
     path: "/threads/new",
     make: async () => (await writing()).serving,
     act: async (page) => {
       const title = page.getByRole("textbox", { name: "Workstream title" });
-      const given = await title.inputValue();
-      if (given !== "New workstream")
-        throw new Error(`The workstream title should start as New workstream, not ${given}`);
+      await check(async () => {
+        const given = await title.inputValue();
+        if (given !== "New workstream")
+          throw new Error(`The workstream title should start as New workstream, not ${given}`);
+      });
       await title.fill("Gift card kiosk");
       await page.getByRole("textbox", { name: "Message" }).fill("Plan the kiosk's first epic");
       await page.getByRole("button", { name: "Send" }).click();
@@ -3677,6 +3804,8 @@ const scenes: Scene[] = [
         .locator(".sidebar-workstreams")
         .getByText("Gift card kiosk", { exact: true })
         .waitFor({ state: "attached" });
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await threadSettled(page);
     },
   },
   {
@@ -3715,6 +3844,7 @@ const scenes: Scene[] = [
   {
     // Dismissed while its source can't be read: it ends, and says so once.
     name: "thread-dismissed",
+    test: "a change set dismissed while its source can't be read ends, with no warning or error left",
     path: `/threads/${dismissedThread}`,
     on: dismissing.serving,
     act: async (page) => {
@@ -3726,8 +3856,7 @@ const scenes: Scene[] = [
       await ended.waitFor();
       await dismiss.waitFor({ state: "hidden" });
       // What may have landed showed once, beside Dismiss, and went with it.
-      const left = await page.locator(".may-have-landed, .change-set-problem, .line-error").count();
-      if (left) throw new Error(`Dismissed, it still shows ${left} warnings or errors`);
+      await expectCount(page.locator(".may-have-landed, .change-set-problem, .line-error"), 0);
     },
   },
   {
@@ -3859,7 +3988,10 @@ const scenes: Scene[] = [
     name: "thread-to-review",
     path: `/threads/${twoToReview}`,
     window: true,
-    act: (page) => page.getByRole("button", { name: /to review above$/ }).waitFor(),
+    act: async (page) => {
+      await page.getByRole("button", { name: /to review above$/ }).waitFor();
+      await threadSettled(page);
+    },
   },
   {
     // The pill clicked: the page goes to the earlier, its heading focused.
@@ -3867,14 +3999,20 @@ const scenes: Scene[] = [
     path: `/threads/${twoToReview}`,
     window: true,
     act: async (page) => {
+      await threadSettled(page);
       await page.getByRole("button", { name: /to review above$/ }).click();
-      // Glided there: its heading near the top of the window, and still, so
-      // the shot isn't taken partway through the glide.
-      const heading = page.locator(".change-set-head h2:focus");
-      await heading.waitFor();
-      const top = async () => (await heading.boundingBox())?.y ?? -1;
-      for (let was = -2, y = await top(); y < 0 || y > 400 || y !== was; was = y, y = await top())
-        await page.waitForTimeout(50);
+      // Glided there: its heading near the top of the window, and still for
+      // three frames, so the shot isn't taken partway through the glide.
+      await page.locator(".change-set-head h2:focus").waitFor();
+      await until(
+        page,
+        `(() => {
+  const top = document.querySelector(".change-set-head h2:focus")?.getBoundingClientRect().top ?? -1;
+  window.stillFor = top === window.stillAt ? (window.stillFor ?? 0) + 1 : 0;
+  window.stillAt = top;
+  return window.stillFor >= 3 && top >= 0 && top <= 400;
+})()`,
+      );
     },
   },
   {
@@ -4139,6 +4277,8 @@ const scenes: Scene[] = [
   // read-only, after a reload.
   {
     name: "looking-sent",
+    test: "a message sent while looking at an item outside the workstream is about it, read-only, and the turn reads it by its ID",
+    testAt: [390],
     window: true,
     path: "/",
     make: async () => {
@@ -4162,25 +4302,27 @@ const scenes: Scene[] = [
       await page.locator(".reply", { hasText: "outside this workstream" }).waitFor();
       await page.reload();
       await page.locator(".user-message .about", { hasText: "read-only" }).waitFor();
-      const said = await page.evaluate(async (thread) => {
-        const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
-          entries: {
-            kind: string;
-            about?: unknown;
-            run?: { outcome: string; transcript?: unknown };
-          }[];
-        };
-        return {
-          about: view.entries.find((entry) => entry.kind === "user" && entry.about)?.about,
-          runs: view.entries.filter((entry) => entry.kind === "run.finished").map((e) => e.run),
-        };
-      }, id);
-      const about = JSON.stringify(said.about);
-      if (about !== JSON.stringify([{ id: "jira:SYN-54", outside: true }]))
-        throw new Error(`The message should be about SYN-54, outside the region, not ${about}`);
-      const runs = JSON.stringify(said.runs);
-      if (!runs.includes("Cancellation alert"))
-        throw new Error(`The turn should have read SYN-54 by its ID: ${runs}`);
+      await check(async () => {
+        const said = await page.evaluate(async (thread) => {
+          const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
+            entries: {
+              kind: string;
+              about?: unknown;
+              run?: { outcome: string; transcript?: unknown };
+            }[];
+          };
+          return {
+            about: view.entries.find((entry) => entry.kind === "user" && entry.about)?.about,
+            runs: view.entries.filter((entry) => entry.kind === "run.finished").map((e) => e.run),
+          };
+        }, id);
+        const about = JSON.stringify(said.about);
+        if (about !== JSON.stringify([{ id: "jira:SYN-54", outside: true }]))
+          throw new Error(`The message should be about SYN-54, outside the region, not ${about}`);
+        const runs = JSON.stringify(said.runs);
+        if (!runs.includes("Cancellation alert"))
+          throw new Error(`The turn should have read SYN-54 by its ID: ${runs}`);
+      });
     },
   },
   // In the window chat, beside the item (OA-333): opened from the answer, the
@@ -4188,6 +4330,7 @@ const scenes: Scene[] = [
   // follow-up keeps its about line. Narrower, the item covers the chat.
   {
     name: "looking-window",
+    test: "an item opened from the window chat's answer is offered in its composer, never read-only, and the follow-up keeps its about line",
     path: "/",
     window: true,
     make: async () => (await writing()).serving,
@@ -4224,6 +4367,8 @@ const scenes: Scene[] = [
   // and there's no dock.
   ...(["dock", "sending", "folded"] as const).map((step): Scene => ({
     name: `ask-panel-${step}`,
+    test: "with room, the chat stands beside an open item; narrower, the item's dock carries the composer, sends from it and folds to the chat",
+    testAt: [390],
     path: "/",
     window: true,
     make: async () => (docking = (await writing()).serving),
@@ -4279,6 +4424,8 @@ const scenes: Scene[] = [
   // own composer, and the one it covers is inert.
   {
     name: "ask-panel-thread",
+    test: "on a thread's page, narrower, the panel's dock carries the thread's composer, and the one it covers is inert",
+    testAt: [390],
     window: true,
     path: `/threads/${lookingThread}`,
     on: lookingOn,
@@ -4482,25 +4629,30 @@ scenes.push(
   // it, and another hides it again.
   {
     name: "setup-email-shown",
+    test: "an account's email starts scrambled and blurred, a click shows it, and another hides it",
     path: "/setup",
     make: firstRun({ cli: { signedIn: true } }),
     act: async (page) => {
       const email = page.locator("#provider-claude-code .hidden-email");
       await email.waitFor();
-      if ((await email.innerText()).includes("maya@example.com"))
-        throw new Error("the email shows before a click");
-      const filter = await page.evaluate<string>(
-        'getComputedStyle(document.querySelector("#provider-claude-code .hidden-email")).filter',
-      );
-      if (!filter.includes("blur")) throw new Error("the hidden email isn't blurred");
+      await check(async () => {
+        if ((await email.innerText()).includes("maya@example.com"))
+          throw new Error("the email shows before a click");
+        const filter = await page.evaluate<string>(
+          'getComputedStyle(document.querySelector("#provider-claude-code .hidden-email")).filter',
+        );
+        if (!filter.includes("blur")) throw new Error("the hidden email isn't blurred");
+      });
       await email.click();
       await page
         .locator("#provider-claude-code .hidden-email[data-shown]", { hasText: "maya@example.com" })
         .waitFor();
       await email.click();
       await page.locator("#provider-claude-code .hidden-email:not([data-shown])").waitFor();
-      if ((await email.innerText()).includes("maya@example.com"))
-        throw new Error("a second click doesn't hide the email");
+      await check(async () => {
+        if ((await email.innerText()).includes("maya@example.com"))
+          throw new Error("a second click doesn't hide the email");
+      });
       await email.click();
       await page.mouse.move(0, 0);
     },
@@ -4513,6 +4665,7 @@ scenes.push(
   },
   {
     name: "setup-missing",
+    test: "nothing on the page offers an API key",
     path: "/setup",
     make: firstRun(),
     act: async (page) => {
@@ -4566,6 +4719,7 @@ scenes.push(
   // place of the stand-in, and each other with how to add its server.
   {
     name: "setup-later-work",
+    test: "nothing on the page offers an API key",
     path: "/setup",
     make: firstRun({ codex: "ready", atlassian: "found", slack: "found" }),
     act: async (page) => {
@@ -4645,6 +4799,7 @@ scenes.push(
   },
   {
     name: "setup-too-new",
+    test: "nothing on the page offers an API key",
     path: "/setup",
     make: firstRun({ cli: { version: "3.0.1", signedIn: true } }),
     act: async (page) => {
@@ -4823,6 +4978,7 @@ scenes.push(
   },
   {
     name: "first-run-settings",
+    test: "nothing on the page offers an API key",
     path: "/settings",
     make: firstRun({ cli: { signedIn: true }, codex: true, atlassian: "on", state: setupFinished }),
     act: async (page) => {
@@ -4903,6 +5059,7 @@ scenes.push(
   // flips back, and says why in its row.
   {
     name: "settings-source-servers-twice",
+    test: "a source server's switch flips at once on each click, and the second click wins",
     path: "/settings/connections",
     make: firstRun({ cli: { signedIn: true }, atlassian: "on", slack: "on", state: setupFinished }),
     act: async (page) => {
@@ -4916,9 +5073,9 @@ scenes.push(
       });
       const on = section.locator(".provider-row", { hasText: "Slack" });
       await on.getByRole("switch", { name: "Slack on" }).click();
-      await on.getByRole("switch", { name: "Slack off" }).waitFor({ timeout: 500 });
+      await on.getByRole("switch", { name: "Slack off" }).waitFor(atOnce());
       await on.getByRole("switch", { name: "Slack off" }).click();
-      await on.getByRole("switch", { name: "Slack on" }).waitFor({ timeout: 500 });
+      await on.getByRole("switch", { name: "Slack on" }).waitFor(atOnce());
       const turned = page.waitForResponse("**/api/actions/source.on");
       clicked();
       await turned;
@@ -4996,6 +5153,7 @@ scenes.push(
   // button shows it's working at once, and takes no second click.
   {
     name: "settings-picks-listing",
+    test: "Pick shows Listing… at once, and takes no second click",
     path: "/settings/connections",
     make: firstRun({ cli: { signedIn: true }, slack: "on", state: setupFinished }),
     act: async (page: Page) => {
@@ -5003,8 +5161,10 @@ scenes.push(
       const row = page.locator(".connection-row", { hasText: "through Slack's" });
       await row.getByRole("button", { name: "Pick" }).click();
       const listing = row.getByRole("button", { name: "Listing…" });
-      await listing.waitFor({ timeout: 500 });
-      if (!(await listing.isDisabled())) throw new Error("Listing… takes a second click");
+      await listing.waitFor(atOnce());
+      await check(async () => {
+        if (!(await listing.isDisabled())) throw new Error("Listing… takes a second click");
+      });
       await row.scrollIntoViewIfNeeded();
     },
   },
@@ -5012,6 +5172,8 @@ scenes.push(
   // under it, never a scroll to the list's foot.
   {
     name: "settings-picks-long",
+    test: "a long list of choices scrolls, and Use these stays in sight under it",
+    testAt: [390],
     path: "/settings/connections",
     make: firstRun({ cli: { signedIn: true }, sheetsMcp: "on", state: setupFinished }),
     act: async (page: Page) => {
@@ -5034,15 +5196,17 @@ scenes.push(
       await row.getByRole("checkbox", { name: "Spreadsheet 1", exact: true }).check();
       const use = row.getByRole("button", { name: "Use these 1" });
       await use.scrollIntoViewIfNeeded();
-      const list = await row.locator(".pick-list .choices").boundingBox();
-      const button = await use.boundingBox();
-      const height = page.viewportSize()?.height ?? 0;
-      // Scrolled into view, the button's foot meets the window's, give or
-      // take the fraction of a pixel the scroll snaps away (OA-351).
-      if (!list || !button || list.height > 18 * 16 + 1 || button.y + button.height > height + 1)
-        throw new Error(
-          `Use these isn't in sight under the list: ${JSON.stringify({ list, button, height })}`,
-        );
+      await check(async () => {
+        const list = await row.locator(".pick-list .choices").boundingBox();
+        const button = await use.boundingBox();
+        const height = page.viewportSize()?.height ?? 0;
+        // Scrolled into view, the button's foot meets the window's, give or
+        // take the fraction of a pixel the scroll snaps away (OA-351).
+        if (!list || !button || list.height > 18 * 16 + 1 || button.y + button.height > height + 1)
+          throw new Error(
+            `Use these isn't in sight under the list: ${JSON.stringify({ list, button, height })}`,
+          );
+      });
       await row.locator(".pick-list").evaluate((list) => list.scrollIntoView({ block: "center" }));
     },
   },
@@ -5053,6 +5217,7 @@ scenes.push(
     let fixture = loadSlackFixture();
     return {
       name,
+      test: "a picked channel the person left stays ticked, saying why, and once unticked it's gone",
       path: "/settings/connections",
       make: () => {
         // The person is in #random too, at first.
@@ -5077,8 +5242,10 @@ scenes.push(
         await row.getByRole("button", { name: "Change" }).click();
         const left = row.getByRole("checkbox", { name: /#random/ });
         await left.waitFor();
-        if (!(await left.isChecked()))
-          throw new Error("A picked channel the person left isn't ticked");
+        await check(async () => {
+          if (!(await left.isChecked()))
+            throw new Error("A picked channel the person left isn't ticked");
+        });
         await row.locator(".choice-unlisted", { hasText: "You're not in this channel" }).waitFor();
         if (name === "settings-picks-left-unpicked") {
           await left.uncheck();
@@ -5086,8 +5253,7 @@ scenes.push(
           await row.getByText("1 picked.").waitFor();
           await row.getByRole("button", { name: "Change" }).click();
           await row.getByRole("checkbox", { name: /#weather-disruptions/ }).waitFor();
-          if ((await row.getByRole("checkbox", { name: /#random/ }).count()) !== 0)
-            throw new Error("An unpicked channel the person left is still listed");
+          await expectCount(row.getByRole("checkbox", { name: /#random/ }), 0);
         }
         await row
           .locator(".pick-list")
@@ -5201,8 +5367,11 @@ scenes.push(
       });
       if (!thread) throw new Error("no thread offers the move");
       await page.goto(new URL(`/threads/${thread}`, page.url()).href);
+      // Approve only once the page is at its latest, so it follows the note that comes.
+      await threadSettled(page);
       await page.getByRole("button", { name: "Approve and apply" }).click();
       await page.locator(".rail-note", { hasText: "Its items went to" }).waitFor();
+      await threadSettled(page);
     },
   },
   // A person who started on Oriel's own tracker turns Jira on through
@@ -5231,6 +5400,7 @@ scenes.push(
       await page.goto(new URL(`/threads/${thread}`, page.url()).href);
       await page.locator(".oriel-note", { hasText: "Jira is on" }).waitFor();
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+      await threadSettled(page);
     },
   },
   // Jira on through Atlassian's server, then the AI goes: every row says no
@@ -5238,6 +5408,7 @@ scenes.push(
   // Sync says why it can't, not to try again.
   {
     name: "settings-source-servers-no-ai",
+    test: "with the AI gone, Source servers never names what it listed before, and Sync says why it can't",
     path: "/settings/connections",
     make: firstRun({
       cli: { signedIn: true },
@@ -5251,8 +5422,7 @@ scenes.push(
     act: async (page) => {
       const section = page.locator("section", { has: page.locator("#settings-source-servers") });
       await section.getByText("No AI is on to read it.").first().waitFor();
-      if (await section.getByText("Through atlassian").count())
-        throw new Error("Source servers still names what the AI listed before");
+      await expectCount(section.getByText("Through atlassian"), 0);
       const jira = page.locator(".connection-row", { hasText: "Jira" });
       await jira.getByRole("button", { name: "Sync" }).click();
       await jira.locator(".connection-problem", { hasText: "No AI is on to read Jira" }).waitFor();
@@ -5339,6 +5509,8 @@ scenes.push(
       await sheetsMapped(page);
       await page.getByRole("button", { name: /tabs Oriel isn't reading/ }).click();
       await page.locator(".folded-list li").first().waitFor();
+      // What the list opens under the pointer would show its hover, or not.
+      await pointerAway(page);
     },
   },
   {
@@ -5384,24 +5556,31 @@ scenes.push(
   // phone the item is a sheet over the thread, its dock offering it (OA-335).
   {
     name: "panel-thread-ask",
+    test: "an item opened from a change set's line marks that line alone, and beside it Approve and apply stays in view",
+    testAt: [390],
     window: true,
     path: `/threads/${thread}`,
     act: async (page) => {
+      await threadSettled(page);
       const line = page.locator(".change-set[data-awaits] .diff-line").first();
       await line.locator(".chip-link").click();
       await page.locator(".item-panel .panel-facts").waitFor();
       await expectCount(page.locator(".diff-line[data-open]"), 1);
-      if ((await line.getAttribute("data-open")) === null)
-        throw new Error("The line the item was opened from should be marked open");
+      await check(async () => {
+        if ((await line.getAttribute("data-open")) === null)
+          throw new Error("The line the item was opened from should be marked open");
+      });
       await page.locator(".panel-place", { hasText: "1 of 3" }).waitFor();
       // The thread's composer, or below 1100 the one docked under the item.
       await page.locator(".ctx-chip:visible", { hasText: "Looking at" }).waitFor();
       if (!beside(page)) return;
-      const approve = page.getByRole("button", { name: "Approve and apply" });
-      const box = await approve.boundingBox();
-      const height = page.viewportSize()?.height ?? 0;
-      if (!box || box.y < 0 || box.y + box.height > height)
-        throw new Error(`Approve and apply should stay in view beside the item: ${box?.y}`);
+      await check(async () => {
+        const approve = page.getByRole("button", { name: "Approve and apply" });
+        const box = await approve.boundingBox();
+        const height = page.viewportSize()?.height ?? 0;
+        if (!box || box.y < 0 || box.y + box.height > height)
+          throw new Error(`Approve and apply should stay in view beside the item: ${box?.y}`);
+      });
     },
   },
   // The workstream page's Ask box offers the item open beside it, and the
@@ -5409,6 +5588,8 @@ scenes.push(
   // from nothing keeps one too, read-only on its empty workstream.
   {
     name: "panel-workstream-ask",
+    test: "a thread started from the workstream page's Ask box keeps the open item on its first message; one from nothing keeps it read-only; an about not open is refused",
+    testAt: [390],
     window: true,
     // Its refused abouts log their 400s.
     refused: 400,
@@ -5445,52 +5626,58 @@ scenes.push(
         await page.locator(".item-panel .panel-facts").waitFor();
         await page.locator(".composer .ctx-chip", { hasText: "SYN-99" }).waitFor();
       }
-      const fromPage = new URL(page.url()).pathname.split("/").at(-1) ?? "";
-      const said = await page.evaluate(
-        async ({ fromPage, workstream }) => {
-          const first = async (thread: string) => {
-            const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
-              entries: { kind: string; about?: unknown }[];
+      await check(async () => {
+        const fromPage = new URL(page.url()).pathname.split("/").at(-1) ?? "";
+        const said = await page.evaluate(
+          async ({ fromPage, workstream }) => {
+            const first = async (thread: string) => {
+              const view = (await (await fetch(`/api/threads/${thread}`)).json()) as {
+                entries: { kind: string; about?: unknown }[];
+              };
+              return view.entries.find((entry) => entry.kind === "user")?.about;
             };
-            return view.entries.find((entry) => entry.kind === "user")?.about;
-          };
-          const made = await fetch("/api/threads", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text: "Plan it", about: [{ id: "jira:SYN-99", under: null }] }),
-          });
-          const { id: fromNothing } = (await made.json()) as { id: string };
-          // One about nothing open is refused before it makes anything.
-          const count = async () =>
-            ((await (await fetch("/api/threads")).json()) as { threads: unknown[] }).threads.length;
-          const before = await count();
-          const refused = await Promise.all(
-            ["/api/threads", `/api/workstreams/${workstream}/threads`].map(async (path) => {
-              const sent = await fetch(path, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ text: "Plan it", about: [{ id: "SYN-99" }] }),
-              });
-              return sent.status;
-            }),
-          );
-          return {
-            fromPage: await first(fromPage),
-            fromNothing: await first(fromNothing),
-            refused,
-            made: (await count()) - before,
-          };
-        },
-        { fromPage, workstream: id },
-      );
-      const got = JSON.stringify(said);
-      const want = JSON.stringify({
-        fromPage: [{ id: "jira:SYN-99", outside: false }],
-        fromNothing: [{ id: "jira:SYN-99", outside: true }],
-        refused: [400, 400],
-        made: 0,
+            const made = await fetch("/api/threads", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                text: "Plan it",
+                about: [{ id: "jira:SYN-99", under: null }],
+              }),
+            });
+            const { id: fromNothing } = (await made.json()) as { id: string };
+            // One about nothing open is refused before it makes anything.
+            const count = async () =>
+              ((await (await fetch("/api/threads")).json()) as { threads: unknown[] }).threads
+                .length;
+            const before = await count();
+            const refused = await Promise.all(
+              ["/api/threads", `/api/workstreams/${workstream}/threads`].map(async (path) => {
+                const sent = await fetch(path, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ text: "Plan it", about: [{ id: "SYN-99" }] }),
+                });
+                return sent.status;
+              }),
+            );
+            return {
+              fromPage: await first(fromPage),
+              fromNothing: await first(fromNothing),
+              refused,
+              made: (await count()) - before,
+            };
+          },
+          { fromPage, workstream: id },
+        );
+        const got = JSON.stringify(said);
+        const want = JSON.stringify({
+          fromPage: [{ id: "jira:SYN-99", outside: false }],
+          fromNothing: [{ id: "jira:SYN-99", outside: true }],
+          refused: [400, 400],
+          made: 0,
+        });
+        if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
       });
-      if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
     },
   },
   // "Ask about this" (OA-337): an item open in Browse goes to the overview,
@@ -5509,6 +5696,8 @@ scenes.push(
   },
   ...(["this", "ongoing", "asked"] as const).map((step): Scene => ({
     name: `ask-about-${step}`,
+    test: "Ask about this takes an item from Browse to the window chat, still open and offered, keeping words typed while the chat loads",
+    testAt: [390],
     window: true,
     path: "/browse?grouping=epic",
     make: async () => {
@@ -5552,9 +5741,11 @@ scenes.push(
         release();
         const said = beside(page) ? ".window-chat .reply" : ".item-panel .panel-dock-latest";
         await page.locator(said, { hasText: "saved cards" }).first().waitFor();
-        const typed = composer.getByRole("textbox", { name: "Message" });
-        if ((await typed.inputValue()) !== "Who owns this?")
-          throw new Error("The words typed while the chat loaded went missing");
+        await check(async () => {
+          const typed = composer.getByRole("textbox", { name: "Message" });
+          if ((await typed.inputValue()) !== "Who owns this?")
+            throw new Error("The words typed while the chat loaded went missing");
+        });
         await composer
           .locator(".ctx-chip", { hasText: "Looking at" })
           .filter({ hasText: key })
@@ -5657,6 +5848,8 @@ scenes.push(
   ...(["thread", "window"] as const).flatMap((chat) =>
     (["kept", "shown"] as const).map((step): Scene => ({
       name: `chat-new-message-${chat}${step === "shown" ? "-shown" : ""}`,
+      test: "a new message leaves a chat read from its top where it was, with a pill; the pill takes it to the end, where it follows",
+      testAt: [390],
       window: true,
       path: "/",
       make: () => longChat(chat),
@@ -5689,9 +5882,11 @@ scenes.push(
         await pill.waitFor();
         if (step === "kept") {
           await answered(replies + 1);
-          const moved = await page.evaluate(at);
-          if (moved !== 0)
-            throw new Error(`A new message moved the chat read from its top: ${moved}`);
+          await check(async () => {
+            const moved = await page.evaluate(at);
+            if (moved !== 0)
+              throw new Error(`A new message moved the chat read from its top: ${moved}`);
+          });
           await pill.waitFor();
           return;
         }
@@ -5739,16 +5934,40 @@ async function openInBrowse(page: Page): Promise<string> {
   return key;
 }
 
-const widths = asked.values.width?.map(Number) ?? [1280, 390];
+const widths = givenWidths.map(Number);
 const picked = asked.positionals;
 for (const width of widths)
   if (!Number.isInteger(width) || width < 320) throw new Error(`Not a width in pixels: ${width}`);
-// `onboarding` alone runs the onboarding's timed runs and nothing else.
-const onlyOnboarding = picked.length === 1 && picked[0] === "onboarding";
-for (const start of onlyOnboarding ? [] : picked)
-  if (!scenes.some((scene) => scene.name.startsWith(start)))
-    throw new Error(`No scene's name starts with ${start}`);
 const schemes = ["light", "dark"] as const;
+// The scheme a page shows now, which its console's problems name.
+let scheme: (typeof schemes)[number] = "light";
+const wanted = (name: string) =>
+  picked.length === 0 || picked.some((start) => name.startsWith(start));
+
+// The behaviour tests (decision 0063): each scene with a test, light, at
+// 1280 and its other widths, and the first run's timed onboarding on each
+// path a person may start on. A lane takes every nth, in the scenes' order.
+const onboardingPaths = ["ready", "signed-out", "missing"] as const;
+type Test = { name: string; width: number } & (
+  | { scene: Scene }
+  | { path: (typeof onboardingPaths)[number] }
+);
+const [lane, lanes] = (asked.values.lane ?? "1/1").split("/").map(Number) as [number, number];
+if (!(lanes >= 1 && lane >= 1 && lane <= lanes))
+  throw new Error(`Not a lane: ${asked.values.lane}`);
+const tests: Test[] = testing
+  ? [
+      ...onboardingPaths.map((path) => ({ name: `onboarding-${path}`, width: 1280, path })),
+      ...scenes.flatMap((scene) =>
+        scene.test
+          ? [1280, ...(scene.testAt ?? [])].map((width) => ({ name: scene.name, width, scene }))
+          : [],
+      ),
+    ].filter((test) => wanted(test.name))
+  : [];
+for (const start of picked)
+  if (!(testing ? tests : scenes).some((each) => each.name.startsWith(start)))
+    throw new Error(`No ${testing ? "test" : "scene"}'s name starts with ${start}`);
 
 // Scrolls the page to the top until it stays there, as a page that scrolls
 // itself (a thread to its newest entry) may move it again. In the browser.
@@ -5803,61 +6022,103 @@ const unnudged = `document.querySelectorAll(".sidebar").forEach((sidebar) => {
 
 const browser = await chromium.launch({ channel: "chrome", chromiumSandbox: true });
 const problems: string[] = [];
-try {
-  for (const scheme of schemes) {
-    for (const width of widths) {
-      let scene: Scene | null = null;
-      // The window says how long ago things were by the browser's clock. Held
-      // at the shoot's start, what the setup made reads "just now" in every
-      // scene, however long the shoot has run; timers still run. The clock
-      // is a script in every frame, which a sketch's sandbox refuses, so a
-      // scene with a sketch has a page on the real clock.
-      const opened = async (pinned: boolean) => {
-        const context = await browser.newContext({
-          viewport: { width, height: width < 600 ? 844 : 800 },
-          deviceScaleFactor: 2,
-          colorScheme: scheme,
-          locale: "en-US",
-          timezoneId: "UTC",
-        });
-        if (pinned) await context.clock.setFixedTime(shootStarted);
-        const page = await context.newPage();
-        page.on("console", (message) => {
-          const expected = scene?.refused && message.text().includes(`status of ${scene.refused}`);
-          if ((message.type() === "error" || message.type() === "warning") && !expected) {
-            problems.push(`${scheme} ${width}: console ${message.type()}: ${message.text()}`);
-          }
-        });
-        page.on("pageerror", (error) => problems.push(`${scheme} ${width}: ${error.message}`));
-        return { context, page };
-      };
-      const pinned = await opened(true);
-      const unpinned = await opened(false);
-      for (scene of onlyOnboarding ? [] : scenes) {
-        const { name } = scene;
-        if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
-        const { page } = scene.sketch ? unpinned : pinned;
-        const on = scene.make ? await scene.make() : (scene.on ?? server);
-        if (on.app.settings.page().theme !== theme) await on.app.settings.change({ theme });
-        if (textSize !== undefined && on.app.settings.page().textSize !== textSize)
-          await on.app.settings.change({ textSize: textSize as TextSize });
-        await page.goto(new URL(scene.path, on.url).href);
-        // A scene that fails, in its steps or the waits after them, leaves a
-        // shot of where it stopped, to see why.
-        await (async () => {
-          await scene.act?.(page);
-          // These show an answer or a thread once it's done, never "Working…".
-          if (/^(ask-|panel-|search-opened)/.test(name))
-            await page.locator(".working").first().waitFor({ state: "detached" });
-        })().catch(async (error: unknown) => {
-          const failed = new URL(`${name}-${scheme}-${width}.stopped.png`, out);
-          await page.screenshot({ path: fileURLToPath(failed) }).catch(() => {});
-          if (onCi) {
-            const message = error instanceof Error ? error.message : String(error);
-            process.stdout.write(annotation(`shots: ${name} ${scheme} ${width}`, message));
-          }
-          throw error;
-        });
+// The servers scenes made for themselves, closing once their shots are
+// taken, each let go of what it holds by the end.
+const closing: Promise<void>[] = [];
+
+// Two pages at `width`, light. The window says how long ago things were by
+// the browser's clock. Held at the shoot's start, what the setup made reads
+// "just now" in every scene, however long the shoot has run; timers still
+// run. The clock is a script in every frame, which a sketch's sandbox
+// refuses, so a scene with a sketch has a page on the real clock.
+async function pagesAt(width: number) {
+  const opened = async (pinned: boolean) => {
+    const context = await browser.newContext({
+      viewport: { width, height: width < 600 ? 844 : 800 },
+      deviceScaleFactor: 2,
+      colorScheme: "light",
+      locale: "en-US",
+      timezoneId: "UTC",
+    });
+    if (pinned) await context.clock.setFixedTime(shootStarted);
+    const page = await context.newPage();
+    page.on("console", (message) => {
+      const expected = acting?.refused && message.text().includes(`status of ${acting.refused}`);
+      if ((message.type() === "error" || message.type() === "warning") && !expected) {
+        problems.push(`${scheme} ${width}: console ${message.type()}: ${message.text()}`);
+      }
+    });
+    page.on("pageerror", (error) => problems.push(`${scheme} ${width}: ${error.message}`));
+    return { context, page };
+  };
+  const pinned = await opened(true);
+  const unpinned = await opened(false);
+  return {
+    pageFor: (scene: Scene) => (scene.sketch ? unpinned : pinned).page,
+    close: async () => {
+      await pinned.context.close();
+      await unpinned.context.close();
+    },
+  };
+}
+
+// The scene's server, in this shoot's theme and text size.
+async function serverFor(scene: Scene): Promise<Serving> {
+  const on = scene.make ? await scene.make() : (scene.on ?? server);
+  if (on.app.settings.page().theme !== theme) await on.app.settings.change({ theme });
+  if (textSize !== undefined && on.app.settings.page().textSize !== textSize)
+    await on.app.settings.change({ textSize: textSize as TextSize });
+  return on;
+}
+
+// The scene's steps, from its path. One that fails, in its steps or the
+// waits after them, leaves a shot of where it stopped, to see why.
+async function steps(scene: Scene, page: Page, on: Serving, width: number): Promise<void> {
+  const { name } = scene;
+  acting = scene;
+  try {
+    await page.goto(new URL(scene.path, on.url).href);
+    await scene.act?.(page);
+    // These show an answer or a thread once it's done, never "Working…".
+    if (/^(ask-|panel-|search-opened)/.test(name))
+      await page.locator(".working").first().waitFor({ state: "detached" });
+  } catch (error: unknown) {
+    const failed = new URL(`${name}-${scheme}-${width}.stopped.png`, out);
+    await page.screenshot({ path: fileURLToPath(failed) }).catch(() => {});
+    if (onCi) {
+      const message = error instanceof Error ? error.message : String(error);
+      const title = `${testing ? "ui-test" : "shots"}: ${name} ${scheme} ${width}`;
+      process.stdout.write(annotation(title, message));
+    }
+    throw error;
+  }
+}
+
+// Leaving first cancels a held request quietly; aborting it logs. A server
+// of the scene's own closes once the page has left it.
+async function leave(scene: Scene, page: Page, on: Serving): Promise<void> {
+  if (hung.length > 0 || scene.make) await page.goto("about:blank");
+  for (const route of hung.splice(0)) await route.abort().catch(() => {});
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  acting = null;
+  if (!scene.make || holdsUp.has(on)) return;
+  started.splice(started.indexOf(on), 1);
+  closing.push(on.close().catch(() => {}));
+}
+
+// Every scene at each width: its steps once, then a shot in light and one
+// in dark, from the same page.
+async function shoot(): Promise<void> {
+  for (const width of widths) {
+    const pages = await pagesAt(width);
+    for (const scene of scenes) {
+      if (!wanted(scene.name)) continue;
+      const page = pages.pageFor(scene);
+      const on = await serverFor(scene);
+      await steps(scene, page, on, width);
+      for (scheme of schemes) {
+        // The page opened light; dark is a switch on the page as it is.
+        if (scheme !== "light") await page.emulateMedia({ colorScheme: scheme });
         // A full page draws what's fixed or sticky where the window was
         // scrolled to, which a scene's last step leaves to chance: shoot it
         // from the top, once it has stayed there for three frames.
@@ -5870,23 +6131,75 @@ try {
         await page.evaluate(unnudged);
         const path = fileURLToPath(new URL(`${scene.name}-${scheme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: !scene.window, animations: "disabled" });
-        // Leaving first cancels a held request quietly; aborting it logs.
-        if (hung.length > 0) await page.goto("about:blank");
-        for (const route of hung.splice(0)) await route.abort().catch(() => {});
-        await page.unrouteAll({ behavior: "ignoreErrors" });
         console.log(path);
       }
-      await pinned.context.close();
-      await unpinned.context.close();
+      scheme = "light";
+      await page.emulateMedia({ colorScheme: scheme });
+      await leave(scene, page, on);
     }
+    await pages.close();
   }
-  // The onboarding's timed runs are the default theme's.
-  if ((picked.length === 0 || onlyOnboarding) && theme === defaultTheme) await onboarding();
+}
+
+// This lane's behaviour tests, each passing or failing on its own: a
+// failed step or check, or a problem in the console while it ran.
+async function test(): Promise<number> {
+  const mine = tests.filter((_, at) => at % lanes === lane - 1);
+  let failed = 0;
+  const said = (each: Test, began: number, problem?: string) => {
+    const took = `${((Date.now() - began) / 1000).toFixed(1)}s`;
+    if (problem === undefined) console.log(`ok ${each.name} ${each.width} (${took})`);
+    else {
+      failed++;
+      console.log(`FAIL ${each.name} ${each.width} (${took}): ${problem}`);
+    }
+  };
+  const ran = async (each: Test, what: () => Promise<void>) => {
+    const began = Date.now();
+    const before = problems.length;
+    let problem: string | undefined;
+    try {
+      await what();
+    } catch (error) {
+      problem = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    }
+    const logged = problems.splice(before);
+    if (logged.length > 0 && onCi)
+      for (const line of logged)
+        process.stdout.write(annotation(`ui-test: ${each.name} ${each.width}`, line));
+    said(each, began, problem ?? (logged.length > 0 ? logged.join("; ") : undefined));
+  };
+  for (const width of new Set(mine.map((each) => each.width))) {
+    const pages = await pagesAt(width);
+    for (const each of mine) {
+      if (each.width !== width || !("scene" in each)) continue;
+      const { scene } = each;
+      const page = pages.pageFor(scene);
+      await ran(each, async () => {
+        const on = await serverFor(scene);
+        try {
+          await steps(scene, page, on, width);
+        } finally {
+          await leave(scene, page, on);
+        }
+      });
+    }
+    await pages.close();
+  }
+  for (const each of mine) if ("path" in each) await ran(each, () => onboarding(each.path));
+  return failed;
+}
+
+let failures = 0;
+try {
+  if (testing) failures = await test();
+  else await shoot();
 } finally {
   releaseAll();
   await browser.close();
   inFlight.release();
   await inFlight.approving;
+  await Promise.all(closing);
   for (const serving of started) await serving.close();
   removeHomes();
 }
@@ -5894,56 +6207,52 @@ try {
 // The onboarding budget (SPEC §4; decisions 0038 and 0059), as fast as a
 // script clicks: from the first run's first screen on a fresh data folder,
 // the AI set up, what Oriel found, your work on the stand-in tracker, one
-// question asked and one change approved, on each path a person may start
-// on. Claude Code ready, under five minutes; signed out, plus one; missing,
+// question asked and one change approved, on a path a person may start on.
+// Claude Code ready, under five minutes; signed out, plus one; missing,
 // with Anthropic's installer, plus three. The word "token" is counted on
 // each screen, in its text and in what its fields and tooltips say, and
-// never shows.
-async function onboarding(): Promise<void> {
+// never shows. The setup, once finished, doesn't come back.
+async function onboarding(path: (typeof onboardingPaths)[number]): Promise<void> {
   const budgets = { ready: 5, "signed-out": 6, missing: 8 } as const;
-  for (const path of ["ready", "signed-out", "missing"] as const) {
-    const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
-    const serving = await firstRunServer(
-      start,
-      (deps) => scripted(deps, planning),
-      async () => notes,
-      { ...(path === "missing" ? {} : { cli: { signedIn: path === "ready" } }), data },
+  const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
+  const serving = await firstRunServer(
+    start,
+    (deps) => scripted(deps, planning),
+    async () => notes,
+    { ...(path === "missing" ? {} : { cli: { signedIn: path === "ready" } }), data },
+  );
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  try {
+    const { ms, tokens } = await timedPath(page, serving.url, path);
+    const minutes = (ms / 60_000).toFixed(2);
+    console.log(
+      `first run, ${path}: ${minutes} min from the first screen to an approved change set, of ${budgets[path]}`,
     );
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    const page = await context.newPage();
-    try {
-      const { ms, tokens } = await timedPath(page, serving.url, path);
-      const minutes = (ms / 60_000).toFixed(2);
-      console.log(
-        `first run, ${path}: ${minutes} min from the first screen to an approved change set, of ${budgets[path]}`,
-      );
-      console.log(
-        `first run, ${path}: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
-      );
-      if (ms > budgets[path] * 60_000)
-        problems.push(`first run, ${path}: ${minutes} min, over the budget of ${budgets[path]}`);
-      const total = tokens.reduce((sum, [, n]) => sum + n, 0);
-      if (total > 0)
-        problems.push(`first run, ${path}: "token" appears ${total} times, where it never may`);
-      // The setup has finished, and doesn't come back.
-      await page.goto(new URL("/setup", serving.url).href);
-      if (new URL(page.url()).pathname !== "/")
-        problems.push(`first run, ${path}: the setup showed again once it had finished`);
-    } catch (error) {
-      problems.push(
-        `first run, ${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
-      );
-      await page.screenshot({ path: fileURLToPath(new URL(`first-run-${path}-stopped.png`, out)) });
-    } finally {
-      await context.close();
-      // The server closes with the rest; its folder goes with the homes.
-      keepUntilDone(data);
-    }
+    console.log(
+      `first run, ${path}: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
+    );
+    if (ms > budgets[path] * 60_000)
+      throw new Error(`${minutes} min, over the budget of ${budgets[path]}`);
+    const total = tokens.reduce((sum, [, n]) => sum + n, 0);
+    if (total > 0) throw new Error(`"token" appears ${total} times, where it never may`);
+    await page.goto(new URL("/setup", serving.url).href);
+    if (new URL(page.url()).pathname !== "/")
+      throw new Error("the setup showed again once it had finished");
+  } catch (error) {
+    await page
+      .screenshot({ path: fileURLToPath(new URL(`first-run-${path}-stopped.png`, out)) })
+      .catch(() => {});
+    throw error;
+  } finally {
+    await context.close();
+    // The server closes with the rest; its folder goes with the homes.
+    keepUntilDone(data);
   }
 }
 
 for (const problem of problems) {
   console.error(problem);
-  if (onCi) process.stdout.write(annotation("shots", problem));
+  if (onCi) process.stdout.write(annotation(testing ? "ui-test" : "shots", problem));
 }
-process.exitCode = problems.length === 0 ? 0 : 1;
+process.exitCode = problems.length === 0 && failures === 0 ? 0 : 1;

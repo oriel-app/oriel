@@ -11,6 +11,7 @@ No UI copy that merely restates a visible label or obvious interaction.
 - Which layer a change gets a test at, and which unit tests stay: the `unit-tests` skill.
 - `pnpm perf`: the window's open on a 4,000-item world, in Chrome, against its budget. Run it after touching the index, the overview or Browse.
 - `pnpm ui-check` when you touch `packages/web`, and fix the page it names in the same PR.
+- `pnpm ui-test`: the window's behaviour tests, in parallel, with no pictures; CI's ui job runs them. Run it when you touch `packages/web` or `scripts/shots.ts`. `pnpm shots` takes pictures, which are evidence for review, not a test (decision 0063).
 - `pnpm desktop:try <scenario>`: the built desktop app, hidden, on a fresh data folder, with its secrets in memory. See `packages/desktop/README.md`.
 
 ## Gotchas

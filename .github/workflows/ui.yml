@@ -1,20 +1,27 @@
 name: ui
 
 # The window's own checks: `pnpm ui-check` (accessibility, links, chrome) and
-# `pnpm shots` (its exit code only). Path-filtered, so it must never be a
-# required check, and it doesn't run on merge_group: path filters don't apply
-# in the merge queue.
+# `pnpm ui-test`, its behaviour tests (decision 0063). Screenshots are evidence
+# for review, not a test, so CI takes none. Path-filtered, so it must never be
+# a required check, and it doesn't run on merge_group: path filters don't
+# apply in the merge queue.
 on:
   pull_request:
     paths:
       - "packages/web/**"
       - "packages/design-system/**"
+      - "scripts/shots.ts"
+      - "scripts/shots-first-run.ts"
+      - "scripts/ui-test.ts"
       - ".github/workflows/ui.yml"
   push:
     branches: [main]
     paths:
       - "packages/web/**"
       - "packages/design-system/**"
+      - "scripts/shots.ts"
+      - "scripts/shots-first-run.ts"
+      - "scripts/ui-test.ts"
       - ".github/workflows/ui.yml"
 
 permissions:
@@ -27,7 +34,7 @@ concurrency:
 jobs:
   ui:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,5 +43,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: ui-check
         run: pnpm ui-check
-      - name: shots
-        run: pnpm shots
+      - name: ui-test
+        run: pnpm ui-test
