@@ -1714,6 +1714,52 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
+// A server of the questions-* scene's own, with three epics' workstreams,
+// so the overview has a headline for each question to start from.
+let questioning = server;
+const questioned = async () => {
+  questioning = (await writing()).serving;
+  for (const cluster of ["10001", "10002", "10003"])
+    await post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster }, questioning);
+  return questioning;
+};
+
+// Each question beside the headline it comes from, its words naming
+// nothing that line names, and the line describing it: by kind, the whole
+// label a thread it starts is titled with.
+async function questionsBeside(page: Page): Promise<Record<string, string>> {
+  const named = (line: string) =>
+    page.locator(`[data-headline="${line}"] .overview-title`).first().innerText();
+  const want = [
+    ["moved", "What moved in it?", async () => `What moved in ${await named("moved")}?`],
+    ["moved", "Chart what moved", async () => "Chart what moved since I looked, by workstream"],
+    ["quiet", "Why is it stalled?", async () => `Why is ${await named("quiet")} stalled?`],
+  ] as const;
+  const whole: Record<string, string> = {};
+  for (const [line, short, label] of want) {
+    const button = page.locator(`[data-headline="${line}"] .ask-question`, { hasText: short });
+    await button.waitFor();
+    const about = await button.getAttribute("aria-describedby");
+    const body = page.locator(`[data-headline="${line}"] .overview-headline-body`);
+    if (!about || (await body.getAttribute("id")) !== about)
+      throw new Error(`${short} isn't described by its headline's line`);
+    whole[short === "Why is it stalled?" ? "stalled" : short] = await label();
+  }
+  const top = page.locator('[data-headline="top"] .ask-question');
+  await top.waitFor();
+  const topShort = await top.innerText();
+  if (!/^(Should it become a workstream\?|Make it a workstream)$/.test(topShort))
+    throw new Error(`The top headline's question says ${topShort}`);
+  const title = page.locator('[data-headline="top"] .overview-title').first();
+  const key = title.locator(".key");
+  const said = await title.innerText();
+  const item = (await key.count()) ? said.slice((await key.innerText()).length).trim() : said;
+  whole.top = topShort.startsWith("Should")
+    ? `Should ${item} become a workstream?`
+    : `Make ${item} a workstream`;
+  return whole;
+}
+
 // Moving an item between workstreams (moving.ts), on a server of each
 // shot's own: "Checkout polish" holds three items, and "Gift cards" one.
 // At 1280 the item's row is dragged with the mouse, down, across and up,
@@ -4512,6 +4558,46 @@ const scenes: Scene[] = [
     make: async () => (await writing()).serving,
     act: (page) => movedChat(page, "gathered"),
   },
+  // The questions to start from (OA-354): each beside its headline before a
+  // chat starts, in a short form; none on the overview once one has; and
+  // New chat shows them all, whole, in the chat itself. A thread started
+  // from a short one is titled with its whole label.
+  ...(["questions-beside", "questions-asked", "questions-new-chat"] as const).map(
+    (name): Scene => ({
+      name,
+      path: "/",
+      window: true,
+      make: questioned,
+      act: async (page) => {
+        await overviewShown(page);
+        const beside = await questionsBeside(page);
+        if (name === "questions-beside") return;
+        await page
+          .locator(".overview-headline .ask-question", { hasText: "Why is it stalled?" })
+          .click();
+        await page.locator(".window-chat .chat-entry").first().waitFor();
+        await page.locator(".working").first().waitFor({ state: "detached" });
+        await expectCount(page.locator(".overview .ask-question"), 0);
+        const { thread } = await call<{ thread: string }>(questioning, "GET", "/api/window-chat");
+        const { title } = await call<{ title: string | null }>(
+          questioning,
+          "GET",
+          `/api/threads/${thread}`,
+        );
+        if (title !== beside.stalled)
+          throw new Error(`The thread is titled ${String(title)}, not ${beside.stalled}`);
+        if (name === "questions-asked") return;
+        await page.locator(".window-chat").getByRole("button", { name: "New chat" }).click();
+        const starts = page.locator(".window-chat .rail-starts .ask-question");
+        await starts.first().waitFor();
+        const shown = await starts.allInnerTexts();
+        const whole = Object.values(beside).sort();
+        if (shown.toSorted().join("|") !== whole.join("|"))
+          throw new Error(`New chat shows ${shown.join(", ")}, not ${whole.join(", ")}`);
+        await expectCount(page.locator(".overview .ask-question"), 0);
+      },
+    }),
+  ),
 ];
 
 // The window chat moving into its workstream, each way in (OA-355), with no

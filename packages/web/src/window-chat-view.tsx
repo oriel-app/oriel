@@ -120,8 +120,9 @@ export function OverviewComposer(props: {
 }
 
 // A question to start from, as a button: its label shows, and its fixed
-// wording is what's sent. `about`: the ID of the headline line it comes from,
-// which describes it.
+// wording is what's sent. `about`: the ID of the headline line it sits
+// beside, which describes it; there it shows its short form, which names
+// nothing that line names. Its accessible name is its visible words.
 export function QuestionButton(props: {
   question: Question;
   chat: WindowChatModel;
@@ -137,7 +138,7 @@ export function QuestionButton(props: {
       aria-describedby={props.about}
       onClick={() => props.dispatch({ type: "chat", msg: { type: "questionPicked", question } })}
     >
-      {question.label}
+      {(props.about && question.short) || question.label}
     </button>
   );
 }
@@ -149,6 +150,8 @@ const noneReadOnly = () => false;
 export function WindowChat(props: {
   chat: WindowChatModel;
   thread: ThreadModel | null;
+  // Its empty state: every question to start from, in its whole wording.
+  questions: Question[];
   dispatch: Dispatch;
 }) {
   const { chat, thread, dispatch } = props;
@@ -256,7 +259,19 @@ export function WindowChat(props: {
             </Link>
           </li>
         )}
-        {thread === null && !chat.asking && (
+        {thread === null && !chat.asking && props.questions.length > 0 && (
+          <li class="rail-starts" role="group" aria-label="Questions to start from">
+            {props.questions.map((question) => (
+              <QuestionButton
+                key={question.kind}
+                question={question}
+                chat={chat}
+                dispatch={dispatch}
+              />
+            ))}
+          </li>
+        )}
+        {thread === null && !chat.asking && props.questions.length === 0 && (
           <li class="window-chat-empty">
             Ask about what changed, what needs you, or what should become a workstream.
           </li>

@@ -41,7 +41,8 @@ import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
 import { ConnectNotices } from "./connect-steps.tsx";
 import { OverviewComposer, WindowChat, windowChatComposer } from "./window-chat-view.tsx";
-import { chatThread } from "./window-chat.ts";
+import { chatThread, type Question, questionsFrom } from "./window-chat.ts";
+import { standingIn } from "./connections.ts";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [model, dispatch] = useProgram(program, railMoved);
@@ -197,7 +198,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
                   </ItemLinksContext.Provider>
                 </div>
                 {chatOpen && (!model.panel || itemFolded) && (
-                  <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
+                  <WindowChat
+                    chat={model.chat}
+                    thread={model.thread}
+                    questions={startQuestions(model)}
+                    dispatch={dispatch}
+                  />
                 )}
                 {model.panel && !itemFolded && (
                   <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
@@ -343,6 +349,16 @@ function writeFolded(folded: boolean) {
   }
 }
 
+// The window chat's questions to start from (decision 0030), from the
+// overview's headlines: beside them before a chat starts, and in the rail's
+// empty state after. The first run's top one is an instruction (0038).
+function startQuestions(model: Model): Question[] {
+  const view = model.overview?.view;
+  if (!view || noAi(model.settings)) return [];
+  const firstRun = model.setup.view?.firstRun?.firstRun === true;
+  return questionsFrom(view, firstRun, standingIn(model.connectors, model.connections).length > 0);
+}
+
 function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch: Dispatch }) {
   const { model, dispatch } = props;
   switch (model.route.page) {
@@ -359,10 +375,8 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
             chat={model.chat}
             thread={model.thread}
             ongoing={model.thread !== null}
-            firstRun={{
-              line: model.setup.view?.firstRun?.line === true,
-              questions: model.setup.view?.firstRun?.firstRun === true,
-            }}
+            questions={startQuestions(model)}
+            firstRun={{ line: model.setup.view?.firstRun?.line === true }}
             noAi={noAi(model.settings)}
             onNeedsYou={props.onNeedsYou}
             dispatch={dispatch}
