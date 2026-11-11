@@ -794,7 +794,11 @@ export function turns(deps: TurnDeps) {
       const earlier = threads.messages(threadId);
       const failed = failedTurn(earlier);
       if (!failed) throw new NothingFailed();
-      capped(threadId, earlier);
+      // The question is asked already: only what came before it counts.
+      capped(
+        threadId,
+        earlier.filter((message) => message.seq < failed.said.seq),
+      );
       const thread = threads.get(threadId, deps.now());
       if (!thread) throw new RangeError(`no thread ${threadId}`);
       const { text, about, seq } = failed.said;

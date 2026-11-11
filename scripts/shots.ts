@@ -2010,6 +2010,11 @@ const failingOn = async () => {
   const serving = await start(0, {
     db: ":memory:",
     sources: { jira: { mode: "fixture" } },
+    // The title fails beside the first turn, and is made after the next.
+    titler: async () => {
+      if (turns <= 1) throw new Error("fetch failed");
+      return "Stories still needing estimates";
+    },
     agent: (deps) => {
       const answers = scripted(deps, () => [{ text: "Three stories here still need estimates." }]);
       return {
@@ -4691,6 +4696,7 @@ const scenes: Scene[] = [
         .locator(".reply", { hasText: "Three stories here still need estimates." })
         .waitFor();
       await tryAgain(page).waitFor({ state: "detached" });
+      await page.locator("h1", { hasText: "Stories still needing estimates" }).waitFor();
       const asked = page.locator(".user-message", { hasText: "Which stories here still need" });
       if ((await asked.count()) !== 1) throw new Error("Try again said the message twice");
     },
