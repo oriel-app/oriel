@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspect } from "node:util";
-import { anthropicKey, anthropicProvider } from "./anthropic.ts";
+import { anthropicKey, anthropicProvider, maxRetryAfterMs, retryDelaysMs } from "./anthropic.ts";
 import { runTool, systemPrompt, threadMessages } from "./prompt.ts";
 import {
   type ConversationRequest,
@@ -160,7 +160,7 @@ test("the key goes nowhere but its header: not in errors, logs or the provider",
         { status: 401, headers: { "content-type": "application/json" } },
       ),
   ]);
-  const provider = anthropicProvider({ apiKey: key, fetch: network.fetch });
+  const provider = anthropicProvider({ apiKey: key, fetch: network.fetch, wait: async () => {} });
   const refused = await collect(conversation(provider, {}, logged).next([])).catch(
     (error: unknown) => error,
   );
@@ -170,6 +170,7 @@ test("the key goes nowhere but its header: not in errors, logs or the provider",
 
   const offline = anthropicProvider({
     apiKey: key,
+    wait: async () => {},
     fetch: async () => {
       throw new TypeError(`fetch failed for ${key}`);
     },
@@ -183,6 +184,73 @@ test("the key goes nowhere but its header: not in errors, logs or the provider",
   assert.doesNotMatch(JSON.stringify(logged), /TESTKEY/);
   assert.doesNotMatch(inspect(provider, { depth: 10, showHidden: true }), /TESTKEY/);
   assert.doesNotMatch(JSON.stringify(provider), /TESTKEY/);
+});
+
+// OA-227: on 2026-11-03 one dropped connection ("fetch failed") ended a turn
+// that the same question a minute later answered. OA-248: one 529 did too.
+test("a request that failed before any response is sent again, at most twice, as the answer asks", async () => {
+  const waited: number[] = [];
+  const wait = async (ms: number) => {
+    waited.push(ms);
+  };
+  const dropped = () => {
+    throw new TypeError("fetch failed", {
+      cause: Object.assign(new Error("read"), { code: "ECONNRESET" }),
+    });
+  };
+  const busy = (status: number, after?: string) => () =>
+    new Response(JSON.stringify({ type: "error", error: { type: "overloaded_error" } }), {
+      status,
+      headers: after ? { "retry-after": after } : {},
+    });
+  const answer = events([start(), ...end("end_turn")]);
+
+  // Dropped, then overloaded with a Retry-After, then answered.
+  const logged: Logged[] = [];
+  const blip = api([dropped, busy(529, "3"), answer]);
+  const ok = anthropicProvider({ apiKey: key, fetch: blip.fetch, wait });
+  const got = await collect(conversation(ok, {}, logged).next([]));
+  assert.equal(got.at(-1)?.kind, "end");
+  assert.equal(blip.seen.length, 3);
+  assert.deepEqual(waited, [retryDelaysMs[0], 3_000]);
+  const retries = logged.filter((l) => l.message === "provider.retry").map((l) => l.fields);
+  assert.equal(retries.length, 2);
+  assert.deepEqual(Reflect.get(retries[0] as object, "cause"), "ECONNRESET");
+  assert.deepEqual(Reflect.get(retries[1] as object, "status"), 529);
+
+  // Still down after two retries: the error names the cause.
+  const down = api([dropped, dropped, dropped, answer]);
+  const offline = anthropicProvider({ apiKey: key, fetch: down.fetch, wait });
+  await assert.rejects(collect(conversation(offline).next([])), (error: unknown) => {
+    assert.ok(error instanceof ProviderError);
+    assert.match(error.message, /ECONNRESET/);
+    return true;
+  });
+  assert.equal(down.seen.length, 3);
+
+  // Refused, or asked to wait longer than a turn should: no retry.
+  for (const refusal of [busy(400), busy(429, String(maxRetryAfterMs / 1000 + 1))]) {
+    const once = api([refusal, answer]);
+    const refused = anthropicProvider({ apiKey: key, fetch: once.fetch, wait });
+    await assert.rejects(collect(conversation(refused).next([])), ProviderError);
+    assert.equal(once.seen.length, 1);
+  }
+});
+
+// A retry once text or a call has streamed would repeat the turn's answer.
+test("a response that fails once it streams is never sent again", async () => {
+  const broken = api([
+    events([
+      start(),
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Two" } },
+      { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+    ]),
+    events([start(), ...end("end_turn")]),
+  ]);
+  const provider = anthropicProvider({ apiKey: key, fetch: broken.fetch, wait: async () => {} });
+  await assert.rejects(collect(conversation(provider).next([])), ProviderError);
+  assert.equal(broken.seen.length, 1);
 });
 
 test("the model key is ANTHROPIC_API_KEY as a header can hold it, never trimmed or mended", () => {

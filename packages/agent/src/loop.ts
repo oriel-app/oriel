@@ -21,6 +21,7 @@ import { challengeOf, proposal } from "./proposal.ts";
 import { runResultText, runTool, runToolName, systemPrompt, threadMessages } from "./prompt.ts";
 import {
   type Conversation,
+  errorText,
   type ModelEvent,
   noUsage,
   ProviderError,
@@ -34,8 +35,6 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 export const systemPromptHash = sha256(systemPrompt);
 
 const runInput = object({ script: string });
-
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 type End = Extract<ModelEvent, { kind: "end" }>;
 

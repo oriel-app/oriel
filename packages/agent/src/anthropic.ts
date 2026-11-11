@@ -2,10 +2,13 @@
 // (server-sent events), and prompt caching on the system prompt, the tool and
 // the turn's growing tail. The API key stays in this closure: it is sent as a
 // header and never logged, put in an error or kept on an object.
+import type { Log } from "@oriel/core";
 import { parseEnv } from "node:util";
 import {
+  causeOf,
   type Conversation,
   type ConversationRequest,
+  errorText,
   type ModelEvent,
   type ModelMessage,
   type Provider,
@@ -52,6 +55,8 @@ export type AnthropicOptions = {
   fallbacks?: boolean;
   // Default: the global fetch. Evals pass their cassettes'.
   fetch?: typeof fetch;
+  // Default: a timer. Tests pass their own clock.
+  wait?: Wait;
 };
 
 type Block = Record<string, unknown> & { type: string };
@@ -69,8 +74,6 @@ export type Reply = {
 };
 
 const ephemeral = { type: "ephemeral" } as const;
-
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -285,53 +288,135 @@ export async function* readResponse(
   };
 }
 
-export function anthropicProvider(options: AnthropicOptions): Provider {
+// Waits `ms`, or rejects with the signal's reason once it aborts.
+export type Wait = (ms: number, signal: AbortSignal) => Promise<void>;
+
+const timer: Wait = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const aborted = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", aborted);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", aborted, { once: true });
+  });
+
+// A request is sent at most this many times more. Only a failure before any
+// response is read is retried: a connection that failed, or an answer that
+// the model is overloaded (529) or the key rate-limited (429). Once a
+// response streams, nothing is sent again, which could repeat a turn's text
+// or its calls.
+export const maxRetries = 2;
+// Before each retry, unless the answer says how long in `retry-after`.
+export const retryDelaysMs = [500, 2_000] as const;
+// A `retry-after` longer than this isn't waited out: the request fails.
+export const maxRetryAfterMs = 20_000;
+
+const retriedStatuses = new Set([429, 529]);
+
+// How long a `retry-after` header asks to wait, in whole seconds; null when
+// it says nothing Oriel reads.
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get("retry-after")?.trim();
+  return header && /^\d+$/.test(header) ? Number(header) * 1000 : null;
+}
+
+export type MessagesOptions = {
+  apiKey: string;
+  // Sent as `anthropic-beta`.
+  beta?: string;
+  fetch?: typeof fetch;
+  wait?: Wait;
+};
+
+// Posts to the Messages API: every request the agent sends goes here, the
+// turn's and the title's. Resolves with an ok response; rejects with a
+// `ProviderError` that never shows the key, or the signal's reason on abort.
+// `what` names the request in a refusal.
+export function messagesSender(options: MessagesOptions) {
   const { apiKey } = options;
-  const model = options.model ?? defaultModel;
-  const ceiling = options.maxTokens ?? 64_000;
-  const fallbacks = options.fallbacks ?? false;
   const send = options.fetch ?? ((input, init) => fetch(input, init));
+  const wait = options.wait ?? timer;
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-api-key": apiKey,
     "anthropic-version": apiVersion,
   };
-  if (fallbacks) headers["anthropic-beta"] = fallbackBeta;
+  if (options.beta) headers["anthropic-beta"] = options.beta;
   // Whatever an error carries, it never shows the key.
   const scrub = (message: string) => (apiKey ? message.replaceAll(apiKey, "[key]") : message);
 
-  async function post(body: string, signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
-    let response: Response;
-    try {
-      response = await send(messagesUrl, { method: "POST", headers, body, signal });
-    } catch (error) {
-      if (signal.aborted) throw signal.reason;
-      throw new ProviderError(
-        `Oriel couldn't reach the model provider: ${scrub(errorText(error))}`,
-      );
+  const refused = async (response: Response, what: string) => {
+    const detail = await response.text().then(
+      (body) => {
+        try {
+          const parsed: unknown = JSON.parse(body);
+          const error = isObject(parsed) && isObject(parsed.error) ? parsed.error : {};
+          return text(error.message);
+        } catch {
+          return "";
+        }
+      },
+      () => "",
+    );
+    const said = detail ? `: ${detail}` : "";
+    return new ProviderError(
+      scrub(`The model provider refused ${what} (HTTP ${response.status})${said}`),
+      response.status,
+    );
+  };
+
+  return async (
+    body: string,
+    { signal, log, what = "the request" }: { signal: AbortSignal; log: Log; what?: string },
+  ): Promise<Response> => {
+    for (let attempt = 0; ; attempt++) {
+      const last = attempt === maxRetries;
+      let response: Response;
+      try {
+        response = await send(messagesUrl, { method: "POST", headers, body, signal });
+      } catch (error) {
+        if (signal.aborted) throw signal.reason;
+        const cause = causeOf(error);
+        // fetch fails with a TypeError when the network does; anything else
+        // (an eval's missing cassette) won't go better a second time.
+        if (last || !(error instanceof TypeError))
+          throw new ProviderError(
+            scrub(`Oriel couldn't reach the model provider: ${errorText(error)}`),
+          );
+        const ms = retryDelaysMs[attempt] ?? 0;
+        log("provider.retry", { attempt: attempt + 1, cause: cause && scrub(cause), wait_ms: ms });
+        await wait(ms, signal);
+        continue;
+      }
+      if (response.ok) return response;
+      const asked = retryAfterMs(response);
+      const ms = asked ?? retryDelaysMs[attempt] ?? 0;
+      if (last || !retriedStatuses.has(response.status) || ms > maxRetryAfterMs)
+        throw await refused(response, what);
+      await response.body?.cancel().catch(() => {});
+      log("provider.retry", { attempt: attempt + 1, status: response.status, wait_ms: ms });
+      await wait(ms, signal);
     }
-    if (!response.ok) {
-      const detail = await response.text().then(
-        (body) => {
-          try {
-            const parsed: unknown = JSON.parse(body);
-            const error = isObject(parsed) && isObject(parsed.error) ? parsed.error : {};
-            return text(error.message);
-          } catch {
-            return "";
-          }
-        },
-        () => "",
-      );
-      const said = detail ? `: ${detail}` : "";
-      throw new ProviderError(
-        scrub(`The model provider refused the request (HTTP ${response.status})${said}`),
-        response.status,
-      );
-    }
-    if (!response.body) throw new ProviderError("The model provider sent an empty response.");
-    return response.body;
-  }
+  };
+}
+
+export function anthropicProvider(options: AnthropicOptions): Provider {
+  const { apiKey } = options;
+  const model = options.model ?? defaultModel;
+  const ceiling = options.maxTokens ?? 64_000;
+  const fallbacks = options.fallbacks ?? false;
+  const post = messagesSender({
+    apiKey,
+    ...(fallbacks ? { beta: fallbackBeta } : {}),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+    ...(options.wait ? { wait: options.wait } : {}),
+  });
+  const scrub = (message: string) => (apiKey ? message.replaceAll(apiKey, "[key]") : message);
 
   return {
     converse(request: ConversationRequest): Conversation {
@@ -366,13 +451,15 @@ export function anthropicProvider(options: AnthropicOptions): Provider {
           // tokens run down.
           const maxTokens = Math.max(1, Math.floor(Math.min(ceiling, maxOutputTokens)));
           log("provider.request", { model, messages: messages.length, max_tokens: maxTokens });
-          const body = await post(
+          const response = await post(
             JSON.stringify({ ...fixed, max_tokens: maxTokens, messages }),
-            signal,
+            { signal, log },
           );
-          let response: Reply;
+          const { body } = response;
+          if (!body) throw new ProviderError("The model provider sent an empty response.");
+          let reply: Reply;
           try {
-            response = yield* readResponse(serverEvents(body), model);
+            reply = yield* readResponse(serverEvents(body), model);
           } catch (error) {
             if (signal.aborted) throw signal.reason;
             if (error instanceof ProviderError) throw new ProviderError(scrub(error.message));
@@ -380,12 +467,11 @@ export function anthropicProvider(options: AnthropicOptions): Provider {
               `The model provider's response couldn't be read: ${scrub(errorText(error))}`,
             );
           }
-          if (response.content.length)
-            messages.push({ role: "assistant", content: response.content });
-          log("provider.response", { model: response.model, stop: response.stop });
-          for (const call of response.calls) yield { kind: "call", call };
-          const { stop, detail, usage } = response;
-          yield { kind: "end", stop, detail, model: response.model, usage };
+          if (reply.content.length) messages.push({ role: "assistant", content: reply.content });
+          log("provider.response", { model: reply.model, stop: reply.stop });
+          for (const call of reply.calls) yield { kind: "call", call };
+          const { stop, detail, usage } = reply;
+          yield { kind: "end", stop, detail, model: reply.model, usage };
         },
       };
     },

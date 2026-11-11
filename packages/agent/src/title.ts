@@ -5,7 +5,7 @@
 // to be one short line, or else there is no title and the thread keeps the
 // one the server clips from the message.
 import type { Log } from "@oriel/core";
-import { apiVersion, messagesUrl } from "./anthropic.ts";
+import { messagesSender, type Wait } from "./anthropic.ts";
 import { ProviderError, type Usage } from "./provider.ts";
 
 // Titles the person's first message in a thread: a title, or null when the
@@ -34,6 +34,8 @@ export type TitlerOptions = {
   model?: string;
   // Default: the global fetch. Tests pass their own.
   fetch?: typeof fetch;
+  // Default: a timer. Tests pass their own clock.
+  wait?: Wait;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -61,8 +63,11 @@ export function titleFrom(answer: string): string | null {
 export function anthropicTitler(options: TitlerOptions): Titler {
   const { apiKey } = options;
   const model = options.model ?? titleModel;
-  const send = options.fetch ?? ((input, init) => fetch(input, init));
-  const scrub = (message: string) => (apiKey ? message.replaceAll(apiKey, "[key]") : message);
+  const post = messagesSender({
+    apiKey,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+    ...(options.wait ? { wait: options.wait } : {}),
+  });
   return async (text, { signal, log }) => {
     const body = JSON.stringify({
       model,
@@ -73,28 +78,7 @@ export function anthropicTitler(options: TitlerOptions): Titler {
       system: titlePrompt,
       messages: [{ role: "user", content: [{ type: "text", text }] }],
     });
-    let response: Response;
-    try {
-      response = await send(messagesUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": apiVersion,
-        },
-        body,
-        signal,
-      });
-    } catch (error) {
-      if (signal.aborted) throw signal.reason;
-      const why = error instanceof Error ? error.message : String(error);
-      throw new ProviderError(scrub(`Oriel couldn't reach the model provider: ${why}`));
-    }
-    if (!response.ok)
-      throw new ProviderError(
-        `The model provider refused the title request (HTTP ${response.status})`,
-        response.status,
-      );
+    const response = await post(body, { signal, log, what: "the title request" });
     let parsed: unknown;
     try {
       parsed = await response.json();
