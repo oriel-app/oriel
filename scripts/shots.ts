@@ -6054,7 +6054,10 @@ async function pagesAt(width: number) {
     page.on("console", (message) => {
       const expected = acting?.refused && message.text().includes(`status of ${acting.refused}`);
       if ((message.type() === "error" || message.type() === "warning") && !expected) {
-        problems.push(`${scheme} ${width}: console ${message.type()}: ${message.text()}`);
+        const { url } = message.location();
+        problems.push(
+          `${scheme} ${width}: console ${message.type()}: ${message.text()}${url ? ` (${url})` : ""}`,
+        );
       }
     });
     page.on("pageerror", (error) => problems.push(`${scheme} ${width}: ${error.message}`));
@@ -6095,7 +6098,8 @@ async function steps(scene: Scene, page: Page, on: Serving, width: number): Prom
     const failed = new URL(`${name}-${scheme}-${width}.stopped.png`, out);
     await page.screenshot({ path: fileURLToPath(failed) }).catch(() => {});
     if (onCi) {
-      const message = error instanceof Error ? error.message : String(error);
+      const at = error instanceof Error ? /shots\.ts:\d+/.exec(error.stack ?? "")?.[0] : undefined;
+      const message = `${at ? `${at}: ` : ""}${error instanceof Error ? error.message : String(error)}`;
       const title = `${testing ? "ui-test" : "shots"}: ${name} ${scheme} ${width}`;
       process.stdout.write(annotation(title, message));
     }
@@ -6170,7 +6174,9 @@ async function test(): Promise<number> {
     try {
       await what();
     } catch (error) {
-      problem = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      // The message, and the scene's line it stopped at.
+      const at = error instanceof Error ? /shots\.ts:\d+/.exec(error.stack ?? "")?.[0] : undefined;
+      problem = `${error instanceof Error ? error.message.split("\n")[0] : String(error)}${at ? ` (${at})` : ""}`;
     }
     const logged = problems.splice(before);
     if (logged.length > 0 && onCi)
