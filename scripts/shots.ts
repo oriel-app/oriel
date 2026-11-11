@@ -5626,7 +5626,9 @@ scenes.push(
         await page.locator(".item-panel .panel-facts").waitFor();
         await page.locator(".composer .ctx-chip", { hasText: "SYN-99" }).waitFor();
       }
-      await check(async () => {
+      // A thread from nothing, and two refused, as a program might send them:
+      // steps, which the picture shows too; what they keep is the check.
+      {
         const fromPage = new URL(page.url()).pathname.split("/").at(-1) ?? "";
         const said = await page.evaluate(
           async ({ fromPage, workstream }) => {
@@ -5669,15 +5671,22 @@ scenes.push(
           },
           { fromPage, workstream: id },
         );
-        const got = JSON.stringify(said);
-        const want = JSON.stringify({
-          fromPage: [{ id: "jira:SYN-99", outside: false }],
-          fromNothing: [{ id: "jira:SYN-99", outside: true }],
-          refused: [400, 400],
-          made: 0,
+        await check(() => {
+          const got = JSON.stringify(said);
+          const want = JSON.stringify({
+            fromPage: [{ id: "jira:SYN-99", outside: false }],
+            fromNothing: [{ id: "jira:SYN-99", outside: true }],
+            refused: [400, 400],
+            made: 0,
+          });
+          if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
         });
-        if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
-      });
+      }
+      // Shot once the sidebar shows the thread from nothing, answered.
+      await page
+        .locator(".sidebar .nav-waiting-link", { hasText: "Plan it" })
+        .filter({ hasText: "Needs review" })
+        .waitFor({ state: "attached" });
     },
   },
   // "Ask about this" (OA-337): an item open in Browse goes to the overview,
