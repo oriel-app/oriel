@@ -22,6 +22,7 @@ There is one panel. It belongs to the shell (`div.shell[data-panel]`), not to a 
 - To show one item without leaving the page: every item link opens it by default. Write item links with `ItemLink` or `ItemKey` in `packages/web/src/parts.tsx`, and the panel comes with them.
 - When the link is in a list, put the list's ids in `ItemListContext`. The panel then gets Previous and Next and its place ("4 of 14"), and ↑ and ↓ step through the list. An answer is a list too: the items it names as chips, in its order ("1 of 2"), so the panel steps through what the answer named (`Reply` in `packages/web/src/thread-page.tsx`).
 - The chip for the open item is marked while it's open (`OpenItemContext` in `packages/web/src/parts.tsx`); see [Chip](/components/chip).
+- Where the panel isn't beside a conversation (Browse, a workstream's page, the overview with its chat closed), it offers **Ask about this**. It goes to the overview with the item still open and opens the window chat, the current one or an empty one whose first question makes it, beside the item at 1100px and up, or in the item's dock below. The composer offers the item ("Looking at"), and focus goes to it. On a thread's page, a new thread's, or over the window chat, the composer already offers the item, so the button isn't there (`askable` in `packages/web/src/root.ts`). Nor is it with no AI set up.
 - When the page is about a workstream (its own page, a thread's page, or Browse adding to one), the panel offers **Add to workstream** for that workstream (`currentWorkstream` in `packages/web/src/root.ts`). Nothing else needs doing.
 
 ## When not to
@@ -37,7 +38,7 @@ From the top:
 
 1. **Steps** (`nav.panel-steps`), only when opened from a list: Previous, the place ("4 of 14"), Next. Absolutely placed beside Close, outside the per-item content, so it stays put and keeps focus while the item under it changes (`.panel-steps` in `window.css`).
 2. **Head** (`header.panel-head`): the source and key ("Jira · SYN-23"), Close (×), the title in `--font-heading` at `--text-xl` and `--title-weight`, then the actions.
-3. **Actions** (`.panel-actions`): **Open in {source}** (`a.button.panel-open`, a new tab) and **Add to workstream** (a `.button`; the app adds `panel-add`, which has no CSS). After adding, the button gives way to a line that says so, with Undo.
+3. **Actions** (`.panel-actions`): **Open in {source}** (`a.button.panel-open`, a new tab), **Ask about this** (a `.button`; the app adds `panel-ask`, which has no CSS) and **Add to workstream** (a `.button`; the app adds `panel-add`, which has no CSS). After adding, the button gives way to a line that says so, with Undo.
 4. **Read line** (`p.panel-read`, `role="status"`): "Read 2 min ago", and, if the item changed in its source since, "Jira has changed since." with **Read again**.
 5. **Body** (`.panel-body`): the source's blocks, in its order. Facts (`dl.panel-facts`), text or rich text under a heading (`.panel-heading` over `.reply.panel-prose` or `.panel-plain`), messages (`ol.panel-thread`), and notes (`.panel-note`).
 
@@ -152,6 +153,7 @@ From the top:
           rel="noopener noreferrer"
           >Open in Jira</a
         >
+        <button type="button" class="button">Ask about this</button>
         <p class="panel-added" role="status">
           <span>In “Checkout v2: phone wallets and saved cards”.</span>
         </p>
@@ -847,7 +849,7 @@ The dock sticks to the panel's foot, edge to edge, in the frame's material, with
 
 - The source line is "{source} · {key}", such as "Jira · SYN-23" or "Slack · Message"; before the first read, the key alone, or "Item" when the page didn't show it.
 - The title is the source's title, as written. While reading: the title the index has, else "Reading…". On failure: "Couldn't read this item".
-- Actions: **Open in {source}** ("Open in Jira") and **Add to workstream**. After adding: Added to “{name}”. with Undo, or Already in “{name}”., or In “{name}”. when the page already holds it. Names in curly quotes.
+- Actions: **Open in {source}** ("Open in Jira"), **Ask about this** and **Add to workstream**. After adding: Added to “{name}”. with Undo, or Already in “{name}”., or In “{name}”. when the page already holds it. Names in curly quotes.
 - Read line: "Read {when}" in the person's time format; behind: "{source} has changed since." and **Read again**; re-reading: "Reading again…".
 - Notes: "This item moved to {key} {title}.", "This item isn't in {source} any more.", "Oriel can't read this item in {source} now.", "{source} sent this item in a shape Oriel can't show."
 - A conversation's day header is the weekday, month and day ("Wednesday, November 4"), plus " · 17 days later" when it's a day or more after the message before. Times under it are the clock alone. "(edited)" after an edited message, with "Edited {when}" on hover.
@@ -859,8 +861,8 @@ The dock sticks to the panel's foot, edge to edge, in the frame's material, with
 - `ItemPanel` in `packages/web/src/item-panel.tsx` draws the steps, the head, and the failure and read lines; the shell renders it once, from `App` in `packages/web/src/app.tsx`.
 - The dock: `PanelDock` in `packages/web/src/item-panel.tsx`, in `ItemPanel`'s `dock` slot, reads `PanelDockContext` in `packages/web/src/dock.tsx`, which `App` fills from the conversation under the item (`dockOf` in `packages/web/src/app.tsx`), through the same composer the conversation draws (`windowChatComposer` in `packages/web/src/window-chat-view.tsx`, `threadComposer` in `packages/web/src/thread-page.tsx`). The latest answer is drawn as the thread draws it, by `AnswerText` in `packages/web/src/thread-page.tsx`, and picked by `latestOf` in `packages/web/src/dock.tsx`. The folded line: `FoldedItem` in `packages/web/src/dock.tsx`. CSS `.panel-dock`, `.panel-dock-head`, `.panel-dock-latest`, `.panel-dock-you`, `.panel-dock-chat`, `.panel-folded`, `.panel-folded-name`, `.panel-folded-close` and `.chat-dock[inert]` in `window.css`. Add to, notes, blocks and messages: `AddTo`, `PanelBody`, `Block` and `Messages` in `packages/web/src/item-panel.tsx`.
 - The body's text as the source wrote it: rich text and its blocks by `ProseBlocks` in `packages/web/src/parts.tsx`, and a paragraph's runs, mentions and links by `Inlines` in `packages/web/src/parts.tsx`. They render what a source has already read, as text, never as markup; their look is the body's and `.mention`'s.
-- Opened by `ItemLink` in `packages/web/src/parts.tsx`; which workstream it adds to: `currentWorkstream` in `packages/web/src/root.ts`; when it's behind: `behind` in `packages/web/src/panel.ts`.
+- Opened by `ItemLink` in `packages/web/src/parts.tsx`; whether it offers Ask about this: `askable` in `packages/web/src/root.ts`, whose update goes to the overview with the item kept, opens the window chat, puts focus in its composer and sends telemetry's `item.asked-about`, by the item's source kind only; which workstream it adds to: `currentWorkstream` in `packages/web/src/root.ts`; when it's behind: `behind` in `packages/web/src/panel.ts`.
 - CSS: the panel and its widths `.shell`, `.item-panel`, `.item-panel > *`, `.shell-main` and `.shell[data-panel]` in `window.css`; the head `.panel-head` in `window.css`; the steps `.panel-steps` in `window.css`; the status lines `.panel-read` in `window.css`; the body `.panel-body` in `window.css`; `.mention` in `window.css`; messages `.panel-message` in `window.css`; `.item-link` in `window.css`.
 - The window chat's panel shares its width and look (`.window-chat` in `window.css`) but not its behaviour; see [Message](/components/message).
 
-Some classes the app renders have no CSS, so specimens leave them off: `panel-add` on Add to workstream (`AddTo` in `packages/web/src/item-panel.tsx`), `panel-text` on the section around a text block (`Block` in `packages/web/src/item-panel.tsx`); and `data-kind` on `.mention` has no rule.
+Some classes the app renders have no CSS, so specimens leave them off: `panel-ask` on Ask about this (`ItemPanel` in `packages/web/src/item-panel.tsx`), `panel-add` on Add to workstream (`AddTo` in `packages/web/src/item-panel.tsx`), `panel-text` on the section around a text block (`Block` in `packages/web/src/item-panel.tsx`); and `data-kind` on `.mention` has no rule.

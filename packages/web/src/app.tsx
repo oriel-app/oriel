@@ -21,7 +21,7 @@ import { Closing, closingProblem } from "./close-thread.tsx";
 import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
-import { currentWorkstream, type Model, type Msg } from "./root.ts";
+import { askable, currentWorkstream, type Model, type Msg } from "./root.ts";
 import { panelName, placeIn } from "./panel.ts";
 import { expected } from "./thread.ts";
 import { addUndos } from "./panel-adds.ts";
@@ -206,6 +206,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
                   <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
                     <ItemPanel
                       dock={dock && <PanelDock />}
+                      askable={askable(model)}
                       model={model.panel}
                       place={placeIn(model.panelList, model.panel.id)}
                       workstream={currentWorkstream(model)}

@@ -140,6 +140,7 @@ import {
 import {
   initSettings,
   loadSettings,
+  noAi,
   type SettingsModel,
   type SettingsMsg,
   settingsReplied,
@@ -286,6 +287,9 @@ export type Msg =
   | { type: "panelClosed" }
   // "Chat" in the panel's dock folds the item; Show unfolds it.
   | { type: "panelFolded"; folded: boolean }
+  // "Ask about this" in a panel that isn't beside a conversation: the
+  // overview, with the item still open and the window chat beside it.
+  | { type: "askAboutClicked" }
   // The user left for an item's source: from its panel, or by a Cmd/Ctrl or
   // middle click on a link to it. The browser goes; this only tells.
   | { type: "sourceOpened"; id: string; via: "panel" | "link" }
@@ -892,6 +896,21 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       ];
     case "panelFolded":
       return [{ ...model, panelFolded: msg.folded }, []];
+    // The window chat is the overview's, so the item goes there, still open,
+    // and the chat opens beside it: the current one, or empty until the
+    // first question makes it. Its composer offers the item, as it offers
+    // the item open beside it anywhere (decision 0062).
+    case "askAboutClicked": {
+      const item = model.route.item;
+      if (item === undefined || !askable(model)) return [model, []];
+      const overview: Route = { page: "overview", item };
+      const going: Effect[] =
+        model.route.page === "overview" ? [] : [{ type: "navigate", route: overview }];
+      return [
+        { ...model, chat: { ...model.chat, open: true }, panelFolded: false },
+        [...going, { type: "focusComposer" }, report({ name: "item.asked-about", item })],
+      ];
+    }
     case "sourceOpened":
       return [model, [report({ name: "item.source-opened", item: msg.id, via: msg.via })]];
     case "pivotRegrouped":
@@ -1171,7 +1190,27 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       // A thread that didn't load has no stream to say when others move.
       const unwatched =
         msg.tag.kind === "thread" && msg.tag.id === model.thread.id && !msg.ok && !thread.view;
-      return [{ ...model, thread }, unwatched ? [...effects, { type: "watchThreads" }] : effects];
+      const watching = unwatched ? [...effects, { type: "watchThreads" } as const] : effects;
+      // The window chat's composer is the thread's once it has loaded: words
+      // typed while it loaded, as after Ask about this, go on in it, and so
+      // does what they're about.
+      const { chat } = model;
+      if (
+        model.route.page === "overview" &&
+        chat.open &&
+        !model.thread.view &&
+        thread.view &&
+        thread.draft === ""
+      )
+        return [
+          {
+            ...model,
+            chat: { ...chat, draft: "" },
+            thread: { ...thread, draft: chat.draft, lookingAt: chat.lookingAt },
+          },
+          watching,
+        ];
+      return [{ ...model, thread }, watching];
     }
   }
 }
@@ -1204,6 +1243,17 @@ function closed(model: Model, msg: Replied): [Model, Effect[]] {
     return [model, [...lists, refreshThread(model.thread)]];
   if (route.page === "workstream") return [model, [...lists, ...initWorkstream(route.id)[1]]];
   return [model, lists];
+}
+
+// Whether the open item's panel offers "Ask about this": not beside a
+// conversation, whose composer already offers it (a thread's page, a new
+// thread's, whose draft leaving would drop, or the overview's window chat
+// open), and not with no AI to ask.
+export function askable(model: Model): boolean {
+  const { route } = model;
+  if (route.item === undefined || noAi(model.settings)) return false;
+  if (route.page === "thread" || route.page === "new-thread") return false;
+  return !(route.page === "overview" && model.chat.open);
 }
 
 // The workstream the page is about, which the panel's item can be added to:

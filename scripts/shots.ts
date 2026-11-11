@@ -5381,7 +5381,106 @@ scenes.push(
       if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
     },
   },
+  // "Ask about this" (OA-337): an item open in Browse goes to the overview,
+  // still open, with the window chat beside it at 1100 and up, or docked
+  // under it below, and the item offered in the composer. Each on a server
+  // of its own, so its chat leaves no other scene's overview changed.
+  {
+    name: "ask-about-browse",
+    window: true,
+    path: "/browse?grouping=epic",
+    make: async () => (docking = (await writing()).serving),
+    act: async (page) => {
+      await openInBrowse(page);
+      await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).waitFor();
+    },
+  },
+  ...(["this", "ongoing", "asked"] as const).map((step): Scene => ({
+    name: `ask-about-${step}`,
+    window: true,
+    path: "/browse?grouping=epic",
+    make: async () => {
+      docking = (await writing()).serving;
+      // A chat already going, which the item joins.
+      if (step === "ongoing")
+        await post(
+          "/api/window-chat/messages",
+          { text: "What's holding up saved cards?" },
+          docking,
+        );
+      return docking;
+    },
+    act: async (page) => {
+      const key = await openInBrowse(page);
+      // The current chat's thread held back, so words are typed while it loads.
+      let release = () => {};
+      if (step === "ongoing") {
+        const loaded = new Promise<void>((done) => (release = done));
+        await page.route(/\/api\/threads\/[0-9A-Z]{26}$/, async (route) => {
+          await loaded;
+          await route.continue();
+        });
+      }
+      await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
+      await page.waitForURL((url) => url.pathname === "/" && url.searchParams.has("item"));
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await expectCount(page.getByRole("button", { name: "Ask about this" }), 0);
+      // The composer that offers the item: the chat's beside it, or the
+      // one the item's dock carries.
+      const composer = beside(page)
+        ? page.locator(".window-chat > .chat-input")
+        : page.locator(".item-panel .panel-dock");
+      await composer
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: key })
+        .waitFor();
+      await composer.locator("textarea:focus").waitFor();
+      if (step === "ongoing") {
+        await page.keyboard.type("Who owns this?");
+        release();
+        const said = beside(page) ? ".window-chat .reply" : ".item-panel .panel-dock-latest";
+        await page.locator(said, { hasText: "saved cards" }).first().waitFor();
+        const typed = composer.getByRole("textbox", { name: "Message" });
+        if ((await typed.inputValue()) !== "Who owns this?")
+          throw new Error("The words typed while the chat loaded went missing");
+        await composer
+          .locator(".ctx-chip", { hasText: "Looking at" })
+          .filter({ hasText: key })
+          .waitFor();
+      }
+      if (step === "this" && beside(page)) await page.locator(".window-chat-empty").waitFor();
+      if (step === "asked") {
+        await composer.getByRole("textbox", { name: "Message" }).fill("Who is this waiting on?");
+        await composer.getByRole("button", { name: "Send" }).click();
+        await page.locator(".working").first().waitFor({ state: "detached" });
+        if (beside(page))
+          await page.locator(".window-chat .user-message .about", { hasText: key }).waitFor();
+        // Answered once the dock shows words that aren't the message sent.
+        else
+          await page
+            .locator(
+              ".item-panel .panel-dock-latest:not(:has(.panel-dock-you, .panel-dock-working))",
+              {
+                hasText: /\S/,
+              },
+            )
+            .waitFor();
+        await page.locator(".item-panel .panel-facts").waitFor();
+      }
+    },
+  })),
 );
+
+// Opens Browse's first cluster and its first item in the panel, and says
+// the item's key.
+async function openInBrowse(page: Page): Promise<string> {
+  await shown(page, "epic");
+  await openFirstCluster(page);
+  const key = (await page.locator(".item a.key").first().textContent())?.trim() ?? "";
+  await page.locator(".item a.key").first().click();
+  await page.locator(".item-panel .panel-facts").waitFor();
+  return key;
+}
 
 const widths = asked.values.width?.map(Number) ?? [1280, 390];
 const picked = asked.positionals;

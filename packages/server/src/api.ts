@@ -330,6 +330,7 @@ const windowEvent = union(
     item: itemIdValue,
     via: union(literal("panel"), literal("link")),
   }),
+  object({ name: literal("item.asked-about"), item: itemIdValue }),
   // How long the query was, never what it said.
   object({ name: literal("threads.searched"), queryLength: count, results: count }),
   object({ name: literal("items.searched"), queryLength: count, results: count }),
@@ -1026,7 +1027,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What only the window knows happened. Ten events, fixed fields.
+      // What only the window knows happened, each event with fixed fields.
       method: "POST",
       path: at("/telemetry"),
       async run(_, request) {
@@ -1037,7 +1038,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         deps.emit(
           event.name === "grouping.switched"
             ? { name: event.name, at, workspaceId, grouping: event.grouping }
-            : event.name === "item.panel-opened"
+            : event.name === "item.panel-opened" || event.name === "item.asked-about"
               ? { name: event.name, at, workspaceId, source: sourceOf(event.item) }
               : event.name === "item.source-opened"
                 ? {

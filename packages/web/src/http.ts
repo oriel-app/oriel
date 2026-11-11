@@ -217,6 +217,7 @@ export type Report =
   | { name: "cluster.closed" }
   | { name: "item.panel-opened"; item: string }
   | { name: "item.source-opened"; item: string; via: "panel" | "link" }
+  | { name: "item.asked-about"; item: string }
   | { name: "threads.searched"; queryLength: number; results: number }
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
   | { name: "items.searched"; queryLength: number; results: number }
