@@ -18,7 +18,7 @@ It sits in two places:
 - **At the end of a provider row**, to use a provider or not: "Use Claude Code".
 - **In a settings field** (`.settings-field.settings-switch`): the field's name and about line on the left, the switch on the right, centred across both lines. "Notify me when a thread needs me", "Ask before quitting while Oriel works", and a connection's "Oriel may propose changes".
 
-The proposed version, in modern CSS, is in the [switch lab](/lab/switch).
+The [switch lab](/lab/switch) compares other ways to build one, and a locked state the keyboard can reach.
 
 ## When to use it
 
@@ -34,8 +34,9 @@ The proposed version, in modern CSS, is in the [switch lab](/lab/switch).
 
 ## Anatomy and variants
 
-- **Track** (`.switch`): 2.25rem by 1.25rem, `--radius-lg`, no border. Off, it's `--line-strong`; on, `--accent`.
-- **Knob** (`.switch-knob`): 0.875rem, `--on-accent`, `--shadow-sm`, 0.1875rem in from the edge. On, it moves 1rem right. Both the track's colour and the knob's move take `--duration-quick` with `--ease-out`; reduced motion turns both off (`.switch-knob` in `window.css`).
+- **Track** (`.switch`): 2.25rem by 1.25rem, `--radius-lg`, a `--border-thin` edge. Off, it's an outline: the edge in `--text-faint` on `--surface`. On, edge and fill are `--accent`.
+- **Knob** (`.switch-knob`): 0.875rem, 0.1875rem in from the track's outer edge. Off, it's `--text-faint`; on, `--on-accent` with `--shadow-sm`, moved 1rem right. The colours and the move take `--duration-quick` with `--ease-out`; reduced motion turns them off (`.switch-knob` in `window.css`).
+- **Contrast:** off, the edge and knob are 5.4:1 (Graphite light), 5.9:1 (Graphite dark), 6.3:1 (Broadsheet light) and 6.0:1 (Broadsheet dark) against `--surface`. The old `--line-strong` track was 1.6:1 to 2.4:1.
 - **Field** (`.settings-field.settings-switch`): a two-column grid, `1fr auto`. `.settings-field-name` (medium weight) over `.settings-field-about` (faint, small), and the switch spanning both rows.
 
 ```html specimen id=settings-field title="In a settings field: Settings › Notifications"
@@ -147,7 +148,7 @@ Click a switch in any specimen to flip it.
 </div>
 ```
 
-```html specimen id=state-hover title="Hover: not styled today" state=hover
+```html specimen id=state-hover title="Hover: an off switch darkens" state=hover
 <div class="ws-row">
   <button
     type="button"
@@ -218,9 +219,9 @@ Click a switch in any specimen to flip it.
 </div>
 ```
 
-- **Rest:** off is the `--line-strong` track, knob left; on is the `--accent` track, knob right.
-- **In a dark scheme** the knob is still `--on-accent`, which is dark there, so on the off track (`--line-strong`) it all but disappears. Look at the off switches above in Broadsheet, dark. The [switch lab](/lab/switch) has a knob that holds its contrast.
-- **Hover:** not styled. Only the cursor changes.
+- **Rest:** off is the `--text-faint` outline, knob left; on is the `--accent` track, knob right.
+- **Hover:** off, the edge and knob darken to `--text-muted`. On doesn't change.
+- **Forced colours:** backgrounds are dropped, so the knob is drawn as a ring (`--border-thick`) in the system's text colour, inside the track's edge; where it sits says on or off.
 - **Focus visible:** the global ring, 2px out (`:focus-visible` in `window.css`).
 - **Active:** not styled.
 - **Disabled:** `opacity: 0.5` and `cursor: not-allowed` (`.switch:disabled` in `window.css`). Only a connection its source locks uses it, and its about line says why.
@@ -247,4 +248,4 @@ Click a switch in any specimen to flip it.
 - `Switch` in `packages/web/src/provider-row.tsx`, put in a provider row by `ProviderRow`.
 - Ask before quitting: `General` in `packages/web/src/settings-page.tsx`. Notifications: `Notifications` in `packages/web/src/settings-page.tsx`.
 - A connection's Oriel may propose changes, locked or not: `ReadOnly` in `packages/web/src/connections-page.tsx`.
-- CSS: `.switch`, `.switch[aria-checked="true"]`, `.switch-knob`, `.switch[aria-checked="true"] .switch-knob`, `.settings-switch` and `.switch:disabled` in `window.css`, and reduced motion under `@media (prefers-reduced-motion: reduce)` in `window.css`.
+- CSS: `.switch`, `.switch[aria-checked="true"]`, `.switch-knob`, `.switch[aria-checked="true"] .switch-knob`, their hover rules, `.switch-knob` under `@media (forced-colors: active)`, `.settings-switch` and `.switch:disabled` in `window.css`, and reduced motion under `@media (prefers-reduced-motion: reduce)` in `window.css`.

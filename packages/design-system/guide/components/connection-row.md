@@ -219,7 +219,7 @@ A picked value the server's list no longer gives, as a channel the person left, 
 
 ### The status line
 
-`.provider-status` is a dot, a state word and a detail, in `--text-sm`. **Its colour comes from the row, not the line**: the dot and word are `--danger` unless the row says otherwise (`.provider-mark` and `.provider-state` in `window.css`).
+`.provider-status` is a dot, a state word and a detail, in `--text-sm`. Its colour comes from the line's own `data-tone` (`done`, `in-progress`, `faint` or `danger`, as a connection's does), or from the row's `data-status`; with neither, the dot and word are `--danger` (`.provider-mark` and `.provider-state` in `window.css`).
 
 ```html specimen id=status-tones title="Status line tones, by the row's data-status"
 <ul class="provider-rows">
@@ -472,12 +472,12 @@ This specimen is also the Settings frame a screen draws: `main.page` with its `.
         <h2 id="settings-connections" class="settings-title">Connections</h2>
         <p class="settings-lede">A change applies at once, and the next sync reads with it.</p>
         <ul class="provider-rows">
-          <li class="provider-row connection-row" id="connection-jira" data-status="ready">
+          <li class="provider-row connection-row" id="connection-jira">
             <span class="provider-icon" aria-hidden="true">J</span>
             <div class="provider-main">
               <span class="provider-name">Ferrowick Jira</span>
               <span class="provider-about">Jira · SYN on oriel.atlassian.net</span>
-              <span class="provider-status">
+              <span class="provider-status" data-tone="done">
                 <span class="provider-mark" aria-hidden="true"></span>
                 <span class="provider-state">Synced just now</span>
                 <span>· 120 items</span>
@@ -564,7 +564,7 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
     <div class="provider-main">
       <span class="provider-name">Folder</span>
       <span class="provider-about">~/Documents/Old notes</span>
-      <span class="provider-status">
+      <span class="provider-status" data-tone="danger">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Not open</span>
       </span>
@@ -578,12 +578,12 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
     </div>
     <div class="provider-side"></div>
   </li>
-  <li class="provider-row connection-row" id="connection-sheets" data-status="ready">
+  <li class="provider-row connection-row" id="connection-sheets">
     <span class="provider-icon" aria-hidden="true">S</span>
     <div class="provider-main">
       <span class="provider-name">Google Sheets</span>
       <span class="provider-about">Checkout v2 tracker</span>
-      <span class="provider-status">
+      <span class="provider-status" data-tone="done">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Synced 3 min ago</span>
         <span>· 48 items</span>
@@ -603,7 +603,7 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
     <div class="provider-main">
       <span class="provider-name">Folder</span>
       <span class="provider-about">~/Documents/Launch notes</span>
-      <span class="provider-status">
+      <span class="provider-status" data-tone="in-progress">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Syncing…</span>
         <span>· 3 items</span>
@@ -616,7 +616,7 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
     <div class="provider-main">
       <span class="provider-name">Folder</span>
       <span class="provider-about">~/Documents/Launch notes</span>
-      <span class="provider-status">
+      <span class="provider-status" data-tone="danger">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">A problem</span>
         <span>· 3 items</span>
@@ -630,16 +630,16 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
 </ul>
 ```
 
-The third row is the drift below: a connection with a standing problem syncs again, and its "Syncing…" is drawn in `--danger`, while the same word on a connection without one is green. The problem line hides while it syncs (`ConnectionRow` in `packages/web/src/connections-page.tsx`).
+A connection's status line says its own tone, `data-tone` on `.provider-status`, from one map, `connectionStates` in `packages/web/src/connections-page.tsx`: Synced is `done`; Syncing… is `in-progress`, even over a standing problem, whose line hides while it syncs; Not synced yet and Waiting for options that fit are `faint`; Not open and A problem are `danger`.
 
 ```html specimen id=disconnect title="Disconnect asks first, in the row"
 <ul class="provider-rows">
-  <li class="provider-row connection-row" id="connection-folder-ask" data-status="ready">
+  <li class="provider-row connection-row" id="connection-folder-ask">
     <span class="provider-icon" aria-hidden="true">F</span>
     <div class="provider-main">
       <span class="provider-name">Folder</span>
       <span class="provider-about">~/Documents/Launch notes</span>
-      <span class="provider-status">
+      <span class="provider-status" data-tone="done">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Synced 3 min ago</span>
         <span>· 38 items</span>
@@ -667,14 +667,14 @@ Jira on through Atlassian's MCP server in the person's agent (OA-276) has a row 
 
 ```html specimen id=through title="Jira through Atlassian's server: Sync, and no Disconnect"
 <ul class="provider-rows">
-  <li class="provider-row connection-row" data-status="ready">
+  <li class="provider-row connection-row">
     <span class="provider-icon" aria-hidden="true">J</span>
     <div class="provider-main">
       <span class="provider-name">Jira</span>
       <span class="provider-about"
         >SYN on oriel.atlassian.net, through Atlassian's Rovo MCP server</span
       >
-      <span class="provider-status">
+      <span class="provider-status" data-tone="done">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Synced 3 min ago</span>
         <span>· 120 items</span>
@@ -779,12 +779,12 @@ Under 760px the row wraps: the main column takes at least 10rem, and a side acti
       <button type="button" class="button">Install</button>
     </div>
   </li>
-  <li class="provider-row connection-row" data-status="ready">
+  <li class="provider-row connection-row">
     <span class="provider-icon" aria-hidden="true">J</span>
     <div class="provider-main">
       <span class="provider-name">Jira</span>
       <span class="provider-about">SYN on oriel.atlassian.net</span>
-      <span class="provider-status"
+      <span class="provider-status" data-tone="done"
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Synced just now</span><span>· 120 items</span></span
       >
@@ -800,12 +800,12 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 
 ```html specimen id=state-focus title="Focus visible: the switch and the side action" state=focus-visible
 <ul class="provider-rows">
-  <li class="provider-row connection-row" data-status="ready">
+  <li class="provider-row connection-row">
     <span class="provider-icon" aria-hidden="true">J</span>
     <div class="provider-main">
       <span class="provider-name">Jira</span>
       <span class="provider-about">SYN on oriel.atlassian.net</span>
-      <span class="provider-status"
+      <span class="provider-status" data-tone="done"
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Synced just now</span><span>· 120 items</span></span
       >
@@ -838,12 +838,12 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 
 ```html specimen id=state-busy title="Busy: syncing, and the switch off while it's off" state=busy
 <ul class="provider-rows">
-  <li class="provider-row connection-row" data-status="ready">
+  <li class="provider-row connection-row">
     <span class="provider-icon" aria-hidden="true">J</span>
     <div class="provider-main">
       <span class="provider-name">Jira</span>
       <span class="provider-about">SYN on oriel.atlassian.net</span>
-      <span class="provider-status"
+      <span class="provider-status" data-tone="in-progress"
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Syncing…</span><span>· 120 items</span></span
       >
@@ -925,7 +925,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 - A hidden email: `HiddenEmail` in `packages/web/src/hidden-email.tsx`; CSS `.hidden-email` in `window.css`.
 - The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path: `CliPath` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-path` and `.provider-path-label` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
 - Settings frame, its sections and body: `SettingsPage` in `packages/web/src/settings-page.tsx`; a section head with its action, `Providers` in `packages/web/src/settings-page.tsx`.
-- CSS: `.provider-rows`, `.provider-row`, `.provider-main`, `.provider-name`, `.provider-badge`, `.provider-preview`, `.provider-status`, `.provider-uses`, `.switch` and `.settings-field` in `window.css`; the status line's colours, `.provider-row[data-status="ready"] .provider-mark` and `.provider-row:is([data-status="checking"], [data-off]) .provider-mark` in `window.css`; connections, `.connection-options`, `.connection-row .provider-side`, `.connection-report` and `.connection-said` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`. The rest of the shell is in the first-run block: `.provider-icon`, `.provider-about`, `.provider-side`, `.provider-row[data-picked]` and `.provider-status[data-connected] .provider-mark` in `window.css`; the CLI pieces, `.cli-picked`, `.cli-line`, `.cli-waiting`, `.cli-note`, `.cli-size`, `.cli-box`, `.cli-actions`, `.cli-log`, `.cli-progress`, `.cli-bar` and `.spinner` in `window.css`. The Settings frame: `.settings`, `.settings-sections`, `.settings-body`, `.settings-section`, `.settings-head`, `.settings-title` and `.settings-lede` in `window.css`.
+- CSS: `.provider-rows`, `.provider-row`, `.provider-main`, `.provider-name`, `.provider-badge`, `.provider-preview`, `.provider-status`, `.provider-uses`, `.switch` and `.settings-field` in `window.css`; the status line's colours, `.provider-row[data-status="ready"] .provider-mark`, `.provider-row:is([data-status="checking"], [data-off]) .provider-mark` and `.provider-status[data-tone] .provider-mark` in `window.css`; connections, `.connection-options`, `.connection-row .provider-side`, `.connection-report` and `.connection-said` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`. The rest of the shell is in the first-run block: `.provider-icon`, `.provider-about`, `.provider-side`, `.provider-row[data-picked]` and `.provider-status[data-connected] .provider-mark` in `window.css`; the CLI pieces, `.cli-picked`, `.cli-line`, `.cli-waiting`, `.cli-note`, `.cli-size`, `.cli-box`, `.cli-actions`, `.cli-log`, `.cli-progress`, `.cli-bar` and `.spinner` in `window.css`. The Settings frame: `.settings`, `.settings-sections`, `.settings-body`, `.settings-section`, `.settings-head`, `.settings-title` and `.settings-lede` in `window.css`.
 - The sidebar's source rows read the same connections but are nav rows: `Sources` in `packages/web/src/sidebar.tsx`. See [Sidebar](/components/sidebar).
 
 ## Drift
@@ -934,10 +934,9 @@ Status **drifting**. One shape, four authors, and a status line written seven ti
 
 - **The row is hand-copied three times** beside `ProviderRow`: `ConnectionRow` in `packages/web/src/connections-page.tsx`, Add a connection's row (`AddConnection` in `packages/web/src/connections-page.tsx`) and the first run's `SourceRow` in `packages/web/src/setup-page.tsx`. Each writes `li.provider-row > span.provider-icon + div.provider-main + div.provider-side` again. Its CSS is split between the Settings block (`.provider-rows` in `window.css`) and the first-run block (`.provider-icon` in `window.css`).
 - **The status line is written inline** in `provider-row.tsx`, `connections-page.tsx`, `cli-row.tsx` (twice) and `setup-page.tsx` (twice). The detail is a `.provider-detail` span in one, a bare `<span>· …</span>` in others.
-- **Green is reached three ways**: the row's `data-status="ready"` (providers, connections, Claude Code's ready line), and `data-connected` on the line (the first run). Anything else falls back to `--danger`, so a status line moved out of a ready row turns red, and a state nobody gave a tone reads as an error.
-- **Connection states don't map to tones.** A connection is "ready" when it's open with no problem, so "Syncing…" and "Not synced yet" are green like "Synced". With a standing problem, its next "Syncing…" is drawn in danger red. "Waiting for options that fit" is red too, though nothing is wrong. Nothing uses the faint "checking" tone here.
+- **Tone is set three ways**: the row's `data-status` (providers, Claude Code's ready line), `data-connected` on the line (the first run), and `data-tone` on the line (connections). Without one, the line falls back to `--danger`, so a status line moved out of a ready row turns red, and a state nobody gave a tone reads as an error.
 - **Dead classes**: `connection-rows`, `settings-page` and `provider-detail` have no CSS (`setup-rows` has one rule now, keeping a first-run row's side action at the top); `[data-locked]` has none either. They're hooks only.
 - **The unpicked pick mark** says "Picked" to a screen reader (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`), the same as the picked one.
 - `.cli-box` is also the Disconnect question, well beyond the CLI rows.
 
-Until `ProviderRow` becomes the one row, with a `StatusLine` that carries its own tone, **copy `ProviderRow`'s markup** (`ProviderRow` in `packages/web/src/provider-row.tsx`): `li.provider-row[data-status]` with the icon, the main column and the side, and the status line inside the main column. Set the tone on the row: `data-status="ready"` for green, `data-status="checking"` or `data-off` for faint, nothing for danger. Don't add a fourth copy: render `ProviderRow` with a `status` and a `side`, as `cli-row.tsx` does. Don't use `data-connected` for anything new.
+Until `ProviderRow` becomes the one row, with a `StatusLine` that carries its own tone, **copy `ProviderRow`'s markup** (`ProviderRow` in `packages/web/src/provider-row.tsx`): `li.provider-row[data-status]` with the icon, the main column and the side, and the status line inside the main column. Set the tone on the status line: `data-tone` is `done`, `in-progress`, `faint` or `danger`. Don't add a fourth copy: render `ProviderRow` with a `status` and a `side`, as `cli-row.tsx` does. Don't use `data-connected` for anything new.
