@@ -5552,6 +5552,8 @@ scenes.push(
         else await page.getByRole("button", { name: "Back to the chat" }).click();
         await page.locator(".reply").first().waitFor();
         const { at, below, top } = chatScroll[chat];
+        // Read from the top, once the chat has shown its end.
+        await until(page, `Math.abs(${below}) <= 1`);
         await page.evaluate(top);
         const replies = await page.locator(".reply").count();
         const say = () =>
@@ -5572,14 +5574,19 @@ scenes.push(
         const pill = page.locator(".new-message-pill");
         await say();
         await pill.waitFor();
-        await answered(replies + 1);
-        const moved = await page.evaluate(at);
-        if (moved !== 0)
-          throw new Error(`A new message moved the chat read from its top: ${moved}`);
-        await pill.waitFor();
-        if (step === "kept") return;
+        if (step === "kept") {
+          await answered(replies + 1);
+          const moved = await page.evaluate(at);
+          if (moved !== 0)
+            throw new Error(`A new message moved the chat read from its top: ${moved}`);
+          await pill.waitFor();
+          return;
+        }
+        // Pressed while the answer may still be arriving: the chat glides to
+        // its end and stays there for the rest.
         await pill.click();
         await pill.waitFor({ state: "detached" });
+        await answered(replies + 1);
         await until(page, `Math.abs(${below}) <= 1`);
         // At the latest entry, the chat follows what comes.
         await say();
