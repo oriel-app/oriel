@@ -6322,7 +6322,11 @@ scenes.push(
       await hang(page, "/api/connections/*/sync");
       const folder = page.locator(".connection-row", { hasText: "Folder" });
       await folder.getByRole("button", { name: "Sync", exact: true }).click();
-      await folder.locator(".provider-state", { hasText: "Syncing…" }).waitFor();
+      await folder
+        .locator('.provider-status[data-tone="in-progress"] .provider-state', {
+          hasText: "Syncing…",
+        })
+        .waitFor();
       await pointerAway(page);
     },
   },
