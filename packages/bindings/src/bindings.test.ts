@@ -103,9 +103,9 @@ test("an item the user looked at outside the region reads, read-only", async () 
   assert.match(bindings.dts, /type LookedId =\n {2}\| "jira:SYN-80";/);
 });
 
-// Continue in… (decision 0062) carries a request about an item the run
-// reached, never one it names unread.
-test("the window chat drafts Continue in… only for an item the run reached", () => {
+// Continue in… (decision 0062) carries a request about an item the user
+// chose, never one a read found, which synced text could steer it to.
+test("the window chat drafts Continue in… only for an item the user's message was about", async () => {
   const bindings = bindingsFor(fixtureRegion("boarding-epic"), {
     reader: base,
     namespaces,
@@ -115,6 +115,10 @@ test("the window chat drafts Continue in… only for an item the run reached", (
   });
   const drafted = bindings.draft("window.continue", [{ item: "jira:SYN-80" }]);
   assert.deepEqual(drafted.input, { thread: "01JC0THREAD000000000000000", item: "jira:SYN-80" });
+  // Found by a search, outside the region, it may be read, never continued.
+  const hits = (await bindings.read("search", ["Cancellation alert", 5])).value as { id: string }[];
+  assert.ok(hits.some((hit) => hit.id === "jira:SYN-54"));
+  await bindings.read("items.read", ["jira:SYN-54"]);
   assert.throws(() => bindings.draft("window.continue", [{ item: "jira:SYN-54" }]));
   assert.throws(() => bindings.draft("window.continue", [{ item: "jira:SYN-80", seq: 1 }]));
 });

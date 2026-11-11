@@ -259,12 +259,16 @@ export function bindingsFor(
           reaches: () => false,
         });
         if (waiting && entry.space === "source") return waiting.check(drafted);
-        // Continue in… carries on a request about an item the run reached:
-        // one the message was about, or one it found.
+        // Continue in… carries on a request about an item the user chose:
+        // one their messages were about, or one in the region, never one a
+        // read found, which synced text could have steered it to.
         const item = drafted.input["item"];
-        if (typeof item !== "string" || !host.reaches(item))
+        if (
+          typeof item !== "string" ||
+          !(members.has(item) || scope.looked.includes(item as never))
+        )
           throw new RangeError(
-            `${JSON.stringify(item)} isn't an item the user's message was about, and no read in this run found it`,
+            `${JSON.stringify(item)} isn't an item the user's message was about`,
           );
         return drafted;
       } catch (error) {
