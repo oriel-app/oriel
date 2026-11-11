@@ -27,7 +27,7 @@ test("a stream whose client left before its reply was ready lets go, and its sen
     ended = true;
   });
   const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>();
-  const { promise: sent, resolve: sending } = Promise.withResolvers<Promise<void>>();
+  const { promise: sent, resolve: sending } = Promise.withResolvers<void>();
   const { client, close } = await served(async (res) => {
     arrive();
     await once(res, "close");
@@ -35,7 +35,7 @@ test("a stream whose client left before its reply was ready lets go, and its sen
   });
   await arrived;
   client.destroy();
-  await await sent;
+  await sent;
   assert.equal(ended, true);
   close();
 });
