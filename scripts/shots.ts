@@ -5536,66 +5536,6 @@ scenes.push(
       }
     },
   })),
-  // A chat follows what arrives only at its latest entry (OA-350): read
-  // further up, a new message leaves the place alone and a pill says it
-  // came; the pill takes the chat to it, and from there it follows again.
-  // A thread's page scrolls the window, the window chat its own entries.
-  // Each on a server of its own, as their messages change its threads.
-  ...(["thread", "window"] as const).flatMap((chat) =>
-    (["kept", "shown"] as const).map((step): Scene => ({
-      name: `chat-new-message-${chat}${step === "shown" ? "-shown" : ""}`,
-      window: true,
-      path: "/",
-      make: () => longChat(chat),
-      act: async (page) => {
-        if (chat === "thread") await page.goto(new URL(`/threads/${following}`, page.url()).href);
-        else await page.getByRole("button", { name: "Back to the chat" }).click();
-        await page.locator(".reply").first().waitFor();
-        const { at, below, top } = chatScroll[chat];
-        // Read from the top, once the chat has shown its end.
-        await until(page, `Math.abs(${below}) <= 1`);
-        await page.evaluate(top);
-        const replies = await page.locator(".reply").count();
-        const say = () =>
-          page.evaluate(
-            async ({ id, text }) => {
-              await fetch(`/api/threads/${id}/messages`, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ text }),
-              });
-            },
-            { id: following, text: savedCards },
-          );
-        const answered = async (count: number) => {
-          await until(page, `document.querySelectorAll(".reply").length >= ${count}`);
-          await page.locator(".working").first().waitFor({ state: "detached" });
-        };
-        const pill = page.locator(".new-message-pill");
-        await say();
-        await pill.waitFor();
-        if (step === "kept") {
-          await answered(replies + 1);
-          const moved = await page.evaluate(at);
-          if (moved !== 0)
-            throw new Error(`A new message moved the chat read from its top: ${moved}`);
-          await pill.waitFor();
-          return;
-        }
-        // Pressed while the answer may still be arriving: the chat glides to
-        // its end and stays there for the rest.
-        await pill.click();
-        await pill.waitFor({ state: "detached" });
-        await answered(replies + 1);
-        await until(page, `Math.abs(${below}) <= 1`);
-        // At the latest entry, the chat follows what comes.
-        await say();
-        await answered(replies + 2);
-        await until(page, `Math.abs(${below}) <= 1`);
-        await expectCount(pill, 0);
-      },
-    })),
-  ),
 );
 
 // Asked to change the item it's looking at (decision 0062). The window
@@ -5661,6 +5601,69 @@ scenes.push(
       await page.locator(".working").first().waitFor({ state: "detached" });
     },
   },
+);
+
+scenes.push(
+  // A chat follows what arrives only at its latest entry (OA-350): read
+  // further up, a new message leaves the place alone and a pill says it
+  // came; the pill takes the chat to it, and from there it follows again.
+  // A thread's page scrolls the window, the window chat its own entries.
+  // Each on a server of its own, as their messages change its threads.
+  ...(["thread", "window"] as const).flatMap((chat) =>
+    (["kept", "shown"] as const).map((step): Scene => ({
+      name: `chat-new-message-${chat}${step === "shown" ? "-shown" : ""}`,
+      window: true,
+      path: "/",
+      make: () => longChat(chat),
+      act: async (page) => {
+        if (chat === "thread") await page.goto(new URL(`/threads/${following}`, page.url()).href);
+        else await page.getByRole("button", { name: "Back to the chat" }).click();
+        await page.locator(".reply").first().waitFor();
+        const { at, below, top } = chatScroll[chat];
+        // Read from the top, once the chat has shown its end.
+        await until(page, `Math.abs(${below}) <= 1`);
+        await page.evaluate(top);
+        const replies = await page.locator(".reply").count();
+        const say = () =>
+          page.evaluate(
+            async ({ id, text }) => {
+              await fetch(`/api/threads/${id}/messages`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ text }),
+              });
+            },
+            { id: following, text: savedCards },
+          );
+        const answered = async (count: number) => {
+          await until(page, `document.querySelectorAll(".reply").length >= ${count}`);
+          await page.locator(".working").first().waitFor({ state: "detached" });
+        };
+        const pill = page.locator(".new-message-pill");
+        await say();
+        await pill.waitFor();
+        if (step === "kept") {
+          await answered(replies + 1);
+          const moved = await page.evaluate(at);
+          if (moved !== 0)
+            throw new Error(`A new message moved the chat read from its top: ${moved}`);
+          await pill.waitFor();
+          return;
+        }
+        // Pressed while the answer may still be arriving: the chat glides to
+        // its end and stays there for the rest.
+        await pill.click();
+        await pill.waitFor({ state: "detached" });
+        await answered(replies + 1);
+        await until(page, `Math.abs(${below}) <= 1`);
+        // At the latest entry, the chat follows what comes.
+        await say();
+        await answered(replies + 2);
+        await until(page, `Math.abs(${below}) <= 1`);
+        await expectCount(pill, 0);
+      },
+    })),
+  ),
 );
 
 // A chat taller than the window, on a server of its own: a thread's, or the
