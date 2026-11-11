@@ -801,7 +801,8 @@ const handlers = {
     const handler = handlers[action] as Handler<typeof action>;
     const called = await handler(input, actor, deps, actor);
     const output = called.output as SourceOutcome | { thread: Ulid; workstream: Ulid };
-    if ("problem" in output) throw new ActionError("refused", output.problem);
+    if (!("connection" in output) && "problem" in output)
+      throw new ActionError("refused", output.problem);
     // Kept as it applied, edited or not: the options the connection has now,
     // or the thread a request continued in.
     const as =
@@ -1281,6 +1282,8 @@ const handlers = {
         held: { from: from.kind, edited: false },
       });
     deps.publish({ thread: to });
+    // Left as New chat leaves it: its turn stops, so none holds a draft later.
+    deps.turns.stop(chat.id);
     // Any Continue offered in the chat settles as it is left.
     const offer = (held: Held) => "draft" in held && held.draft.action === "window.continue";
     const left = await leaveChat(deps, actor, chat.id, "continue", offer);

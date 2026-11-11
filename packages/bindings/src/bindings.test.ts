@@ -103,6 +103,22 @@ test("an item the user looked at outside the region reads, read-only", async () 
   assert.match(bindings.dts, /type LookedId =\n {2}\| "jira:SYN-80";/);
 });
 
+// Continue in… (decision 0062) carries a request about an item the run
+// reached, never one it names unread.
+test("the window chat drafts Continue in… only for an item the run reached", () => {
+  const bindings = bindingsFor(fixtureRegion("boarding-epic"), {
+    reader: base,
+    namespaces,
+    thread: "01JC0THREAD000000000000000" as never,
+    overview: async () => ({ view: null, items: [] }),
+    looking: ["jira:SYN-80"],
+  });
+  const drafted = bindings.draft("window.continue", [{ item: "jira:SYN-80" }]);
+  assert.deepEqual(drafted.input, { thread: "01JC0THREAD000000000000000", item: "jira:SYN-80" });
+  assert.throws(() => bindings.draft("window.continue", [{ item: "jira:SYN-54" }]));
+  assert.throws(() => bindings.draft("window.continue", [{ item: "jira:SYN-80", seq: 1 }]));
+});
+
 test("an item that moved project is followed and keeps its region handle", async () => {
   const reader = movingReader(base, "jira:SYN-13", "jira:FER-7");
   const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader, namespaces });
