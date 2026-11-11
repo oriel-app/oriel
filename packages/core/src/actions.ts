@@ -65,8 +65,10 @@ export type ActionDeclaration = {
   // Closed to the agent, it may still draft it: write out its input for the
   // user, who applies it, edits it or discards it (decision 0051). Only a
   // direct action closed to the agent may be, never a person's, such as one
-  // that holds credentials.
-  draftable?: true;
+  // that holds credentials. `window`: drafted in the window chat's module
+  // always; a source's only while a connection waits, or one reads in its
+  // connector's own form.
+  draftable?: true | "window";
 };
 
 export const maxNameChars = 120;
@@ -94,9 +96,15 @@ const items = refine(
   `expected 1 to ${maxItems} items`,
 );
 // Where in the window the user closed a thread from: its page, a list's menu
-// or swipe, or New chat in the window chat (decision 0027).
+// or swipe, or New chat or Continue in the window chat (decision 0027).
 export const closeVia = optional(
-  union(literal("page"), literal("menu"), literal("swipe"), literal("new-chat")),
+  union(
+    literal("page"),
+    literal("menu"),
+    literal("swipe"),
+    literal("new-chat"),
+    literal("continue"),
+  ),
 );
 // What the user says in a thread.
 export const messageText = refine(
@@ -285,6 +293,23 @@ export const actions = {
       agent: "It changes what the user's window shows, which is the user's.",
       tool: "It changes what the user's window shows, which is the user's.",
     },
+  },
+  // Continue in… (decision 0027, amended by 0062): the window chat changes
+  // no item, so a request to change one goes on in a thread on the item's
+  // workstream, or on a new one named for it, with the request sent there
+  // as the user's message, about the item. `seq`: that message in the
+  // window chat, which Oriel fills in as it holds the agent's draft.
+  "window.continue": {
+    doc: "Continues the user's request in a thread on the item's workstream.",
+    input: object({ thread: threadId, item: itemId, seq: optional(seq) }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "It opens a thread and sends the user's own words there; only deleting the thread erases them.",
+    },
+    userOnly: { seq: "Oriel names the message the draft answers." },
+    closed: { agent: unsaid, tool: untold },
+    draftable: "window",
   },
   "thread.open": {
     doc: "Opens a thread on a workstream, in the workstream's latest version.",

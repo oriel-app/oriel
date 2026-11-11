@@ -84,6 +84,21 @@ function holders(
   return holder;
 }
 
+// The open workstream that holds an item, the first listed, by identity
+// when the index has it: where Continue in… carries a request about it
+// (decision 0062).
+export function holderOf(
+  workstreams: OverviewInput["workstreams"],
+  records: readonly IndexRecord[],
+  item: string,
+): { id: string; name: string } | null {
+  const record = records.find((each) => each.id === item);
+  const found = record
+    ? holders(workstreams).get(identityOf(record))
+    : workstreams.find((workstream) => workstream.members.some((member) => member.id === item));
+  return found ? { id: found.id, name: found.name } : null;
+}
+
 // Whether an open workstream holds a record: what Not in a workstream yet
 // leaves out, and Browse's "not in a workstream" filter too.
 export function heldBy(

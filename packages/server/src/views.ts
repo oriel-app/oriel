@@ -73,6 +73,9 @@ export type ViewDeps = {
   // A draft as Oriel draws it from its source, when its connector drafts in
   // its own form; null otherwise.
   drawn?: (draft: Draft) => { tables: ReviewTable[]; said: string[] } | null;
+  // The open workstream holding an item, which Continue in… carries a
+  // request about it to (decision 0062); none, if absent.
+  holding?: (item: ItemId) => { id: Ulid; name: string } | null;
   writable: boolean;
   // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
@@ -513,6 +516,25 @@ export function views(deps: ViewDeps) {
           ? { about: message.about.map(({ id, outside }) => ({ id, outside })) }
           : {}),
       };
+    if (message.role === "held" && "draft" in message && message.draft.action === "window.continue") {
+      // Continue in…, drawn from Oriel's own data: the item, and the
+      // workstream the request goes on in, or went on in, by its name now.
+      const { draft, outcome } = message;
+      const item = String(draft.input["item"]);
+      const to = draft.input["to"];
+      const went = typeof to === "string" && isUlid(to) ? threads.get(to, deps.now()) : null;
+      const workstream = went
+        ? (workstreams.get(went.workstreamId)?.name ?? null)
+        : (deps.holding?.(item as ItemId)?.name ?? null);
+      return {
+        ...at,
+        kind: "continue",
+        item: ref(lookup().byId.get(item as ItemId), item),
+        workstream,
+        thread: went?.id ?? null,
+        outcome,
+      };
+    }
     if (message.role === "held" && "draft" in message) {
       // Drawn from Oriel's own data: the connection by its name, and each
       // option the draft changes, as it was drafted over and as drafted.
@@ -542,7 +564,10 @@ export function views(deps: ViewDeps) {
       const { from, text, outcome } = message;
       // Who it is from, as the user reads it: what each sender says of
       // itself, less Oriel's own bookkeeping.
-      const sender = { kind: from.kind, by: from.by, changeSetId: from.changeSet };
+      const sender =
+        from.kind === "review-link"
+          ? { kind: from.kind, by: from.by, changeSetId: from.changeSet }
+          : { kind: from.kind, chatId: from.chat };
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "note") {

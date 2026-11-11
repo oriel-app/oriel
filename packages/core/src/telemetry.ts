@@ -25,8 +25,8 @@ import type { SignalKind } from "./noticed.ts";
 //   `changeset.applied` or `thread.marked-done`, whichever came first
 // Where the user closed a thread from: its page, or a menu on a list, or a
 // swipe on one.
-// Or New chat, in the window chat, which marks the old chat done.
-export type CloseVia = "page" | "menu" | "swipe" | "new-chat";
+// Or New chat, or Continue, in the window chat, which marks the old chat done.
+export type CloseVia = "page" | "menu" | "swipe" | "new-chat" | "continue";
 
 // Events that can come from an Oriel action say who acted in `by`, which only
 // an actor other than the user fills in; or, by their `cause`, who changed a
@@ -232,6 +232,10 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // left it, `kept` working when something in it waits on the user.
   | { name: "window-chat.opened"; threadId: Ulid }
   | { name: "window-chat.new-chat"; threadId: Ulid; kept: boolean }
+  // Continue in used: the request went on in `to`, a thread on the item's
+  // workstream, or on one `made` for it; the chat was left as New chat
+  // leaves it, `kept` working when something in it waits on the user.
+  | { name: "window-chat.continued"; threadId: Ulid; to: Ulid; made: boolean; kept: boolean }
   // The user asked one of the questions to start from, by its kind.
   | { name: "window-chat.question-used"; question: StartQuestion }
   // The user searched their threads from the sidebar: how long the query was

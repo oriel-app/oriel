@@ -130,7 +130,7 @@ import { flagged, inWindow, type SourceModes } from "./modes.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
-import { heldBy, overviewItems, overviewView } from "./overview.ts";
+import { heldBy, holderOf, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
 import type { Calling, Models } from "./model.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
@@ -1712,10 +1712,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     options.agent !== undefined ||
     !options.models ||
     options.models.choose(store.get()).model !== null;
-  // A draft's action is `source.configure`, the one draftable action: what
-  // it would replace now is the options its connection has, and its name
-  // the connection's.
+  // What a draft would replace now: for `source.configure`, the options
+  // its connection has, and its name the connection's. Continue in…
+  // replaces nothing, so it never goes stale; its name is its item's.
   const drafted = (draft: Draft): { over: unknown; name: string } | null => {
+    if (draft.action === "window.continue") return { over: null, name: String(draft.input["item"]) };
     const id = draft.input["connection"];
     const connection = typeof id === "string" && isUlid(id) ? connections.get(id) : null;
     if (!connection || connection.disconnectedAt !== null) return null;
@@ -1723,6 +1724,13 @@ export async function createApp(options: AppOptions): Promise<App> {
       over: connection.options,
       name: connection.name ?? declared(connection.kind).name,
     };
+  };
+  // Continue in… carries on the user's message the draft answers: the
+  // thread's latest, which Oriel names, never the agent (decision 0062).
+  const answering = (thread: Ulid, draft: Draft): Draft => {
+    if (draft.action !== "window.continue") return draft;
+    const said = threads.messages(thread).findLast((message) => message.role === "user");
+    return said ? { ...draft, input: { ...draft.input, seq: said.seq } } : draft;
   };
   // What the window chat's module offers while any connection waits: each
   // one's preview, read live from its source, with its connector's validator
@@ -1908,7 +1916,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           thread.id,
           drafts.flatMap((draft) => {
             const now = drafted(draft);
-            return now ? [{ draft, over: now.over }] : [];
+            return now ? [{ draft: answering(thread.id, draft), over: now.over }] : [];
           }),
         ),
     },
@@ -2091,6 +2099,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     changeSets: sets,
     drafted,
     drawn,
+    holding: (item) => holding(item),
     sketchBase: options.sketchBase,
     ...(secondLooks ? { secondLook: (set: ChangeSet) => secondLooks.view(set) } : {}),
     get writable() {
@@ -2473,6 +2482,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     drafted,
     settle: settleDraft,
+    holding: (item) => holding(item),
     running: conversation.running,
     unsettled: async (threadId) =>
       Promise.all(
@@ -2686,6 +2696,12 @@ export async function createApp(options: AppOptions): Promise<App> {
           (member) => shownMember(member.id),
         ),
       }));
+  // The open workstream that holds an item: where Continue in… carries a
+  // request about it (decision 0062).
+  const holding = (item: ItemId) => {
+    const found = holderOf(openWorkstreams(), records(), item);
+    return found ? { id: found.id as Ulid, name: found.name } : null;
+  };
   const overview = async (): Promise<OverviewView> => {
     const all = records();
     const at = asOf ?? now();

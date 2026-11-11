@@ -90,7 +90,10 @@ export type IntentFn = {
 // draftable (decision 0051), generated from the registry as an intent's
 // function is. A run only records it; when the turn ends it is held in the
 // thread for the user to apply, edit or discard.
-export type DraftFn = Omit<IntentFn, "kind" | "space"> & { kind: "draft"; space: "source" };
+export type DraftFn = Omit<IntentFn, "kind" | "space"> & {
+  kind: "draft";
+  space: "source" | "window";
+};
 
 export type Fn = ReadFn | WriteFn | IntentFn | DraftFn;
 

@@ -37,7 +37,7 @@ import { dropWorkstream } from "./workstreams.ts";
 const ulidValue = refine(string, isUlid, "expected a ULID");
 const isDraftable = (name: string): name is Draft["action"] =>
   Object.hasOwn(actions, name) &&
-  (actions as Record<string, { draftable?: true }>)[name]?.draftable === true;
+  (actions as Record<string, { draftable?: true | "window" }>)[name]?.draftable !== undefined;
 const instantValue = refine(string, isInstant, "expected an instant");
 const threadRow = object({
   id: ulidValue,
