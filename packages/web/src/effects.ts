@@ -12,9 +12,11 @@ import {
   type WindowView,
 } from "./view.ts";
 
-// Where the page last scrolled itself to a thread's latest entry, until the
-// scroll event that says so.
+// Where a chat last scrolled itself to its latest entry, until the scroll
+// event that says so.
 let shownAt: number | null = null;
+// A chat is gliding to its latest entry, as the New message pill asks.
+let gliding = false;
 // The thread being watched, one at a time.
 let events: EventSource | null = null;
 // Every thread, watched for a move, on a page with no thread stream to say.
@@ -84,12 +86,27 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       return;
     }
     case "showLatest": {
-      const below = belowLatest();
+      // A glide to the latest goes on as what arrives renders: a jump would
+      // cut it short. Once it ends, the chat is asked again.
+      if (gliding && !effect.smooth) return;
+      const chat = scroller();
+      const below = belowLatest(chat);
       if (below === null) return;
-      const was = scrollY;
-      scrollBy(0, below);
+      const was = scrolledTo(chat);
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const behavior = effect.smooth && !still && below > 1 ? "smooth" : "auto";
+      if (behavior === "smooth") {
+        gliding = true;
+        const glided = () => {
+          gliding = false;
+          dispatch({ type: "thread", msg: { type: "rendered" } });
+        };
+        (chat ?? document).addEventListener("scrollend", glided, { once: true });
+      }
+      (chat ?? window).scrollBy({ top: below, behavior });
       // Another in the same frame may not move it, and has no event to skip.
-      if (scrollY !== was) shownAt = scrollY;
+      // A glide's events are on the way to the latest, so none reads as up.
+      if (scrolledTo(chat) !== was) shownAt = scrolledTo(chat);
       return;
     }
     case "showChangeSet":
@@ -187,42 +204,59 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
   }
 }
 
-// How far below the window's bottom edge a thread's chat ends, with the
-// composer under its latest entry; null off a thread's page. The window
-// scrolls; on a narrow screen the rail waits below the chat, so the page's
-// own end is not the chat's.
-function belowLatest(): number | null {
-  const chat = document.querySelector("main.thread");
-  return chat ? chat.getBoundingClientRect().bottom - innerHeight : null;
+// The window chat's entries scroll by themselves; a thread's page scrolls
+// the window (null).
+const scroller = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>(".window-chat-entries");
+
+const scrolledTo = (chat: HTMLElement | null): number => (chat ? chat.scrollTop : scrollY);
+
+// How far below what shows a chat ends, with the composer under its latest
+// entry; null with no chat on screen. On a thread's page the window
+// scrolls, and on a narrow screen the rail waits below the chat, so the
+// page's own end is not the chat's.
+function belowLatest(chat: HTMLElement | null): number | null {
+  if (chat) return chat.scrollHeight - chat.clientHeight - chat.scrollTop;
+  const thread = document.querySelector("main.thread");
+  return thread ? thread.getBoundingClientRect().bottom - innerHeight : null;
 }
 
-// Says where a thread's page is as the user scrolls, or opens a run's output
-// in the chat, and whether they moved up, until the returned function stops
-// it. The scroll event for the page's own scroll to the latest entry isn't
-// the user's: a block rendering between that scroll and its event would read
-// as them leaving.
-export function watchLatest(send: (msg: ThreadMsg) => void): () => void {
-  let was = scrollY;
+// Says where a chat is as the user scrolls it, or opens a run's output in
+// it, and whether they moved up, until the returned function stops it: a
+// thread's page, or with `chat`, the window chat's entries. The scroll
+// event for the chat's own scroll to the latest entry isn't the user's: a
+// block rendering between that scroll and its event would read as them
+// leaving.
+export function watchLatest(
+  send: (msg: ThreadMsg) => void,
+  chat: HTMLElement | null = null,
+): () => void {
+  const target = chat ?? window;
+  let was = scrolledTo(chat);
   const moved = (up: boolean) => {
-    const below = belowLatest();
+    const below = belowLatest(chat);
     if (below !== null) send({ type: "scrolled", below, up });
   };
   const scrolled = () => {
-    const up = scrollY < was;
-    const itself = scrollY === shownAt;
-    was = scrollY;
+    const at = scrolledTo(chat);
+    // Moved again before the event for the chat's own scroll: up from there.
+    const up = at < (shownAt ?? was);
+    const itself = at === shownAt;
+    was = at;
     shownAt = null;
     if (!itself) moved(up);
   };
   // A details element's toggle doesn't bubble.
-  const toggled = ({ target }: Event) => {
-    if (target instanceof HTMLDetailsElement && target.open && target.closest(".chat")) moved(true);
+  const toggled = ({ target: opened }: Event) => {
+    if (opened instanceof HTMLDetailsElement && opened.open && opened.closest(".chat")) moved(true);
   };
-  addEventListener("scroll", scrolled, { passive: true });
-  addEventListener("toggle", toggled, true);
+  target.addEventListener("scroll", scrolled, { passive: true });
+  target.addEventListener("toggle", toggled, true);
   return () => {
-    removeEventListener("scroll", scrolled);
-    removeEventListener("toggle", toggled, true);
+    // A chat closed mid-glide hears no end to it.
+    gliding = false;
+    target.removeEventListener("scroll", scrolled);
+    target.removeEventListener("toggle", toggled, true);
   };
 }
 

@@ -158,6 +158,7 @@ import {
   initNewThread,
   initThread,
   keptAtLatest,
+  seenUpTo,
   type NewThreadModel,
   type NewThreadMsg,
   newThreadReplied,
@@ -565,8 +566,9 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
+  const seen = next.thread && seenUpTo(next.thread);
   return [
-    looking(next),
+    looking(seen === next.thread ? next : { ...next, thread: seen }),
     [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest],
   ];
 }

@@ -11,9 +11,11 @@
 import { useEffect, useRef } from "preact/hooks";
 import { ChatInput, type Composer, LookingChips, readsWith } from "./chat-input.tsx";
 import { FoldedItem } from "./dock.tsx";
+import { watchLatest } from "./effects.ts";
 import { notLooking } from "./looking.ts";
+import { NewMessage } from "./new-message.tsx";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
-import { entriesOf, expected, type ThreadModel, type ThreadMsg } from "./thread.ts";
+import { entriesOf, expected, type ThreadModel, type ThreadMsg, unseen } from "./thread.ts";
 import { ChatEntryItem, itemsOf } from "./thread-page.tsx";
 import type { OverviewView } from "./view.ts";
 import { questionsFrom, type WindowChatModel, type WindowChatMsg } from "./window-chat.ts";
@@ -125,13 +127,15 @@ export function WindowChat(props: {
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
   const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   const view = thread && expected(thread);
-  const entries = view?.entries.length ?? 0;
   const list = useRef<HTMLOListElement>(null);
-  // Each new entry, and the agent at work, shows at the chat's end.
+  // The chat opens at its latest entry, and follows what arrives only while
+  // it's there, as a thread's page does (`watchLatest`, `keptAtLatest`).
   useEffect(() => {
-    const end = list.current;
-    if (end) end.scrollTop = end.scrollHeight;
-  }, [entries, view?.running, chat.asking]);
+    const entries = list.current;
+    if (!entries) return;
+    entries.scrollTop = entries.scrollHeight;
+    return watchLatest(sendThread, entries);
+  }, [thread?.id]);
   return (
     <aside class="window-chat" aria-label="Ask about your window">
       <header class="window-chat-head">
@@ -196,7 +200,18 @@ export function WindowChat(props: {
         )}
       </ol>
       <FoldedItem />
-      <ChatInput {...windowChatComposer(chat, thread, dispatch)} class="composer" />
+      <ChatInput
+        {...windowChatComposer(chat, thread, dispatch)}
+        class="composer"
+        above={
+          thread &&
+          unseen(thread) && (
+            <div class="composer-pills">
+              <NewMessage onShow={() => sendThread({ type: "latestClicked" })} />
+            </div>
+          )
+        }
+      />
     </aside>
   );
 }

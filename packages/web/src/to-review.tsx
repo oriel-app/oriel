@@ -72,11 +72,11 @@ export function ToReview(props: { ids: readonly string[]; onShow(changeSetId: st
         {plural(sets.length, "change set")} to review {side}
       </button>
     );
-  if (above.length === 0 && below.length === 0) return null;
+  // In the column over the composer (`.composer-pills`).
   return (
-    <div class="to-review">
+    <>
       {pill("above", above, above.at(-1))}
       {pill("below", below, below[0])}
-    </div>
+    </>
   );
 }

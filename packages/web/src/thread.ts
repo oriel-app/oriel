@@ -94,6 +94,10 @@ export type ThreadModel = {
   statuses: number;
   // The page shows the latest entry, so what arrives keeps it there.
   atLatest: boolean;
+  // The last entry there was while the page showed the latest, once the
+  // thread has loaded: anything after it arrived while the person read
+  // further up, and a pill over the composer says so (`unseen`).
+  seen: number | null;
   // The change set the thread's address names: the page opens there instead
   // of at the latest entry, once it has rendered, and marks it.
   at: { changeSet: string; shown: boolean } | null;
@@ -158,7 +162,9 @@ export type ThreadMsg =
   // output, either of which moves that end further down.
   | { type: "scrolled"; below: number; up: boolean }
   // The page shows what changed, and what the user did meanwhile.
-  | { type: "rendered" };
+  | { type: "rendered" }
+  // The New message pill: the page goes to the latest entry, and follows.
+  | { type: "latestClicked" };
 
 export function initThread(id: string, changeSet: string | null = null): [ThreadModel, Effect[]] {
   return [
@@ -190,6 +196,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       deleted: false,
       statuses: 0,
       atLatest: changeSet === null,
+      seen: null,
       at: changeSet === null ? null : { changeSet, shown: false },
     },
     [get(`/api/threads/${id}`, { kind: "thread", id })],
@@ -649,6 +656,8 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         !(up && below > 1) && (Math.abs(below) <= nearLatest || (below > 0 && model.atLatest));
       return atLatest === model.atLatest ? [model, []] : [{ ...model, atLatest }, []];
     }
+    case "latestClicked":
+      return [{ ...model, atLatest: true }, [{ type: "showLatest", smooth: true }]];
     case "rendered": {
       if (model.view === null) return [model, []];
       const { at } = model;
@@ -692,6 +701,17 @@ export function nextToReview(view: ThreadView, from: string): string | null {
     null
   );
 }
+
+// While the page shows the latest entry, the person has seen what there is.
+// Elsewhere, what arrives is new to them, until they're back.
+export function seenUpTo(model: ThreadModel): ThreadModel {
+  const last = model.view?.lastSeq;
+  if (last === undefined || last === model.seen) return model;
+  return model.atLatest || model.seen === null ? { ...model, seen: last } : model;
+}
+
+export const unseen = (model: ThreadModel): boolean =>
+  !model.atLatest && model.seen !== null && (model.view?.lastSeq ?? 0) > model.seen;
 
 export function keptAtLatest(before: ThreadModel | null, after: ThreadModel): Effect[] {
   const opening = after.at !== null && !after.at.shown;
