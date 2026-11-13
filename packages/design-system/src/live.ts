@@ -268,7 +268,7 @@ export function census(css = windowCss()): { measure: string; count: number; whe
   return [
     { measure: "Raw px outside token blocks", count: px.length, where: px },
     { measure: "Raw rem in spacing, not a --space-* token", count: rem.length, where: rem },
-    { measure: "z-index literals (no layer scale)", count: z.length, where: z },
+    { measure: "z-index literals, not a --layer-* token", count: z.length, where: z },
     { measure: "Selectors written as two top-level rules", count: dups.length, where: dups },
     {
       measure: "Classes styled but never named in packages/web/src",
