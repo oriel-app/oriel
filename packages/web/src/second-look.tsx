@@ -12,7 +12,7 @@ const kinds: readonly { kind: Finding["kind"]; heading: string }[] = [
   { kind: "related", heading: "Worth a look" },
 ];
 
-// Never its words.
+// Coverage comes from the runs' records, never the agent's words.
 function coverage(look: SecondLookView): string | null {
   const read = look.coverage;
   if (!read) return null;

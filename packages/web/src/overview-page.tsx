@@ -177,7 +177,6 @@ function FirstRunLine(props: {
   return (
     <aside class="first-run-line" aria-label="About the window">
       <p>
-        {/* Its text nodes split where they always have, so it draws the same. */}
         <strong>This is your window:</strong> {what}
         {" in one place. To follow"} {follow ?? "something"}
         {", make it a "}

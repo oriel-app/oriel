@@ -250,6 +250,7 @@ function block(prose: Prose, key: number, to: Sites): ComponentChildren {
     case "paragraph":
       return <p key={key}>{spans(prose.children)}</p>;
     case "heading": {
+      // The thread's title and its sections hold h1 and h2, so a reply's headings start at h3.
       const Heading = `h${Math.min(prose.level + 2, 6)}` as "h3";
       return <Heading key={key}>{spans(prose.children)}</Heading>;
     }

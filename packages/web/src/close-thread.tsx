@@ -110,6 +110,7 @@ export function Confirm(props: {
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-body`}
       onKeyDown={(event) => {
+        // Escape cancels this dialog without closing the panel or drawer behind it.
         if (event.key === "Escape") event.stopPropagation();
       }}
       onCancel={(event) => {
