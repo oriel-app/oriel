@@ -55,7 +55,6 @@ export type AnthropicOptions = {
   fallbacks?: boolean;
   // Default: the global fetch. Evals pass their cassettes'.
   fetch?: typeof fetch;
-  // Default: a timer. Tests pass their own clock.
   wait?: Wait;
 };
 
@@ -288,7 +287,6 @@ export async function* readResponse(
   };
 }
 
-// Waits `ms`, or rejects with the signal's reason once it aborts.
 export type Wait = (ms: number, signal: AbortSignal) => Promise<void>;
 
 const timer: Wait = (ms, signal) =>
@@ -305,21 +303,14 @@ const timer: Wait = (ms, signal) =>
     signal.addEventListener("abort", aborted, { once: true });
   });
 
-// A request is sent at most this many times more. Only a failure before any
-// response is read is retried: a connection that failed, or an answer that
-// the model is overloaded (529) or the key rate-limited (429). Once a
-// response streams, nothing is sent again, which could repeat a turn's text
-// or its calls.
+// Only a failure before any response is retried: once a response streams,
+// sending again could repeat a turn's text or its calls.
 export const maxRetries = 2;
-// Before each retry, unless the answer says how long in `retry-after`.
 export const retryDelaysMs = [500, 2_000] as const;
-// A `retry-after` longer than this isn't waited out: the request fails.
 export const maxRetryAfterMs = 20_000;
 
 const retriedStatuses = new Set([429, 529]);
 
-// How long a `retry-after` header asks to wait, in whole seconds; null when
-// it says nothing Oriel reads.
 function retryAfterMs(response: Response): number | null {
   const header = response.headers.get("retry-after")?.trim();
   return header && /^\d+$/.test(header) ? Number(header) * 1000 : null;
@@ -327,16 +318,11 @@ function retryAfterMs(response: Response): number | null {
 
 export type MessagesOptions = {
   apiKey: string;
-  // Sent as `anthropic-beta`.
   beta?: string;
   fetch?: typeof fetch;
   wait?: Wait;
 };
 
-// Posts to the Messages API: every request the agent sends goes here, the
-// turn's and the title's. Resolves with an ok response; rejects with a
-// `ProviderError` that never shows the key, or the signal's reason on abort.
-// `what` names the request in a refusal.
 export function messagesSender(options: MessagesOptions) {
   const { apiKey } = options;
   const send = options.fetch ?? ((input, init) => fetch(input, init));

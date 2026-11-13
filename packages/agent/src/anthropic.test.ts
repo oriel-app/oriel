@@ -186,8 +186,6 @@ test("the key goes nowhere but its header: not in errors, logs or the provider",
   assert.doesNotMatch(JSON.stringify(provider), /TESTKEY/);
 });
 
-// OA-227: on 2026-11-03 one dropped connection ("fetch failed") ended a turn
-// that the same question a minute later answered. OA-248: one 529 did too.
 test("a request that failed before any response is sent again, at most twice, as the answer asks", async () => {
   const waited: number[] = [];
   const wait = async (ms: number) => {
@@ -205,7 +203,6 @@ test("a request that failed before any response is sent again, at most twice, as
     });
   const answer = events([start(), ...end("end_turn")]);
 
-  // Dropped, then overloaded with a Retry-After, then answered.
   const logged: Logged[] = [];
   const blip = api([dropped, busy(529, "3"), answer]);
   const ok = anthropicProvider({ apiKey: key, fetch: blip.fetch, wait });
@@ -218,7 +215,6 @@ test("a request that failed before any response is sent again, at most twice, as
   assert.deepEqual(Reflect.get(retries[0] as object, "cause"), "ECONNRESET");
   assert.deepEqual(Reflect.get(retries[1] as object, "status"), 529);
 
-  // Still down after two retries: the error names the cause.
   const down = api([dropped, dropped, dropped, answer]);
   const offline = anthropicProvider({ apiKey: key, fetch: down.fetch, wait });
   await assert.rejects(collect(conversation(offline).next([])), (error: unknown) => {
@@ -228,7 +224,6 @@ test("a request that failed before any response is sent again, at most twice, as
   });
   assert.equal(down.seen.length, 3);
 
-  // Refused, or asked to wait longer than a turn should: no retry.
   for (const refusal of [busy(400), busy(429, String(maxRetryAfterMs / 1000 + 1))]) {
     const once = api([refusal, answer]);
     const refused = anthropicProvider({ apiKey: key, fetch: once.fetch, wait });
@@ -237,7 +232,6 @@ test("a request that failed before any response is sent again, at most twice, as
   }
 });
 
-// A retry once text or a call has streamed would repeat the turn's answer.
 test("a response that fails once it streams is never sent again", async () => {
   const broken = api([
     events([

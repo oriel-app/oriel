@@ -2001,16 +2001,12 @@ if (!backlog?.at) return null;
 source.configure({ connection: waiting.connection, options: { tabs: [{ at: backlog.at, header: 1, end: "blank", hidden: false, key: "A", title: "B", status: "C", states: { todo: ["To do"], "in-progress": ["In progress", "In review", "Blocked"], done: ["Done"] }, assignee: "D", estimate: "F" }] } });
 return waiting.why;`;
 
-// A turn that couldn't reach the model (OA-227): the agent's first turn
-// fails as the loop says a connection that failed after its retries, and
-// the next answers.
 let failedIn = "";
 const failingOn = async () => {
   let turns = 0;
   const serving = await start(0, {
     db: ":memory:",
     sources: { jira: { mode: "fixture" } },
-    // The title fails beside the first turn, and is made after the next.
     titler: async () => {
       if (turns <= 1) throw new Error("fetch failed");
       return "Stories still needing estimates";
@@ -4682,8 +4678,6 @@ const scenes: Scene[] = [
       },
     };
   }),
-  // A turn that couldn't reach the model offers Try again (OA-227), which
-  // answers the same message in the same thread, once, and offers it no more.
   { name: "turn-failed", path: "/", make: failingOn, act: failedShown },
   {
     name: "turn-failed-again",

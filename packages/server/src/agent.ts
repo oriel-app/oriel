@@ -158,13 +158,10 @@ export const agentEvent: Validator<AgentEvent> = union(
   }),
 );
 
-// What a stopped turn says last in the chat.
 export const stoppedText = "Stopped.";
 
-// The last turn, when it failed before the agent did anything: the user's
-// message it answered and the error it ended with, which offers Try again.
-// A turn that wrote, ran or proposed anything before it failed, or that the
-// user stopped, offers none: asking again would repeat what it did.
+// A turn that did anything before it failed offers no Try again: asking
+// again would repeat what it did.
 export function failedTurn(
   messages: readonly Message[],
 ): { said: Extract<Message, { role: "user" }>; error: number } | null {

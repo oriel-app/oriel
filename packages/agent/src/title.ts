@@ -34,7 +34,6 @@ export type TitlerOptions = {
   model?: string;
   // Default: the global fetch. Tests pass their own.
   fetch?: typeof fetch;
-  // Default: a timer. Tests pass their own clock.
   wait?: Wait;
 };
 

@@ -95,15 +95,13 @@ export class ProviderError extends Error {
   }
 }
 
-// An error as a line: its message, and its cause's code, or else its
-// message, which fetch's own "fetch failed" leaves out.
+// fetch's own "fetch failed" leaves out what failed; its cause says.
 export function errorText(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const cause = causeOf(error);
   return cause ? `${error.message} (${cause})` : error.message;
 }
 
-// What an error's cause says of itself: its code, else its message.
 export function causeOf(error: unknown): string | null {
   const cause: unknown = error instanceof Error ? error.cause : undefined;
   if (cause === undefined || cause === null) return null;

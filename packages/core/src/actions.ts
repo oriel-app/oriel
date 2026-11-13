@@ -352,8 +352,6 @@ export const actions = {
     },
     closed: { agent: unsaid, tool: untold },
   },
-  // Try again, under a turn that failed before the agent did anything: the
-  // same message, answered again.
   "thread.retry": {
     doc: "Answers again the message whose turn failed in a thread.",
     input: object({ thread: threadId }),

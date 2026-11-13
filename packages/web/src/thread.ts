@@ -115,7 +115,6 @@ export type ThreadMsg =
   | { type: "looking"; msg: LookingMsg }
   | { type: "sendClicked" }
   | { type: "stopClicked" }
-  // Try again, under the error a failed turn ended with.
   | { type: "tryAgainClicked" }
   | { type: "doneClicked" }
   // Sync now: the thread catches up with its workstream without a message.

@@ -82,8 +82,6 @@ function endedOnLimit(messages: readonly Message[]): boolean {
 
 // A held message the user was to send or discard is gone: they already did
 // one or the other, or there never was one.
-// Try again on a thread whose last turn didn't fail before the agent did
-// anything.
 export class NothingFailed extends Error {
   constructor() {
     super("The thread's last turn didn't fail, so there's nothing to try again.");
@@ -290,8 +288,6 @@ export function turns(deps: TurnDeps) {
   const everyWatchers = new Set<(threadId: Ulid) => void>();
   // Titles being written, which outlive a stopped turn; closing stops them.
   const titling = new Set<Promise<void>>();
-  // Threads whose title failed, with their first message: the next turn
-  // there that ends well titles them.
   const untitled = new Map<Ulid, string>();
   const closing = new AbortController();
 
@@ -512,8 +508,6 @@ export function turns(deps: TurnDeps) {
     }
   };
 
-  // A turn answering the user's message at `seq`, which runs on after this
-  // returns.
   const launch = (
     thread: Thread,
     said: { text: string; about: About | null },
@@ -787,8 +781,6 @@ export function turns(deps: TurnDeps) {
       broadcast(null);
     },
 
-    // Try again: the user's message whose turn failed before the agent did
-    // anything, answered again in the same thread, as it was sent.
     retry(threadId: Ulid): { seq: number } {
       if (running.has(threadId)) throw new ThreadBusy();
       const earlier = threads.messages(threadId);
