@@ -1,14 +1,7 @@
-// One provider instance as a row: its name, whose plans it's for and who
-// makes it, what Oriel found (installed, signed in, its version, or a key
-// set, never the key), the models it runs now, and a switch to turn it on or
-// off. Settings lists these, and the first run shows the same rows, with
-// what it can do for the person's Claude Code beneath (decision 0038).
-// Codex's row is marked a preview, with what's less locked down than Claude
-// Code (decision 0048).
+// A key shows as set, never the key itself.
 import type { ComponentChildren } from "preact";
 import type { ProviderKind, ProviderStatus, ProviderView } from "./view.ts";
 
-// How each status reads at a glance, beside the row's own words.
 const statusNames: Record<ProviderStatus, string> = {
   ready: "Ready",
   missing: "Not found",
@@ -18,30 +11,22 @@ const statusNames: Record<ProviderStatus, string> = {
   checking: "Checking",
 };
 
-// Whose plan each kind runs on, plans first, then who makes it.
 export const providerAbout: Record<ProviderKind, string> = {
   "claude-code": "For Claude Pro and Max · Anthropic's assistant for your Mac",
   codex: "For ChatGPT plans · OpenAI's assistant for your Mac",
-  // `pnpm dev --agent api` only (decision 0059).
   api: "Anthropic bills each question · from .env, for development",
 };
 
 const marks: Record<ProviderKind, string> = { "claude-code": "C", codex: "O", api: "A" };
 
-// What a person gives up running on Codex, in one plain line.
 export const codexPreview =
   "Less locked down than Claude Code: your own Codex settings still load, and Oriel can't check every tool Codex gives its model.";
 
 export function ProviderRow(props: {
   provider: ProviderView;
-  // Turns it on or off; absent where it can't be, as in the first run.
   onToggle?(on: boolean): void;
-  // The row's own line of state, in place of its status and detail, as the
-  // first run's Claude Code row has.
   status?: ComponentChildren;
-  // What sits at the row's right: a pick, or the one action it offers.
   side?: ComponentChildren;
-  // Picked, as the AI the first run continues with.
   picked?: boolean;
   children?: ComponentChildren;
 }) {

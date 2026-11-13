@@ -1,10 +1,3 @@
-// The desktop app's first run (decisions 0038 and 0059), on a page of its
-// own: Your AI, then Your work, which shows what Oriel found in the person's
-// agent and what it reads, starting on the stand-in tracker if no tracker is
-// on, then the overview, where the person asks a question and approves a
-// change. Each step has a way to set it up later. The words follow the prototype the walkthroughs read:
-// plans before product names, what installs and where the work goes, what's
-// happening while it does, and a failure that keeps its help on screen.
 import type { ComponentChildren } from "preact";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
 import {
@@ -104,12 +97,9 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
   const codexCli = view?.codex ?? null;
   const ready = cli?.state === "ready";
   const missing = cli?.state === "missing";
-  // Claude Code is picked whenever it's ready; Codex, a preview, only when
-  // it's the one ready (decision 0048).
   const ai = ready ? "claude-code" : codexCli?.state === "ready" ? "codex" : null;
   const name = ai === "codex" ? "Codex" : "Claude Code";
   const tested = ai === "codex" ? codexCli?.failed?.what === "test" : cli?.failed?.what === "test";
-  // Why Claude Code, said only while it isn't on this Mac yet.
   const explain = missing || cli?.state === "checking";
   return (
     <>
@@ -180,8 +170,6 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
   );
 }
 
-// Claude Code's own way, in Terminal, written out step by step: only if
-// Oriel's way keeps failing (decision 0038).
 function OtherWays(props: {
   model: Model;
   send(msg: SetupMsg): void;
@@ -267,19 +255,13 @@ function OtherWays(props: {
   );
 }
 
-// Where nothing changes until the person approves it, as each source the
-// first run offers says it, joined with "or".
 const changesIn = (model: Model) =>
   [
     ...standingIn(model.connectors, model.connections).map(({ standIn }) => standIn.offer.changes),
     ...offered(model.connectors, model.connections).map((connector) => connector.offer?.changes),
   ].join(" or ");
 
-// A source as a row: its mark, name and what it brings, its state, and the
-// one thing to do next.
 function SourceRow(props: {
-  // Ids the row's name and about take, `<id>-name` and `<id>-about`, for
-  // what's in it to be labelled by them.
   id?: string;
   mark: string;
   name: string;
@@ -308,7 +290,6 @@ function SourceRow(props: {
   );
 }
 
-// A stand-in's, which is the person's already (decision 0059).
 const ready = (text: string) => (
   <span class="provider-status" data-connected>
     <span class="provider-mark" aria-hidden="true" />
@@ -325,9 +306,6 @@ const connected = (text: string) => (
   </span>
 );
 
-// One source the first run offers, as Your work draws it: its connector,
-// its words, its folder step if the window connects it itself, its
-// connection, and its state.
 function sourceOf(model: Model, kind: string) {
   const connector = model.connectors[kind];
   const offer = connector?.offer;
@@ -339,8 +317,6 @@ function sourceOf(model: Model, kind: string) {
     form: formOf(model.connections, kind),
     chooses: first?.kind === folderStep ? first : null,
     open: openOf(model.connections, kind),
-    // On through its source server, and waiting for options that fit, as
-    // Sheets' mapping once its spreadsheets are picked.
     waits:
       model.connections.view?.connections.some(
         (each) => each.kind === kind && each.state === "waiting",
@@ -348,19 +324,11 @@ function sourceOf(model: Model, kind: string) {
     state: connectState(model.connections, kind),
   };
 }
-// What Oriel found in the person's agent (decision 0059): each source
-// server it knows, with what it turns on and a click to turn that on; for a
-// kind with none, the server that would, and its vendor's instructions.
-// Then Your work, which starts on the stand-in tracker if no tracker is on.
 function Found(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): void }) {
   const { model, dispatch, show } = props;
   const servers = model.connections.view?.servers ?? null;
   const agent = servers?.agent ?? "your AI";
   const sendConnections = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
-  // Each kind on through its server with something to pick, such as Jira's
-  // project: picked here, or read as its server's first until then; one
-  // whose pick no longer fits waits here for another.
-  // In the order of what was found.
   const picking = (model.connections.view?.connections ?? [])
     .filter(
       (each) =>
@@ -462,13 +430,6 @@ const sources = (model: Model): Source[] =>
     (connector) => sourceOf(model, connector.kind) ?? [],
   );
 
-// Your work: the stand-in tracker while no tracker is on, each source on
-// through its server, and the folder, which the window connects itself.
-// Then every other source Oriel knows a server for, as "See what Oriel
-// found" lists them, so skipping Your AI misses none: one found but off
-// turns on here, a tracker's in place of the stand-in too; one with no
-// server says which would turn it on, and links to its vendor's own
-// instructions; and with no AI on, each says to set one up first.
 function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg): void }) {
   const { model, dispatch, send } = props;
   const { setup } = model;
@@ -476,10 +437,7 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
   const servers = model.connections.view?.servers ?? null;
   const agent = servers?.agent ?? "your AI";
   const all = sources(model);
-  // A stand-in on is the person's work already (decision 0059).
   const standing = standingIn(model.connectors, model.connections);
-  // Every other kind with a server found, off or turned on here, or none
-  // found, in the order "See what Oriel found" lists them.
   const shown = new Set([
     ...standing.map((each) => each.kind),
     ...all.map((source) => source.connector.kind),
@@ -488,8 +446,6 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
     ...(servers?.found ?? []).map((each) => each.kind),
     ...(servers?.missing ?? []).map((each) => each.kind),
   ].filter((kind, at, kinds) => !shown.has(kind) && kinds.indexOf(kind) === at);
-  // How a source with no server on gets one: an AI first, if none is on;
-  // else the server to add to it.
   const unserved = (missing: { server: string; instructions: string }) =>
     servers?.noAgent ? (
       <span class="cli-line">
@@ -547,8 +503,6 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
               about={offer.about}
               state={
                 state === "read" && open ? (
-                  // Through a server with nothing picked yet, it reads no name of
-                  // its own, such as Jira's project, so only its count shows.
                   connected(
                     [open.reads, plural(open.items, offer.counts)].filter(Boolean).join(" · "),
                   )
@@ -604,13 +558,7 @@ function YourWork(props: { model: Model; dispatch: Dispatch; send(msg: SetupMsg)
               name={name}
               about={`Through ${found?.known ?? missing?.server ?? "its MCP server"}`}
               state={
-                open
-                  ? // Its count alone: a kind with no first-run offer declares no
-                    // words for what it reads.
-                    connected(plural(open.items, "item"))
-                  : missing
-                    ? unserved(missing)
-                    : null
+                open ? connected(plural(open.items, "item")) : missing ? unserved(missing) : null
               }
               side={found && !found.on ? turnOn(kind, name, found.server) : null}
             />

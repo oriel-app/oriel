@@ -1,10 +1,4 @@
-// The person's Claude Code as the first run and Settings show it, one row in
-// both (decision 0038): what Oriel found, the one thing it can do next
-// (Install, Sign in, Update), what it's doing while that runs, and, when it
-// fails, one sentence, Try again, Show details with a log to copy, and other
-// ways. Oriel never sees the sign-in: the browser does it with Claude Code.
-// The person's Codex, a preview, has a row like it with only Sign in
-// (decision 0048).
+// Oriel never sees the sign-in: the browser does it with Claude Code.
 import type { ComponentChildren } from "preact";
 import { HiddenEmail } from "./hidden-email.tsx";
 import { useStamp } from "./parts.tsx";
@@ -21,13 +15,11 @@ const phases = {
   updating: "Updating Claude Code…",
 } as const;
 
-// 41000 → "0:41".
 export const elapsed = (ms: number) =>
   `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
 const plans = "https://claude.com/pricing";
 
-// One line under a ready row signed in with a personal plan.
 function TrainingLine(props: { kind: "claude-code" | "codex"; cli: CliView }) {
   const notice = trainingNotice(props.kind, props.cli);
   if (!notice) return null;
@@ -46,11 +38,8 @@ export function ClaudeCodeRow(props: {
   cli: CliView;
   model: SetupModel;
   send(msg: SetupMsg): void;
-  // Picked as the AI the first run continues with.
   picked?: boolean;
-  // Settings' switch.
   onToggle?(on: boolean): void;
-  // Claude Code's own way, in Terminal, written out.
   onOtherWays?(): void;
   children?: ComponentChildren;
 }) {
@@ -207,7 +196,6 @@ export function ClaudeCodeRow(props: {
       );
       break;
     case "untrusted":
-      // The check's own sentence: what Oriel found wrong with the file.
       status = <span class="cli-line">{provider.detail}</span>;
       side = button("Install again", () => run("install"));
       break;
@@ -256,7 +244,6 @@ export function ClaudeCodeRow(props: {
       break;
   }
 
-  // A failure's own box carries the way on, in place of the row's action.
   if (cli.failed && !running && cli.failed.why !== "no-plan" && cli.failed.what !== "test")
     side = null;
   return (
@@ -282,10 +269,7 @@ export function ClaudeCodeRow(props: {
   );
 }
 
-// The person's Codex, a preview (decision 0048): what Oriel found, Sign in
-// through Codex's own `codex login`, what it's doing while that runs, and,
-// when it fails, the same box as Claude Code's. Oriel doesn't install or
-// update Codex: an old one names the person's own command.
+// Oriel doesn't install or update Codex: an old one names the person's own command.
 export function CodexRow(props: {
   provider: ProviderView;
   cli: CliView;
@@ -429,8 +413,6 @@ function Waiting(props: { children: ComponentChildren }) {
   );
 }
 
-// What went wrong, in one sentence, never more than Oriel knows, with the
-// way on: Try again, Show details, other ways. `codex`: Codex's row's.
 function Failed(props: {
   failed: NonNullable<CliView["failed"]>;
   model: SetupModel;
@@ -509,8 +491,6 @@ function Failed(props: {
   );
 }
 
-// When a usage limit resets, in the time format: an instant from the CLI,
-// or its own words.
 function resetsAt(resets: string | null, stamp: ReturnType<typeof useStamp>): string | null {
   if (resets === null) return null;
   if (Number.isNaN(Date.parse(resets))) return resets;

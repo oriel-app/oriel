@@ -1,29 +1,18 @@
-// A context menu on whatever it wraps. A right-click opens it at the
-// pointer; with focus inside, the Menu key or Shift+F10 opens it under the
-// focused element. Focus moves to its first item. The arrow keys move
-// between items, Home and End jump to the ends, Escape or Tab closes it and
-// gives focus back, and choosing an item closes it, then does what the item
-// does. It is a popover, in the top layer, so neither the sidebar's scroll
-// nor the drawer's slide clips or moves it. It grows in from where it
-// opened and fades out, quicker than it came (window.css).
+// A popover, in the top layer, so neither the sidebar's scroll nor the drawer's slide clips or moves it.
 import type { ComponentChildren, Ref } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
 export type MenuItem = { label: string; onSelect(): void; danger?: boolean };
 
-// Kept clear of the viewport's edges, in pixels.
 const edge = 4;
 
 export function ContextMenu(props: {
-  // What the menu is for, for screen readers: "Thread actions".
   label: string;
   items: readonly MenuItem[];
   class?: string;
   children: ComponentChildren;
 }) {
-  // Where it opens, in viewport pixels, while it's open.
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
-  // What had focus when it opened, which gets it back on a keyboard close.
   const opener = useRef<HTMLElement | null>(null);
   const menu = useRef<HTMLDivElement>(null);
 
@@ -74,9 +63,6 @@ export function ContextMenu(props: {
   );
 }
 
-// The menu itself, open at `at` while that isn't null, as a context menu
-// opens it or as a drop opens one where the pointer let go. `onClose`: it
-// closed, by a choice, Escape or Tab (`refocus`), or a click outside it.
 export function Menu(props: {
   label: string;
   items: readonly MenuItem[];
@@ -97,12 +83,9 @@ export function Menu(props: {
     props.onClose(refocus);
   };
 
-  // What it showed last, kept while it fades out after it closes.
   const shown = useRef<readonly MenuItem[]>([]);
   if (at !== null) shown.current = props.items;
 
-  // Shown, kept on screen, and focused before paint. It grows from where it
-  // opened, the pointer or the control, wherever the edges put it.
   useLayoutEffect(() => {
     const element = own.current;
     if (!element || at === null) return;
@@ -121,7 +104,6 @@ export function Menu(props: {
   const step = (by: number | "first" | "last") => {
     const all = items();
     const now = all.indexOf(document.activeElement as HTMLElement);
-    // With none focused, down goes to the first and up to the last.
     const next =
       by === "first" || (by === 1 && now === -1)
         ? 0
@@ -138,7 +120,6 @@ export function Menu(props: {
       role="menu"
       aria-label={props.label}
       class="context-menu"
-      // Closed by a click outside it, too.
       onToggle={(event) => {
         if (event.newState === "closed" && at !== null) props.onClose(false);
       }}

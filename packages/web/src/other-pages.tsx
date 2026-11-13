@@ -1,4 +1,3 @@
-// The Done page, and a review link's page.
 import { WorkstreamMenu } from "./end-workstream.tsx";
 import { threadCount } from "./ending.ts";
 import { Threads } from "./workstream-page.tsx";
@@ -17,11 +16,6 @@ import { stepLabel } from "./thread.ts";
 import { Diff } from "./thread-page.tsx";
 import type { ChangeSetView, DiffView, ThreadSummaryView, WorkstreamSummary } from "./view.ts";
 
-// The threads no longer working, most recently active first, a page at a
-// time, in two tabs: done, with handed-off ones, which say so; and dropped.
-// Each tab counts its threads. Threads that need the user aren't here: the
-// sidebar keeps them in sight. The Done tab leads with the done workstreams,
-// each a link to its page (decision 0028).
 export function DonePage(props: {
   finished: ThreadSummaryView[] | null;
   workstreams: WorkstreamSummary[];
@@ -123,12 +117,7 @@ export function DonePage(props: {
   );
 }
 
-// Exactly what happened once the reviewer decided: every change made, some
-// of them, or none, with each stop in plain words, next to the change it
-// stopped at.
-// What happened, in the engine's own terms: made, made in part, or not made;
-// and a change sent without an answer may have been made, which Oriel can't
-// tell. A reviewer has no steps to take here, so nothing names one.
+// A change sent without an answer may have been made, which Oriel can't tell.
 function Outcome({
   set,
   lines,
@@ -138,8 +127,6 @@ function Outcome({
   set: ChangeSetView;
   lines: DiffView["lines"];
   problem: string | null;
-  // The reviewer dismissed what was left: none of it will be made, though a
-  // change sent without an answer may have been.
   dismissed: boolean;
 }) {
   const stops = set.errors.map((e) => ({
@@ -233,8 +220,7 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
               agent sees it.
             </p>
           )}
-          {/* The link died with the decision, so there's nowhere to undo it
-              from (OA-258). */}
+          {/* The link died with the decision, so there's nowhere to undo it from. */}
           {model.outcome === "rejected" && !model.problem && (
             <p>
               This link has closed, so the rejection can't be undone here. If you didn't mean it,
@@ -272,16 +258,10 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
   );
 }
 
-// The change first, then what the reviewer can do with it: exactly the steps
-// the change set engine offers that a review link can take, as the thread
-// shows them, with what dismissing says may have landed. They pick their
-// answer, and only Reject opens the note, which says where it goes; then
-// their name, and one button that says what it does.
 function ReviewChange(props: {
   model: ReviewModel;
   view: NonNullable<ReviewModel["view"]>;
   deciding: boolean;
-  // Approving here, and being applied: the click landed.
   applying: boolean;
   send: (msg: ReviewMsg) => void;
 }) {
@@ -295,8 +275,6 @@ function ReviewChange(props: {
   return (
     <section class="review-card">
       <h1 class="page-title">Review this change</h1>
-      {/* A decision refused because the change was altered since the page
-          showed it (OA-309); otherwise, whoever saw it before can tell. */}
       {model.altered ? (
         <div class="review-altered" role="alert">
           <p class="review-altered-lead">Your review was not saved.</p>

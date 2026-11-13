@@ -1,12 +1,3 @@
-// A connector's steps, drawn from its declaration the same way wherever a
-// connection is made: the first run and Settings' Add a connection
-// (decision 0049), which since decision 0059 are only for what's on this
-// Mac. Each
-// step kind is drawn here once, in its connector's words: a folder step's
-// path, from the folder picker or by its typed path; and the options Oriel or
-// the agent drafts, drawn from the source, to apply or edit, which Settings
-// draws with a connection's mapping. And what the window says of a
-// connection that read nothing.
 import type { ComponentChildren } from "preact";
 import { ReviewTables } from "./block.tsx";
 import {
@@ -40,17 +31,9 @@ type StepProps<K extends ConnectStep["kind"]> = {
   step: Step<K>;
   form: ConnectForm;
   send(msg: ConnectionsMsg): void;
-  // What sits beside the step's button, such as Back.
   actions?: ComponentChildren;
 };
 
-// A review step (decision 0051): the connection's options as the agent
-// drafted them, or Oriel's guess until then, or with no AI; each drawn from
-// the source by Oriel, for the person to apply, or to edit and apply
-// (OA-232). It says whose it is, and, before Apply, what applying does to
-// the items the connection has. The same step shows wherever a connection
-// is made, and in Settings, where `beside` names the option it sets, and
-// where it edits one table by hand, as it reads now.
 export function ReviewStep(props: {
   connector: ConnectorView;
   step: Step<"review">;
@@ -189,16 +172,12 @@ export function ReviewStep(props: {
   );
 }
 
-// Where a table ends, in the review step's words.
 const ends = [
   { value: "blank", label: "At its first blank row" },
   { value: "grid", label: "At the end of the sheet, skipping blank rows" },
 ] as const;
 
-// What the person changes of one table in a review step (OA-232): whether
-// it's read; each field's column, by its letter and the header the sheet
-// has there; its header row; where it ends; and whether rows hidden by hand
-// are read. Each change is drawn again from the source by the server.
+// Each change is drawn again from the source by the server.
 function TableControls(props: {
   table: ReviewTable;
   fields: readonly ReviewField[];
@@ -291,9 +270,6 @@ function TableControls(props: {
   );
 }
 
-// A folder step: the system's folder picker on the desktop app, or a path typed under
-// `pnpm dev`, which has none. One that takes the place of the connector's
-// connection says so.
 export function FolderStep(
   props: StepProps<FolderKind> & { picker: boolean; replaces: string | null; onCancel(): void },
 ) {
@@ -379,10 +355,6 @@ export function FolderStep(
   );
 }
 
-// A connector's steps, at the one the person is on, which is a folder step
-// since decision 0059: a review step is declared on its connector and drawn
-// with a connection's mapping in Settings, never among its connect steps.
-// `onCancel` leaves them.
 export function ConnectSteps(props: {
   connector: ConnectorView;
   connections: ConnectionsModel;
@@ -409,8 +381,6 @@ export function ConnectSteps(props: {
   );
 }
 
-// A connection that read nothing, said in its place above Browse's
-// clusters, so the window doesn't look as if it failed.
 export function ConnectNotices(props: { connections: ConnectionsModel; connectors: Connectors }) {
   const { connections, connectors } = props;
   return (
@@ -419,7 +389,6 @@ export function ConnectNotices(props: { connections: ConnectionsModel; connector
         const said = connectors[connection.kind]?.offer?.invite?.connected;
         if (!said) return null;
         const title = `empty-${connection.id}-title`;
-        // What it reads, in bold, at the head of what the sidebar says of it.
         const rest = connection.about.startsWith(connection.reads)
           ? connection.about.slice(connection.reads.length)
           : ` · ${connection.about}`;

@@ -1,40 +1,24 @@
-// A row that swipes left to show actions behind it: a two-finger swipe on a
-// trackpad (wheel events with a sideways delta) or a touch swipe (pointer
-// events). The first action shows at the first stop; the rest, against some
-// resistance, further on (swiping.ts). Let go short, or swipe back, and they
-// hide. Only a swipe that is mostly sideways is taken, so scrolling stays
-// the page's; and a rightward swipe on a closed row is left to the browser,
-// whose back gesture it is. The same actions are in the row's context menu,
-// which is how a keyboard reaches them.
+// A rightward swipe on a closed row is left to the browser, whose back gesture it is.
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { MenuItem } from "./menu.tsx";
 import { pullFor, resisted, settle, shown, type Stops } from "./swiping.ts";
 
-// Each action's width, in pixels.
 const actionWidth = 76;
-// A trackpad swipe ends when its wheel events stop for this long.
 const wheelIdleMs = 140;
-// A touch moves this far before it counts as a swipe or a scroll.
 const slop = 8;
 // Touches this near the screen's left edge are the system's back gesture.
 const backEdge = 24;
 
-// A gesture, once it moved past the slop on one axis. A wheel gesture's
-// deltas add up until then.
 type Gesture =
   | { kind: "wheel"; dx: number; dy: number; axis: "x" | "other" | null }
   | { kind: "touch"; id: number; x: number; y: number; from: number; axis: "x" | "other" | null };
 
-// Which way a move of (dx, dy) goes, once it's past the slop: sideways
-// when it is mostly so, and either opens (fingers moving left) or the row
-// is already open; a rightward swipe on a closed row is the browser's.
 function axisOf(dx: number, dy: number, open: boolean): "x" | "other" | null {
   if (Math.abs(dx) < slop && Math.abs(dy) < slop) return null;
   return Math.abs(dx) > Math.abs(dy) && (dx > 0 || open) ? "x" : "other";
 }
 
-// The open row's way to close, so opening another closes it: one at a time.
 let closeOpen: (() => void) | null = null;
 
 export function Swipeable(props: { actions: readonly MenuItem[]; children: ComponentChildren }) {
@@ -43,7 +27,6 @@ export function Swipeable(props: { actions: readonly MenuItem[]; children: Compo
   const root = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
-  // What the handlers read between renders.
   const at = useRef(0);
   const pulled = useRef(0);
   const gesture = useRef<Gesture | null>(null);
@@ -52,7 +35,6 @@ export function Swipeable(props: { actions: readonly MenuItem[]; children: Compo
   // link. Only that click: the flag clears once the pointerup's task ends.
   const swallowClick = useRef(false);
 
-  // This row's closer, the same one every render.
   const closer = useRef(() => {
     at.current = 0;
     setOffset(0);
@@ -66,8 +48,7 @@ export function Swipeable(props: { actions: readonly MenuItem[]; children: Compo
       closeOpen = close;
     } else if (to === 0 && closeOpen === close) closeOpen = null;
   };
-  // Closed from the keyboard or by an action: focus goes back to the row,
-  // not to a button that has just hidden.
+  // Focus goes back to the row, not to a button that has just hidden.
   const closeToRow = () => {
     move(0);
     root.current?.querySelector<HTMLElement>(".swipe-row a, .swipe-row button")?.focus();
@@ -86,7 +67,6 @@ export function Swipeable(props: { actions: readonly MenuItem[]; children: Compo
     setDragging(false);
   };
 
-  // Once open, a press anywhere else closes it.
   const open = offset > 0 && !dragging;
   useEffect(() => {
     if (!open) return;
@@ -139,7 +119,6 @@ export function Swipeable(props: { actions: readonly MenuItem[]; children: Compo
       }}
       onPointerDown={(event) => {
         if (event.pointerType === "mouse" || event.clientX < backEdge) return;
-        // A second finger doesn't take over a swipe under way.
         if (gesture.current?.kind === "touch") return;
         gesture.current = {
           kind: "touch",
@@ -179,8 +158,6 @@ export function Swipeable(props: { actions: readonly MenuItem[]; children: Compo
         const current = gesture.current;
         if (current?.kind === "touch" && current.id === event.pointerId) end();
       }}
-      // The click a swipe ends with does nothing; a tap on an open row
-      // closes it rather than following its link.
       onClickCapture={(event) => {
         const onAction =
           event.target instanceof Element && event.target.closest(".swipe-actions") !== null;

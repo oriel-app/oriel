@@ -1,16 +1,10 @@
-// A change set's second look (decision 0054), between its diff and its
-// controls, once the person asked for one: the agent's reading of what else the change would make
-// wrong, never a verdict. Nothing here approves, rejects or blocks, and
-// nothing looks like a pass: no tick, no green, no score, and no summary
-// line, since the agent writes none. What Oriel knows for itself (what the
-// look read, which quotes it found word for word, what changed since) is
-// said in Oriel's words; what the agent concluded is captioned as its own.
+// Never a verdict: nothing here approves, rejects or blocks, and nothing looks like a pass
+// (no tick, no green, no score). What the agent concluded is captioned as its own.
 import { AnswerChip, ChipsContext, plural } from "./parts.tsx";
 import type { DiffView, SecondLookView, ThreadView } from "./view.ts";
 
 type Finding = SecondLookView["findings"][number];
 
-// Each kind's heading, in the order shown.
 const kinds: readonly { kind: Finding["kind"]; heading: string }[] = [
   { kind: "conflict", heading: "Disagrees with something decided" },
   { kind: "discussion", heading: "A discussion this affects" },
@@ -18,7 +12,7 @@ const kinds: readonly { kind: Finding["kind"]; heading: string }[] = [
   { kind: "related", heading: "Worth a look" },
 ];
 
-// What the look read, from its runs' records, never its words.
+// Never its words.
 function coverage(look: SecondLookView): string | null {
   const read = look.coverage;
   if (!read) return null;
@@ -39,7 +33,6 @@ export function SecondLook(props: {
   const { look, diff, busy } = props;
   const stale = look.stale.diff || look.stale.items.length > 0;
   const added = look.companions.some((c) => c.added);
-  // Where a finding bears: the item its line changes, or its place.
   const on = (n: number) => diff?.lines[n - 1]?.target?.key ?? `change ${n}`;
   return (
     <ChipsContext.Provider value={props.view.chips}>

@@ -1,11 +1,4 @@
-// The overview (decision 0027): the counts strip, then the headlines, each
-// with its questions to start from (decision 0030) and the review links
-// nobody has opened among them; then the workstreams, and beside them what
-// no workstream holds yet and who has work in progress, their heads on one
-// line. The composer is a thread's, at the page's foot. The threads
-// waiting on the user are in the sidebar, on every page, which the strip's
-// count of them points to (OA-185). Every number and line is the server's,
-// computed, never generated; each derived one shows its rule.
+// Every number and line is the server's, computed, never generated.
 import type { ComponentChildren } from "preact";
 import { useContext, useEffect, useRef, useState } from "preact/hooks";
 import { Tooltip } from "./tooltip.tsx";
@@ -47,23 +40,17 @@ import type { ThreadModel } from "./thread.ts";
 
 export function OverviewPage(props: {
   model: OverviewModel;
-  // A workstream marked done, reopened or deleted, from the sidebar: its
-  // Undo shares this page's one stack.
   ending: EndingModel;
-  // The panel's adds, whose Undos share it too.
   added: Undos;
   connections: ConnectionsModel;
   connectors: Connectors;
-  // Browse as the user last left it.
   browse: Route;
   chat: WindowChatModel;
   thread: ThreadModel | null;
-  // Whether the window chat has a conversation.
   ongoing: boolean;
   questions: Question[];
   firstRun: { line: boolean };
   noAi: boolean;
-  // Shows the sidebar's list of the threads waiting on the user.
   onNeedsYou(): void;
   dispatch: Dispatch;
 }) {
@@ -134,8 +121,6 @@ export function OverviewPage(props: {
           </div>
         </>
       )}
-      {/* One stack: a workstream ended from the sidebar, the panel's adds,
-          and the workstreams made here. */}
       <WindowUndos
         ending={ending}
         more={{
@@ -168,10 +153,6 @@ export function OverviewPage(props: {
   );
 }
 
-// The first run's one-time line (decision 0038): what the window and a
-// workstream are, until it's dismissed or the first workstream is made.
-// It names what the connections that may propose changes hold, or, with
-// none, what the others do.
 function FirstRunLine(props: {
   connections: ConnectionsModel;
   connectors: Connectors;
@@ -179,7 +160,6 @@ function FirstRunLine(props: {
   dispatch: Dispatch;
 }) {
   const open = [
-    // A stand-in on (decision 0059), as its offer says what it holds.
     ...standingIn(props.connectors, props.connections).map(({ standIn, writable }) => ({
       offer: standIn.offer,
       writable,
@@ -215,7 +195,6 @@ function FirstRunLine(props: {
   );
 }
 
-// The window's two views, side by side at the top of each.
 export function ViewTabs(props: {
   current: "overview" | "browse";
   browse: Route;
@@ -249,9 +228,6 @@ const day = (instant: string) =>
     day: "numeric",
   });
 
-// What changed since the user last looked, in four counts. The first opens
-// what changed, by workstream; the third shows the threads waiting on the
-// user, in the sidebar.
 function Counts(props: {
   view: OverviewView;
   model: OverviewModel;
@@ -303,7 +279,6 @@ function Counts(props: {
   );
 }
 
-// What changed, by workstream, most first, and what no workstream holds.
 function Changed({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
   const { elsewhere } = view.changed;
   const workstreams = view.changed.workstreams.slice(0, shown.workstreams);
@@ -358,7 +333,6 @@ function Section(props: {
   );
 }
 
-// "N more", in place.
 function More(props: { section: OverviewSection; hidden: number; dispatch: Dispatch }) {
   if (props.hidden <= 0) return null;
   return (
@@ -377,9 +351,6 @@ function More(props: { section: OverviewSection; hidden: number; dispatch: Dispa
   );
 }
 
-// The standing questions, one computed line each, with its rule on hover,
-// and the questions to start from that each one offers at its row's end.
-// The review links nobody has opened are the last.
 function Headlines(props: {
   view: OverviewView;
   questions: Question[];
@@ -425,9 +396,6 @@ function Headlines(props: {
   return <Band>{all}</Band>;
 }
 
-// The headlines without questions: one band that never wraps. Where they
-// don't all fit, it scrolls sideways a headline at a time, and while there's
-// more to the right its end fades under a › that shows the next.
 function Band(props: { children: ComponentChildren }) {
   const track = useRef<HTMLElement>(null);
   const [more, setMore] = useState(false);
@@ -518,9 +486,6 @@ function Headline(props: {
   );
 }
 
-// The review links sent that nobody has opened yet, as a headline: the
-// oldest one's thread, and "N more" opening the rest in place. The threads
-// they are from wait on others, so they aren't in Needs you.
 function Unopened({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
   const { unopened } = view.needsYou;
   const [open, setOpen] = useState(false);
@@ -551,7 +516,6 @@ function Unopened({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }
   );
 }
 
-// An item, by its key and title, opening in the panel.
 function Item({ item }: { item: ItemRef }) {
   const connectors = useContext(ConnectorsContext);
   return (
@@ -561,8 +525,6 @@ function Item({ item }: { item: ItemRef }) {
   );
 }
 
-// Every open workstream, a line each: the ones that moved most, and a few
-// gone quiet, which a cap would hide, until "more".
 function Workstreams(props: {
   view: OverviewView;
   model: OverviewModel;
@@ -572,8 +534,6 @@ function Workstreams(props: {
   const { view, model, browse, dispatch } = props;
   const all = view.workstreams;
   const open = model.opened.includes("workstreams");
-  // The first few, and then any gone quiet, which a cap would hide, a few
-  // more at most.
   const quiet = all.slice(shown.workstreams).filter((row) => row.quiet);
   const rows = open ? all : [...all.slice(0, shown.workstreams), ...quiet.slice(0, shown.quiet)];
   return (
@@ -652,7 +612,6 @@ function WorkstreamRow({ row, dispatch }: { row: WorkstreamRowView; dispatch: Di
   );
 }
 
-// Changes logged on each of the last 14 days, as a line.
 function Spark({ values }: { values: readonly number[] }) {
   const max = Math.max(1, ...values);
   const last = Math.max(1, values.length - 1);
@@ -672,12 +631,8 @@ function Spark({ values }: { values: readonly number[] }) {
   );
 }
 
-// Browse, filtered to what no workstream holds: all of Not in a workstream yet.
 const unheld: Route = { page: "window", grouping: "epic", addTo: null, workstream: "none" };
 
-// Every source's candidates and the most linked clusters, ranked together:
-// the top few, each under the rule that found it, with its source; a
-// cluster's row offers Make a workstream.
 function Candidates(props: { view: OverviewView; model: OverviewModel; dispatch: Dispatch }) {
   const { view, model, dispatch } = props;
   const { rows, total } = view.candidates;
@@ -790,7 +745,6 @@ function CandidateRow(props: {
   );
 }
 
-// Browse by assignee, in progress only: everyone's work in progress.
 const everyone: Route = {
   page: "window",
   grouping: "assignee",
@@ -798,8 +752,6 @@ const everyone: Route = {
   status: "in-progress",
 };
 
-// Who has work in progress, most first: the top few, and "N more" into
-// Browse by assignee.
 function People({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
   const { rows, total } = view.people;
   return (

@@ -37,10 +37,6 @@ import { Tooltip } from "./tooltip.tsx";
 
 export type Dispatch = (msg: Msg) => void;
 
-// An in-app link: a real href, so it opens in a new tab too, and a plain
-// click that stays in the page. `msg` is what that click sends, where
-// following the link does more than go there, as opening a search result
-// does; by default, that the link was followed.
 export function Link(props: {
   route: Route;
   dispatch: Dispatch;
@@ -77,12 +73,8 @@ export function Link(props: {
   );
 }
 
-// Where things dropped are added to a workstream: a card dragged out of its
-// source, a link, an item's key, or a file Oriel reads. Only
-// drags from outside Oriel: one that starts in this page, like text moved
-// into the composer, is left to the browser. While one is over the zone, a
-// veil covers it, says where the drop goes and takes the drop, so leaving the
-// veil is leaving the zone.
+// Only drags from outside Oriel: one that starts in this page is left to the browser.
+// A veil over the zone takes the drop, so leaving the veil is leaving the zone.
 let dragFromHere = false;
 
 export function DropZone(props: {
@@ -139,48 +131,23 @@ export function DropZone(props: {
   );
 }
 
-// Where links to items lead on this page: `dispatch` opens the panel, and
-// `items` names, by address, the items this page knows, so a link that has
-// only an address (in a reply, or a diff's value) is a link to its item.
-// With no provider, as on a review link's page, which has no panel, links to
-// items go to their sources.
 export type ItemLinks = { dispatch: Dispatch; items: ReadonlyMap<string, string> };
 export const ItemLinksContext = createContext<ItemLinks | null>(null);
 
-// The list on the page that holds a link to an item, by item ID, in the
-// order it shows them: a Browse cluster's items, a workstream's members, a
-// thread's rail or search results. An item opened from it can step through it
-// in the panel.
 export const ItemListContext = createContext<readonly string[] | null>(null);
 
-// The item open in the panel, by ID, so whatever named it can say so: a chip
-// for it stays marked while it's open. Null with the panel closed.
 export const OpenItemContext = createContext<string | null>(null);
 
-// The chat entry a link sits in, by its thread and place, so the item it
-// opens is known to have been opened from there (decision 0062).
 export const EntryContext = createContext<{ thread: string; seq: number } | null>(null);
 
-// Which key sends a question, as the person set it in Settings: Enter, with
-// Shift+Enter a new line; or Cmd+Enter (Ctrl+Enter), with Enter a new line.
 export const SendKeyContext = createContext<SendKey>("enter");
 
-// How a time is written, as Settings › General has it. A review link's page
-// has no provider, so the default.
 export const TimeFormatContext = createContext<TimeFormat>(defaultTimeFormat);
 
-// How every connector shows, as the server sent it. A review link's page has
-// no provider, so none: its items show by their keys.
 export const ConnectorsContext = createContext<Connectors>(noConnectors);
 
-// An address as the browser writes it, so two ways of writing one match.
 export const addressOf = (url: string): string => URL.parse(url)?.href ?? url;
 
-// A link to an item, wherever one is named. A plain click opens the item in
-// the panel beside the page; a Cmd/Ctrl, Shift or middle click goes to its
-// source, as any link's does (`clickTo`). Where there is no panel, or the
-// item can't be told, it is only a link to its source; an item whose source
-// has no web page, such as a file, opens only in the panel.
 export function ItemLink(props: {
   item: { id: string | null; url: string | null };
   class?: string;
@@ -237,7 +204,6 @@ export function ItemLink(props: {
   );
 }
 
-// An item's key, as a link to it.
 export function ItemKey({
   item,
 }: {
@@ -251,9 +217,6 @@ export function ItemKey({
   );
 }
 
-// A chat message's replies, as a link to its message: in Oriel they are part
-// of it, not items of their own, so they open in its panel, or where they
-// were written.
 export function Replies(props: { id: string; replies: { count: number; url: string } }) {
   const { count, url } = props.replies;
   return (
@@ -263,32 +226,20 @@ export function Replies(props: { id: string; replies: { count: number; url: stri
   );
 }
 
-// An agent's reply as formatted text. A heading starts at h3: the thread's
-// title and its sections hold h1 and h2. Read once per text: the page redraws
-// every reply as the latest one streams in.
-//
-// A link opens only to a site the thread's own items come from (`linksTo`, as
-// origins), or with "any", to any http(s) address; any other shows its label
-// and its whole address as text. A link to an item the page knows is a link
-// to that item (`ItemLink`). Only an agent's answer (`answer`) has chips
-// (decision 0032), drawn from `ChipsContext`; in any other text, such as a
-// source's own, `[[…]]` is text.
+// A link opens only to a site the thread's own items come from, or with "any", to any http(s) address;
+// any other shows as text. In any text but an answer, such as a source's own, `[[…]]` is text.
 export function Markdown(props: { text: string; linksTo: Sites; answer?: boolean }) {
   const { text, linksTo, answer = false } = props;
   const read = useMemo(() => parse(text, { chips: answer }), [text, answer]);
   return <ProseBlocks prose={read} linksTo={linksTo} />;
 }
 
-// Blocks already read, from markdown or by a source's server side, such as
-// a source's rich text, the same way.
 export function ProseBlocks({ prose, linksTo }: { prose: readonly Prose[]; linksTo: Sites }) {
   return <>{prose.map((each, i) => block(each, i, linksTo))}</>;
 }
 
 type Sites = ReadonlySet<string> | "any";
 
-// What is inside a block, already read, such as a message's text with its
-// mentions.
 export function Inlines({ inlines, linksTo }: { inlines: readonly Inline[]; linksTo: Sites }) {
   return <>{inlines.map((inline, i) => span(inline, i, linksTo))}</>;
 }
@@ -393,9 +344,6 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
   }
 }
 
-// A reply's link to a thread in Oriel, or a change set in one, which opens it
-// in the window, as any in-app link does. Where nothing can navigate, as on a
-// review link's page, it is its label.
 function RouteLink(props: { route: Route; label: ComponentChildren }) {
   const links = useContext(ItemLinksContext);
   if (links === null) return <span>{props.label}</span>;
@@ -406,17 +354,11 @@ function RouteLink(props: { route: Route; label: ComponentChildren }) {
   );
 }
 
-// The chips a thread's answers name, by ID, as the server resolved them.
 export const ChipsContext = createContext<Chips>({});
 
-// Whether each quote from an item in a thread's answers is there word for
-// word, as Oriel checked it.
 export const QuotesContext = createContext<Quotes>({});
 
-// A quote from an item, under the item's chip, captioned by Oriel's check of
-// it (decision 0032), never by the answer's words: "Word for word from" one
-// found there, "Quoted from" any other. One still being said, or not checked,
-// makes no claim.
+// Captioned by Oriel's check, never by the answer's words.
 function QuoteFrom(props: { quote: Extract<Prose, { kind: "quote-from" }>; to: Sites }) {
   const { quote, to } = props;
   const found: boolean | undefined = useContext(QuotesContext)[quoteKey(quote)];
@@ -431,9 +373,6 @@ function QuoteFrom(props: { quote: Extract<Prose, { kind: "quote-from" }>; to: S
   );
 }
 
-// A chip in an answer, by its ID. One the server hasn't resolved yet, named
-// while the turn runs, holds its place until the thread reloads as the turn
-// ends; one it couldn't resolve says so.
 export function AnswerChip({ id }: { id: string }) {
   const chips = useContext(ChipsContext);
   if (!Object.hasOwn(chips, id))
@@ -452,11 +391,6 @@ export function AnswerChip({ id }: { id: string }) {
   return <Chip id={id} view={view} />;
 }
 
-// A chip (chip.ts), wherever an item, a thread, a change set or a workstream
-// is named in a line: its kind's icon and its key, which never break apart,
-// its name, cut at a word, and where it stands. It opens the item in the
-// panel, or the thread or workstream. Where nothing can navigate, as on a
-// review link's page, it is text: its name and where it stands.
 export function Chip({ id, view }: { id: string; view: ChipView }) {
   const links = useContext(ItemLinksContext);
   const connectors = useContext(ConnectorsContext);
@@ -471,7 +405,6 @@ export function Chip({ id, view }: { id: string; view: ChipView }) {
         {state && ` (${state})`}
       </span>
     );
-  // Without a key, the icon keeps the name's first word beside it instead.
   const name = chipName(view.name);
   const space = key ? -1 : name.indexOf(" ");
   const first = space < 0 ? name : name.slice(0, space);
@@ -510,21 +443,15 @@ export function Chip({ id, view }: { id: string; view: ChipView }) {
   );
 }
 
-// An item's icon, from the fixed set a connector declares one of; a ticket
-// until the page has heard how its connector shows.
 const itemIcons: Record<ConnectorIcon, ComponentChildren> = {
   ticket: (
-    // A ticket's tick.
     <>
       <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
       <path d="M5.5 8l1.8 1.8L10.5 6" />
     </>
   ),
-  // A page with its corner turned.
   page: <path d="M4 2h5l3 3v9H4zM9 2v3h3" />,
-  // A message.
   message: <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" />,
-  // A table's rows.
   row: (
     <>
       <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
@@ -536,16 +463,13 @@ const itemIcons: Record<ConnectorIcon, ComponentChildren> = {
 function ChipIcon({ view, connectors }: { view: ChipView; connectors: Connectors }) {
   const shape =
     view.kind === "thread" ? (
-      // A speech bubble: a chat.
       <path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z" />
     ) : view.kind === "change-set" ? (
-      // A plus over a minus: a diff.
       <>
         <rect x="2.5" y="2" width="11" height="12" rx="2" />
         <path d="M8 4.5v4M6 6.5h4M6 11h4" />
       </>
     ) : view.kind === "workstream" ? (
-      // Lines of a list.
       <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
     ) : (
       itemIcons[connectors[view.source]?.icon ?? "ticket"]
@@ -583,8 +507,6 @@ function MarkdownLink(props: { href: string; sites: Sites; label: ComponentChild
 
 export { keyLabel } from "./chip.ts";
 
-// A working thread reads as what it waits on, so one whose agent has finished
-// doesn't look busy.
 export const waitingNames: Record<WaitingOn, string> = {
   agent: "Agent working",
   held: "Message held",
@@ -595,8 +517,6 @@ export const waitingNames: Record<WaitingOn, string> = {
   reply: "Your turn",
 };
 
-// With `onJump`, it goes to what waits: a thread's head goes to its change
-// set to review.
 export function StateChip(props: {
   state: ThreadStateId;
   waitingOn: WaitingOn | null;
@@ -676,9 +596,6 @@ export function Mark() {
   );
 }
 
-// A long list folded into one line, such as "12 tabs Oriel isn't reading", which
-// opens to its first few, with a search past a few (OA-232): long lists are
-// designed away, not drawn. Each entry's name is matched as text.
 const foldedShown = 8;
 export function Folded<T extends { name: string }>(props: {
   label: string;
@@ -735,8 +652,6 @@ export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-// An estimate in story points, wherever the window shows one: "1 point",
-// "3 points", or "1 pt" and "3 pts" where a row has little room.
 export function points(count: number, short = false): string {
   return plural(count, short ? "pt" : "point");
 }
@@ -748,9 +663,6 @@ export function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
-// Writes an instant as Settings' time format says: relative, or as
-// `absolute` writes it, a short date and time by default.
-// `ahead`: a time to come, as when a limit resets.
 export function useStamp(): (
   instant: string,
   absolute?: (instant: string) => string,
@@ -760,8 +672,6 @@ export function useStamp(): (
   return (instant, absolute, ahead) => stamp(instant, format, Date.now(), absolute, ahead);
 }
 
-// An instant on the page, in the time format, with its date and time on
-// hover.
 export function Stamp({ at, absolute }: { at: string; absolute?: (instant: string) => string }) {
   const written = useStamp();
   return (
@@ -771,8 +681,6 @@ export function Stamp({ at, absolute }: { at: string; absolute?: (instant: strin
   );
 }
 
-// An item as Browse lists it: its type, key, title, and its status or
-// replies; or a line saying the index no longer has it.
 export function Member({
   member,
   onRemove,
@@ -783,12 +691,8 @@ export function Member({
 }: {
   member: MemberView;
   onRemove?: () => void;
-  // A suggestion: the row's + adds it to the workstream named.
   adding?: { to: string; onAdd(): void };
-  // Found outside the workstream, though it holds this one too.
   inRegion?: boolean;
-  // On a workstream's page: the row drags to another workstream in the
-  // sidebar, and its menu moves it as a keyboard can (moving.ts).
   moving?: { item: CarriedItem; menu: MenuItem[] };
   carried?: CarriedItem;
 }) {

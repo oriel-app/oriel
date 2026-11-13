@@ -1,11 +1,3 @@
-// Below 1100, where the item panel lies over a conversation (decision
-// 0025): the overview's window chat, or a thread's page. The conversation
-// publishes its composer here, and the panel carries it in a dock at its
-// foot (`PanelDock`, item-panel.tsx), under the latest answer's first two
-// lines, so the person can ask about the item without closing it. "Chat"
-// gives the conversation the screen, and the item folds to a line above
-// its composer (`FoldedItem`), with Show and ×. One context for both
-// conversations, so there's one path from either to the panel.
 import { createContext } from "preact";
 import { useContext } from "preact/hooks";
 import type { Composer } from "./chat-input.tsx";
@@ -14,13 +6,9 @@ import { entriesOf } from "./thread.ts";
 import type { ThreadView } from "./view.ts";
 
 export type PanelDock = {
-  // The conversation's composer, as it draws it itself.
   composer: Composer;
-  // The conversation's thread, once it has one, for its latest answer.
   view: ThreadView | null;
-  // A first question on its way, before there's a thread, as sent.
   asked: string | null;
-  // Folded: the conversation has the screen, and the item is a line.
   folded: boolean;
   item: { key: string; title: string | null };
   onFold(folded: boolean): void;
@@ -29,8 +17,6 @@ export type PanelDock = {
 
 export const PanelDockContext = createContext<PanelDock | null>(null);
 
-// What the dock shows of the conversation: the latest answer; or, sent and
-// not yet answered, the person's message, with the agent at work.
 export type Latest = { kind: "answer"; text: string } | { kind: "sent"; text: string } | null;
 
 export function latestOf(view: ThreadView | null): Latest {
@@ -43,8 +29,6 @@ export function latestOf(view: ThreadView | null): Latest {
   return null;
 }
 
-// The item, folded to a line above the conversation's composer: Show puts it
-// back over the conversation, and × closes it.
 export function FoldedItem() {
   const dock = useContext(PanelDockContext);
   if (!dock?.folded) return null;

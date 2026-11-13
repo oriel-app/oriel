@@ -1,10 +1,4 @@
-// A block under the agent's reply (decision 0030): a table, bars or rows of
-// items, or a waiting connection's preview (decision 0051), which Oriel
-// built from a read's result. One renderer, for a
-// thread's page and the window chat. It is typed data, so every text in it,
-// a synced title included, renders as text; its caption says where it came
-// from. One from outside the workstream, as what search() found is (the
-// escape hatch), says so and is read-only.
+// A block is typed data, so every text in it, a synced title included, renders as text.
 import type { ComponentChildren } from "preact";
 import { atLeast, named } from "./chart-values.ts";
 import { PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
@@ -17,7 +11,6 @@ const number = (value: number) => value.toLocaleString("en-US");
 const cellText = (cell: string | number | boolean | null) =>
   cell === null ? "—" : typeof cell === "boolean" ? (cell ? "yes" : "no") : String(cell);
 
-// `compact`: as a pin shows it on the overview, smaller, with its caption.
 export function BlockFigure({ block, compact }: { block: BlockView; compact?: boolean }) {
   return (
     <figure
@@ -38,16 +31,9 @@ export function BlockFigure({ block, compact }: { block: BlockView; compact?: bo
   );
 }
 
-// A draft of a connection's options as Oriel draws it from its source
-// (decision 0051): each table it reads, with each column's letter, the
-// header the source has there and the field it feeds, then its first rows
-// and what it reads and leaves out. Every word in it is the source's or
-// Oriel's, never the drafter's; what isn't read is named in one line.
+// Every word in it is the source's or Oriel's, never the drafter's.
 export function ReviewTables(props: {
   tables: readonly ReviewTable[];
-  // What the person changes of each table, under it, while they edit
-  // (OA-232); then the tables not read, folded into one line past a few,
-  // to read one.
   controls?: ((table: ReviewTable) => ComponentChildren) | null | false;
 }) {
   const { tables, controls } = props;
@@ -129,17 +115,14 @@ export function ReviewTables(props: {
   );
 }
 
-// What a draft doesn't read, in a line: a few by name, and how many more.
 const notRead = (unread: readonly ReviewTable[]): string => {
   const named = unread.slice(0, 3).map((table) => table.name);
   const more = unread.length - named.length;
   return `Not read: ${named.join(", ")}${more > 0 ? `, and ${more} more ${more === 1 ? "tab" : "tabs"}` : ""}.`;
 };
 
-// A sketch under the agent's reply (decision 0033): its HTML, framed from
-// the sketch origin, in a frame with no sandbox token, at one of three
-// heights; a taller sketch scrolls inside it. Its border and caption are
-// Oriel's, outside the frame, so no sketch can fake them.
+// Framed from the sketch origin with no sandbox token. Its border and caption are Oriel's,
+// outside the frame, so no sketch can fake them.
 export function SketchFigure({ sketch }: { sketch: SketchView }) {
   return (
     <figure class="answer-sketch">
@@ -166,8 +149,6 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
     case "pivot":
       return <PivotChart chart={block} compact={compact} />;
     case "bars": {
-      // One series, ranked, each value labelled; nothing grows past the
-      // largest, and a value under zero draws no bar.
       const top = Math.max(...block.bars.map((bar) => bar.value), 0);
       return (
         <ol class="block-bars">
@@ -224,8 +205,7 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
         </table>
       );
     }
-    // A waiting connection's preview (decision 0051): each table its source
-    // shows, its cells as text, so nothing in it is an item to cite.
+    // Its cells as text, so nothing in it is an item to cite.
     case "preview":
       return (
         <div class="block-preview">
@@ -270,8 +250,6 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
   }
 }
 
-// A row's item as a chip, so it looks as it does named in a sentence
-// (decision 0032); one the index no longer has says so.
 const rowChip = ({ ref, row }: MemberView): ChipView => ({
   kind: "item",
   source: kindOfItem(ref.id) ?? "",

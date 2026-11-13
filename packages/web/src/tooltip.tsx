@@ -1,22 +1,14 @@
-// A tooltip on the control it wraps, in Oriel's look. It shows a moment
-// after the pointer rests on the control, and at once when the keyboard
-// focuses it; it goes when either leaves, on a click, on a scroll, or on
-// Escape. Touch shows nothing, so what it says that matters is in the
-// control's name or on the page already. It describes the control to a
-// screen reader, unless it only repeats the control's name: then it is
-// hidden from one, so the name is heard once. It is a popover, in the top
-// layer, so no scroll or slide clips it, and the pointer passes through it.
+// Touch shows nothing, so what it says that matters is in the control's name or on the page already.
+// One that only repeats the control's name is hidden from a screen reader, so the name is heard once.
 import type { VNode } from "preact";
 import { useId, useLayoutEffect, useRef } from "preact/hooks";
 import { placeTooltip, repeatsName } from "./tooltips.ts";
 
-// How long the pointer rests before it shows, in milliseconds.
 const delay = 400;
 
 export function Tooltip(props: { text: string; children: VNode }) {
   const tip = useRef<HTMLSpanElement>(null);
   const id = useId();
-  // The control its listeners are on, and how to take them off.
   const wired = useRef<{ control: HTMLElement; unwire(): void } | null>(null);
 
   // The control is what it wraps: the element just before it.
@@ -54,7 +46,6 @@ export function Tooltip(props: { text: string; children: VNode }) {
 
 function wire(control: HTMLElement, tip: HTMLElement): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // Escape or a scroll dismisses it, shown or on its way.
   const arm = () => {
     document.addEventListener("keydown", escaped, true);
     addEventListener("scroll", hide, { capture: true, passive: true });

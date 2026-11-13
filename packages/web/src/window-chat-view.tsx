@@ -1,12 +1,3 @@
-// The window chat on screen (decisions 0027 and 0030): the overview's
-// composer at the page's foot, and, once asked, the chat in a rail at the
-// window's right edge, which the page column narrows for, on the overview
-// and Browse alike; under 1100, a sheet rising over the page's foot. An
-// item opened takes the rail's place and carries the chat's composer in
-// its dock (dock.tsx), so the overview keeps its width. Its composer offers
-// the item open as what the next question is about (decision 0062). Its
-// entries render as a thread's page renders them, blocks included; its
-// fields are the one ChatInput.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatInput, type Composer, readsWith } from "./chat-input.tsx";
 import { FoldedItem } from "./dock.tsx";
@@ -26,22 +17,11 @@ import {
   type WindowChatMsg,
 } from "./window-chat.ts";
 
-// The overview's composer (decision 0030): a thread's, raised in a thread's
-// dock at the page's foot. Asking carries it into the window chat's rail
-// beside the overview, and hiding the chat brings it back here, with its
-// draft and what it's about: one composer, wherever it sits. The questions to start from
-// sit beside their headlines (`QuestionButton`); one with no headline on
-// screen, such as the empty window's plan, sits in its frame, unless an
-// item is in view: what the message is about comes first (decision 0062).
 export function OverviewComposer(props: {
   chat: WindowChatModel;
-  // The chat's thread, whose follow-up it holds once there is one.
   thread: ThreadModel | null;
-  // Whether there is a conversation to go back to, behind a closed chat.
   ongoing: boolean;
-  // The questions no headline on screen holds.
   questions: Question[];
-  // No AI is set up, so it says so and opens Settings (decision 0038).
   noAi: boolean;
   dispatch: Dispatch;
 }) {
@@ -70,7 +50,6 @@ export function OverviewComposer(props: {
       </div>
     );
   const drawn = windowChatComposer(chat, props.thread, dispatch);
-  // A follow-up from here goes to the same chat, and opens it again.
   const composer = {
     ...drawn,
     onSubmit: () => {
@@ -136,8 +115,6 @@ export function QuestionButton(props: {
   );
 }
 
-// The window chat reads every item as the window does: none is read-only
-// there, as no region holds it.
 const noneReadOnly = () => false;
 
 export function WindowChat(props: {
@@ -152,19 +129,14 @@ export function WindowChat(props: {
   const view = thread && expected(thread);
   const moved = movedOut(thread);
   const list = useRef<HTMLOListElement>(null);
-  // Under 1100, a sheet: 45vh, or 85vh for reading a long answer.
   const [tall, setTall] = useState(false);
   const grabbed = useRef<number | null>(null);
-  // The chat opens at its latest entry, and follows what arrives only while
-  // it's there, as a thread's page does (`watchLatest`, `keptAtLatest`).
   useEffect(() => {
     const entries = list.current;
     if (!entries) return;
     entries.scrollTop = entries.scrollHeight;
     return watchLatest(sendThread, entries);
   }, [thread?.id]);
-  // The grab bar: up makes the sheet tall, down short, and down from short
-  // folds it; a press without a drag goes between the two heights.
   const released = (y: number) => {
     const from = grabbed.current;
     grabbed.current = null;
@@ -241,8 +213,6 @@ export function WindowChat(props: {
             ))}
           </ItemLinksContext.Provider>
         )}
-        {/* Moved into its workstream, the conversation stays until the next
-            question, which starts a fresh chat. */}
         {moved && view && (
           <li class="window-chat-moved">
             Now a thread in{" "}
@@ -293,9 +263,6 @@ export function WindowChat(props: {
   );
 }
 
-// The window chat's composer, as the overview's foot, the chat and the item
-// panel's dock (dock.tsx) draw it: a follow-up in its thread, or its first
-// question. One problem line, the thread's or the chat's own.
 export function windowChatComposer(
   chat: WindowChatModel,
   thread: ThreadModel | null,
@@ -306,8 +273,7 @@ export function windowChatComposer(
   if (live && view) {
     const thread = live;
     const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
-    // A held message's words in the composer send as they were held, about
-    // nothing, so it offers nothing while they're there (decision 0062).
+    // A held message's words send as they were held, about nothing, so it offers nothing while they're there.
     const followUp = thread.composing ? notLooking : thread.lookingAt;
     return {
       label: "Message",

@@ -1,6 +1,3 @@
-// A thread: the chat in the middle, the region it works in on the right.
-// Runs stay folded until opened; a search is its own block; a change set is
-// a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { chipIds } from "./markdown.ts";
@@ -90,8 +87,6 @@ const fieldNames: Record<string, string> = {
   status: "Status",
   replies: "Replies",
 };
-// One of several of a kind, such as a link, a comment or a reply, by its
-// prefix.
 const fieldKinds: Record<string, string> = {
   "link:": "Link",
   "comment:": "Comment",
@@ -102,7 +97,6 @@ const fieldName = (name: string) =>
   Object.entries(fieldKinds).find(([prefix]) => name.startsWith(prefix))?.[1] ??
   name;
 
-// An estimate reads in points; any other value as the server sent it.
 function withUnits(field: Field): Field {
   if (field.name !== "points") return field;
   const shown = (text: string | null) =>
@@ -122,8 +116,6 @@ const statusNames: Record<ChangeSetView["status"], string> = {
   applying: "Applying…",
 };
 
-// A set that started applying and went no further says which way it ended:
-// stopped partway, waiting on the person, or the rest dismissed.
 const statusName = (set: ChangeSetView): string =>
   set.status !== "partial"
     ? statusNames[set.status]
@@ -135,9 +127,7 @@ const statusName = (set: ChangeSetView): string =>
 
 export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: Dispatch }) {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
-  // Where the page is, for as long as this thread is on screen.
   useEffect(() => watchLatest(send), [model.id]);
-  // A decision sent from here shows before the server answers it.
   const view = expected(model);
   if (model.deleted)
     return (
@@ -248,13 +238,9 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
   );
 }
 
-// The thread's composer, as its page and the item panel's dock (dock.tsx)
-// both draw it: what it sends, what it reads, and what the next message is
-// about.
 export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: Dispatch): Composer {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
-  // A held message's words in the composer send as they were held, about
-  // nothing, so it offers nothing while they're there (decision 0062).
+  // A held message's words send as they were held, about nothing, so it offers nothing while they're there.
   const looking = model.composing ? notLooking : model.lookingAt;
   return {
     label: "Message",
@@ -278,15 +264,6 @@ export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: D
   };
 }
 
-// A thread from nothing, before its first message: the composer, and the
-// workstream it starts in, at the top of the rail where a thread's items
-// will be, or beside the title where the rail waits below the chat. "New
-// workstream" is the default, which sending makes, with the thread; or the
-// person picks one already open, and its items are the thread's. While it's
-// the default, the person may name the new workstream, under the picker;
-// left as it is, Oriel names it. Either way,
-// what a change set here creates joins it. A new thread has no items of its
-// own, so the rail says nothing of them until a workstream is picked.
 export function NewThreadPage({
   model,
   workstreams,
@@ -302,12 +279,8 @@ export function NewThreadPage({
   const open = startable(workstreams);
   const labels = pickerLabels(open, threads ?? []);
   const picked = open.find((workstream) => workstream.id === model.workstream) ?? null;
-  // The item open beside it goes with the first message (decision 0062). A
-  // new workstream holds nothing, so it's read-only there; a picked one's
-  // items aren't loaded here, and the sent message says which it was.
   const readOnly = () => picked === null;
-  // One picker, shown in one place at a time: CSS hides the other, so only
-  // one is ever in the accessibility tree.
+  // CSS hides the other, so only one picker is ever in the accessibility tree.
   const named = (at: "head" | "rail") =>
     !picked && (
       <label class="name-field new-workstream-name" data-at={at}>
@@ -377,7 +350,6 @@ export function NewThreadPage({
       <aside class="rail" aria-label="This thread's items">
         {picker("rail")}
         {named("rail")}
-        {/* Picked, what the workstream holds arrives (window.css). */}
         {picked && picked.size > 0 && (
           <h2 key={picked.id} class="rail-title arrive">
             {plural(picked.size, "item")}
@@ -388,10 +360,6 @@ export function NewThreadPage({
   );
 }
 
-// Each workstream in the picker under a name a person can tell apart, never
-// the default's: one a thread from nothing made and nobody named yet goes by
-// its newest thread's title, as the sidebar lists that thread. A name that
-// still repeats gets its place among them.
 function pickerLabels(
   open: readonly WorkstreamSummary[],
   threads: readonly ThreadSummaryView[],
@@ -407,8 +375,6 @@ function pickerLabels(
         ? titleOf(workstream.id)
         : workstream.name,
   }));
-  // The default's label and each name's first holder keep theirs; the rest
-  // take the first "(n)" nobody has.
   const taken = new Set([blankWorkstreamName]);
   const labels = new Map<string, string>();
   for (const { id, name } of named) {
@@ -426,16 +392,11 @@ function pickerLabels(
   return labels;
 }
 
-// The workstreams a new thread can start in: those still open, but the
-// window chat's, which only the window chat asks in.
 const startable = (workstreams: readonly WorkstreamSummary[] | null) =>
   (workstreams ?? []).filter(
     (workstream) => workstream.done === null && workstream.origin.kind !== "window",
   );
 
-// An answer's text, in the thread or in the item panel's dock. The items
-// it names as chips are a list, in its order, so one opened from it steps
-// through the rest in the panel ("1 of 2").
 export function AnswerText({ text, view }: { text: string; view: ThreadView }) {
   const named = useMemo(
     () => chipIds(text).filter((id) => view.chips[id]?.kind === "item"),
@@ -467,7 +428,6 @@ type EntryProps = {
   send: (msg: ThreadMsg) => void;
 };
 
-// An entry, whose item links say they were opened from it (decision 0062).
 export function ChatEntryItem(props: EntryProps) {
   return (
     <EntryContext.Provider value={{ thread: props.model.id, seq: props.entry.seq }}>
@@ -538,7 +498,6 @@ function EntryBody(props: EntryProps) {
         </li>
       );
     }
-    // The card moved under the reply that revised it.
     case "revised":
       return (
         <li class="oriel-note" role="note">
@@ -575,8 +534,6 @@ function EntryBody(props: EntryProps) {
           <OrielNote note={entry.note} view={props.view} />
         </li>
       );
-    // A limit is a per-thread cap that ended the turn; a run's own cap stays
-    // inside its folded transcript.
     case "notice":
       return (
         <li
@@ -603,8 +560,6 @@ function EntryBody(props: EntryProps) {
   }
 }
 
-// One of Oriel's own lines, never the agent's (OA-91): after a rejection,
-// what the user can do next; once they undid it, that it awaits them again.
 function OrielNote({ note, view }: { note: NoteView; view: ThreadView }) {
   if (note.kind === "continued-in")
     return <p>This conversation goes on in {threadChip(note.threadId, view)}.</p>;
@@ -633,10 +588,6 @@ function OrielNote({ note, view }: { note: NoteView; view: ThreadView }) {
   );
 }
 
-// What Oriel did with the actions the agent asked for, as the host says it,
-// under the agent's reply (decision 0024): each sentence links where it
-// changed something, and each that applied has its Undo, or once undone,
-// its Redo, if it can be done again.
 function ActionLines(props: {
   seq: number;
   lines: ActionLineView[];
@@ -685,11 +636,6 @@ function ActionLines(props: {
   );
 }
 
-// The thread's items by address, so a link to one in a reply, or in a diff's
-// value, opens its panel.
-// Whether an item the composer is looking at is outside the thread's
-// region, so the agent reads it but can't change it (decision 0062). In the
-// window chat, every item is read as the window is.
 export const readOnlyIn =
   (view: ThreadView) =>
   (id: string): boolean =>
@@ -703,9 +649,6 @@ const threadChip = (id: string, view: ThreadView) => {
   return chip ? <Chip id={id} view={chip} /> : "another thread";
 };
 
-// Who a held message is from, each kind of sender in its own words. A
-// review link may be held by anyone. The window chat's is the user's own
-// request, carried on by Continue in…, which links back.
 function heldFrom(from: HeldFrom, view: ThreadView) {
   switch (from.kind) {
     case "thread":
@@ -733,9 +676,6 @@ function WindowChatLink({ id }: { id: string }) {
   );
 }
 
-// Continue in… (decision 0062): the window chat changes no item, so the
-// agent offers one button that carries the request to a thread on the
-// item's workstream, or a new one named for it. Pressed, it links there.
 function ContinueOffer(props: {
   block: Extract<Entry, { kind: "continue" }>;
   model: ThreadModel;
@@ -762,10 +702,7 @@ function ContinueOffer(props: {
   );
 }
 
-// A message from anyone but the user, tinted and edged as their move. The
-// agent never sees it until the user sends it, as it is or edited, as their
-// own message; or they discard it (decision 0024). Edit puts its words in
-// the composer, the one field the user writes in, and Send there sends it.
+// The agent never sees it until the user sends it, as it is or edited, as their own message.
 function HeldMessage(props: {
   block: Extract<Entry, { kind: "held" }>;
   model: ThreadModel;
@@ -777,8 +714,6 @@ function HeldMessage(props: {
   const editing = block.outcome === null && model.composing?.seq === seq;
   const busy = model.settling.includes(seq);
   const sendable = !busy && !view.running && (!editing || model.draft.trim() !== "");
-  // Carried on from the window chat and sent there, it is the user's
-  // message below: only where it came from shows.
   if (block.from.kind === "window-chat" && block.outcome === "sent")
     return <p class="held-from">{heldFrom(block.from, view)}</p>;
   return (
@@ -844,11 +779,7 @@ function HeldMessage(props: {
   );
 }
 
-// A draft of the agent's (decision 0051): one of the user's own actions,
-// which only they apply, as it is or edited, or discard. Oriel draws it from
-// its own data: the connection it sets, by name, and each option it
-// changes, as it is and as drafted, never the agent's words; and, before
-// Apply, what applying it does to the items the connection has (OA-232).
+// Oriel draws it from its own data, never the agent's words.
 function DraftCard(props: {
   block: Extract<Entry, { kind: "draft" }>;
   model: ThreadModel;
@@ -977,7 +908,6 @@ function DraftCard(props: {
   );
 }
 
-// A drafted value as the card shows it: a list joined, nothing as a dash.
 const shownValue = (value: unknown): string =>
   Array.isArray(value)
     ? value.map(String).join(", ") || "—"
@@ -1001,7 +931,6 @@ function refList(refs: readonly ItemRef[]) {
   ));
 }
 
-// A run, folded: what it did in one line, the script and its output inside.
 function Run({ script, run, stopped }: { script: string; run: RunView | null; stopped: boolean }) {
   const summary =
     run === null
@@ -1061,13 +990,8 @@ function ChangeSet(props: {
   const steps = set.nextSteps.flatMap((step) => (step.kind === "remove" ? [] : [step]));
   const dismissing = set.nextSteps.find((step) => step.kind === "dismiss");
   const approvable = set.nextSteps.some((step) => step.kind === "approve");
-  // While a second look shows, Approve and Reject would read as accepting
-  // or dismissing it: the change set offers only what pertains to the look,
-  // and Dismiss, one click, gives them back (OA-257).
+  // While a second look shows, Approve and Reject would read as accepting or dismissing it.
   const look = shownLook(model, set);
-  // Approve and apply is the one primary action. Reject is one click: the
-  // thread then asks what was wrong, and the message box waits for the
-  // answer. Second look sits between them (decision 0054).
   const stepButton = (step: (typeof steps)[number]) => {
     const forward = isForward(step.kind);
     const decides = forward && step.kind !== "retry";
@@ -1086,12 +1010,8 @@ function ChangeSet(props: {
   };
   const firstBack = steps.findIndex((step) => !isForward(step.kind));
   const between = firstBack === -1 ? steps.length : firstBack;
-  // One that can fold says what it did and when as one line, and opens on a
-  // click anywhere on it, to its diff and Revert.
   const shut = folded(model, set);
   const anchor = changeSetAnchor(set.id);
-  // Awaiting review, it's the user's move: its head says what Approve
-  // writes, and its actions stay in reach while any of it is on screen.
   const awaits = set.status === "open" && !set.stalled;
   const counted = awaits && diff ? writes(diff) : null;
   const card = useRef<HTMLElement>(null);
@@ -1110,21 +1030,18 @@ function ChangeSet(props: {
         {set.revertOf ? "Undo" : "Proposed change"}
       </h2>
       {counted && <span class="change-set-writes">{counted}</span>}
-      {/* Announced as it moves, as when Approve and apply turns it to applying. */}
       <span id={`${anchor}-status`} class="change-set-status" role="status">
         {set.stalled ? waitingNames.stalled : statusName(set)}
         {set.decision &&
           set.decision.via === "review-link" &&
           ` by ${set.decision.by} via review link`}
         {reverts.some((revert) => revert.status === "applied") && ", then undone"}
-        {/* Someone who saw the old diff can tell it changed (OA-309). */}
         {set.revisedAt !== null && (
           <span class="change-set-revised">
             {" · revised "}
             <Stamp at={set.revisedAt} />
           </span>
         )}
-        {/* Said once, as it folds itself after its apply ended here. */}
         {shut && model.landed.includes(set.id) && (
           <span class="visually-hidden">
             , folded. Show it to see it
@@ -1180,9 +1097,8 @@ function ChangeSet(props: {
         />
       ) : (
         <>
-          {/* Its diff reads each changed item's current values from its
-              source, which a large change set takes seconds over: nothing
-              can be done with it meanwhile (OA-257). */}
+          {/* Its diff reads each changed item's current values from its source,
+          which a large change set takes seconds over. */}
           {!problem && (
             <p class="loading change-set-loading" role="status">
               <span class="spinner" aria-hidden="true" />
@@ -1209,8 +1125,7 @@ function ChangeSet(props: {
           }
         />
       )}
-      {/* Nothing can be done with it until its source answers or the
-          writer gives up: a send may yet land (OA-82). */}
+      {/* Nothing can be done until its source answers or the writer gives up: a send may yet land. */}
       {set.stalled && (
         <p class="apply-stuck">
           Its source hasn't answered for a while. Try again or dismiss it once it answers or Oriel
@@ -1263,7 +1178,6 @@ function ChangeSet(props: {
       {awaits && approvable && !look && diff && diff.lines.length > 0 && (
         <p class="change-set-foot">Nothing is written to {sourcesOf(diff)} until you approve.</p>
       )}
-      {/* Applied, with no Revert, since its source can't take one change back. */}
       {set.cannotUndo && !shut && <p class="change-set-foot">{set.cannotUndo}.</p>}
       {/* Where the actions belong, which tells whether they're stuck. */}
       <div class="change-set-end" ref={foot} aria-hidden="true" />
@@ -1279,7 +1193,6 @@ function ChangeSet(props: {
   );
 }
 
-// The window's own observer, in `root` (null for the window itself).
 const intersecting =
   (root: Element | null): Observe<Element> =>
   (target, margin, seen) => {
@@ -1296,9 +1209,6 @@ const intersecting =
     return () => observer.disconnect();
   };
 
-// A card's actions stick above the composer while it shows (`watchStuck`):
-// in the window chat's list, against the list's foot; on a thread's page,
-// against the composer's top. Measured again as the composer grows.
 function stickTo(card: Element, foot: Element, bar: Element, onChange: (on: boolean) => void) {
   const list = card.closest(".window-chat-entries");
   const dock = list ? null : document.querySelector(".chat-dock .chat-input");
@@ -1324,10 +1234,6 @@ function stickTo(card: Element, foot: Element, bar: Element, onChange: (on: bool
 const isForward = (kind: SetStep): boolean =>
   kind === "approve" || kind === "approve-rest" || kind === "retry";
 
-// While a second look shows, what pertains to it, and nothing that reads as
-// accepting or dismissing it (OA-257): Look again once it went stale or
-// failed; adding every suggestion not yet added, when it made any; and
-// Dismiss, after which Approve and Reject are back.
 function LookActions(props: {
   set: ChangeSetView;
   look: SecondLookView;
@@ -1369,10 +1275,6 @@ function LookActions(props: {
   );
 }
 
-// Second look, or Look again once the last went stale or failed (decision
-// 0054): only when the person presses it. It says Looking… from the press
-// until the look shows. One dismissed while still current shows again, with
-// no model call (OA-257).
 function SecondLookButton(props: {
   set: ChangeSetView;
   model: ThreadModel;
@@ -1416,8 +1318,6 @@ function SecondLookButton(props: {
 type Line = DiffView["lines"][number];
 type Field = Line["fields"][number];
 
-// A field's value: an item by its title and key (or as new, when a line
-// above creates it), anything else as its text.
 function Value({ text, item }: { text: string | null; item: ItemValue | null | undefined }) {
   if (!item) return <>{text}</>;
   return (
@@ -1432,9 +1332,6 @@ function Value({ text, item }: { text: string | null; item: ItemValue | null | u
   );
 }
 
-// One side of a change: what was there, or what will be. Only the words
-// that differ from the other side are marked; a side that differs
-// throughout reads as it is.
 function Side({
   side,
   children,
@@ -1466,8 +1363,6 @@ function Pieces({ pieces, side }: { pieces: Piece[]; side: "before" | "after" })
   );
 }
 
-// Unchanged lines around a change: one line of context on each side of it,
-// and the rest folded.
 function Unchanged({ lines, first, last }: { lines: string[]; first: boolean; last: boolean }) {
   const context = 1;
   const head = first ? 0 : context;
@@ -1486,7 +1381,6 @@ function Unchanged({ lines, first, last }: { lines: string[]; first: boolean; la
   );
 }
 
-// An edited field: what it held and what it will hold, as rows.
 function Edited({ field }: { field: Field }) {
   const { items } = field;
   if (items)
@@ -1505,7 +1399,6 @@ function Edited({ field }: { field: Field }) {
       </>
     );
   const hunks = lines(field.before ?? "", field.after ?? "");
-  // Empty before and after: it stays empty.
   if (hunks.length === 0) return <Side side="same">—</Side>;
   return (
     <>
@@ -1531,10 +1424,6 @@ function Edited({ field }: { field: Field }) {
   );
 }
 
-// A new item, as one card: its title, its description, and the fields it
-// is made with. An empty field isn't shown. One with no title of its own, as
-// a message has none, leads with the line's sentence, and shows what it says
-// in full, as a quote.
 function NewItem({ line }: { line: Line }) {
   const field = (name: string) => line.fields.find((f) => f.name === name);
   const title = field("summary")?.after ?? null;
@@ -1575,8 +1464,6 @@ function NewItem({ line }: { line: Line }) {
   );
 }
 
-// Who put the items a line names in the workstream, when it wasn't a person:
-// an approver who doesn't know the workstream can then tell (decision 0024).
 function Brought({ brought }: { brought: Line["brought"] }) {
   const who = { agent: "The agent", tool: "An outside tool" } as const;
   return (["agent", "tool"] as const).map((by) => {
@@ -1589,8 +1476,6 @@ function Brought({ brought }: { brought: Line["brought"] }) {
   });
 }
 
-// A line's sentence, naming its item once, by its chip, where the sentence
-// named it; or the chip after the sentence, where it didn't.
 function Sentence({ line, members }: { line: Line; members?: readonly MemberView[] }) {
   const { target } = line;
   if (!target?.url) return <span class="sentence">{line.sentence}</span>;
@@ -1624,24 +1509,15 @@ function Sentence({ line, members }: { line: Line; members?: readonly MemberView
   );
 }
 
-// A change set's lines: a new item as a card, an edit as each field's old
-// and new text with only the changed words marked, and a delete as every
-// field it empties. The lines the change set engine says can be left out
-// (`removable`) offer it: quietly, or plainly beside a change that stopped,
-// as the reason it stopped says. The line whose item is open in the panel
-// is marked, and the panel steps through the items the lines name.
 export function Diff(props: {
   diff: DiffView;
   busy: boolean;
-  // The thread's items, for where each a line names stands.
   members?: readonly MemberView[];
   removable?: readonly string[];
   onRemove?: (mutationId: string) => void;
 }) {
   const offered = (id: string) =>
     props.onRemove !== undefined && (props.removable ?? []).includes(id);
-  // Why it stopped or won't go: apply's reason, or, before a decision, its
-  // source's (`check`).
   const shown = props.diff.lines.map((line) => ({
     ...line,
     stop: line.error ?? (line.check && "refused" in line.check ? line.check.refused : null),
@@ -1750,9 +1626,6 @@ export function Diff(props: {
   );
 }
 
-// The composer's dock at the thread's foot: it fades from the page's colour
-// over what scrolls under it, and says how much of the window's foot it
-// covers (`--dock-cover`), so what sticks above it clears it.
 function Dock({ children }: { children: ComponentChildren }) {
   const dock = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1769,8 +1642,6 @@ function Dock({ children }: { children: ComponentChildren }) {
     resized.observe(element);
     return () => resized.disconnect();
   }, []);
-  // While the item panel lies over the thread and carries its composer,
-  // this one is covered: the panel's is the one to type in.
   const docked = useContext(PanelDockContext);
   return (
     <div class="chat-dock" ref={dock} inert={(docked && !docked.folded) || undefined}>
@@ -1779,20 +1650,12 @@ function Dock({ children }: { children: ComponentChildren }) {
   );
 }
 
-// What the agent will read, for the composer's foot: the thread's items;
-// behind its workstream, the workstream as it is now, which the next message
-// catches up with.
 export function readsOf(view: ThreadView): string | null {
   if (view.regionVersion < view.workstream.version) return "Reads its workstream as it is now";
   if (view.members.length === 0) return null;
   return `Reads ${plural(view.members.length, "item")}`;
 }
 
-// The region the thread works in: its workstream at one version, and when
-// it last synced with it. The title is the workstream as it is now. Behind
-// it, the thread catches up with the next message, or with Sync workstream
-// now, which waits while a turn runs: the turn works in the version it
-// started in.
 function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
   const { view } = props;
   const behind = view.regionVersion < view.workstream.version;
@@ -1870,8 +1733,6 @@ function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
   );
 }
 
-// Where a move's items go: the workstreams that held the stand-in's, by
-// name once it applied.
 function MovedTo({ went }: { went: readonly WorkstreamRef[] | null }) {
   const names = went?.map((workstream) => workstream.name) ?? [];
   return (
@@ -1885,7 +1746,6 @@ function MovedTo({ went }: { went: readonly WorkstreamRef[] | null }) {
   );
 }
 
-// Two arrows chasing round a circle.
 function SyncIcon() {
   return (
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">

@@ -1,5 +1,3 @@
-// Closing a thread from a list of threads: its row's context menu, and the
-// one question deleting asks first.
 import type { ComponentChildren } from "preact";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { type ClosingModel, type ClosingMsg, deletionWarning } from "./closing.ts";
@@ -10,9 +8,6 @@ import { ConnectorsContext, type Dispatch } from "./parts.tsx";
 import type { UndoProblem } from "./undos.ts";
 import type { ThreadSummaryView } from "./view.ts";
 
-// A thread's row with its menu: Mark done, unless it is done, and Delete.
-// With `swipe`, a swipe left shows the same actions, in that order. `moves`
-// head the menu, not the swipe.
 export function ThreadMenu(props: {
   thread: ThreadSummaryView;
   dispatch: Dispatch;
@@ -54,7 +49,6 @@ export function ThreadMenu(props: {
   );
 }
 
-// Asks once before a delete, saying what it would lose.
 export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Dispatch }) {
   const send = (msg: ClosingMsg) => dispatch({ type: "closing", msg });
   const connectors = useContext(ConnectorsContext);
@@ -82,8 +76,6 @@ export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Di
   );
 }
 
-// A close from a list that failed, said in the bead until dismissed; while
-// the question is open, it says it there instead.
 export function closingProblem(model: ClosingModel, dispatch: Dispatch): UndoProblem | null {
   if (model.asking !== null || model.problem === null) return null;
   return {
@@ -92,10 +84,6 @@ export function closingProblem(model: ClosingModel, dispatch: Dispatch): UndoPro
   };
 }
 
-// The one question a delete asks first, as a modal the keyboard can answer:
-// Cancel has focus, Enter deletes, and Escape cancels, closing nothing
-// behind it, such as the drawer. `ready`: the person has been told what it
-// would lose.
 export function Confirm(props: {
   open: boolean;
   id: string;

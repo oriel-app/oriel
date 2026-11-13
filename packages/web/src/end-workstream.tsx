@@ -1,6 +1,3 @@
-// Ending a workstream (decision 0028): its page's header buttons, its menu
-// and swipe in a list, which also renames it in place, and, once for the app, the question deleting asks and
-// what was done, with its Undo, as a note in the one stack of Undos.
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Confirm } from "./close-thread.tsx";
@@ -20,7 +17,6 @@ import { Tooltip } from "./tooltip.tsx";
 
 const sender = (dispatch: Dispatch) => (msg: EndingMsg) => dispatch({ type: "ending", msg });
 
-// Mark done, or Reopen once it is done, and Delete.
 const endings = (workstream: Ended, done: boolean, send: (msg: EndingMsg) => void): MenuItem[] => [
   done
     ? { label: "Reopen", onSelect: () => send({ type: "reopenClicked", workstream }) }
@@ -28,10 +24,6 @@ const endings = (workstream: Ended, done: boolean, send: (msg: EndingMsg) => voi
   { label: "Delete…", danger: true, onSelect: () => send({ type: "deleteClicked", workstream }) },
 ];
 
-// A workstream's row with its menu, and with `swipe`, a swipe left that
-// shows its endings. The menu's Rename, first, swaps the row for its name
-// in a field: Enter or leaving it saves, as on the workstream's page; Escape, or
-// a name left empty, keeps the old one.
 export function WorkstreamMenu(props: {
   workstream: Ended;
   done: boolean;
@@ -44,7 +36,6 @@ export function WorkstreamMenu(props: {
   const [naming, setNaming] = useState(false);
   const ends = endings(workstream, props.done, sender(dispatch));
   const items: MenuItem[] = [{ label: "Rename", onSelect: () => setNaming(true) }, ...ends];
-  // Ended by a key, focus goes back to the row's link, once it's back.
   const finish = (name: string | null, refocus: HTMLElement | null) => {
     setNaming(false);
     if (name !== null) dispatch({ type: "workstreamRenamed", id: workstream.id, name });
@@ -69,9 +60,6 @@ export function WorkstreamMenu(props: {
   );
 }
 
-// The name being edited in place, focused and selected as it shows.
-// `onDone` gets the name to save, or null to keep the old one, and, when a
-// key ended it, where the field was, to focus the row in once it's back.
 function NameField(props: {
   name: string;
   onDone(name: string | null, refocus: HTMLElement | null): void;
@@ -110,7 +98,6 @@ function NameField(props: {
   );
 }
 
-// The page header's icon buttons, beside the workstream's name.
 export function EndButtons(props: {
   workstream: Ended;
   done: boolean;
@@ -153,8 +140,6 @@ export function EndButtons(props: {
   );
 }
 
-// What was last done, with its Undo, and what last failed, as notes in the
-// one stack of Undos: the page's, where it has one, or else the app's.
 export function endingNotes(model: EndingModel, dispatch: Dispatch): Undos {
   const send = sender(dispatch);
   const { ended } = model;
@@ -179,9 +164,6 @@ export function endingNotes(model: EndingModel, dispatch: Dispatch): Undos {
   };
 }
 
-// The window's stack of Undo notes: what was last done to a workstream, or
-// failed, with the page's own notes and the panel's adds (`more`), each
-// where its order of showing puts it.
 export function WindowUndos(props: { ending: EndingModel; more: Undos; dispatch: Dispatch }) {
   const ended = endingNotes(props.ending, props.dispatch);
   return (
@@ -194,9 +176,6 @@ export function WindowUndos(props: { ending: EndingModel; more: Undos; dispatch:
   );
 }
 
-// Once for the app: deleting's question; and the window's Undo notes, what
-// was done, or failed, and the panel's adds (`added`), unless the page on
-// screen shows those among its own Undos (`shownByPage`).
 export function Endings(props: {
   model: EndingModel;
   added: Undos;
