@@ -1,40 +1,3 @@
-// `pnpm shots`: screenshots of every screen, for looking at: evidence for a
-// person, not a test (decision 0063). It drives the installed Chrome,
-// downloads no browser, and writes PNGs to the gitignored shots/. `pnpm
-// shots` builds the web app first. Each scene's steps run once a width, and
-// it's shot light, then dark from the same page. The scenes that check
-// behaviour are the window's behaviour tests too: `pnpm ui-test` runs them
-// with `--test`, with no picture (see `check`).
-//
-// The servers run on the SYN fixture in memory, with the scripted agent,
-// whose runs go to the real sandbox (Deno). Most write to SYN as a Jira site
-// in memory, each to its own, so one scene's writes don't show in another's
-// diffs; one is read-only, as Oriel is without credentials. Before any
-// screenshot they get workstreams and threads, with runs, change sets, a search
-// and a marker, through the same JSON routes the window uses. Others sync
-// Jira from a SYN site in memory, as from a source server: one goes offline,
-// one has no issues, as a new project has. The desktop app's first run gets
-// servers of its own, with stand-ins of the source servers a person's agent
-// lists (decision 0059), and the onboarding is timed on it, from the first
-// screen to an approved change, counting the word "token" on each screen,
-// where it never may be, as a behaviour test. Another reads the Slack
-// fixture's picked channel. Three more hand a story to the
-// team: one change set moves it in Jira and posts in Slack's channel,
-// proposed on one, approved on the next, and reverted on the last (OA-28).
-// One more has 120 more stories in SYN's checkout epic, so Browse pages them.
-// One more has two stories whose descriptions name a third (OA-162).
-//
-// The overview opens at `/`, with the counts strip, the headlines and the
-// workstreams, and who has work in progress beside them; Needs you is in the
-// sidebar, on every page.
-//
-// `pnpm shots --width 1440 panel-` takes only the scenes whose names
-// start with `panel-`, at 1440px wide; with neither, every scene at 1280px
-// and 390px. `--theme broadsheet` picks that theme in
-// each scene's settings, as the person would, and writes to
-// shots/broadsheet/; with none, the default theme, to shots/. `--text-size
-// large` sets that Text size in each scene's settings too, and writes to a
-// folder of its name below the theme's.
 import {
   mkdirSync,
   mkdtempSync,
@@ -91,50 +54,31 @@ type Scene = {
   name: string;
   path: string;
   on?: Serving;
-  // A server of the scene's own, made afresh for each scheme and width, as
-  // the first run's are, whose state each shot moves.
   make?: () => Promise<Serving>;
   act?(page: Page): Promise<void>;
   // A refusal the scene asks for, which the browser logs as an error.
   refused?: number;
-  // The window as the user sees it, not the whole page: what's fixed or
-  // sticky to the window (the sidebar, the panel beside the page) spans it.
   window?: true;
   // It shows a sketch, whose sandbox refuses the pinned clock's script.
   sketch?: true;
   // Its server stops under it, which the browser logs as errors.
   down?: true;
-  // What its behaviour test checks, if it has one (decision 0063): `pnpm
-  // ui-test` runs its steps and its `check`s, light, at 1280 and at any
-  // other width in `testAt`, and takes no picture; `pnpm shots` takes its
-  // pictures and skips its checks.
   test?: string;
   testAt?: readonly number[];
 };
 
-// The rail's second item, opened while a draft keeps the first, is offered
-// dashed: from the panel's steps, where the panel lies over the rail; on a
-// phone, whose panel is closed, from the rail. There the item carries the
-// composer in its dock (OA-335), and closing the item takes what it
-// offered.
 async function secondLooked(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 1280) >= 761) {
     await page.keyboard.press("ArrowDown");
     await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
-    // Shot once its read is in, not before.
     await page.locator(".item-panel .panel-facts").waitFor();
   } else {
     await page.locator(".rail a.key").nth(1).click();
     await page.locator(".item-panel .panel-facts").waitFor();
   }
-  // Below 1100 the panel's dock carries the composer, and the thread's own,
-  // under the panel, is hidden (OA-335).
   await page.locator(".ctx-chip[data-off]:visible", { hasText: "+" }).waitFor();
 }
 
-// On a phone the item panel is a sheet over the page, with the composer in
-// its dock (OA-335): closing it shows the thread's own, which keeps a
-// draft's chip.
 async function closePanelOnPhone(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 1280) >= 761) return;
   await page.getByRole("button", { name: "Close the panel" }).click();
@@ -147,8 +91,6 @@ const asked = parseArgs({
     width: { type: "string", multiple: true },
     theme: { type: "string" },
     "text-size": { type: "string" },
-    // The behaviour tests, from `pnpm ui-test`, which gives each worker its
-    // lane: `--lane 2/4` runs every fourth test from the second.
     test: { type: "boolean" },
     lane: { type: "string" },
   },
@@ -156,8 +98,8 @@ const asked = parseArgs({
 });
 const testing = asked.values.test === true;
 
-// Every width at once, each in a process of its own, with servers of its
-// own: a width's scenes never see what another's did.
+// Each width in a process of its own, with servers of its own, so a width's scenes never see
+// what another's did.
 const givenWidths = asked.values.width ?? ["1280", "390"];
 if (!testing && givenWidths.length > 1) {
   const rest = process.argv
@@ -176,12 +118,8 @@ if (!testing && givenWidths.length > 1) {
   process.exit(codes.every((code) => code === 0) ? 0 : 1);
 }
 
-// The scene running now, whose checks run only as its behaviour test.
 let acting: Scene | null = null;
-// A check on behaviour, which a picture can't show: how many there are of
-// something, where it sits, how long it took, what the server holds. Its
-// behaviour test runs it; a shot skips it. A check only reads, so the
-// steps after it, and the picture, are the same either way.
+// A check only reads, so the steps after it, and the picture, are the same either way.
 async function check(what: () => unknown): Promise<void> {
   if (testing) await what();
   else untested();
@@ -189,7 +127,6 @@ async function check(what: () => unknown): Promise<void> {
 const untested = () => {
   if (acting && !acting.test) problems.push(`${acting.name} checks behaviour but names no test`);
 };
-// A check: it shows at once, not after a wait. A shot just waits for it.
 const atOnce = () => {
   untested();
   return testing ? { timeout: 500 } : {};
@@ -209,10 +146,6 @@ const out = new URL(
 );
 mkdirSync(out, { recursive: true });
 
-// What the scripted agent proposes when asked to plan: the checkout epic
-// renamed, a story's description reworded, an estimate, and two new stories
-// in the epic. Asked to plan only, it proposes just the new stories; asked
-// for only one, the first.
 const planScript = (all: boolean, one = false) =>
   [
     ...(all
@@ -226,23 +159,15 @@ const planScript = (all: boolean, one = false) =>
     ...(one ? [] : ['jira.createStory({ summary: "Show the gift card balance at checkout" });']),
     "return null;",
   ].join("\n");
-// Asked to hand SYN-61 to the team: it moves to Ready for Dev, and the
-// channel hears so, beside Chen's message about its SMS copy.
 const smsCopy = "slack:C0FW1WEATHR-1788782400.000100";
 const handOffScript = [
   'jira.setStatus("jira:SYN-61", "Ready for Dev");',
   `slack.postMessage(${JSON.stringify(smsCopy)}, "SYN-61 is ready to pick up: the SMS copy is signed off, and the story is in Ready for Dev.");`,
   "return null;",
 ].join("\n");
-// Asked to mark stories done: two moved to Done, the built ones or the fixes.
 const finishScript = (keys: readonly string[]) =>
   [...keys.map((key) => `jira.setStatus("jira:${key}", "Done");`), "return null;"].join("\n");
-// What the agent says when asked which threads touched a story: chips for
-// an item, a file, a message, threads, a change set and a workstream, and
-// one ID Oriel doesn't know (decision 0032), written once those exist.
 let linkedReply = "";
-// What the agent says when asked what SYN-45 says: its injection quoted word
-// for word, and its fare rule misquoted, each under SYN-45 (decision 0032).
 const quotedReply = [
   "[[jira:SYN-45]] has an instruction in its description, which I didn't follow:",
   "",
@@ -255,19 +180,12 @@ const quotedReply = [
   "> the passenger always keeps the cheaper fare",
 ].join("\n");
 
-// The workstream the empty-suggests scenes open, made with their server.
 let emptyWorkstream = "";
 
-// What the agent says when asked about saved cards: two stories, as chips,
-// to open from the window chat and step through.
 const savedCardsReply =
   "Two stories carry saved cards. [[jira:SYN-99]] has no estimate yet. [[jira:SYN-104]] is halfway.";
 
-// The window chat's answers (decision 0030): each with a block Oriel builds
-// from the overview, in each of its forms, or the rows a search found,
-// which Oriel shows unasked.
 const windowAnswers: [RegExp, string, string][] = [
-  // The chart blocks, from history(): the index and its change log.
   [
     /^are we going to finish checkout/i,
     `await history("jira:SYN-1");
@@ -304,8 +222,6 @@ await show({ read: "history", from: "items", form: "spread", value: "daysInState
 await show({ read: "history", from: "items", form: "pivot", rows: "assignee", columns: "state", where: { kind: "story" } });`,
     "Stories by assignee and state. Change the rows or columns to look another way.",
   ],
-  // Bars and a table of history(), whose items Oriel names as it does a
-  // chart's, and whose lower bounds it marks.
   [
     /^which epics hold the most points/i,
     `await history();
@@ -330,8 +246,6 @@ await show({ read: "window.overview", from: "workstreams", form: "bars", label: 
 await show({ read: "window.overview", from: "workstreams", form: "table", columns: ["name", "size", "moved", "idleDays"] });`,
     "Here they are, with how long each has been quiet.",
   ],
-  // The window chat gathers what it found into its own workstream, which
-  // moves the chat into it (OA-347).
   [
     /^gather the vehicle stories/i,
     `const found = await search("vehicle", 6);
@@ -346,8 +260,6 @@ return found.length;`,
   ],
 ];
 
-// The first run's question to start from (decision 0038): the top candidate
-// made a workstream, found in the overview by the row's ID the message names.
 const makeScript = (id: string) =>
   [
     "const view = await window.overview();",
@@ -358,8 +270,6 @@ const makeScript = (id: string) =>
     'workstream.create({ kind: "picked", name, items });',
     "return items.length;",
   ].join("\n");
-// The onboarding turn's draft (decision 0051): the tracker's first tab, by
-// letter, from the preview.
 const sheetsDraftScript = [
   "const [waiting] = await source.preview();",
   'const tracker = waiting.tables.find((table) => table.rows[0]?.[0] === "ID");',
@@ -371,9 +281,6 @@ const sheetsDraftScript = [
   "}] } });",
   "return waiting.tables.length;",
 ].join("\n");
-// Ask Oriel about the tracker's tab (OA-232): its key moved to its stories,
-// every other tab kept, from what preview() gives of the connection that
-// reads.
 const sheetsFixScript = [
   'const reads = (await source.preview()).find((c) => c.why.startsWith("It reads"));',
   "if (!reads) return null;",
@@ -381,9 +288,6 @@ const sheetsFixScript = [
   "source.configure({ connection: reads.connection, options: { tabs } });",
   "return tabs.length;",
 ].join("\n");
-// A PM's change: acceptance criteria drafted for a few of the region's stories.
-// The first run's plan, drafted into the stand-in tracker while no tracker
-// is connected (decision 0059).
 const launchScript = [
   'const epic = tracker.createEpic({ summary: "Spring launch", description: "Get the new plans in front of customers by April." });',
   'tracker.createStory({ summary: "Pricing page", description: "Three tiers, with the yearly discount.", points: 3, epic });',
@@ -396,9 +300,6 @@ const criteriaScript = [
   'for (const story of stories) jira.setDescription(story.id, "Acceptance criteria: a person can do it end to end, and a failure says why in plain words.");',
   "return stories.map((story) => story.id);",
 ].join("\n");
-// A sketch (decision 0033): the weather release as a timeline, which no
-// block draws, in the theme's variables. And what a chart of figures is
-// instead: a bars block Oriel builds from a read.
 const timeline = `<style>
 .row { display: grid; grid-template-columns: 7rem repeat(4, 1fr); gap: var(--space-1); margin-bottom: var(--space-1); font-size: var(--text-sm); }
 .row b { color: var(--text-muted); font-weight: var(--weight-medium); }
@@ -485,8 +386,7 @@ const planning = (input: TurnInput): Step[] => {
   return devPlan(input);
 };
 
-// The scripted agent, each run's time fixed: the sandbox's own differs from
-// one shoot to the next, and a thread shows it.
+// Each run's time fixed: the sandbox's own differs from one shoot to the next, and a thread shows it.
 const scripted = (deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]) =>
   scriptedAgent(
     {
@@ -496,12 +396,9 @@ const scripted = (deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]) =>
     plan,
   );
 
-// Every server the shots start, each closed once they're done, so none is
-// left listening to keep the process alive. One given neither an agent nor
-// models gets the scripted dev agent, as it would, its runs' time fixed.
+// Each closed once the shots are done, so none is left listening to keep the process alive.
 const started: Serving[] = [];
 const start = async (...[ports, given]: Parameters<typeof serve>) => {
-  // Paths show from the shots' own home, as from the person's (OA-315).
   const options = given ? { home: shotsHome, ...given } : given;
   const serving = await serve(
     ports,
@@ -513,12 +410,8 @@ const start = async (...[ports, given]: Parameters<typeof serve>) => {
   return serving;
 };
 
-// A folder of notes beside Jira, which three servers connect, and its
-// connection's ID, fixed: a file's ID hashes it and items sort by ID, so a
-// new one each shoot would reorder the files. Each of those servers starts
-// on a database where the folder was connected under this ID and then
-// disconnected, so connecting it in the window revives the ID. It's in a
-// home of the shots' own, never the Mac's, which the window shows as `~`.
+// Fixed: a file's ID hashes its connection's, and items sort by ID, so a new one each shoot
+// would reorder the files. In a home of the shots' own, never the Mac's.
 const shotsHome = join(realpathSync(mkdtempSync(join(tmpdir(), "oriel-shots-home-"))), "sam");
 keepUntilDone(dirname(shotsHome));
 mkdirSync(shotsHome);
@@ -552,9 +445,6 @@ const notesDb = async (): Promise<string> => {
   return db;
 };
 
-// A server that writes to its own SYN site in memory, and reads Slack when
-// given it, on its own clock when given one; on a database ready for the
-// notes folder when it will connect it.
 const writing = async (slack?: SourceMode, now?: () => Instant, folder = false) => {
   // A workflow with a column for stories ready to pick up, which SYN's lacks.
   const site = memorySite(loadJiraFixture(), instant(new Date()), {
@@ -573,8 +463,6 @@ const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
 const readOnly = await start(0, { db: ":memory:", sources: { jira: { mode: "fixture" } } });
-// A server that syncs from a SYN site in memory as from a source server;
-// this one's site goes offline once it has started.
 const live = async (syn = loadJiraFixture()) => {
   const site = memorySite(syn, instant(new Date()));
   const serving = await start(0, {
@@ -591,7 +479,6 @@ const live = async (syn = loadJiraFixture()) => {
   return { site, serving };
 };
 const offline = await live();
-// SYN with 120 more stories in its checkout epic, so Browse pages them.
 const paged = await (async () => {
   const syn = loadJiraFixture();
   const story = syn.issues.find((issue) => issue.epic === "SYN-1" && issue.issueType === "Story");
@@ -615,9 +502,6 @@ const paged = await (async () => {
   });
 })();
 offline.site.outage("offline");
-// SYN where two stories' descriptions name the phone wallet story, so Jira
-// items reference each other (OA-162), in Browse's Linked grouping and on
-// the overview.
 const naming = await (async () => {
   const syn = loadJiraFixture();
   const named: Record<string, string> = {
@@ -639,14 +523,10 @@ const naming = await (async () => {
     },
   });
 })();
-// A teammate wrote SYN-23's description in Jira's editor, as rich text, and
-// two comments on it: one plain, one with a list, code and a link.
 const described = await live();
 described.site.describe("SYN-23", richDescription);
 described.site.comment("SYN-23", "amara", textToAdf("Design signed this off on Monday."));
 described.site.comment("SYN-23", "esme", richComment);
-// A server that syncs SYN from a board that takes no estimates, as a
-// team-managed board with no points field does.
 const unpointed = await start(0, {
   db: ":memory:",
   sources: {
@@ -660,15 +540,10 @@ const unpointed = await start(0, {
   agent: (deps) => scripted(deps, planning),
 });
 
-// Jira synced from a project with no issues yet.
 const empty = (await live({ ...loadJiraFixture(), issues: [], edits: [] })).serving;
-// A server of its own for adding the notes folder by hand.
 const adding = (await writing()).serving;
 const chatty = (await writing({ mode: "fixture" })).serving;
-// Noticed (decision 0052): SYN and its Slack with three epics as
-// workstreams. Its pass replays one Sonnet 5.5 wrote on this same
-// window (scripts/noticed/record-pass.ts), so no shot calls a model. `then`
-// acts on it once the pass is done, as pinning a card.
+// Its pass replays one scripts/noticed/record-pass.ts recorded, so no shot calls a model.
 const noticing = (then?: (on: Serving) => Promise<void>) => async (): Promise<Serving> => {
   const on = await start(0, {
     db: ":memory:",
@@ -688,23 +563,15 @@ const noticedShown = async (page: Page) => {
   await page.locator('main.overview[aria-busy="false"] .noticed-card').first().waitFor();
 };
 
-// A server whose threads are each rejected for real once, in a shot.
 const answering = (await writing()).serving;
-// Rejecting and undoing it (OA-258), and a change set whose diff is still
-// reading its source (OA-257): each shot on a thread of its own.
 const unrejecting = (await writing()).serving;
 const freshThread = async (): Promise<string> => {
   const { id } = await post<{ id: string }>("/api/workstreams", checkout, unrejecting);
   return ask("Plan gift cards", unrejecting, id);
 };
 
-// Settings (OA-181), on a stand-in for the person's machine: Claude Code
-// and Codex found and signed in. Nothing is started; the
-// checks are stand-ins. One opens with large
-// text, which the server writes into the page.
 const codexBin = mkdtempSync(join(tmpdir(), "oriel-shots-codex-"));
 writeFileSync(join(codexBin, "codex"), "", { mode: 0o755 });
-// Today's turns and tokens on Claude Code, as Oriel counted them.
 const counts = memoryUsage(() => "today");
 counts.count(
   "claude-code",
@@ -740,8 +607,6 @@ const configured = async (settings: Partial<Settings> = {}) => {
       account: { plan: "ChatGPT Plus", email: "sam@example.com", personal: true },
     }),
     counts,
-    // The plan as a Claude Code on Max reports it (decision 0046), and as
-    // Codex on ChatGPT Plus does: its week only.
     plan: async (_cli, kind) => ({
       windows:
         kind === "codex"
@@ -783,7 +648,6 @@ const configured = async (settings: Partial<Settings> = {}) => {
 const settingsServer = await configured();
 const settingsLarge = await configured({ textSize: "large" });
 const settingsNext = await configured({ afterApprove: "next" });
-// A Claude Code kept at a path in the person's home, which shows from `~`.
 const settingsPath = await configured({
   providers: defaultSettings.providers.map((provider) =>
     provider.kind === "claude-code"
@@ -793,9 +657,8 @@ const settingsPath = await configured({
 });
 rmSync(codexBin, { recursive: true, force: true });
 
-// A request as the window sends it, each in a later millisecond than the
-// last one ended in, so what two make never shares one: the random half of
-// their ULIDs would order them differently each shoot.
+// Each request in a later millisecond than the last one ended in: the random half of two
+// ULIDs made in one would order them differently each shoot.
 let lastCall = 0;
 async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
   while (Date.now() <= lastCall) await new Promise((tick) => setTimeout(tick, 1));
@@ -820,7 +683,6 @@ async function call<T>(on: Serving, method: string, path: string, body?: unknown
 }
 const post = <T>(path: string, body: unknown, on: Serving = server) =>
   call<T>(on, "POST", path, body);
-// Syncs a kind's connection, as the sidebar's Sync does.
 const syncKind = async (kind: string, on: Serving) => {
   const { connections } = await call<{ connections: { id: string; kind: string }[] }>(
     on,
@@ -831,9 +693,6 @@ const syncKind = async (kind: string, on: Serving) => {
   if (!connection) throw new Error(`no ${kind} connection to sync`);
   await post(`/api/connections/${connection.id}/sync`, {}, on);
 };
-// SYN with eight weeks behind it (history-world.ts): synced each Monday from
-// Sep 7, a week's moves at a time, so the change log holds what a team's
-// would, for the chart blocks. Its clock is the last Monday's, running on.
 const historied = await (async () => {
   const { start: past, moves } = pastWeeks(loadJiraFixture());
   let base = Date.parse(weekAt(0));
@@ -858,7 +717,6 @@ const historied = await (async () => {
     for (const [key, status] of moves.get(k) ?? []) site.edit(key, { status });
     await syncKind("jira", serving);
   }
-  // A day on from the last sync.
   base = Date.parse(weekAt(weeks)) + 86_400_000;
   mark = Date.now();
   return serving;
@@ -871,7 +729,6 @@ const changeSetOf = async (on: Serving, threadId: string): Promise<string> => {
 };
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
-// SYN-1's epic cluster, keyed by the epic's stable ID.
 const workstream = await post<{ id: string }>("/api/workstreams", checkout);
 const ask = async (text: string, on: Serving = server, workstreamId = workstream.id) => {
   const opened = await post<{ id: string }>(
@@ -883,7 +740,6 @@ const ask = async (text: string, on: Serving = server, workstreamId = workstream
   return opened.id;
 };
 const thread = await ask("Which stories here still need estimates?");
-// The weather epic's workstream: a sketch, and a chart that is a block.
 const weather = await post<{ id: string }>("/api/workstreams", {
   kind: "cluster",
   grouping: "epic",
@@ -891,7 +747,6 @@ const weather = await post<{ id: string }>("/api/workstreams", {
 });
 const sketched = await ask("Sketch the release timeline", server, weather.id);
 const charted = await ask("Draw me a chart of story points by assignee", server, weather.id);
-// On a server of its own, so no other scene shows the thread.
 const quoted = (await writing()).serving;
 const rebooking = await post<{ id: string }>(
   "/api/workstreams",
@@ -899,16 +754,10 @@ const rebooking = await post<{ id: string }>(
   quoted,
 );
 const quoting = await ask("What does SYN-45 say about itself?", quoted, rebooking.id);
-// The composer's "Looking at" (decision 0062), on a server of its own, so no
-// other scene shows its thread: the checkout epic's workstream, whose rail
-// opens its items, and SYN-54, a weather bug outside it.
 const lookingOn = (await writing()).serving;
 const lookingAt = await post<{ id: string }>("/api/workstreams", checkout, lookingOn);
 const lookingThread = await ask("What's left before checkout ships?", lookingOn, lookingAt.id);
 const outsideItem = `?item=${encodeURIComponent("jira:SYN-54")}`;
-// The boarding epic's workstream, its finished stories taken out by the
-// agent and its thread closed: what Oriel did, listed under the reply, and
-// the workstream's log naming the agent's thread (OA-69).
 const boarding = await post<{ id: string }>("/api/workstreams", {
   kind: "cluster",
   grouping: "epic",
@@ -919,7 +768,6 @@ const tidied = await ask(
   server,
   boarding.id,
 );
-// The same again, with the removal undone from under the reply (OA-88).
 const untidied = await ask(
   "Take the finished stories out of this workstream and close the thread",
   server,
@@ -931,8 +779,6 @@ const untidied = await ask(
     })
   ).id,
 );
-// A story deleted in Jira since the workstream was made, then taken out of it
-// (OA-121).
 const deleting = await live();
 const pruned = await (async () => {
   const { id } = await post<{ id: string }>("/api/workstreams", checkout, deleting.serving);
@@ -940,7 +786,6 @@ const pruned = await (async () => {
   await syncKind("jira", deleting.serving);
   return ask("Take the deleted stories out of this workstream", deleting.serving, id);
 })();
-// Asked for estimates where the board takes none.
 const unpointedThread = await ask(
   "Estimate the unestimated ones",
   unpointed,
@@ -951,9 +796,6 @@ await server.app.settled();
 const changeSet = await changeSetOf(server, thread);
 const link = await post<{ url: string }>(`/api/change-sets/${changeSet}/review-link`, {});
 
-// The same question, approved while one of the writes fails: the change
-// set applies partway and says where it stopped. Jira refuses it, so nothing
-// of it landed; or it goes out and no answer comes back, so it may have.
 const stopAt = async (
   { site, serving }: Awaited<ReturnType<typeof writing>>,
   how: "refuse" | "loseAnswers",
@@ -970,8 +812,6 @@ const stopAt = async (
 const partial = await stopAt(refusing, "refuse");
 const unheard = await stopAt(unanswered, "loseAnswers");
 
-// Another set stopped the same way; the refused change left out, and a
-// review link shared for the rest: the reviewer may approve it or dismiss it.
 const partlyReviewed = await (async () => {
   const threadId = await stopAt(refusing, "refuse");
   const setId = await changeSetOf(refusing.serving, threadId);
@@ -985,8 +825,6 @@ const partlyReviewed = await (async () => {
   return post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, refusing.serving);
 })();
 
-// Asked to mark the built ones done where In Progress is final: SYN-23 can't
-// move, and the diff says so before anything is approved.
 const finalMoves = await writing();
 const moveRefused = await (async () => {
   const { serving, site } = finalMoves;
@@ -994,12 +832,9 @@ const moveRefused = await (async () => {
   site.makeFinal("In Progress");
   return ask("Mark the built ones done", serving, workstreamId);
 })();
-// Another set that went out with no answer, dismissed while Jira is offline.
 const dismissing = await writing();
 const dismissedThread = await stopAt(dismissing, "loseAnswers");
 
-// Approving, with SYN-99's write held in flight until the shots are taken:
-// the change set says it is being applied, and offers nothing else.
 const inFlight = await (async () => {
   const { site, serving } = holding;
   const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
@@ -1012,13 +847,11 @@ const inFlight = await (async () => {
   return { threadId, release: held.release, approving };
 })();
 
-// A plan: the epic renamed, a description reworded, and new stories in it.
 const planned = await ask("Rename the epic and plan gift cards in it");
 const plannedLink = await post<{ url: string }>(
   `/api/change-sets/${await changeSetOf(server, planned)}/review-link`,
   {},
 );
-// New stories, approved, then reverted: the revert deletes them.
 const reverted = await (async () => {
   const threadId = await ask("Plan gift cards");
   const setId = await changeSetOf(server, threadId);
@@ -1028,7 +861,6 @@ const reverted = await (async () => {
   return threadId;
 })();
 
-// Stories moved to Done: proposed, and another approved, then reverted.
 const finished = await ask("Mark the built stories done");
 const unfinished = await (async () => {
   const threadId = await ask("Mark the fixes done");
@@ -1039,21 +871,13 @@ const unfinished = await (async () => {
   return threadId;
 })();
 
-// A long ask, as a PM writes one: its title is short enough to scan.
 const longAsk = await ask(
   "I'm meeting the payments team tomorrow morning and want to walk in knowing where checkout stands. Which stories in this epic have nobody on them, and is anything stopping saved cards from shipping this quarter? A short list I can paste into the meeting notes would be ideal.",
 );
-// Answered, over items it needn't change: the user marks it done.
 const answered = await ask("What's in here?");
 await post(`/api/threads/${answered}/done`, {});
-// A later change to the workstream shows in working threads as a marker; a
-// done one keeps its version, behind, until the user writes again.
 await post(`/api/workstreams/${workstream.id}/add`, { items: ["jira:SYN-3"] });
 
-// Gift cards planned, then rejected: Oriel's line asks what was wrong; the
-// person's answer, their next message, gets a revised change set below the
-// folded rejected one; and a review link's reason is held in the thread,
-// under the reviewer's name, until the person sends it on or discards it.
 const rejected = async (reason?: string, reviewer?: string) => {
   const threadId = await ask("Plan gift cards");
   const setId = await changeSetOf(server, threadId);
@@ -1075,14 +899,11 @@ const rejected = async (reason?: string, reviewer?: string) => {
 const rejectedBare = await rejected();
 const revised = await rejected('One story too many: plan only "Pay with a gift card".');
 const heldFromLink = await rejected("Plan only the gift card story, please.", "Dana");
-// A change set whose review link someone is about to reject, with a reason.
 const toReject = await post<{ url: string }>(
   `/api/change-sets/${await changeSetOf(server, await ask("Plan gift cards"))}/review-link`,
   {},
 );
 
-// A change set the agent proposed, on a server of its own, and its review
-// link; and the agent's revision of it in place (OA-309).
 const proposedInPlace = async () => {
   const site = memorySite(loadJiraFixture(), instant(new Date()));
   const serving = await start(0, {
@@ -1105,7 +926,6 @@ const reviseInPlace = async ({
   await post(`/api/threads/${threadId}/messages`, { text: "Make it 5 points instead" }, serving);
   await serving.app.settled();
 };
-// Revised before anyone decided, with the link minted before the revision.
 const inPlace = await (async () => {
   const proposed = await proposedInPlace();
   await reviseInPlace(proposed);
@@ -1113,8 +933,6 @@ const inPlace = await (async () => {
 })();
 let altering = inPlace;
 
-// Two change sets awaiting review in one thread: opened at the later, the
-// earlier is out of view above, and a pill says so (OA-260).
 const twoToReview = await (async () => {
   const threadId = await ask("Plan gift cards");
   for (const text of [
@@ -1128,13 +946,11 @@ const twoToReview = await (async () => {
   return threadId;
 })();
 
-// Without credentials: change sets can be reviewed and rejected only.
 const readOnlyWorkstream = await post<{ id: string }>("/api/workstreams", checkout, readOnly);
 const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyWorkstream.id);
 
-// The notes, and a workstream that mixes them with Jira.
-// Each note a minute older than the one before, so none ties with another
-// for the most recently changed.
+// Each note a minute older than the one before, so none ties with another for the most
+// recently changed.
 let notesWritten = 0;
 const note = (name: string, body: string) => {
   mkdirSync(dirname(join(notes, name)), { recursive: true });
@@ -1157,8 +973,6 @@ const mixed = await post<{ id: string }>("/api/workstreams", {
 });
 const mixedThread = await ask("What's in here?", server, mixed.id);
 
-// Slack messages beside Jira items: the fare decision, with its replies, and
-// the SMS wording thread, in a workstream with the stories they're about.
 const fares = await post<{ id: string }>(
   "/api/workstreams",
   {
@@ -1175,10 +989,6 @@ const fares = await post<{ id: string }>(
 );
 const faresThread = await ask("What's in here?", chatty, fares.id);
 
-// One change set to two sources: SYN-61 to Ready for Dev in Jira, and a
-// message in Slack's channel that it's ready to pick up. Proposed, approved,
-// and approved then reverted, each on a server of its own, so each diff reads
-// its own Jira and Slack.
 const handOff = async (then: "propose" | "approve" | "revert") => {
   const { serving } = await writing({ mode: "fixture" }, undefined, true);
   const { id: workstreamId } = await post<{ id: string }>(
@@ -1208,9 +1018,6 @@ const handOff = async (then: "propose" | "approve" | "revert") => {
   }
   return { serving, workstreamId, threadId, setId, review: new URL(review.url).pathname };
 };
-// A comment on SYN-45, whose description carries an injected note: the
-// diff adds a comment and leaves the description alone. Proposed, and
-// approved, each on a server of its own.
 const commentOn = async (then: "propose" | "approve") => {
   const { serving } = await writing();
   const { id: workstreamId } = await post<{ id: string }>(
@@ -1231,8 +1038,6 @@ const commentOn = async (then: "propose" | "approve") => {
   }
   return { serving, threadId, review: new URL(review.url).pathname };
 };
-// A reply in a Slack conversation, waiting: the review link names the
-// conversation as the thread does, never by its raw key.
 const replyOn = async () => {
   const { serving } = await writing({ mode: "fixture" });
   const { id: workstreamId } = await post<{ id: string }>(
@@ -1256,13 +1061,6 @@ const handing = await handOff("propose");
 const handed = await handOff("approve");
 const handedBack = await handOff("revert");
 
-// A second look at a change set (decision 0054), each on a server of
-// its own: SYN-45 narrowed to same-day sailings, beside the Slack decision
-// whose later reply extends it to next-day ones. Before the person presses
-// Second look; while it runs (`held`, until the server closes); its
-// findings, with a suggested change, which `add` adds; and a harmless
-// estimate it raises nothing about. The looks are scripted, as the
-// thread's agent is.
 const fareDecision = "slack:C0FW1WEATHR-1788444000.000100";
 const lookedAt = async (
   asked: string,
@@ -1389,14 +1187,11 @@ const lookedQuiet = await lookedAt(
   `jira.setEstimate("jira:SYN-54", 2);`,
   { findings: [] },
 );
-// Another thread asks where the hand-off was approved; the agent links to it.
 const askedWhere = await ask(
   "Where did I approve the post that SYN-61 is ready?",
   handed.serving,
   handed.workstreamId,
 );
-// A third asks which threads touched SYN-61; the agent names each thing as
-// a chip, a file from a folder beside Jira among them.
 await post("/api/connections", { kind: "folder", given: { path: notes } }, handed.serving);
 const plan = handed.serving.app
   .window("epic")
@@ -1414,7 +1209,6 @@ linkedReply = [
 ].join("\n");
 const linked = await ask("Which threads touched SYN-61?", handed.serving, handed.workstreamId);
 
-// A workstream of one item, and one with none left, for how the page counts them.
 const single = await post<{ id: string }>("/api/workstreams", {
   kind: "picked",
   name: "Declined card retry",
@@ -1427,12 +1221,8 @@ const emptied = await post<{ id: string }>("/api/workstreams", {
 });
 await post(`/api/workstreams/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 
-// Notes picked in the window and made a workstream, on a server of their own: each
-// pass of the scenes makes another workstream, which no other scene should show.
 const picking = (await writing(undefined, undefined, true)).serving;
 await post("/api/connections", { kind: "folder", given: { path: notes } }, picking);
-// A workstream to remove items from, and undo that, on the same server: each pass
-// puts its items back first.
 const trimmed = await post<{ id: string }>(
   "/api/workstreams",
   {
@@ -1442,10 +1232,6 @@ const trimmed = await post<{ id: string }>(
   },
   picking,
 );
-// An outside tool, connected to act, takes an item out of a workstream
-// through Oriel's MCP door (decision 0058): the workstream's history names
-// it, open, with its Undo. On a server of its own, so no other scene sees it.
-// Each pass puts the item back first, as the user, and the tool takes it out.
 const tooling = await start(0);
 const tooled = await post<{ id: string }>(
   "/api/workstreams",
@@ -1477,8 +1263,6 @@ const toolRemoves = async (page: Page) => {
   await page.reload();
   await page.locator(".workstream-page .history[open]").waitFor();
 };
-// What the bead says now, row by row: not a face it showed before, whose
-// words are fading.
 const beadSays = ".bead-layer:not([data-gone]) .bead-row";
 const trim = async (page: Page, keys = ["SYN-23", "SYN-99"]) => {
   await post(
@@ -1494,9 +1278,6 @@ const trim = async (page: Page, keys = ["SYN-23", "SYN-99"]) => {
   }
 };
 
-// A workstream with two threads, on a server of its own, to mark done and
-// delete from its header (OA-124). Each scene puts it back first: open, and
-// not deleted.
 const ending = (await writing()).serving;
 const ended = await post<{ id: string }>(
   "/api/workstreams",
@@ -1506,7 +1287,6 @@ const ended = await post<{ id: string }>(
 const estimating = await ask("Which of these still need estimates?", ending, ended.id);
 await ask("Who owns the balance screen?", ending, ended.id);
 const endedPage = `/workstreams/${ended.id}`;
-// A review link to its change set, which says once it's deleted.
 const endedReview = new URL(
   (
     await post<{ url: string }>(
@@ -1526,9 +1306,6 @@ const unend = async (page: Page) => {
   await page.locator(".workstream-actions").waitFor();
 };
 
-// A thread marked done on a server of its own, which Sync now catches up
-// with its workstream: each shot of it first leaves it behind again, by
-// adding SYN-3 to the workstream or taking it out.
 const syncing = (await writing()).serving;
 const syncedWorkstream = await post<{ id: string }>("/api/workstreams", checkout, syncing);
 const synced = await ask("What's in here?", syncing, syncedWorkstream.id);
@@ -1549,8 +1326,6 @@ const leftBehind = async (page: Page) => {
   await page.locator(".sync-now").waitFor();
 };
 
-// A workstream on a server of its own, to add an item to from the panel,
-// then step away and back (OA-149).
 const revisiting = (await writing()).serving;
 const revisited = await post<{ id: string }>(
   "/api/workstreams",
@@ -1558,8 +1333,6 @@ const revisited = await post<{ id: string }>(
   revisiting,
 );
 
-// Threads on a server whose clock moves on eight days partway through: the
-// two asked before that and left unsettled are dropped, beside two done.
 const { serving: idling, workstreamId: idled } = await (async () => {
   let later = 0;
   const { serving } = await writing(undefined, () => instant(new Date(Date.now() + later)));
@@ -1574,10 +1347,8 @@ const { serving: idling, workstreamId: idled } = await (async () => {
   return { serving, workstreamId };
 })();
 
-// That workstream with a thread under every other label too, as the threads
-// list says, older than its latest Done one and listed after every real one,
-// so its page shows them in the order of their labels (OA-147). The states a scripted turn can't hold still for
-// a shot (agent working, applying) are said by the list, not made.
+// The states a scripted turn can't hold still for a shot (agent working, applying) are said
+// by the list, not made.
 const everyLabel = async (page: Page) => {
   await page.route("**/api/threads", async (route) => {
     const listed = (await (await route.fetch()).json()) as {
@@ -1613,9 +1384,7 @@ async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
 }
 
-// A request the page sends and never hears back about, so a shot shows what
-// a click shows before the server answers.
-// Aborted once the shot is taken, so the server never hears of it.
+// `hang`'s requests never reach the server; `answerLate`'s do, and only their answers are held.
 const hung: Route[] = [];
 async function hang(page: Page, path: string): Promise<void> {
   await page.route(`**${path}`, (route) => {
@@ -1623,9 +1392,6 @@ async function hang(page: Page, path: string): Promise<void> {
   });
 }
 
-// A request the server answers, whose answer the page hears only once the
-// shot is taken, if ever: so it shows what the server did meanwhile, as an
-// approval's apply under way.
 async function answerLate(page: Page, path: string): Promise<void> {
   await page.route(`**${path}`, async (route) => {
     await route.fetch();
@@ -1633,18 +1399,12 @@ async function answerLate(page: Page, path: string): Promise<void> {
   });
 }
 
-// On a narrow screen the sources are in the sidebar's drawer.
-// The pointer to the window's top corner, where nothing answers a hover. A
-// click leaves it where it clicked, and whatever then moves under it shows
-// its hover, or doesn't, as the frames fall.
+// A click leaves the pointer where it clicked, and whatever then moves under it shows its
+// hover, or doesn't, as the frames fall.
 const pointerAway = (page: Page) => page.mouse.move(1, 1);
 
-// Shot mid-gesture, a swiped row is as far as the wheel's events had got;
-// once the wheel is idle it settles on its stop, the same each time.
-// A thread's page scrolls itself to its latest entry, and again as its
-// change sets' diffs arrive. Settled once nothing on it is loading and it
-// has held still, its scroll and its height, for three frames: what a scene
-// does next isn't undone by it, and a shot finds it where it rests.
+// A thread's page scrolls itself to its latest entry, and again as its change sets' diffs
+// arrive: settled once nothing loads and it has held still for three frames.
 const threadSettled = (page: Page) =>
   until(
     page,
@@ -1657,10 +1417,8 @@ const threadSettled = (page: Page) =>
   );
 const swipeSettled = (row: Locator) =>
   row.and(row.page().locator(".swipe[data-open]:not([data-dragging])")).waitFor();
-// A trackpad's sideways swipe on the row under the pointer, past its first
-// stop: a row adds up its wheel's deltas, and ends the gesture once they've
-// stopped for 140ms (swipe.tsx), so a few large ones, sent back to back,
-// pull as far as many small ones and leave no gap that ends it early.
+// A row ends the gesture once its wheel's deltas stop for 140ms (swipe.tsx): a few large ones,
+// sent back to back, leave no gap that ends it early.
 async function swipeLeft(page: Page): Promise<void> {
   for (let i = 0; i < 4; i++) await page.mouse.wheel(120, 0);
 }
@@ -1671,7 +1429,6 @@ async function openSidebar(page: Page): Promise<void> {
   await page.locator(".shell[data-drawer] .sidebar").waitFor();
 }
 
-// Once no open cluster's items are on their way.
 async function itemsShown(page: Page): Promise<void> {
   await page.locator('.more-items[data-state="loading"]').first().waitFor({ state: "detached" });
 }
@@ -1694,7 +1451,7 @@ async function openAll(page: Page): Promise<void> {
   await itemsShown(page);
 }
 
-// Opens the sidebar's sources, which this browser may have left open.
+// This browser may have left them open.
 async function openSources(page: Page): Promise<void> {
   await openSidebar(page);
   const toggle = page.locator(".sidebar-sources .fold-toggle");
@@ -1702,9 +1459,6 @@ async function openSources(page: Page): Promise<void> {
   await page.locator("#nav-sources").waitFor();
 }
 
-// Once the overview has loaded.
-// A question asked from the overview's composer in a fresh window chat, waiting for its
-// block of `form` and the end of the turn.
 async function askInWindow(page: Page, question: string, form: string): Promise<void> {
   await freshChat(page, historied);
   await page.locator(".overview-dock .chat-input-field").fill(question);
@@ -1720,8 +1474,7 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
-// Memory mode, as the fixture pins the clock and nothing would go quiet;
-// two days on, with one story moved, the overview has every headline.
+// Memory mode: the fixture pins the clock, so nothing would go quiet.
 let questioning = server;
 const questioned = async () => {
   let ahead = 0;
@@ -1789,13 +1542,7 @@ async function questionsBeside(page: Page, checked: boolean): Promise<Record<str
   return whole;
 }
 
-// Moving an item between workstreams (moving.ts), on a server of each
-// shot's own: "Checkout polish" holds three items, and "Gift cards" one.
-// At 1280 the item's row is dragged with the mouse, down, across and up,
-// onto the sidebar; at 390, where the sidebar is a drawer, its row's menu
-// does the same.
 let moveFrom = "";
-// A workstream still under the name a new one gets, to rename.
 const renaming = async () => {
   const { serving } = await writing();
   await post(
@@ -1845,7 +1592,6 @@ const movingRow = (page: Page, key = "SYN-23") =>
 const sidebarWorkstream = (page: Page, name: string) =>
   page.locator(".sidebar .nav-workstream-row", { hasText: name });
 const workstreamsHeading = (page: Page) => page.locator(".sidebar-workstreams .fold-head");
-// The workstream's page, its items shown, and the sidebar's workstreams.
 async function openMoving(page: Page): Promise<void> {
   // A drag the scene before held mid-way lets go, over nothing.
   await page.mouse.move(1, 1);
@@ -1854,7 +1600,6 @@ async function openMoving(page: Page): Promise<void> {
   await movingRow(page).waitFor();
   await sidebarWorkstream(page, "Gift cards").waitFor({ state: "attached" });
 }
-// The row dragged with the mouse onto `onto`, let go there unless `hold`.
 async function dragRow(page: Page, onto: Locator, hold = false): Promise<void> {
   await movingRow(page).locator(".member-title").hover();
   await page.mouse.down();
@@ -1863,13 +1608,10 @@ async function dragRow(page: Page, onto: Locator, hold = false): Promise<void> {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
   if (!hold) await page.mouse.up();
 }
-// The row's menu, opened as a right-click opens it.
 async function rowMenu(page: Page): Promise<void> {
   await movingRow(page).locator(".member-title").click({ button: "right" });
   await page.locator(".context-menu:popover-open").waitFor();
 }
-// SYN-23 moved to "Gift cards": gone from this page, two items there, and
-// the bead says so, with its Undo.
 async function moveToGiftCards(page: Page): Promise<void> {
   await openMoving(page);
   if (narrow(page)) {
@@ -1885,7 +1627,6 @@ async function moveToGiftCards(page: Page): Promise<void> {
     .getByRole("button", { name: "Undo: Moved SYN-23 from “Checkout polish” to “Gift cards”." })
     .waitFor({ state: "attached" });
 }
-// Dropped on the Workstreams heading: the menu asks.
 async function dropOnHeading(page: Page): Promise<void> {
   await openMoving(page);
   if (narrow(page)) await rowMenu(page);
@@ -1938,13 +1679,8 @@ async function moveThread(page: Page, hold = false, open = false): Promise<void>
   await card("Checkout polish").getByText("1 done").waitFor();
 }
 
-// After you approve, set to go on to the next thing that needs you: a
-// server of each shot's own, with a change set to review on the checkout
-// epic, and with `others`, a plan proposed before it, which is next in
-// Needs you. The shot approves the latest (`approvingIn`).
 let approvingIn = "";
-// Searches threads from the sidebar until `found` shows. The page can clear
-// the field as it settles just after loading, so it types again if not.
+// The page can clear the field as it settles just after loading, so it types again if not.
 async function searchThreads(page: Page, text: string, found: string) {
   const field = page.getByRole("combobox", { name: "Search threads" });
   for (let tries = 1; ; tries++) {
@@ -1963,9 +1699,8 @@ async function searchThreads(page: Page, text: string, found: string) {
   return field;
 }
 
-// New chat, made behind the page's back, and the overview loaded again so
-// it knows: its composer follows up in the chat it shows (OA-355), so a
-// question asked before then would go to the last scene's chat.
+// Loaded again so the overview knows of the new chat: its composer follows up in the chat
+// it shows, so a question asked before then would go to the last scene's chat.
 async function freshChat(page: Page, on: Serving): Promise<void> {
   await post("/api/window-chat/new", {}, on);
   const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
@@ -1974,8 +1709,6 @@ async function freshChat(page: Page, on: Serving): Promise<void> {
   await overviewShown(page);
 }
 
-// Asks in a fresh window chat, and waits for the whole answer: `answered`,
-// with nothing working.
 async function askChat(page: Page, question: string, answered: string, on = server) {
   await freshChat(page, on);
   await page.locator(".overview-dock .chat-input-field").fill(question);
@@ -1984,9 +1717,6 @@ async function askChat(page: Page, question: string, answered: string, on = serv
   await page.locator(".working").first().waitFor({ state: "detached" });
 }
 
-// Asks the window chat about saved cards and opens the first story its
-// answer names, in the panel, as one of the two it named. `on`: the scene's
-// server, so New chat goes to it and leaves no other's chat.
 async function openFromAnswer(page: Page, on = server) {
   await askChat(page, "What's holding up saved cards?", ".window-chat .reply .chip", on);
   await page.locator(".window-chat .reply .chip-link").first().click();
@@ -1994,14 +1724,11 @@ async function openFromAnswer(page: Page, on = server) {
   await page.locator(".panel-place", { hasText: "1 of 2" }).waitFor();
 }
 
-// The server the ask-panel-* scene running now made for itself.
 let docking = server;
 
-// Whether the window has room for a thread's page beside an open item, and
-// for the window chat's rail, as app.tsx's `railRoom` says.
+// app.tsx's `railRoom` has the same breakpoint.
 const beside = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1100;
 
-// A check: there are `count` of what's found, now.
 const expectCount = (found: Locator, count: number) =>
   check(async () => {
     const n = await found.count();
@@ -2016,7 +1743,6 @@ const goingOn = (others: boolean) => async () => {
   approvingIn = await ask("Estimate what's missing", serving, workstreamId);
   return serving;
 };
-// The same, with Jira refusing one of its writes, so the apply stops.
 const stoppingOn = async () => {
   const { site, serving } = await writing();
   await post("/api/settings", { afterApprove: "next" }, serving);
@@ -2026,7 +1752,6 @@ const stoppingOn = async () => {
   site.refuse("SYN-99");
   return serving;
 };
-// The same, with After you approve left to stay: the page watches the apply.
 const stayingOn = async () => {
   const { serving } = await writing();
   const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
@@ -2038,8 +1763,6 @@ const approveIt = async (page: Page) => {
   await page.getByRole("button", { name: "Approve and apply" }).click();
 };
 
-// The window chat's draft of a Sheets mapping through sheets-mcp (OA-279):
-// its Backlog tab, the first the preview reads.
 const sheetsMcpDraftScript = `const [waiting] = await source.preview();
 const backlog = waiting.tables.find((table) => table.name.endsWith("› Backlog"));
 if (!backlog?.at) return null;
@@ -2080,11 +1803,8 @@ const failedShown = async (page: Page) => {
   await page.locator('.notice[data-tone="error"]', { has: tryAgain(page) }).waitFor();
 };
 
-// A server of its own for Make a workstream on the overview: each pass of
-// the scenes deletes what the last one made first.
 const suggesting = (await writing({ mode: "fixture" })).serving;
 
-// No API-key way in (decision 0059): nothing on the page offers one.
 const noApiKey = (page: Page) =>
   check(async () => {
     const said = await page.evaluate<string>("document.body.innerText");
@@ -2092,8 +1812,6 @@ const noApiKey = (page: Page) =>
       throw new Error("the page still offers an API key");
   });
 const scenes: Scene[] = [
-  // Settings (OA-181): its sections, each a page; Providers first, its rows
-  // without the plan, which Usage shows.
   {
     name: "settings-providers",
     test: "Providers' rows show no plan usage, and nothing offers an API key",
@@ -2125,8 +1843,6 @@ const scenes: Scene[] = [
       });
     },
   },
-  // Moving between sections holds the frame still: the title, the
-  // sections' list and the column stay where they were.
   {
     name: "settings-steady",
     test: "moving between Settings' sections holds the title, the list and the column still",
@@ -2138,7 +1854,6 @@ const scenes: Scene[] = [
         Promise.all(
           [".settings-title", ".settings-sections", ".settings-body"].map(async (selector) => {
             const box = await page.locator(selector).first().boundingBox();
-            // A title is as wide as its words; the rest by their width.
             const size = selector === ".settings-title" ? box?.height : box?.width;
             return box ? [box.x, box.y, size ?? 0].map(Math.round).join(",") : "none";
           }),
@@ -2162,7 +1877,6 @@ const scenes: Scene[] = [
         .click();
     },
   },
-  // The sidebar folded: Settings' sections keep their own width.
   {
     name: "settings-folded",
     test: "with the sidebar folded, each of Settings' sections fills the list's width",
@@ -2174,8 +1888,6 @@ const scenes: Scene[] = [
         await page.getByRole("button", { name: "Hide sidebar" }).click();
         await page.locator(".shell[data-folded]").waitFor();
       }
-      // Wide, each fills the list's column; narrow, they're tabs, as wide as
-      // their words.
       if ((page.viewportSize()?.width ?? 0) <= 760) return;
       await check(async () => {
         const list = await page.locator(".settings-sections").boundingBox();
@@ -2216,8 +1928,6 @@ const scenes: Scene[] = [
     act: (page) =>
       page.getByRole("radio", { name: "Go to the next thing that needs you" }).waitFor(),
   },
-  // Approving, with After you approve set to go on: the page is on the next
-  // thread in Needs you, its heading focused, with a note that links back.
   {
     name: "approved-next",
     path: "/",
@@ -2229,7 +1939,6 @@ const scenes: Scene[] = [
       await page.locator(".thread-title:focus").waitFor();
     },
   },
-  // With nothing else needing the person, the page stays and says so.
   {
     name: "approved-nothing-else",
     path: "/",
@@ -2237,12 +1946,9 @@ const scenes: Scene[] = [
     act: async (page) => {
       await approveIt(page);
       await page.locator(beadSays, { hasText: "All caught up." }).waitFor();
-      // After a beat, the applied change set folds itself to a line.
       await page.locator(".change-set[data-folded]").waitFor();
     },
   },
-  // Applied while the page watched: after a beat it folds itself to one
-  // line, and its Show takes the focus its Approve had.
   {
     name: "thread-applied-folds",
     path: "/",
@@ -2254,8 +1960,6 @@ const scenes: Scene[] = [
         .waitFor();
     },
   },
-  // The bead (decision 0056), in each of its states. Once approved and
-  // applied: the same note, now with a check.
   {
     name: "bead-applied",
     window: true,
@@ -2267,8 +1971,6 @@ const scenes: Scene[] = [
       await page.locator(".thread-title:focus").waitFor();
     },
   },
-  // Once approved, the apply stopped: the note becomes the problem, which
-  // stays until dismissed.
   {
     name: "bead-failed",
     test: "a failed apply's note keeps every word for a screen reader, cut short with an ellipsis on a phone, its Dismiss whole",
@@ -2279,9 +1981,6 @@ const scenes: Scene[] = [
     act: async (page) => {
       await approveIt(page);
       await page.locator(beadSays, { hasText: "Couldn't apply" }).waitFor();
-      // Cut short to fit a phone, its sentence ends in an ellipsis, and
-      // keeps every word for a screen reader, as the alert says it; its
-      // Dismiss is whole.
       await check(async () => {
         const said = await page.evaluate<{
           words: string;
@@ -2312,12 +2011,8 @@ const scenes: Scene[] = [
     on: settingsServer,
     act: (page) => page.locator(".settings-switch .switch").waitFor(),
   },
-  // The overview (decision 0027): with workstreams, threads waiting and the
-  // folder beside Jira; and with Slack beside Jira.
   { name: "overview", path: "/", act: overviewShown },
   { name: "overview-slack", path: "/", on: chatty, act: overviewShown },
-  // Noticed: cards Oriel found unasked; one pinned, as a saved read; one
-  // asked about, which opens the window chat on it by ID; one dismissed.
   { name: "noticed", path: "/", make: noticing(), act: noticedShown },
   {
     name: "noticed-pinned",
@@ -2342,7 +2037,6 @@ const scenes: Scene[] = [
         .first()
         .getByRole("button", { name: "Ask about this" })
         .click();
-      // The question as sent, by ID; the dev agent's answer isn't the point.
       await page.locator(".window-chat").getByText("Oriel noticed").first().waitFor();
     },
   },
@@ -2354,9 +2048,6 @@ const scenes: Scene[] = [
     ),
     act: noticedShown,
   },
-  // The window chat (decision 0030): the overview's composer, its questions
-  // to start from beside the headlines, then an answer with each form of block, beside the overview or,
-  // on a narrow window, as a sheet. Each starts a fresh chat.
   {
     name: "ask-bar",
     path: "/",
@@ -2384,8 +2075,6 @@ const scenes: Scene[] = [
       await askChat(page, question, `.window-chat .answer-block[data-form="${form}"]`);
     },
   })),
-  // The chart blocks (decision 0053): each form in the window chat, built
-  // by Oriel from history() on SYN with eight weeks of change log.
   ...(
     [
       ["chart-series", "Are we going to finish checkout this month?", "series"],
@@ -2408,8 +2097,6 @@ const scenes: Scene[] = [
     },
   })),
   {
-    // The pivot regrouped by the person, with no model call: epics down,
-    // states across, story points summed.
     name: "chart-pivot-regrouped",
     path: "/",
     on: historied,
@@ -2423,10 +2110,8 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Pins (decision 0030) of five blocks of history(), as the overview's Pinned
-    // strip shows them. A thread's block can't be pinned yet (0030's
-    // `pin.add`): the blocks are the window chat's, as Oriel built them, put
-    // in Noticed's reply, which carries the pins, for the shot.
+    // A thread's block can't be pinned yet (0030's `pin.add`), so the window chat's blocks go in
+    // Noticed's reply, which carries the pins.
     name: "chart-pinned",
     path: "/",
     on: historied,
@@ -2463,8 +2148,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The chat closed with a conversation in it: the bar offers it back,
-    // and still fits a phone at every text size (OA-205).
     name: "ask-back",
     path: "/",
     window: true,
@@ -2480,7 +2163,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // An answer in the window chat quotes from an item as a thread's does.
     name: "ask-quotes",
     path: "/",
     on: quoted,
@@ -2495,10 +2177,6 @@ const scenes: Scene[] = [
       );
     },
   },
-  // An item opened from the window chat's answer takes the rail's place and
-  // carries the chat in its dock, at every width; the overview stays, as
-  // wide as beside the rail, and the panel steps through what the answer
-  // named. Closing the item brings the rail back.
   ...(
     [
       ["ask-panel-beside", 1],
@@ -2536,8 +2214,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Make a workstream on the cluster of SYN-54 and the messages that name
-    // it, with its Undo.
     name: "overview-made",
     path: "/",
     on: suggesting,
@@ -2559,7 +2235,6 @@ const scenes: Scene[] = [
       await page.locator(`${beadSays} button`, { hasText: "Undo" }).waitFor();
     },
   },
-  // Jira synced from a project with no issues yet: said above Browse.
   {
     name: "jira-empty",
     path: "/?grouping=epic",
@@ -2619,8 +2294,6 @@ const scenes: Scene[] = [
       await page.locator(".more-items button").waitFor();
     },
   },
-  // An item opened from a Browse cluster steps through the cluster's loaded
-  // items, as from any list (OA-95).
   {
     name: "browse-step",
     window: true,
@@ -2656,7 +2329,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // SYN-74 says "handsets" only in its description (OA-242).
     name: "browse-search-text",
     path: "/browse?grouping=epic&q=handsets",
     act: async (page) => {
@@ -2680,7 +2352,6 @@ const scenes: Scene[] = [
     },
   },
   { name: "stuck", path: "/?grouping=stuck", act: (page) => shown(page, "stuck") },
-  // Items with what names them or what they name, across Jira and Slack.
   {
     name: "linked",
     path: "/?grouping=linked",
@@ -2690,7 +2361,6 @@ const scenes: Scene[] = [
       await openFirstCluster(page);
     },
   },
-  // Jira stories whose descriptions name another story (OA-162).
   {
     name: "linked-jira",
     path: "/?grouping=linked",
@@ -2740,7 +2410,6 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".workstream-page .members").waitFor(),
   },
   {
-    // A thread under every label, what waits on the user first (OA-147).
     name: "workstream-threads",
     path: `/workstreams/${idled}`,
     on: idling,
@@ -2834,7 +2503,6 @@ const scenes: Scene[] = [
     on: handed.serving,
     act: (page) => page.locator(".change-set[data-folded] .change-set-count").waitFor(),
   },
-  // Applied before the page opened, it folds; Show opens it to its Revert.
   {
     name: "thread-handoff-applied-shown",
     path: `/threads/${handed.threadId}`,
@@ -2875,8 +2543,6 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".second-look-stale").waitFor(),
   },
   {
-    // Dismissed: Approve and Reject are back, and Second look shows it again
-    // (OA-257). Dismissed once, it stays so for the later shots.
     name: "second-look-dismissed",
     path: `/threads/${lookDismissed.threadId}`,
     on: lookDismissed.serving,
@@ -2900,7 +2566,6 @@ const scenes: Scene[] = [
     on: handedBack.serving,
     act: (page) => page.locator(".change-set[data-folded] .change-set-count").waitFor(),
   },
-  // Its Undo applied too: both fold, and open one inside the other.
   {
     name: "thread-handoff-reverted-shown",
     path: `/threads/${handedBack.threadId}`,
@@ -2911,8 +2576,6 @@ const scenes: Scene[] = [
       await page.locator(".change-set .change-set .diff").waitFor();
     },
   },
-  // The panel beside the page, one per source's view, and from the window with
-  // a cluster open or closed: a plain click opens it, an address can too.
   {
     name: "panel-jira-list",
     window: true,
@@ -2944,7 +2607,6 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-thread").last().waitFor();
     },
   },
-  // A description as written in Jira's editor keeps its structure (OA-93).
   {
     name: "panel-jira-rich",
     window: true,
@@ -2955,8 +2617,6 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-text").waitFor();
     },
   },
-  // Its comments read the same way: a plain one as written, one with a list,
-  // code and a link with them (OA-148).
   {
     name: "panel-jira-comments",
     window: true,
@@ -2967,8 +2627,6 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-thread").scrollIntoViewIfNeeded();
     },
   },
-  // What the Slack fixture marks (OA-94): mentions, here, and a reply also
-  // sent to the channel; an edit; a file with no text; an unknown person.
   ...[
     ["sms", "1788782400.000100"],
     ["edited", "1788884400.000100"],
@@ -3002,8 +2660,6 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
-  // Stepping through the list the panel was opened from, and adding the item
-  // to the workstream the window is adding to (OA-95).
   {
     name: "panel-step",
     window: true,
@@ -3030,8 +2686,6 @@ const scenes: Scene[] = [
       await page.locator(".panel-added, .panel-actions .panel-problem").first().waitFor();
     },
   },
-  // Its line and Undo come back with the item after stepping away (OA-149),
-  // and its note stays in the stack meanwhile (OA-152).
   {
     name: "panel-add-back",
     window: true,
@@ -3050,8 +2704,6 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
-  // Its Undo is a note in the window's stack too (OA-152): ⌘Z or Ctrl+Z
-  // undoes it there and beside the add at once.
   {
     name: "panel-add-undone",
     window: true,
@@ -3081,26 +2733,21 @@ const scenes: Scene[] = [
   {
     name: "workstream-empty",
     path: `/workstreams/${emptied.id}`,
-    // With nothing named in a thread, it suggests the top of Not in a
-    // workstream yet (OA-348).
     act: (page) => page.locator(".workstream-page .add-member").first().waitFor(),
   },
   {
-    // Two items removed with ×, each undoable for a few seconds.
     name: "workstream-undo",
     path: `/workstreams/${trimmed.id}`,
     on: picking,
     act: (page) => trim(page),
   },
   {
-    // An outside tool's change, named, with its Undo (decision 0058).
     name: "workstream-tool",
     path: `/workstreams/${tooled.id}`,
     on: tooling,
     act: toolRemoves,
   },
   {
-    // The user's Undo of it: the item is back, as a version of the user's.
     name: "workstream-tool-undone",
     path: `/workstreams/${tooled.id}`,
     on: tooling,
@@ -3114,14 +2761,12 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The header's endings: Mark done, and Delete…
     name: "ending-header",
     path: endedPage,
     on: ending,
     act: unend,
   },
   {
-    // Delete asks first, saying how many threads go with it.
     name: "ending-confirm",
     path: endedPage,
     on: ending,
@@ -3132,7 +2777,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Marked done: it says so, with Undo, and leaves the sidebar.
     name: "ending-done",
     path: endedPage,
     on: ending,
@@ -3144,7 +2788,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The Done page leads with it.
     name: "ending-done-page",
     path: endedPage,
     on: ending,
@@ -3161,7 +2804,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Deleted: only what went, with Undo.
     name: "ending-deleted",
     path: endedPage,
     on: ending,
@@ -3174,7 +2816,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Its review link, once it's deleted, says so.
     name: "ending-review",
     path: endedReview,
     on: ending,
@@ -3188,8 +2829,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Marked done from the sidebar, off its page: the same Undo note, in the
-    // window's one stack (OA-142).
     name: "ending-off-page",
     path: "/done",
     on: ending,
@@ -3203,8 +2842,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A swipe on it in the sidebar shows Mark done and Delete; Rename is
-    // in its menu only.
     name: "ending-swipe",
     path: endedPage,
     on: ending,
@@ -3218,8 +2855,6 @@ const scenes: Scene[] = [
       await swipeSettled(row);
     },
   },
-  // The bead with one note, its Undo and ⌘Z; with three, the newest, a
-  // count and edges beneath; and held, open as a list, newest first.
   {
     name: "bead-note",
     window: true,
@@ -3245,8 +2880,6 @@ const scenes: Scene[] = [
       await page.locator(".bead-layer[data-list]").waitFor();
     },
   },
-  // Browse with items picked, and a workstream marked done from the
-  // sidebar: the bead at the top, the bar for picked items at the foot.
   {
     name: "bead-browse",
     window: true,
@@ -3268,8 +2901,6 @@ const scenes: Scene[] = [
       if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
     },
   },
-  // The bead on each page's top line, with a workstream marked done from
-  // the sidebar: what it covers there, for the note's life.
   ...(
     [
       ["bead-on-overview", "/"],
@@ -3294,7 +2925,6 @@ const scenes: Scene[] = [
       if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
     },
   })),
-  // A close from a list that failed: the problem, in the bead.
   {
     name: "bead-closing",
     window: true,
@@ -3315,7 +2945,6 @@ const scenes: Scene[] = [
       if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
     },
   },
-  // Added from the panel: the bead centres on the page the panel leaves.
   {
     name: "bead-panel",
     window: true,
@@ -3341,21 +2970,17 @@ const scenes: Scene[] = [
     },
   },
   {
-    // One of them undone: back where it was.
     name: "workstream-undone",
     path: `/workstreams/${trimmed.id}`,
     on: picking,
     act: async (page) => {
       await trim(page);
-      // The older note is behind the newest until the bead is held open.
       await page.locator(".bead").hover();
       await page.getByRole("button", { name: "Undo removing SYN-23" }).click();
       await page.locator('.members [data-item="jira:SYN-23"]').waitFor();
       await pointerAway(page);
     },
   },
-  // A workstream renamed in place from its menu in the sidebar: the field,
-  // then, after Enter, the new name in the sidebar and on the overview.
   { name: "rename-field", path: "/", make: renaming, act: (page) => renameInSidebar(page, false) },
   {
     name: "rename-saved",
@@ -3365,8 +2990,6 @@ const scenes: Scene[] = [
     make: renaming,
     act: (page) => renameInSidebar(page, true),
   },
-  // Refused, off its page, after a visit to it: the window's problem says
-  // why, and the old name comes back.
   {
     name: "rename-refused",
     path: "/",
@@ -3393,10 +3016,7 @@ const scenes: Scene[] = [
       if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
     },
   },
-  // An item dragged from a workstream's page onto another workstream in
-  // the sidebar moves there, with Undo.
   { name: "drag-move", path: "/", make: moving, act: moveToGiftCards },
-  // Mid-drag: the workstream under the pointer takes the drop, drawn so.
   {
     name: "drag-move-over",
     path: "/",
@@ -3408,9 +3028,7 @@ const scenes: Scene[] = [
       await sidebarWorkstream(page, "Gift cards").and(page.locator("[data-drop-over]")).waitFor();
     },
   },
-  // Dropped over nothing: the page takes the drop, so the system has no
-  // refusal to slide back, and the card is back and gone within 150ms
-  // (OA-314). Times are events' own, which the pinned clock leaves alone.
+  // Times are events' own, which the pinned clock leaves alone.
   {
     name: "drag-move-nowhere",
     test: "a row dropped over nothing is taken by the page and back within 150ms, and the bead says nothing",
@@ -3461,7 +3079,6 @@ const scenes: Scene[] = [
       await pointerAway(page);
     },
   },
-  // Its Undo: back where it came from, and out of "Gift cards".
   {
     name: "drag-move-undone",
     path: "/",
@@ -3479,10 +3096,7 @@ const scenes: Scene[] = [
       await pointerAway(page);
     },
   },
-  // Dropped on the Workstreams heading: a menu where it was let go.
   { name: "drag-move-menu", path: "/", make: moving, act: dropOnHeading },
-  // Create: a new workstream holds it, named for it, and opens; it left
-  // the one it came from.
   {
     name: "drag-move-new",
     test: "a row dropped on Create new workstream makes one named for it, which it leaves the old one for",
@@ -3510,7 +3124,6 @@ const scenes: Scene[] = [
         .waitFor({ state: "attached" });
     },
   },
-  // Cancel: nothing changed, and nothing says it did.
   {
     name: "drag-move-cancel",
     test: "a cancelled drop changes nothing and says nothing",
@@ -3543,8 +3156,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The threads waiting on the user, in the sidebar; on a narrow screen,
-    // in its drawer.
     name: "needs-you",
     path: `/workstreams/${mixed.id}`,
     act: async (page) => {
@@ -3556,9 +3167,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The overview's count of the threads waiting on the user shows them in
-    // the sidebar (OA-185): a narrow screen opens its drawer, and a search
-    // left in the sidebar clears.
     name: "needs-you-overview",
     path: "/",
     act: async (page) => {
@@ -3571,7 +3179,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A thread's menu, from a right-click on it in the sidebar.
     name: "thread-menu",
     path: `/workstreams/${mixed.id}`,
     act: async (page) => {
@@ -3584,9 +3191,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A thread in the sidebar swiped left past its first stop, against
-    // resistance, to show Delete beside Mark done: a trackpad's sideways
-    // wheel, as on a wide screen, works in the drawer too.
     name: "thread-swipe",
     path: `/workstreams/${mixed.id}`,
     act: async (page) => {
@@ -3604,8 +3208,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Deleting a thread whose change set wrote to Jira first says so: from
-    // its workstream's list of threads.
     name: "thread-delete",
     path: `/threads/${partial}`,
     on: refusing.serving,
@@ -3617,8 +3219,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The sidebar's sources opened (OA-146): one row each, drawn the same
-    // way, with Sync on the row under the pointer, and Sync all.
     name: "sources-open",
     path: "/?grouping=epic",
     act: async (page) => {
@@ -3629,8 +3229,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Adding a source: a folder, by its path, in Settings' Add a connection,
-    // which the sidebar's Add a source opens, under `pnpm dev`.
     name: "folder-add",
     path: "/?grouping=epic",
     on: adding,
@@ -3645,8 +3243,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Jira syncing: the request is held until the screenshot is taken. The
-    // sources fold to one line that says so.
     name: "jira-syncing",
     path: "/?grouping=epic",
     act: async (page) => {
@@ -3662,7 +3258,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A sync that fails says why on its row, with a warning mark.
     name: "jira-sync-failed",
     path: "/?grouping=epic",
     on: offline.serving,
@@ -3675,7 +3270,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Folded again, the one line keeps the warning mark.
     name: "jira-sync-failed-folded",
     path: "/?grouping=epic",
     on: offline.serving,
@@ -3710,7 +3304,6 @@ const scenes: Scene[] = [
       if ((await lines.getByRole("button", { name: "Redo" }).count()) === 0)
         await lines.getByRole("button", { name: "Undo" }).first().click();
       await lines.getByRole("button", { name: "Redo" }).waitFor();
-      // The rail follows the version the Undo made, without a reload.
       await page.locator(".rail-title", { hasText: "v3" }).waitFor();
     },
   },
@@ -3730,8 +3323,6 @@ const scenes: Scene[] = [
       await page.locator(".chat .marker").last().waitFor();
     },
   },
-  // A tooltip a moment after the pointer rests on its control, and one at
-  // once on the keyboard's focus, kept inside a phone's width.
   {
     name: "tooltip-hover",
     path: `/threads/${synced}`,
@@ -3762,11 +3353,9 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await openSidebar(page);
-      // The drawer, once open, focuses its first link.
       if ((page.viewportSize()?.width ?? 0) <= 760)
         await page.locator("#sidebar a:focus").waitFor();
-      // New thread, near the window's edge, with a long tooltip, focused
-      // as from the keyboard: a key pressed since the last click.
+      // A key pressed since the last click, so the focus is the keyboard's.
       await page.keyboard.press("Shift");
       await page.locator(".sidebar .sidebar-new").focus();
       await page.locator(".tooltip:popover-open").waitFor();
@@ -3787,7 +3376,6 @@ const scenes: Scene[] = [
     path: `/threads/${thread}`,
     act: async (page) => {
       await page.locator(".change-set .diff").waitFor();
-      // Approving waits for the diff to be shown, and the thread to reload.
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
       await page.locator(".answer-block[data-outside]").waitFor();
     },
@@ -3839,7 +3427,6 @@ const scenes: Scene[] = [
         .getByRole("textbox", { name: "Message" })
         .fill("Plan kiosk wallets: an epic, and stories for tap to pay and receipts"),
   },
-  // The workstream picked for a new thread, before it is sent.
   {
     name: "new-thread-workstream",
     path: "/threads/new",
@@ -3850,13 +3437,10 @@ const scenes: Scene[] = [
       await page.getByRole("textbox", { name: "Message" }).fill("Which of these need estimates?");
     },
   },
-  // Sent: the thread starts in the workstream picked for it, not a new one.
   {
     name: "new-thread-picked",
     test: "a new thread starts in the workstream picked for it, from a picker whose options differ, with one New workstream",
     path: "/threads/new",
-    // Two threads from nothing first: their workstreams, not named yet, are
-    // picked by their threads' titles, never as a second "New workstream".
     make: async () => {
       const on = (await writing()).serving;
       await post("/api/workstreams", checkout, on);
@@ -3892,7 +3476,6 @@ const scenes: Scene[] = [
           );
       });
       await picker.selectOption({ label: picked.name });
-      // Only a new workstream is named here.
       await page.getByRole("textbox", { name: "Workstream title" }).waitFor({ state: "detached" });
       await page
         .getByRole("textbox", { name: "Message" })
@@ -3915,13 +3498,10 @@ const scenes: Scene[] = [
           );
       });
       await page.locator(".thread-head .crumb").filter({ hasText: picked.name }).waitFor();
-      // Shot once it's answered, and the page has followed the answer.
       await page.locator(".working").first().waitFor({ state: "detached" });
       await threadSettled(page);
     },
   },
-  // The default picked: the new workstream's title, under the picker, or under
-  // the title line where the rail waits below the chat.
   {
     name: "new-thread-title",
     path: "/threads/new",
@@ -3930,8 +3510,6 @@ const scenes: Scene[] = [
       await page.getByRole("textbox", { name: "Message" }).fill("Plan the kiosk's first epic");
     },
   },
-  // Named: the new workstream is made with the name the person typed, which
-  // the sidebar shows.
   {
     name: "new-thread-named",
     test: "a new workstream's title starts as New workstream, and the thread makes it under the name typed",
@@ -3991,7 +3569,6 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".diff-line[data-stopped] .line-error").waitFor(),
   },
   {
-    // Dismissed while its source can't be read: it ends, and says so once.
     name: "thread-dismissed",
     test: "a change set dismissed while its source can't be read ends, with no warning or error left",
     path: `/threads/${dismissedThread}`,
@@ -4004,7 +3581,6 @@ const scenes: Scene[] = [
       if (await dismiss.isVisible()) await dismiss.click();
       await ended.waitFor();
       await dismiss.waitFor({ state: "hidden" });
-      // What may have landed showed once, beside Dismiss, and went with it.
       await expectCount(page.locator(".may-have-landed, .change-set-problem, .line-error"), 0);
     },
   },
@@ -4015,7 +3591,6 @@ const scenes: Scene[] = [
     act: (page) => page.locator('.change-set[data-status="applying"]').waitFor(),
   },
   {
-    // Reloaded mid-apply, the thread is out of Needs you, applying.
     name: "needs-you-applying",
     path: `/threads/${inFlight.threadId}`,
     on: holding.serving,
@@ -4025,7 +3600,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The moment Approve and apply is clicked, before the server answers.
     name: "thread-approving",
     path: `/threads/${thread}`,
     act: async (page) => {
@@ -4037,7 +3611,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The moment Reject is clicked: the thread waits on the user's reply.
     name: "thread-rejecting",
     path: `/threads/${thread}`,
     act: async (page) => {
@@ -4050,9 +3623,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Reject, answered: Oriel's line asks what was wrong, and the message box
-    // waits for the answer, already typed into. Each shot rejects a thread
-    // of its own.
     name: "thread-rejected-answering",
     path: "/",
     on: answering,
@@ -4071,7 +3641,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Rejected in the thread: the bead says so, with Undo (OA-258).
     name: "bead-rejected",
     window: true,
     path: "/",
@@ -4084,7 +3653,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Undone: awaiting review again, under Oriel's line saying so.
     name: "thread-unrejected",
     path: "/",
     on: unrejecting,
@@ -4098,7 +3666,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Its diff still reading its source: no steps yet (OA-257).
     name: "change-set-loading",
     path: "/",
     on: unrejecting,
@@ -4109,7 +3676,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A rejected change set, shown again.
     name: "thread-rejected-shown",
     path: `/threads/${rejectedBare}`,
     act: async (page) => {
@@ -4118,7 +3684,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Rejected with no reason: the thread asks what was wrong; Your turn.
     name: "thread-rejected-asks",
     path: `/threads/${rejectedBare}`,
     act: async (page) => {
@@ -4127,13 +3692,11 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Rejected with a reason: the revised change set below the rejected one.
     name: "thread-revised",
     path: `/threads/${revised}`,
     act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
   },
   {
-    // Two change sets awaiting review: the earlier, out of view, gets the pill.
     name: "thread-to-review",
     path: `/threads/${twoToReview}`,
     window: true,
@@ -4143,15 +3706,13 @@ const scenes: Scene[] = [
     },
   },
   {
-    // The pill clicked: the page goes to the earlier, its heading focused.
     name: "thread-to-review-shown",
     path: `/threads/${twoToReview}`,
     window: true,
     act: async (page) => {
       await threadSettled(page);
       await page.getByRole("button", { name: /to review above$/ }).click();
-      // Glided there: its heading near the top of the window, and still for
-      // three frames, so the shot isn't taken partway through the glide.
+      // Still for three frames, so the shot isn't taken partway through the glide.
       await page.locator(".change-set-head h2:focus").waitFor();
       await until(
         page,
@@ -4165,14 +3726,11 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Rejected from a review link with a reason, held for the person.
     name: "thread-held-from-link",
     path: `/threads/${heldFromLink}`,
     act: (page) => page.getByRole("button", { name: "Send to agent" }).waitFor(),
   },
   {
-    // The held reason, moved into the composer by Edit, being edited there
-    // before it is sent.
     name: "thread-held-editing",
     path: `/threads/${heldFromLink}`,
     act: async (page) => {
@@ -4208,7 +3766,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Approving through the link, while it applies.
     name: "review-applying",
     path: new URL(link.url).pathname,
     act: async (page) => {
@@ -4221,7 +3778,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // About to reject from a review link, saying what's wrong.
     name: "review-reject-reason",
     path: new URL(toReject.url).pathname,
     act: async (page) => {
@@ -4242,8 +3798,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // In the epic grouping a folder's files are in "No epics in this source";
-    // the workstream made of two of them is named from what they are.
     name: "picked-notes-workstream",
     path: "/?grouping=epic",
     on: picking,
@@ -4270,7 +3824,6 @@ const scenes: Scene[] = [
   // These last: the sidebar remembers them in the browser, and every
   // scene of a width and scheme shares one.
   {
-    // The latest done threads, opened at the foot of the sidebar.
     name: "sidebar-done",
     path: `/workstreams/${mixed.id}`,
     act: async (page) => {
@@ -4283,7 +3836,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Beside dropped threads, the opened Done section leads to their tab.
     name: "sidebar-done-dropped",
     path: "/done?tab=dropped",
     on: idling,
@@ -4296,9 +3848,6 @@ const scenes: Scene[] = [
       await page.locator(".nav-done").getByRole("link", { name: "2 dropped" }).waitFor();
     },
   },
-  // Finding your way back (OA-108, OA-110): the sidebar's search finds the
-  // hand-off by what it posted, and opens its thread there; another thread's
-  // agent links to it.
   {
     name: "search-results",
     path: "/?grouping=epic",
@@ -4326,7 +3875,6 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".chat a[href*='changeSet=']").waitFor(),
   },
   {
-    // Quotes from an item, captioned by Oriel's check (decision 0032).
     name: "thread-quotes",
     path: `/threads/${quoting}`,
     on: quoted,
@@ -4339,8 +3887,6 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".reply .chip[data-state]").nth(2).waitFor(),
   },
   {
-    // Folded on a wide screen, the fold button counts the threads waiting on
-    // the user; a narrow screen's menu does.
     name: "sidebar-folded",
     path: `/workstreams/${mixed.id}`,
     act: async (page) => {
@@ -4351,7 +3897,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Folded, the search's icon opens the sidebar at the field.
     name: "sidebar-folded-search",
     path: `/workstreams/${mixed.id}`,
     act: async (page) => {
@@ -4363,11 +3908,9 @@ const scenes: Scene[] = [
       await searchThreads(page, "estimates", ".search-results [role=status]:not(:empty)");
     },
   },
-  // Last, so the scenes before them run as soon as before: a held apply
-  // reads as stalled once it has waited five minutes (thread-applying).
-  // The composer offers the item open beside it as what the next message is
-  // about (decision 0062). Words are typed first: on a phone the item
-  // covers the composer, and closing it keeps the chip only for a draft.
+  // Last, so the scenes before them run as soon as before: a held apply reads as stalled once
+  // it has waited five minutes. Words are typed first: on a phone the item covers the composer,
+  // and closing it keeps the chip only for a draft.
   ...(
     [
       ["offered", async () => {}],
@@ -4379,7 +3922,6 @@ const scenes: Scene[] = [
         },
       ],
       ["second", secondLooked],
-      // Added, then left out: it stays, dashed, to add back (Sol, S1).
       [
         "both",
         async (page: Page) => {
@@ -4420,9 +3962,6 @@ const scenes: Scene[] = [
       await page.locator(".ctx-chip:visible", { hasText: "read-only" }).waitFor();
     },
   },
-  // Sent with the chip, the agent reads the item by its ID (the scripted
-  // agent's run returns its title), and the message keeps "about SYN-54",
-  // read-only, after a reload.
   {
     name: "looking-sent",
     test: "a message sent while looking at an item outside the workstream is about it, read-only, and the turn reads it by its ID",
@@ -4473,9 +4012,6 @@ const scenes: Scene[] = [
       });
     },
   },
-  // In the window chat, under the item (OA-333): opened from the answer, the
-  // item is offered in the panel's dock, read as the window reads it, never
-  // read-only, and the follow-up keeps its about line.
   {
     name: "looking-window",
     test: "an item opened from the window chat's answer is offered in its composer, never read-only, and the follow-up keeps its about line",
@@ -4509,11 +4045,6 @@ const scenes: Scene[] = [
       await expectCount(shown.locator(".user-message .about", { hasText: "read-only" }), 0);
     },
   },
-  // The item takes the window chat's place and carries its composer in a
-  // dock at its foot, at every width (OA-335, OA-355): the latest answer's
-  // first lines, "Chat", and the composer looking at the item. Sending keeps
-  // the item open, and the dock shows the answer; "Chat" folds the item to a
-  // line above the chat's composer.
   ...(["dock", "sending", "folded"] as const).map((step): Scene => ({
     name: `ask-panel-${step}`,
     test: "at every width the item's dock carries the window chat's composer, sends from it and folds to the chat",
@@ -4538,8 +4069,6 @@ const scenes: Scene[] = [
         const before = await dock.locator(".panel-dock-latest").textContent();
         await dock.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
         await dock.getByRole("button", { name: "Send" }).click();
-        // The answer is in once the dock shows other words, with nothing sent
-        // and unanswered, and the agent done.
         await page.waitForFunction(`(() => {
           const latest = document.querySelector(".item-panel .panel-dock-latest");
           return latest !== null && latest.textContent !== ${JSON.stringify(before)} &&
@@ -4565,8 +4094,6 @@ const scenes: Scene[] = [
       }
     },
   })),
-  // On a thread's page, the panel opened from the rail carries the thread's
-  // own composer, and the one it covers is inert.
   {
     name: "ask-panel-thread",
     test: "on a thread's page, narrower, the panel's dock carries the thread's composer, and the one it covers is inert",
@@ -4588,9 +4115,6 @@ const scenes: Scene[] = [
       await expectCount(page.locator(".thread .chat-dock[inert]"), 1);
     },
   },
-  // A first question asked from the dock, after New chat, has no thread
-  // until it's answered: while it's on its way, the dock shows it, with the
-  // agent at work, and the item stays open.
   {
     name: "ask-panel-first",
     path: "/",
@@ -4612,7 +4136,6 @@ const scenes: Scene[] = [
       await dock.getByRole("textbox", { name: "Message" }).fill("Who owns the consent copy?");
       await dock.getByRole("button", { name: "Send" }).click();
       await dock.locator(".panel-dock-working").waitFor();
-      // Words typed since don't change what was sent.
       await dock.getByRole("textbox", { name: "Message" }).fill("And the return URL?");
       await dock.locator(".panel-dock-you", { hasText: "Who owns the consent copy?" }).waitFor();
       await page.locator(".item-panel .panel-facts").waitFor();
@@ -4620,7 +4143,6 @@ const scenes: Scene[] = [
       await dock.locator(".panel-dock-working").waitFor({ state: "detached" });
     },
   },
-  // A change set the agent revised in place, and its review link (OA-309).
   {
     name: "thread-revised-in-place",
     path: `/threads/${inPlace.threadId}`,
@@ -4636,8 +4158,6 @@ const scenes: Scene[] = [
       await page.locator(".review-card .review-revised").waitFor();
     },
   },
-  // The page showed the change, the agent revised it, and then the reviewer
-  // approved what they saw: not saved, and the page says so (OA-309).
   {
     name: "review-altered",
     path: "/",
@@ -4655,10 +4175,6 @@ const scenes: Scene[] = [
       await page.locator(".review-card .review-altered").waitFor();
     },
   },
-  // The window chat moved into its workstream (OA-347, OA-355): at once,
-  // with no reload, the rail's composer asks a fresh chat, the conversation
-  // stays above it, saying where it went, and the thread is the user's turn
-  // in the sidebar.
   {
     name: "window-moved",
     test: "the window chat moved into its workstream leaves a fresh chat at once, with no reload, the moved one Your turn",
@@ -4806,10 +4322,6 @@ const scenes: Scene[] = [
   },
 ];
 
-// The window chat moving into its workstream, each way in (OA-355), with no
-// reload: the agent gathering items into it; Open as a thread; Continue in….
-// What it leaves is checked as the page has it: a fresh chat, whose first
-// question makes a thread other than the moved one.
 async function movedChat(page: Page, way: "gathered" | "asked-again" | "opened") {
   await overviewShown(page);
   const composer = page.locator(".overview-dock .chat-input-field");
@@ -4856,19 +4368,12 @@ async function movedChat(page: Page, way: "gathered" | "asked-again" | "opened")
   });
 }
 
-// The thread the window chat shows, as its Open as a thread link names it,
-// or the moved one's, as its line does.
 async function chatShown(page: Page): Promise<string> {
   const link = page.locator(".window-chat .window-chat-head a, .window-chat-moved a").first();
   const href = (await link.getAttribute("href")) ?? "";
   return href.split("/").at(-1) ?? "";
 }
 
-// The desktop app's first run (decision 0038): each screen on a server of
-// its own, made afresh for each scheme and width, since each shot moves it:
-// its stub Claude Code installed, signed in, or neither; Codex found or not;
-// SYN in memory as any Jira Cloud site; and the notes folder to pick.
-// One that connects the notes folder does so under its fixed ID.
 const firstRun =
   (options: FirstRunOptions = {}) =>
   async () =>
@@ -4884,15 +4389,11 @@ const setupFinished = {
   steps: { ai: "done" as const, work: "done" as const },
 };
 const aiDone = { steps: { ai: "done" as const } };
-// The overview's plan question, asked, and its change set approved.
 const approvedPlan = async (page: Page) => {
   await page.locator(".ask-question", { hasText: "Draft a small launch plan" }).click();
   await page.getByRole("button", { name: "Approve and apply" }).click();
   await page.locator('.change-set[data-status="applied"]').waitFor();
 };
-// Google Sheets on through sheets-mcp, and the window chat's draft of which
-// tab it reads, from the person's latest spreadsheets, held under the
-// answer.
 const sheetsMcpDrafting = () =>
   firstRunServer(
     start,
@@ -4919,16 +4420,11 @@ const sheetsMcpDrafted = async (page: Page) => {
   await page.locator(".window-chat .draft-card").waitFor();
   await page.locator(".window-chat .working").waitFor({ state: "detached" });
 };
-// Past Your AI, and what Oriel found in it (decision 0059), to Your work.
 const continueWithClaude = async (page: Page) => {
   await page.getByRole("button", { name: "Continue with Claude Code" }).click();
   await page.getByRole("heading", { name: "See what Oriel found" }).waitFor();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 };
-// Google Sheets on through sheets-mcp, reading the Sheets fixture, and in
-// Settings the tracker and the RAID log picked through it (decision 0059);
-// then the agent's draft of how they read, applied there: the connection's
-// row shows its mapping.
 const sheetsMapped = async (page: Page) => {
   const row = page.locator(".connection-row", { hasText: "through sheets-mcp" });
   await row.getByRole("button", { name: "Pick" }).click();
@@ -4952,8 +4448,6 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true } }),
     act: (page) => page.locator(".provider-row[data-picked]").waitFor(),
   },
-  // An account's email starts hidden, scrambled and blurred; a click shows
-  // it, and another hides it again.
   {
     name: "setup-email-shown",
     test: "an account's email starts scrambled and blurred, a click shows it, and another hides it",
@@ -5025,7 +4519,6 @@ scenes.push(
     },
   },
   {
-    // Codex alone, signed out: a preview, with its own sign-in (decision 0048).
     name: "setup-codex-only",
     path: "/setup",
     make: firstRun({ codex: true }),
@@ -5041,9 +4534,6 @@ scenes.push(
       await page.getByRole("button", { name: "Continue with Codex" }).waitFor();
     },
   },
-  // Set up later, with Codex ready and listing Atlassian's server: Your
-  // work lists every source "See what Oriel found" would, Jira to turn on in
-  // place of the stand-in, and each other with how to add its server.
   {
     name: "setup-later-work",
     test: "nothing on the page offers an API key",
@@ -5053,7 +4543,6 @@ scenes.push(
       await noApiKey(page);
       await page.getByRole("button", { name: "Set up later" }).click();
       await page.getByRole("button", { name: "Turn on Jira" }).waitFor();
-      // Slack, with no first-run offer of its own, turned on here, stays.
       await page.getByRole("button", { name: "Turn on Slack" }).click();
       await page
         .locator(".provider-row", { hasText: "Slack" })
@@ -5074,7 +4563,6 @@ scenes.push(
       cli: { signedIn: true },
       refuses: "Claude Code stopped: Your current subscription does not include Claude Code.",
     }),
-    // Refused on Your AI, so the first run stays there.
     act: async (page) => {
       await page.getByRole("button", { name: "Continue with Claude Code" }).click();
       await page.getByText("doesn't include Claude Code").waitFor();
@@ -5141,15 +4629,11 @@ scenes.push(
       cli: { signedIn: true },
       refuses: "Claude Code stopped: Claude AI usage limit reached|1762189200",
     }),
-    // Refused on Your AI, so the first run stays there.
     act: async (page) => {
       await page.getByRole("button", { name: "Continue with Claude Code" }).click();
       await page.getByRole("button", { name: "Continue anyway" }).waitFor();
     },
   },
-  // What Oriel found in the person's Claude Code (decision 0059): the tiny
-  // test tracker server, which would turn Jira on; and nothing it knows,
-  // with the server that would.
   {
     name: "setup-found",
     path: "/setup",
@@ -5177,8 +4661,6 @@ scenes.push(
       await page.getByRole("heading", { name: "See your work in one place" }).waitFor();
     },
   },
-  // Jira on through Atlassian's server, and the notes folder chosen: both
-  // read, in Welcome back's rows.
   {
     name: "setup-work-connected",
     path: "/setup",
@@ -5194,10 +4676,6 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true }, state: aiDone }),
     act: (page) => page.getByRole("heading", { name: "Welcome back" }).waitFor(),
   },
-  // While no tracker is connected, the first run starts on the stand-in
-  // tracker (decision 0059): Your work with no Jira step, the overview that
-  // asks for a plan, the plan the window chat drafts into it, approved;
-  // then its panel, its form, and Browse by epic with its issues.
   {
     name: "first-run-standin-work",
     path: "/setup",
@@ -5262,8 +4740,6 @@ scenes.push(
       await page.locator(".cluster", { hasText: "Spring launch" }).first().waitFor();
     },
   },
-  // After it: the overview's one-time line and its first question, the
-  // answer to it, a folder alone, no AI, and Settings with the same rows.
   {
     name: "first-run-overview",
     path: "/",
@@ -5294,7 +4770,6 @@ scenes.push(
     name: "first-run-folder-only",
     path: "/",
     make: firstRun({ cli: { signedIn: true }, folder: notes, state: setupFinished }),
-    // The stand-in tracker beside it, with no Jira card (decision 0059).
     act: (page) => page.locator(".first-run-line").waitFor(),
   },
   {
@@ -5313,7 +4788,6 @@ scenes.push(
       await noApiKey(page);
     },
   },
-  // Both signed in with the person's own API key: no line about training.
   {
     name: "first-run-settings-api-keys",
     path: "/settings",
@@ -5327,10 +4801,6 @@ scenes.push(
     act: (page) =>
       page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
   },
-  // What Oriel found in the person's agent (decision 0059): the overview's
-  // card when it changes, and Settings' Source servers, with Jira on through
-  // Atlassian's server, a stand-in of it answering SYN (OA-276), and the
-  // folder through its connection.
   {
     name: "found-card",
     path: "/",
@@ -5353,8 +4823,6 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
-  // Slack's MCP server found beside Atlassian's, and Slack on through it,
-  // a stand-in of it answering Ferrowick (OA-277).
   {
     name: "settings-source-servers-slack-found",
     path: "/settings/connections",
@@ -5380,10 +4848,6 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
-  // A source server's switch flips at once, before the server answers: off
-  // and straight back on while the first is on its way ends on, as the
-  // last click asked, and the server keeps it on; one the server refuses
-  // flips back, and says why in its row.
   {
     name: "settings-source-servers-twice",
     test: "a source server's switch flips at once on each click, and the second click wins",
@@ -5432,9 +4896,6 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
-  // Linear's MCP server found, and Linear on through it, a stand-in of it
-  // answering Ferrowick's Linear (OA-278): Settings, the overview, Browse
-  // by epic and an issue's panel.
   {
     name: "settings-source-servers-linear-found",
     path: "/settings/connections",
@@ -5455,10 +4916,6 @@ scenes.push(
       await section.scrollIntoViewIfNeeded();
     },
   },
-  // What a person picks through each source server: Jira's project,
-  // Slack's channels and Linear's team, each listed through the server's
-  // read tools, in Settings and in the first run; with none picked, what
-  // each reads instead.
   ...(
     [
       ["jira", "Atlassian's", { atlassian: "on" }, 'input[type="radio"][value="SYN"]'],
@@ -5476,8 +4933,6 @@ scenes.push(
       await row.first().scrollIntoViewIfNeeded();
     },
   })),
-  // Pick asks the person's agent for the list, which takes a while: the
-  // button shows it's working at once, and takes no second click.
   {
     name: "settings-picks-listing",
     test: "Pick shows Listing… at once, and takes no second click",
@@ -5495,8 +4950,6 @@ scenes.push(
       await row.scrollIntoViewIfNeeded();
     },
   },
-  // A long list of spreadsheets: it scrolls, and Use these stays in sight
-  // under it, never a scroll to the list's foot.
   {
     name: "settings-picks-long",
     test: "a long list of choices scrolls, and Use these stays in sight under it",
@@ -5527,8 +4980,7 @@ scenes.push(
         const list = await row.locator(".pick-list .choices").boundingBox();
         const button = await use.boundingBox();
         const height = page.viewportSize()?.height ?? 0;
-        // Scrolled into view, the button's foot meets the window's, give or
-        // take the fraction of a pixel the scroll snaps away (OA-351).
+        // Give or take the fraction of a pixel the scroll snaps away.
         if (!list || !button || list.height > 18 * 16 + 1 || button.y + button.height > height + 1)
           throw new Error(
             `Use these isn't in sight under the list: ${JSON.stringify({ list, button, height })}`,
@@ -5537,9 +4989,6 @@ scenes.push(
       await row.locator(".pick-list").evaluate((list) => list.scrollIntoView({ block: "center" }));
     },
   },
-  // A picked channel the person left (OA-289): Slack's server no longer
-  // lists it, and the picker still shows it, ticked, by the name Oriel
-  // last knew, saying why; and unticked, it's unpicked.
   ...(["settings-picks-left", "settings-picks-left-unpicked"] as const).map((name) => {
     let fixture = loadSlackFixture();
     return {
@@ -5547,7 +4996,6 @@ scenes.push(
       test: "a picked channel the person left stays ticked, saying why, and once unticked it's gone",
       path: "/settings/connections",
       make: () => {
-        // The person is in #random too, at first.
         fixture = loadSlackFixture();
         fixture.picked.push("C0FW2RANDOM");
         return firstRun({
@@ -5564,7 +5012,6 @@ scenes.push(
           await row.getByRole("checkbox", { name: each }).check();
         await row.getByRole("button", { name: "Use these 2" }).click();
         await row.getByText("2 picked.").waitFor();
-        // The person leaves #random.
         fixture.picked = fixture.picked.filter((id) => id !== "C0FW2RANDOM");
         await row.getByRole("button", { name: "Change" }).click();
         const left = row.getByRole("checkbox", { name: /#random/ });
@@ -5608,10 +5055,6 @@ scenes.push(
       await slack.locator('input[type="checkbox"]').first().waitFor();
     },
   },
-  // Oriel's own Sheets server, packages/sheets-mcp, found as a local
-  // server, and Google Sheets on through it, answering from what its
-  // fixture mode recorded (OA-279); then the window chat's draft of which
-  // tab it reads, from the person's latest spreadsheets.
   {
     name: "settings-source-servers-sheets-found",
     path: "/settings/connections",
@@ -5639,7 +5082,6 @@ scenes.push(
     make: sheetsMcpDrafting,
     act: sheetsMcpDrafted,
   },
-  // The draft applied there, under the answer (decision 0051).
   {
     name: "draft-applied",
     path: "/",
@@ -5670,9 +5112,6 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true }, linear: "on", state: setupFinished }),
     act: (page) => page.locator(".item-panel .panel-facts").waitFor(),
   },
-  // A person who started on Oriel's own tracker turns Linear on: the same
-  // move Jira gets, and once applied, its thread is done, its rail says
-  // where the items went, and it offers no Revert, saying why.
   {
     name: "move-into-linear-applied",
     path: "/",
@@ -5701,9 +5140,6 @@ scenes.push(
       await threadSettled(page);
     },
   },
-  // A person who started on Oriel's own tracker turns Jira on through
-  // Atlassian's server: Oriel offers one change set that makes the
-  // tracker's issues again in Jira, in a thread of its own.
   {
     name: "move-into-jira",
     path: "/",
@@ -5730,9 +5166,6 @@ scenes.push(
       await threadSettled(page);
     },
   },
-  // Jira on through Atlassian's server, then the AI goes: every row says no
-  // AI is on, with where to set one up, never what it listed before, and
-  // Sync says why it can't, not to try again.
   {
     name: "settings-source-servers-no-ai",
     test: "with the AI gone, Source servers never names what it listed before, and Sync says why it can't",
@@ -5744,7 +5177,6 @@ scenes.push(
       state: setupFinished,
       aiGone: true,
     }),
-    // The Sync that can't run, which the browser logs.
     refused: 502,
     act: async (page) => {
       const section = page.locator("section", { has: page.locator("#settings-source-servers") });
@@ -5762,9 +5194,6 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true }, folder: notes, state: setupFinished }),
     act: (page) => page.getByRole("link", { name: "How to add it" }).waitFor(),
   },
-  // Settings' Connections (decision 0049): each connection with what a
-  // person sets on it; Jira's project picked again; Disconnect, which asks
-  // first; and Add a connection, with the folder's picker.
   {
     name: "settings-connections",
     path: "/settings/connections",
@@ -5807,11 +5236,6 @@ scenes.push(
       await page.locator(".path-form").waitFor();
     },
   },
-  // Google Sheets connected in Settings and its draft applied (OA-232), on a
-  // tracker with 40 more tabs: each tab it reads in a line, the rest folded;
-  // the fold opened; the tracker edited by hand, with what a new key does
-  // said before Apply; and Ask Oriel's draft in the window chat, saying the
-  // same.
   {
     name: "settings-connections-mapping",
     path: "/settings/connections",
@@ -5836,7 +5260,6 @@ scenes.push(
       await sheetsMapped(page);
       await page.getByRole("button", { name: /tabs Oriel isn't reading/ }).click();
       await page.locator(".folded-list li").first().waitFor();
-      // What the list opens under the pointer would show its hover, or not.
       await pointerAway(page);
     },
   },
@@ -5877,10 +5300,6 @@ scenes.push(
       await page.locator(".draft-card .connect-said").waitFor();
     },
   },
-  // On a workstream thread, an item opened from a change set's line (OA-336):
-  // the line is marked, the panel steps through the lines' items, the
-  // composer offers it, and beside it Approve and apply stays in view. On a
-  // phone the item is a sheet over the thread, its dock offering it (OA-335).
   {
     name: "panel-thread-ask",
     test: "an item opened from a change set's line marks that line alone, and beside it Approve and apply stays in view",
@@ -5898,7 +5317,6 @@ scenes.push(
           throw new Error("The line the item was opened from should be marked open");
       });
       await page.locator(".panel-place", { hasText: "1 of 3" }).waitFor();
-      // The thread's composer, or below 1100 the one docked under the item.
       await page.locator(".ctx-chip:visible", { hasText: "Looking at" }).waitFor();
       if (!beside(page)) return;
       await check(async () => {
@@ -5910,15 +5328,11 @@ scenes.push(
       });
     },
   },
-  // The workstream page's Ask box offers the item open beside it, and the
-  // thread it starts keeps it on its first message, in the region; a thread
-  // from nothing keeps one too, read-only on its empty workstream.
   {
     name: "panel-workstream-ask",
     test: "a thread started from the workstream page's Ask box keeps the open item on its first message; one from nothing keeps it read-only; an about not open is refused",
     testAt: [390],
     window: true,
-    // Its refused abouts log their 400s.
     refused: 400,
     path: "/",
     make: async () => {
@@ -5948,13 +5362,10 @@ scenes.push(
       await ask.getByRole("button", { name: "Ask", exact: true }).click();
       await page.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
       await page.locator(".working").first().waitFor({ state: "detached" });
-      // The item stays open beside the thread, and its composer offers it.
       if (beside(page)) {
         await page.locator(".item-panel .panel-facts").waitFor();
         await page.locator(".composer .ctx-chip", { hasText: "SYN-99" }).waitFor();
       }
-      // A thread from nothing, and two refused, as a program might send them:
-      // steps, which the picture shows too; what they keep is the check.
       {
         const fromPage = new URL(page.url()).pathname.split("/").at(-1) ?? "";
         const said = await page.evaluate(
@@ -5974,7 +5385,6 @@ scenes.push(
               }),
             });
             const { id: fromNothing } = (await made.json()) as { id: string };
-            // One about nothing open is refused before it makes anything.
             const count = async () =>
               ((await (await fetch("/api/threads")).json()) as { threads: unknown[] }).threads
                 .length;
@@ -6009,17 +5419,12 @@ scenes.push(
           if (got !== want) throw new Error(`Each first message should keep its about: ${got}`);
         });
       }
-      // Shot once the sidebar shows the thread from nothing, answered.
       await page
         .locator(".sidebar .nav-waiting-link", { hasText: "Plan it" })
         .filter({ hasText: "Needs review" })
         .waitFor({ state: "attached" });
     },
   },
-  // "Ask about this" (OA-337): an item open in Browse goes to the overview,
-  // still open, with the window chat beside it at 1100 and up, or docked
-  // under it below, and the item offered in the composer. Each on a server
-  // of its own, so its chat leaves no other scene's overview changed.
   {
     name: "ask-about-browse",
     window: true,
@@ -6038,7 +5443,6 @@ scenes.push(
     path: "/browse?grouping=epic",
     make: async () => {
       docking = (await writing()).serving;
-      // A chat already going, which the item joins.
       if (step === "ongoing")
         await post(
           "/api/window-chat/messages",
@@ -6059,7 +5463,6 @@ scenes.push(
         });
       }
       await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
-      // Browse is the window too: the chat opens there, in the item's dock.
       const composer = page.locator(".item-panel .panel-dock");
       await composer.waitFor();
       await check(() => {
@@ -6094,7 +5497,6 @@ scenes.push(
         await composer.getByRole("textbox", { name: "Message" }).fill("Who is this waiting on?");
         await composer.getByRole("button", { name: "Send" }).click();
         await page.locator(".working").first().waitFor({ state: "detached" });
-        // Answered once the dock shows words that aren't the message sent.
         await page
           .locator(
             ".item-panel .panel-dock-latest:not(:has(.panel-dock-you, .panel-dock-working))",
@@ -6107,13 +5509,9 @@ scenes.push(
       }
     },
   })),
-  // An empty workstream suggests items (OA-348): what its thread's answer
-  // named, in that order, then the top of Not in a workstream yet; each
-  // added with its +, which leaves the rest to add, and an Undo.
   ...(["", "-added"] as const).map((step): Scene => ({
     name: `empty-suggests${step}`,
     path: "/",
-    // The refused add logs its 409.
     ...(step === "-added" && { refused: 409 }),
     make: async () => {
       const on = (await writing()).serving;
@@ -6148,7 +5546,6 @@ scenes.push(
       if (JSON.stringify(got) !== JSON.stringify(want))
         throw new Error(`Suggested ${got.join(", ")}; expected ${want.join(", ")}`);
       if (step === "") return;
-      // A refused add says so here, and its row stays to try again.
       await page.route(/\/api\/workstreams\/[0-9A-Z]{26}\/add$/, (route) =>
         route.fulfill({ status: 409, json: { error: "It moved." } }),
       );
@@ -6171,11 +5568,6 @@ scenes.push(
   })),
 );
 
-// Asked to change the item it's looking at (decision 0062). The window
-// chat offers one Continue, under a one-line reply, and pressing it lands in
-// a thread on a workstream made for the item, with the request sent and its
-// change set proposed. A thread adds an item outside its region, with Undo,
-// and proposes the change in the same turn. Each on a server of its own.
 const continued = async (page: Page, press: boolean) => {
   await page.locator(".item-panel .panel-facts").waitFor();
   await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
@@ -6234,11 +5626,6 @@ scenes.push(
 );
 
 scenes.push(
-  // A chat follows what arrives only at its latest entry (OA-350): read
-  // further up, a new message leaves the place alone and a pill says it
-  // came; the pill takes the chat to it, and from there it follows again.
-  // A thread's page scrolls the window, the window chat its own entries.
-  // Each on a server of its own, as their messages change its threads.
   ...(["thread", "window"] as const).flatMap((chat) =>
     (["kept", "shown"] as const).map((step): Scene => ({
       name: `chat-new-message-${chat}${step === "shown" ? "-shown" : ""}`,
@@ -6251,13 +5638,11 @@ scenes.push(
         if (chat === "thread") await page.goto(new URL(`/threads/${following}`, page.url()).href);
         else {
           await page.getByRole("button", { name: "Back to the chat" }).click();
-          // The rail carried in (motion A, OA-355): while it moves, a click
-          // lands on the transition, not the page.
+          // While the rail moves, a click lands on the transition, not the page.
           await until(page, `!document.documentElement.hasAttribute("data-carrying")`);
         }
         await page.locator(".reply").first().waitFor();
         const { at, below, top } = chatScroll[chat];
-        // Read from the top, once the chat has shown its end.
         await until(page, `Math.abs(${below}) <= 1`);
         await page.evaluate(top);
         const replies = await page.locator(".reply").count();
@@ -6289,17 +5674,14 @@ scenes.push(
           await pill.waitFor();
           return;
         }
-        // Pressed while the answer may still be arriving: the chat glides to
-        // its end and stays there for the rest. Pressed where it shows, as a
-        // person would: `click` scrolls it into view first, which on a
-        // thread's page takes the window to its end, and the pill with it.
+        // `click` scrolls it into view first, which on a thread's page takes the window to its end,
+        // and the pill with it.
         const box = await pill.boundingBox();
         if (!box) throw new Error("the New message pill isn't on screen");
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
         await pill.waitFor({ state: "detached" });
         await answered(replies + 1);
         await until(page, `Math.abs(${below}) <= 1`);
-        // At the latest entry, the chat follows what comes.
         await say();
         await answered(replies + 2);
         await until(page, `Math.abs(${below}) <= 1`);
@@ -6331,7 +5713,6 @@ scenes.push(
 );
 
 scenes.push(
-  // The window chat moved into its workstream, each way in (OA-355).
   ...(["asked-again", "opened"] as const).map((way): Scene => ({
     name: `window-moved-${way}`,
     test:
@@ -6343,9 +5724,6 @@ scenes.push(
     make: async () => (await writing()).serving,
     act: (page) => movedChat(page, way),
   })),
-  // Asked at 1280, the overview stays whole beside the chat's rail, and the
-  // chat goes on in Browse, the same conversation, still watched (OA-355).
-  // Under 1100 it's a sheet over the page's foot.
   {
     name: "window-rail-browse",
     test: "asked at 1280, the overview stays whole beside the rail; Browse keeps the same chat; hidden there, its draft stays at the foot and Back to the chat reopens it",
@@ -6374,8 +5752,6 @@ scenes.push(
       await check(async () => {
         if ((await chatShown(page)) !== asked) throw new Error("Browse showed another chat");
       });
-      // Hidden, the chat's draft goes on at the page's foot, which opens it
-      // again; then the rail shows, as the shot does.
       await rail.getByRole("textbox", { name: "Message" }).fill("Who owns the consent copy?");
       await page.getByRole("button", { name: "Hide the chat" }).click();
       await rail.waitFor({ state: "detached" });
@@ -6388,7 +5764,6 @@ scenes.push(
       await rail.getByRole("textbox", { name: "Message" }).fill("");
     },
   },
-  // Continue in…: back on the window, a fresh chat.
   {
     name: "window-moved-continued",
     test: "after Continue in…, the window shows a fresh chat",
@@ -6441,7 +5816,6 @@ scenes.push({
   },
 });
 
-// Drags need the rail or the sidebar beside the page; narrower, + is the way.
 let dropThread = "";
 const dropping = async () => {
   const on = (await writing()).serving;
@@ -6654,7 +6028,6 @@ scenes.push(
     },
   },
   {
-    // Its rows drawn from what Oriel holds while its source is read.
     name: "change-set-checking",
     path: "/",
     on: unrejecting,
@@ -6682,8 +6055,6 @@ scenes.push(
   },
 );
 
-// A chat taller than the window, on a server of its own: a thread's, or the
-// window chat's, eight questions and answers long. `following` is its thread.
 const savedCards = "What's holding up saved cards?";
 let following = "";
 async function longChat(chat: "thread" | "window"): Promise<Serving> {
@@ -6699,8 +6070,6 @@ async function longChat(chat: "thread" | "window"): Promise<Serving> {
   return on;
 }
 
-// Opens Browse's first cluster and its first item in the panel, and says
-// the item's key.
 async function openInBrowse(page: Page): Promise<string> {
   await shown(page, "epic");
   await openFirstCluster(page);
@@ -6715,14 +6084,10 @@ const picked = asked.positionals;
 for (const width of widths)
   if (!Number.isInteger(width) || width < 320) throw new Error(`Not a width in pixels: ${width}`);
 const schemes = ["light", "dark"] as const;
-// The scheme a page shows now, which its console's problems name.
 let scheme: (typeof schemes)[number] = "light";
 const wanted = (name: string) =>
   picked.length === 0 || picked.some((start) => name.startsWith(start));
 
-// The behaviour tests (decision 0063): each scene with a test, light, at
-// 1280 and its other widths, and the first run's timed onboarding on each
-// path a person may start on. A lane takes every nth, in the scenes' order.
 const onboardingPaths = ["ready", "signed-out", "missing"] as const;
 type Test = { name: string; width: number } & (
   | { scene: Scene }
@@ -6755,9 +6120,8 @@ const toTop = `(async () => {
   }
 })()`;
 
-// Waits, frame by frame, until a condition in the browser holds. Not
-// `waitForFunction`, whose polling evaluates the string, which the window's
-// content security policy refuses.
+// Not `waitForFunction`, whose polling evaluates the string, which the window's content
+// security policy refuses.
 async function until(page: Page, condition: string): Promise<void> {
   const held = await page.evaluate(`(async () => {
   for (let frames = 0; frames < 600; frames++) {
@@ -6769,8 +6133,6 @@ async function until(page: Page, condition: string): Promise<void> {
   if (held !== true) throw new Error(`Never held: ${condition}`);
 }
 
-// Where a chat is scrolled to, how far its end is below what shows, and a
-// script that scrolls it to its top until it stays there, in the browser.
 const entries = `document.querySelector(".window-chat-entries")`;
 const chatScroll = {
   thread: {
@@ -6798,15 +6160,10 @@ const unnudged = `document.querySelectorAll(".sidebar").forEach((sidebar) => {
 
 const browser = await chromium.launch({ channel: "chrome", chromiumSandbox: true });
 const problems: string[] = [];
-// The servers scenes made for themselves, closing once their shots are
-// taken, each let go of what it holds by the end.
 const closing: Promise<void>[] = [];
 
-// Two pages at `width`, light. The window says how long ago things were by
-// the browser's clock. Held at the shoot's start, what the setup made reads
-// "just now" in every scene, however long the shoot has run; timers still
-// run. The clock is a script in every frame, which a sketch's sandbox
-// refuses, so a scene with a sketch has a page on the real clock.
+// The browser's clock held at the shoot's start, so what the setup made reads "just now" in
+// every scene. A sketch's sandbox refuses the clock's script, so its page keeps the real clock.
 async function pagesAt(width: number) {
   const opened = async (pinned: boolean) => {
     const context = await browser.newContext({
@@ -6843,7 +6200,6 @@ async function pagesAt(width: number) {
   };
 }
 
-// The scene's server, in this shoot's theme and text size.
 async function serverFor(scene: Scene): Promise<Serving> {
   const on = scene.make ? await scene.make() : (scene.on ?? server);
   if (on.app.settings.page().theme !== theme) await on.app.settings.change({ theme });
@@ -6852,15 +6208,12 @@ async function serverFor(scene: Scene): Promise<Serving> {
   return on;
 }
 
-// The scene's steps, from its path. One that fails, in its steps or the
-// waits after them, leaves a shot of where it stopped, to see why.
 async function steps(scene: Scene, page: Page, on: Serving, width: number): Promise<void> {
   const { name } = scene;
   acting = scene;
   try {
     await page.goto(new URL(scene.path, on.url).href);
     await scene.act?.(page);
-    // These show an answer or a thread once it's done, never "Working…".
     if (/^(ask-|panel-|search-opened)/.test(name))
       await page.locator(".working").first().waitFor({ state: "detached" });
   } catch (error: unknown) {
@@ -6876,8 +6229,7 @@ async function steps(scene: Scene, page: Page, on: Serving, width: number): Prom
   }
 }
 
-// Leaving first cancels a held request quietly; aborting it logs. A server
-// of the scene's own closes once the page has left it.
+// Leaving first cancels a held request quietly; aborting it logs.
 async function leave(scene: Scene, page: Page, on: Serving): Promise<void> {
   if (hung.length > 0 || scene.make) await page.goto("about:blank");
   for (const route of hung.splice(0)) await route.abort().catch(() => {});
@@ -6888,8 +6240,6 @@ async function leave(scene: Scene, page: Page, on: Serving): Promise<void> {
   closing.push(on.close().catch(() => {}));
 }
 
-// Every scene at each width: its steps once, then a shot in light and one
-// in dark, from the same page.
 async function shoot(): Promise<void> {
   for (const width of widths) {
     const pages = await pagesAt(width);
@@ -6899,11 +6249,9 @@ async function shoot(): Promise<void> {
       const on = await serverFor(scene);
       await steps(scene, page, on, width);
       for (scheme of schemes) {
-        // The page opened light; dark is a switch on the page as it is.
         if (scheme !== "light") await page.emulateMedia({ colorScheme: scheme });
-        // A full page draws what's fixed or sticky where the window was
-        // scrolled to, which a scene's last step leaves to chance: shoot it
-        // from the top, once it has stayed there for three frames.
+        // A full page draws what's fixed or sticky where the window was scrolled to, which a scene's
+        // last step leaves to chance.
         if (!scene.window) await page.evaluate(toTop);
         // The bead moves on springs, not CSS, which a shot's disabled
         // animations don't settle: it waits for the bead to rest.
@@ -6923,8 +6271,6 @@ async function shoot(): Promise<void> {
   }
 }
 
-// This lane's behaviour tests, each passing or failing on its own: a
-// failed step or check, or a problem in the console while it ran.
 async function test(): Promise<number> {
   const mine = tests.filter((_, at) => at % lanes === lane - 1);
   let failed = 0;
@@ -6943,7 +6289,6 @@ async function test(): Promise<number> {
     try {
       await what();
     } catch (error) {
-      // The message, and the scene's line it stopped at.
       const at = error instanceof Error ? /shots\.ts:\d+/.exec(error.stack ?? "")?.[0] : undefined;
       problem = `${error instanceof Error ? error.message.split("\n")[0] : String(error)}${at ? ` (${at})` : ""}`;
     }
@@ -6988,14 +6333,6 @@ try {
   removeHomes();
 }
 
-// The onboarding budget (SPEC §4; decisions 0038 and 0059), as fast as a
-// script clicks: from the first run's first screen on a fresh data folder,
-// the AI set up, what Oriel found, your work on the stand-in tracker, one
-// question asked and one change approved, on a path a person may start on.
-// Claude Code ready, under five minutes; signed out, plus one; missing,
-// with Anthropic's installer, plus three. The word "token" is counted on
-// each screen, in its text and in what its fields and tooltips say, and
-// never shows. The setup, once finished, doesn't come back.
 async function onboarding(path: (typeof onboardingPaths)[number]): Promise<void> {
   const budgets = { ready: 5, "signed-out": 6, missing: 8 } as const;
   const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
@@ -7030,7 +6367,6 @@ async function onboarding(path: (typeof onboardingPaths)[number]): Promise<void>
     throw error;
   } finally {
     await context.close();
-    // The server closes with the rest; its folder goes with the homes.
     keepUntilDone(data);
   }
 }
