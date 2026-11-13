@@ -1,19 +1,3 @@
-/* PROPOSAL: More modern CSS (controls lab, /lab/more). Small add-on
-   classes, each showing one feature on Oriel's own markup: a run line
-   that unfolds (interpolate-size and ::details-content), a menu that fades
-   in and out (@starting-style and allow-discrete), balanced titles and
-   pretty prose (text-wrap), a list that keeps its gutter
-   (scrollbar-gutter), options that arrive one after another
-   (sibling-index()), and a swatch that shows which branch light-dark()
-   took. Not in Oriel yet.
-
-   Tokens only, and no class Oriel already has. Each one degrades to what
-   Oriel does today where the engine lacks the feature. */
-
-/* A <details> that unfolds: its height animates from 0 to auto. Where the
-   engine has ::details-content but not interpolate-size (Safari,
-   Firefox), it snaps open as today; where it has neither, nothing here
-   applies. */
 .more-unfold {
   interpolate-size: allow-keywords;
 }
@@ -30,9 +14,6 @@
   block-size: auto;
 }
 
-/* An entry and an exit for something in the top layer, such as a menu:
-   it fades and rises in from where it starts, and fades out the same way.
-   allow-discrete keeps it in the top layer until the fade is over. */
 .more-enter {
   opacity: 1;
   translate: 0 0;
@@ -55,7 +36,6 @@
   }
 }
 
-/* Titles in even lines; prose with no word alone on its last line. */
 .more-balance {
   text-wrap: balance;
 }
@@ -64,8 +44,6 @@
   text-wrap: pretty;
 }
 
-/* A scrolling column that keeps room for its scrollbar, so its rows don't
-   change width when the list grows past the column. */
 .more-scroll {
   width: 13rem;
   max-height: 9rem;
@@ -96,9 +74,6 @@
   font-size: var(--text-sm);
 }
 
-/* Each child arrives a moment after the one before it, counted by
-   sibling-index() rather than a --i set in JSX. An engine without it drops
-   the delay, and they arrive together. */
 .more-stagger > * {
   transition: opacity var(--duration-move) var(--ease-out);
   transition-delay: calc((sibling-index() - 1) * var(--duration-quick) / 2);
@@ -110,8 +85,7 @@
   }
 }
 
-/* Which branch light-dark() took: the light one is done's tint, the dark
-   one danger's. It follows the used color-scheme, not Oriel's scheme. */
+/* light-dark() follows the used color-scheme, not Oriel's scheme. */
 .more-scheme {
   padding: var(--space-2) var(--space-3);
   border: var(--border-thin) solid light-dark(var(--done), var(--danger));

@@ -1,8 +1,3 @@
-// A specimen's frame: it follows the chrome's view without reloading, says
-// how tall it is, opens what a specimen shows open, and runs the few small
-// behaviours a specimen needs to be tried by keyboard. Nothing in a specimen
-// navigates or submits.
-
 const root = document.documentElement;
 
 addEventListener("message", (event) => {
@@ -33,17 +28,12 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("submit", (event) => event.preventDefault());
 
-// What a specimen shows open: a menu or a tooltip, in the top layer.
 for (const el of document.querySelectorAll("[data-ws-open]")) {
   try {
     el.showPopover?.();
-  } catch {
-    // Already open.
-  }
+  } catch {}
 }
 
-// A menu, as menu.tsx runs it: the arrow keys move between items, Home and
-// End jump to the ends, Escape or Tab closes it and gives focus back.
 for (const opener of document.querySelectorAll("[data-ws-menu]")) {
   const menu = document.getElementById(opener.dataset.wsMenu);
   if (!menu) continue;
@@ -62,9 +52,7 @@ for (const opener of document.querySelectorAll("[data-ws-menu]")) {
     opener.focus();
   };
   opener.addEventListener("click", () => open());
-  // A right-click opens it at the pointer, kept 4px inside the frame, as
-  // menu.tsx does; anchor positioning can't anchor to a point, so this
-  // stays JS (see /lab/popover).
+  // Anchor positioning can't anchor to a point, so a right-click menu stays placed by JS.
   opener.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     open();
@@ -94,10 +82,6 @@ for (const opener of document.querySelectorAll("[data-ws-menu]")) {
   });
 }
 
-// A tooltip, as tooltip.tsx runs it: a moment after the pointer rests, at
-// once on keyboard focus, gone on leave, click, scroll or Escape. It's
-// placed as tooltips.ts places it: centred above its control, 6px off,
-// below when there's no room above, kept 8px inside the frame.
 const placeTip = (tip, control) => {
   const r = control.getBoundingClientRect();
   const t = tip.getBoundingClientRect();
@@ -107,16 +91,12 @@ const placeTip = (tip, control) => {
   tip.style.top = `${above ? r.top - 6 - t.height : r.bottom + 6}px`;
   tip.dataset.side = above ? "above" : "below";
 };
-// One shown open (data-ws-open) is placed the same way, unless the
-// specimen places it itself.
 for (const tip of document.querySelectorAll(
   ".tooltip[popover][data-ws-open]:not([data-ws-anchored])",
 )) {
   const control = tip.previousElementSibling;
   if (control instanceof HTMLElement && !tip.style.top) placeTip(tip, control);
 }
-// A tooltip that CSS places (data-ws-anchored) is left to /lab/popover's
-// behaviour below.
 for (const tip of document.querySelectorAll(
   ".tooltip[popover]:not([data-ws-open]):not([data-ws-anchored])",
 )) {
@@ -143,10 +123,6 @@ for (const tip of document.querySelectorAll(
   document.addEventListener("keydown", (e) => e.key === "Escape" && hide());
 }
 
-// A switch flips. A checkbox drawn as a switch flips itself, so only a
-// button's aria-checked is set here. A locked switch (aria-disabled, which
-// keeps it in the tab order so its reason can be read) doesn't flip: its
-// click is cancelled, as the app's handler would.
 for (const sw of document.querySelectorAll('[role="switch"]:not([disabled])'))
   sw.addEventListener("click", (e) => {
     if (sw.getAttribute("aria-disabled") === "true") e.preventDefault();
@@ -154,28 +130,15 @@ for (const sw of document.querySelectorAll('[role="switch"]:not([disabled])'))
       sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked") !== "true"));
   });
 
-// A checkbox shown part-picked: `indeterminate` is a property, with no
-// attribute, so data-ws-indeterminate sets it. A click clears it, as the
-// browser does.
+// `indeterminate` is a property with no attribute, so data-ws-indeterminate sets it.
 for (const box of document.querySelectorAll("input[data-ws-indeterminate]"))
   box.indeterminate = true;
 
-// /lab/popover: a menu opened by its invoker (popovertarget, or command and
-// commandfor) and placed by CSS anchor positioning, so nothing here sets
-// left or top unless the engine lacks anchor positioning. What JS still
-// does is what menu.tsx does by keyboard: focus the first item on open (the
-// last, if ArrowUp opened it), move with the arrows, Home and End, close on
-// Tab or on a choice. Escape and a click outside close it natively, and
-// focus goes back to the invoker.
 const anchors = CSS.supports("anchor-name: --a");
-// Its invoker: the button that names it, or else the element before it.
 const invokerOf = (el) =>
   document.querySelector(
     `[popovertarget="${el.id}"], [commandfor="${el.id}"], [interestfor="${el.id}"]`,
   ) ?? el.previousElementSibling;
-// Where the engine has no anchor positioning, JS places it as the app does
-// today: a tooltip as above, a menu under its invoker (above it, with no
-// room below), kept inside the frame.
 const place = (el) => {
   const by = invokerOf(el);
   if (anchors || !(by instanceof HTMLElement)) return;
@@ -225,10 +188,6 @@ for (const menu of document.querySelectorAll("[role=menu][popover][data-ws-ancho
   });
 }
 
-// /lab/popover: a tooltip that `interestfor` opens on hover and focus, and
-// CSS places. Chromium opens it itself. Where the engine has no interest
-// invokers (Safari, Firefox today), this wires it as tooltip.tsx does, so
-// the specimen shows the fallback the app would keep.
 const interest = "interestForElement" in HTMLButtonElement.prototype;
 for (const tip of document.querySelectorAll(".tooltip[popover][data-ws-anchored]")) {
   if (tip.hasAttribute("data-ws-open")) continue;

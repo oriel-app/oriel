@@ -1,15 +1,3 @@
-/* PROPOSAL: a checkbox and a radio drawn with Oriel's tokens (Controls
-   lab, /lab/checkbox-radio). Not in Oriel yet, and not urgent: today's
-   `accent-color` (window.css:2010, window.css:5580) already gives the accent
-   when picked. What drawing adds: a box that follows the text size, an
-   edge that clears 3:1 in every theme, and one look in every engine.
-
-   The real <input> stays, with `appearance: none`, so its name, its state,
-   Space, the arrow keys in a radio group, a <label>'s click and a form all
-   stay the browser's. Picked is the accent, "your choice made", as the
-   switch says (window.css:5443). Focus is window.css's own :focus-visible
-   ring (window.css:273), so nothing here restates it. */
-
 .checkbox,
 .radio {
   display: inline-grid;
@@ -32,7 +20,6 @@
   border-radius: 50%;
 }
 
-/* The mark, drawn in --on-accent and shown only when picked. */
 .checkbox::before,
 .radio::before {
   content: "";
@@ -69,8 +56,6 @@
   transform: scale(1);
 }
 
-/* Part-picked: a bar, not a tick. Oriel has no control that means "some of
-   these" today; see the lab page before giving one this state. */
 .checkbox:indeterminate::before {
   height: var(--border-thick);
   clip-path: none;
@@ -82,15 +67,13 @@
   opacity: 0.5;
 }
 
-/* Wrong, once the person has had a go (:user-invalid), or when the app says
-   so (aria-invalid, as `.input[aria-invalid]` does at window.css:6060). */
 .checkbox:is(:user-invalid, [aria-invalid="true"]),
 .radio:is(:user-invalid, [aria-invalid="true"]) {
   border-color: var(--danger);
 }
 
-/* Windows' high-contrast colours replace backgrounds, so the drawn tick
-   would vanish: there, the browser draws the control. */
+/* Forced colours drop backgrounds, so the drawn tick would vanish: there, the browser
+   draws the control. */
 @media (forced-colors: active) {
   .checkbox,
   .radio {

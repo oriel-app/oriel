@@ -1,21 +1,3 @@
-/* PROPOSAL: Field and SearchField (controls lab, /lab/text-field). One
-   text field for Oriel's nine field styles (Settings' .input, the connect
-   steps' and first run's, the folder path, the review link page's name
-   and reason, a held message's edit, a draft's option), and one search
-   field for the sidebar's and Browse's identical searches (window.css:469
-   and 1605). Not in Oriel yet.
-
-   A field is a label, the control, a hint and a problem, the hint and the
-   problem tied to the control with aria-describedby. It shows focus the
-   way the ChatInput proposal and the sidebar search do: its border and a
-   ring in --focus. A textarea grows with field-sizing: content, between
-   two and eight lines, in place of the rows Oriel counts in JS
-   (thread-page.tsx:530); an engine without it keeps the rows attribute.
-
-   Tokens only, and no class Oriel already has. This sheet reaches the
-   review link page, which may open in Safari or Firefox: everything here
-   either works there or falls back to a plain field. */
-
 .text-field {
   display: grid;
   align-content: start;
@@ -53,13 +35,11 @@
   line-height: var(--leading);
 }
 
-/* A path, a key or a command: what's typed is code. */
 .text-field-input[data-mono] {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
 
-/* The first run's and the connect steps' larger fields. */
 .text-field-input[data-size="lg"] {
   min-height: 2.25rem;
   padding-inline: var(--space-3);
@@ -70,19 +50,13 @@
   opacity: 1;
 }
 
-/* The field focus: the border and a ring in --focus, two hairlines thick,
-   in place of the window's outline. A text field shows it on a click too:
-   the caret is there, so focus is. */
 .text-field-input:focus-visible {
   border-color: var(--focus);
   outline: none;
   box-shadow: 0 0 0 var(--border-thin) var(--focus);
 }
 
-/* Wrong: what the server or the reducer said (aria-invalid), or what the
-   browser knows once the person has left the field (:user-invalid, for
-   required, maxlength, type and pattern). :is() forgives an engine that
-   doesn't know :user-invalid. */
+/* :is() forgives an engine that doesn't know :user-invalid. */
 .text-field-input:is([aria-invalid="true"], :user-invalid) {
   border-color: var(--danger);
 }
@@ -96,15 +70,11 @@
   cursor: not-allowed;
 }
 
-/* Shown, not edited: the review link. Sunk, so it doesn't ask for typing. */
 .text-field-input:read-only:not(:disabled) {
   background: var(--surface-sunk);
   color: var(--text-muted);
 }
 
-/* A textarea: its rows attribute is the fallback; where the engine has
-   field-sizing, it grows with what's written, from two lines to eight,
-   then scrolls. */
 textarea.text-field-input {
   resize: vertical;
 }
@@ -118,8 +88,6 @@ textarea.text-field-input {
   }
 }
 
-/* SearchField: a framed search with its icon, for the sidebar's threads
-   and Browse's items. The frame shows focus, so the input needs none. */
 .search-field {
   display: flex;
   align-items: center;
@@ -154,8 +122,7 @@ textarea.text-field-input {
   opacity: 1;
 }
 
-/* type="search" draws its own clear button in Chrome and Safari; Escape
-   already clears, so the field stays as plain as the sidebar's. */
+/* type="search" draws its own clear button in Chrome and Safari; Escape already clears. */
 .search-field-input::-webkit-search-cancel-button {
   appearance: none;
 }

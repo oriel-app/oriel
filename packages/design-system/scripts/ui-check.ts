@@ -1,11 +1,5 @@
-// `pnpm ui-check`: every check, the accessibility pass in headless Chrome
-// among them, for a builder who has touched the window. By default it judges
-// the checkout this package is in; ORIEL=<path> points it at another:
-//
+// `pnpm ui-check [check…]`; ORIEL=<path> judges another checkout than this one:
 //   ORIEL=../my-story pnpm ui-check
-//
-// It reads the checkout ORIEL names and writes nothing to it. Each problem
-// is one line saying what to do; `pnpm ui-check accessibility` runs one check.
 import { execFileSync } from "node:child_process";
 import { oriel, root } from "../src/oriel.ts";
 import { checks, runChecks } from "./checks.ts";

@@ -354,6 +354,16 @@ export const commentsCleaned = [
   "packages/core/",
   "packages/sources/",
   "packages/groupings/",
+  "packages/slack/",
+  "packages/sheets/",
+  "packages/sheets-mcp/",
+  "packages/folder/",
+  "packages/agent/",
+  "packages/evals/",
+  "packages/desktop/probe/",
+  "packages/desktop/shell/",
+  "packages/desktop/src/",
+  "packages/design-system/",
 ];
 export const commentsCleanedLater = ["packages/core/src/telemetry.ts"];
 

@@ -13,8 +13,6 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { type Crypt, secretStore, shellSecrets } from "../shell/secrets.ts";
 
-// Stands in for safe storage: a fixed XOR, enough to tell ciphertext from
-// the secret on disk.
 function fakeCrypt(state: { problem?: string; stale?: boolean; broken?: boolean } = {}) {
   const flip = (data: Buffer) => Buffer.from(data.map((byte) => byte ^ 0x5a));
   const crypt: Crypt = {
@@ -46,9 +44,7 @@ test("a secret is kept as ciphertext in its own file, readable by its owner only
   assert.ok(!onDisk.toString("latin1").includes("tok-123"));
   assert.equal(statSync(join(dir, "anthropic-key")).mode & 0o777, 0o600);
   assert.equal(statSync(dir).mode & 0o777, 0o700);
-  // Nothing else is left beside it, such as the temporary file.
   assert.deepEqual(readdirSync(dir), ["anthropic-key"]);
-  // Set again, it takes the old one's place.
   await store.set("anthropic-key", "sk-ant-x");
   assert.equal(await store.get("anthropic-key"), "sk-ant-x");
   assert.deepEqual(readdirSync(dir), ["anthropic-key"]);
@@ -60,7 +56,6 @@ test("delete forgets a secret, and a missing one is fine", async (t) => {
   const store = secretStore(dir, crypt);
   await store.delete("anthropic-key");
   await store.set("anthropic-key", "s");
-  // Even when the OS's key is gone, a secret can be forgotten.
   state.problem = "the OS secret store isn't available";
   await store.delete("anthropic-key");
   state.problem = undefined;
@@ -84,8 +79,6 @@ test("only the server's own names are kept", async (t) => {
   const store = secretStore(dir, fakeCrypt().crypt);
   await store.set("anthropic-key", "s");
   assert.deepEqual(readdirSync(dir), ["anthropic-key"]);
-  // No connection keeps one since decision 0059, nor does Jira's from
-  // before connections.
   for (const name of [
     "jira",
     "connection.01JC0NNECT10NSST0RED0000AB",
@@ -143,7 +136,6 @@ test("secrets kept in memory never reach safe storage", async (t) => {
   await assert.rejects(store.set("slack", "s"));
   assert.equal(reached, 0);
   assert.throws(() => readdirSync(dir), { code: "ENOENT" });
-  // Otherwise, the OS's store.
   await shellSecrets(false, dir, os).set("anthropic-key", "tok-123");
   assert.equal(reached, 1);
   assert.deepEqual(readdirSync(dir), ["anthropic-key"]);
@@ -154,7 +146,6 @@ test("the secrets an older Oriel kept, for connections and the API key, are dele
   mkdirSync(dir, { recursive: true });
   const { crypt } = fakeCrypt();
   await secretStore(dir, crypt).set("anthropic-key", "sk-ant-kept");
-  // A folder of an old secret's name, sorted first, doesn't stop the rest.
   mkdirSync(join(dir, "connection.01JB0000000000000000000000"));
   for (const name of [
     "jira",

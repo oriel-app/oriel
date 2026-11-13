@@ -1,7 +1,3 @@
-// The chrome's behaviour: the view (theme, scheme, text size, viewport)
-// lives in the URL, so every view of every page is a link; specimen frames
-// follow it without reloading; search; and copying a specimen's markup.
-
 const root = document.documentElement;
 const defaults = { theme: "graphite", scheme: "system", size: "default", vp: "wide" };
 
@@ -22,7 +18,6 @@ function search(view) {
   return s ? `?${s}` : "";
 }
 
-// Internal links carry the view with them.
 function carry(view) {
   for (const a of document.querySelectorAll("a[href]")) {
     const href = a.getAttribute("href");
@@ -67,7 +62,6 @@ for (const name of ["scheme", "vp"])
   for (const input of document.querySelectorAll(`input[name="${name}"]`))
     input.addEventListener("change", (e) => change(name, e.target.value));
 
-// A frame says how tall its specimen is; a screen keeps its own height.
 addEventListener("message", (event) => {
   if (event.origin !== location.origin || event.data?.type !== "ws-height") return;
   for (const frame of document.querySelectorAll(".ws-stage iframe")) {
@@ -82,7 +76,6 @@ addEventListener("message", (event) => {
   }
 });
 
-// A screen is 1280 wide, scaled to its column.
 function scale() {
   for (const stage of document.querySelectorAll(".ws-specimen[data-screen] .ws-stage")) {
     const s = root.dataset.wsVp === "390" ? 1 : Math.min(1, stage.clientWidth / 1280);
@@ -91,7 +84,6 @@ function scale() {
 }
 addEventListener("resize", scale);
 
-// Copy a specimen's markup.
 document.addEventListener("click", async (event) => {
   const button = event.target.closest?.("[data-copy]");
   if (!button) return;
@@ -105,7 +97,6 @@ document.addEventListener("click", async (event) => {
   setTimeout(() => (button.textContent = "Copy"), 1500);
 });
 
-// Search: titles, classes, sections and specimens, from /search.json.
 const input = document.getElementById("ws-search");
 const results = document.getElementById("ws-results");
 let index = null;

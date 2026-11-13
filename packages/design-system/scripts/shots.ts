@@ -1,8 +1,5 @@
-// `pnpm shots [path…] [--width 1280] [--height 900] [--full]`: screenshots
-// of the workshop's pages in headless Chrome, written to the gitignored
-// shots/. With no paths, the review set: the index, a component page, the
-// select lab and a screen, in Graphite and Broadsheet. It starts its own
-// server on a free port, so it never touches :4400.
+// `pnpm shots [path…] [--width 1280] [--height 900] [--full]`, into the gitignored shots/.
+// It starts its own server on a free port, so it never touches :4400.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";

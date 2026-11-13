@@ -1,6 +1,5 @@
-// `pnpm index`: writes COMPONENTS.md, the plain-text index a builder reads
-// first, from the guide's pages, in the shape oxfmt leaves it. `pnpm check`
-// fails when it is stale.
+// `pnpm index`: writes COMPONENTS.md from the guide's pages, in the shape oxfmt leaves it.
+// `pnpm check` fails when it is stale.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { documentedClasses, type Page, pages, sections } from "../src/guide.ts";

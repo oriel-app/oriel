@@ -1,8 +1,3 @@
-/* The workshop's own chrome. It reads Oriel's tokens (served from
-   window.css's token blocks as /oriel/tokens.css), so it wears whichever
-   theme it is showing, but none of Oriel's rules: specimens live in frames.
-   Every class here starts with ws-, so none can be mistaken for Oriel's. */
-
 *,
 *::before,
 *::after {
@@ -51,7 +46,6 @@ body.ws {
   transform: none;
 }
 
-/* The bar: brand, search, and the view's controls. */
 .ws-top {
   position: sticky;
   top: 0;
@@ -195,7 +189,6 @@ body.ws {
   outline-offset: -2px;
 }
 
-/* The guide's index beside the page. */
 .ws-layout {
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);
@@ -271,7 +264,6 @@ body.ws {
   outline: none;
 }
 
-/* A page. */
 .ws-page {
   max-width: 62rem;
 }
@@ -577,7 +569,6 @@ body.ws {
   stroke-linejoin: round;
 }
 
-/* A specimen: its caption, its frame and its markup. */
 .ws-specimen {
   margin: var(--space-4) 0;
   border: var(--border-thin) solid var(--line);
@@ -649,7 +640,6 @@ body.ws {
     var(--border-thin) 0 0 var(--line);
 }
 
-/* A screen is drawn at 1280 and scaled to fit, or at 390 as it is. */
 .ws-specimen[data-screen] .ws-stage {
   height: calc(var(--ws-height, 800px) * var(--ws-scale, 1));
 }
@@ -719,7 +709,6 @@ body.ws {
   grid-template-columns: repeat(auto-fit, minmax(25rem, 1fr));
 }
 
-/* The index. */
 .ws-section {
   margin: var(--space-8) 0 0;
 }
@@ -781,7 +770,6 @@ body.ws {
   color: var(--text-faint);
 }
 
-/* A source file, read live from Oriel. */
 .ws-source .ws-page-head h1 {
   font-size: var(--text-xl);
 }

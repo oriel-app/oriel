@@ -1,15 +1,9 @@
-// The Electron release the desktop app's shell runs on (decision 0039), taken
-// without npm: the official zip from the release on GitHub, checked against
-// these hashes, which come from that release's SHASUMS256.txt. The version is
-// at least 7 days old when pinned, as pnpm's rule asks of every package. Its
-// types are `vendor/electron.d.ts`, the release's own, under the same rule.
+// Taken without npm, so pin a version at least 7 days old by hand, as pnpm's rule asks.
 import { join } from "node:path";
 
 export const electronVersion = "45.0.0";
 
-// The Node inside that release, which the server runs on (decision 0047).
-// mise.toml pins the same version, so CI and `pnpm dev` test what the app
-// runs; a bump of Electron moves both.
+// mise.toml pins the same Node, so CI and `pnpm dev` test what the app runs: bump both together.
 export const electronNode = "24.22.0";
 
 export const electronZips = {
@@ -40,9 +34,6 @@ export function zipUrl(on: Target): string {
   return `https://github.com/electron/electron/releases/download/v${electronVersion}/${zipName(on)}`;
 }
 
-// Where builds keep a pinned zip: one cache for the person's account, so
-// every worktree shares one download, named by the zip's SHA-256. A build
-// checks the hash again each time it uses the file.
 export function zipCache(home: string, on: Target): string {
   return join(home, "Library/Caches/oriel/electron", `${electronZips[on]}.zip`);
 }

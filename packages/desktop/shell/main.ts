@@ -1,49 +1,5 @@
-// The desktop app's shell (decisions 0036, 0039 and 0047): Electron's main
-// process, a window over the server, which runs on Electron's own Node as
-// this process's utility process. The shell holds no product logic. It
-// starts the server, shows its page, and does what the page can't: the folder
-// picker, notifications and the secret store (secrets.ts).
-//
-// - Launch. The server gets an environment built here: HOME, USER and
-//   LOGNAME, TMPDIR, LANG and the login shell's PATH, with the bundle's Deno
-//   first. Claude Code finds its sign-in in the Keychain under USER, so
-//   without it a signed-in Claude Code reads as signed out. The shell draws a
-//   32-byte launch secret and writes it, as hex, as the channel's first
-//   line, then sets it as the session cookie before the window's first load.
-//   The server's first line names its URL.
-// - The channel. A utility process has no stdin, so the channel's text goes
-//   both ways as messages on its parent port, which only this process holds;
-//   `null` stands for stdin's end. After the secret it carries JSON lines:
-//   the server asks and the shell answers only what rules.ts parses;
-//   anything else is refused.
-// - The page has no preload and no bridge to the shell. Renderers are
-//   sandboxed and isolated, every permission is denied, the window stays on
-//   the server's origin, and other http(s) links open in the default browser.
-// - No debugger: a launch with any switch but the shell's own is refused,
-//   and the fuses (bundle.ts) ignore Node's environment and run-as-Node.
-//   `pnpm desktop:debug-flags` measures it.
-// - One instance per data folder: Electron's lock lives in the shell's folder
-//   inside it. A second launch brings the first one's window forward.
-// - Quitting closes the server's stdin, and the server ends what it started
-//   as it exits. After 5 s the shell kills the server and all it started, by
-//   the process table, since a utility process leads no process group. While
-//   the server says Oriel is working on a thread, Quit in the menu (Cmd+Q)
-//   and closing the window ask the person first (decision 0045). The
-//   server's stdout and stderr go to the logs folder. If the server dies on
-//   its own, the shell kills whatever it left running, and the window says
-//   so and offers Restart.
-// - `--background`, for development: the window starts hidden and nothing
-//   brings it forward on its own (rules.ts, raises), so a launch from a
-//   script never covers what the person is doing. Clicking the Dock icon
-//   shows it. Secrets are kept in memory, never in the OS's store
-//   (rules.ts, secretsInMemory), and every account shows as a placeholder
-//   (serverArguments), so a screenshot names nobody.
-// - `--launch-file`, for development: each time the server starts, the
-//   shell writes its URL, the launch cookie and the shell's PID to
-//   `Shell/launch.json` in the data folder, readable by its owner only, so
-//   a script can reach the server's API, as `pnpm desktop:try` does. Its
-//   secrets are kept in memory too, so that cookie reaches none of the
-//   person's, and its accounts show as a placeholder.
+// Claude Code finds its sign-in in the Keychain under USER: without USER in the server's
+// environment, a signed-in Claude Code reads as signed out.
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
@@ -100,11 +56,8 @@ import {
 import { shellSecrets } from "./secrets.ts";
 import { lockSession, webPreferences } from "./window.ts";
 
-// Nothing but the shell's own switches (rules.ts, refusedArguments), before
-// anything else, a second launch's handing its arguments to the first
-// included. Each refused switch is stripped from Chromium's own command
-// line too, which is what opens a debugger's port, so it opens nothing
-// however the exit unwinds; `app.exit` ends the process at once.
+// Before anything else, a second launch's arguments included. Each refused switch is also
+// stripped from Chromium's own command line, which is what opens a debugger's port.
 const refused = refusedArguments(process.argv.slice(1));
 if (refused.length > 0) {
   for (const arg of refused) {
@@ -133,14 +86,11 @@ let origin: string | null = null;
 let path: Promise<string | null> | null = null;
 let quitting = false;
 let picking = false;
-// How many threads the server says Oriel is working on, while it runs, and
-// whether the question before quitting is on screen.
 let working = 0;
 let asking = false;
 let log = -1;
 
-// Only once Electron is ready: on Linux and Windows the OS's key isn't
-// there before. In the background, in memory: see secrets.ts.
+// Only once Electron is ready: on Linux and Windows the OS's key isn't there before.
 const secrets = shellSecrets(secretsInMemory(process.argv), join(where.data, "Secrets"), () => ({
   problem: async () =>
     storageProblem(
@@ -180,7 +130,6 @@ if (!app.requestSingleInstanceLock()) {
     if (!quitting) stop();
   });
   for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());
-  // The login shell's PATH, once per launch, while Electron starts.
   path = loginPath();
   void app.whenReady().then(ready);
 }
@@ -217,7 +166,6 @@ function ready() {
     webPreferences,
     show: raises("launch", background),
   });
-  // Closing the window quits, so it asks first too.
   window.on("close", (event) => {
     if (quitting || working === 0) return;
     event.preventDefault();
@@ -227,17 +175,13 @@ function ready() {
   start();
 }
 
-// Quit from the menu, the person's own: it asks first while Oriel works. A
-// quit from the Dock, the OS or a signal reaches before-quit, which Electron
-// gives no way to tell from this one, so it doesn't ask: none of them may
-// wait on a question.
+// The menu's Quit has its own handler: Electron's before-quit can't tell a Dock, OS or signal
+// quit from it, and none of those may wait on a question.
 function quit() {
   if (quitting || working === 0) app.quit();
   else ask();
 }
 
-// Whether to quit while Oriel works. Quit quits, without asking again. In
-// the background nothing comes forward to ask, so it doesn't quit.
 function ask() {
   if (asking || !window) return;
   if (!raises("quit-question", background))
@@ -261,9 +205,6 @@ function show(why: Raise) {
   window.focus();
 }
 
-// Every page the app makes stays on the server's origin, opens no window and
-// embeds no webview. A link elsewhere goes to the default browser, if it's
-// http(s).
 function guard(contents: WebContents) {
   contents.setWindowOpenHandler(({ url }) => {
     if (opensOutside(url)) void shell.openExternal(url);
@@ -281,28 +222,21 @@ function guard(contents: WebContents) {
   contents.on("will-attach-webview", (event) => event.preventDefault());
 }
 
-// MARK: Logs
-
 function openLog() {
   const path = join(where.logs, "server.log");
   if (existsSync(path)) renameSync(path, join(where.logs, "server.1.log"));
   log = openSync(path, "a", 0o600);
 }
 
-// The shell's own notes, beside the server's lines in the same file.
 function note(text: string) {
   if (log < 0) return;
   try {
     writeSync(log, `shell: ${text}\n`);
-  } catch {
-    // A log that can't be written isn't worth stopping for.
-  }
+  } catch {}
 }
 
-// MARK: The server's environment
-
-// A short command's stdout, in its own session, which is killed when it
-// exits or at the deadline, so nothing its startup files left keeps running.
+// Its own session is killed when it exits or at the deadline, so nothing the login shell's
+// startup files left keeps running.
 function output(command: string, args: string[], env: Record<string, string>, ms: number) {
   return new Promise<string>((resolve) => {
     let text = "";
@@ -349,7 +283,6 @@ async function loginPath(): Promise<string | null> {
   return launchd === "" || launchd.includes("\n") ? null : launchd;
 }
 
-// The person's account name, as the OS has it, not as launchd passed it.
 const account = userInfo().username;
 
 async function serverEnvironment(): Promise<Record<string, string>> {
@@ -362,8 +295,6 @@ async function serverEnvironment(): Promise<Record<string, string>> {
     PATH: serverPath(deno, await (path ??= loginPath()), home),
   };
 }
-
-// MARK: The server
 
 function start() {
   void serverEnvironment().then((env) => {
@@ -381,9 +312,7 @@ function start() {
         if (log < 0) return;
         try {
           writeSync(log, chunk);
-        } catch {
-          // A log that can't be written isn't worth stopping for.
-        }
+        } catch {}
       });
     child.postMessage(`${secret}\n`);
     let first = true;
@@ -407,7 +336,6 @@ function start() {
   });
 }
 
-// The first line: set the cookie, then load the page.
 async function open(child: UtilityProcess, line: string, secret: string) {
   const found = readyOrigin(line);
   if (!found) {
@@ -429,7 +357,6 @@ async function open(child: UtilityProcess, line: string, secret: string) {
   if (server === child) await window?.loadURL(`${found}/`);
 }
 
-// Written whole and renamed into place, as the secret store writes.
 function writeLaunchFile(url: string, secret: string) {
   const path = join(where.shell, "launch.json");
   const next = `${path}.${process.pid}.tmp`;
@@ -444,8 +371,6 @@ function writeLaunchFile(url: string, secret: string) {
 
 let deadline: NodeJS.Timeout | undefined;
 
-// Closing stdin asks the server to quit, and it ends what it started as it
-// exits; after 5 s the shell kills them all.
 function stop() {
   quitting = true;
   const child = server;
@@ -468,16 +393,13 @@ function exited(child: UtilityProcess) {
   stopped();
 }
 
-// The server and everything it started, by the process table, parents first.
+// By the process table, since a utility process leads no process group.
 function killTree(pid: number) {
   execFile("/bin/ps", ["-A", "-o", "pid=,ppid="], { env: {} }, (error, table) => {
     kill([pid, ...(error ? [] : descendants(table, pid))]);
   });
 }
 
-// Whatever a server that died without its own sweep left running, such as
-// a Deno whose wall time only the server kept (rules.ts, orphans). At once,
-// since the app may be about to quit.
 function sweep() {
   let table: string;
   try {
@@ -497,21 +419,15 @@ function kill(pids: number[]) {
   for (const pid of pids)
     try {
       process.kill(pid, "SIGKILL");
-    } catch {
-      // Already gone.
-    }
+    } catch {}
 }
 
 function killGroup(pid: number) {
   try {
     process.kill(-pid, "SIGKILL");
-  } catch {
-    // Already gone.
-  }
+  } catch {}
 }
 
-// What the window shows when the server has stopped on its own: no script,
-// and a Restart link the shell acts on (see guard).
 const stoppedPage = (logs: string) => `<!doctype html><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
 <title>Oriel</title>
@@ -527,8 +443,6 @@ function stopped() {
   const escaped = where.logs.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   void window?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(stoppedPage(escaped))}`);
 }
-
-// MARK: Answering the channel
 
 function answer(child: UtilityProcess, line: string) {
   const parsed = parseRequest(line);
@@ -562,7 +476,6 @@ async function handle(request: Request): Promise<string | null> {
       await secrets.delete(request.name);
       return null;
     case "window.focus":
-      // Over the browser the person signed in with, which has the focus.
       if (!raises("focus-request", background)) return null;
       show("focus-request");
       if (process.platform === "darwin") app.focus({ steal: true });
@@ -591,11 +504,9 @@ async function pickFolder(prompt: string): Promise<string | null> {
   }
 }
 
-// Notifications on screen, kept so a click still reaches them.
+// Held, or a notification may be collected and its click never arrive.
 const shown = new Set<Notification>();
 
-// Only while the window isn't in front: then the person is already looking.
-// A click brings it forward on `open`, a path on the server's origin.
 async function notify(title: string, body: string, open: string): Promise<null> {
   if (!window || window.isFocused()) return null;
   if (!Notification.isSupported()) throw new Error("this system shows no notifications");
@@ -624,12 +535,6 @@ async function notify(title: string, body: string, open: string): Promise<null> 
   return null;
 }
 
-// MARK: Measuring
-
-// `pnpm desktop --measure` marks the app's package.json. Such a build, given
-// `--measure <file>`, writes the time the overview first rendered there, and
-// the window's page beside it as `<file>.png`, or `<file>-stopped.png` for
-// the stopped page.
 function measure(contents: WebContents) {
   const at = process.argv.indexOf("--measure");
   const file = at >= 0 ? process.argv[at + 1] : undefined;
@@ -640,7 +545,6 @@ function measure(contents: WebContents) {
   const capture = (to: string) =>
     void contents.capturePage().then((image) => writeFileSync(to, image.toPNG()));
   contents.on("did-finish-load", function poll() {
-    // Gone when the app quits before the overview renders, as on the first run.
     if (contents.isDestroyed()) return;
     if (contents.getURL().startsWith("data:")) return capture(`${file}-stopped.png`);
     void contents

@@ -1,10 +1,5 @@
-// What the desktop shell decides, apart from Electron, so tests reach it:
-// the server's environment, the server's lines, the channel's requests, and
-// where the window may go. main.ts does the rest. The protocol is
-// packages/server/src/desktop/PROTOCOL.md.
 import { join, resolve } from "node:path";
 
-// One request the shell answers. Anything else is refused.
 export type Request =
   | { kind: "folder.pick"; prompt: string }
   | { kind: "secret.get"; name: string }
@@ -19,19 +14,11 @@ export type Parsed =
   | { id: number; refused: string }
   | { id: null; refused: string };
 
-// The secrets the server may keep, by name, with no `/` or `.` to leave
-// `Secrets/`. The server keeps none since decision 0059: a source is read
-// through the person's own agent, which holds its sign-in, and no AI runs
-// on an API key. `anthropic-key`, the key's old name, is deleted as the
-// store opens (secrets.ts), and stays the one name the store takes only so
-// its machinery stays whole for whatever keeps a secret next. Any other
-// name is refused.
+// No secret is kept now; this retired name, deleted as the store opens, stays only so the
+// store's machinery stays whole for whatever keeps a secret next.
 export const isSecretName = (name: string): boolean => name === "anthropic-key";
 const maxSecret = 16_384;
 
-// A line from the server after its first: a request with a positive integer
-// id, or why it's refused. A refusal with an id gets an answer; one without
-// can't.
 export function parseRequest(line: string): Parsed {
   let message: unknown;
   try {
@@ -93,8 +80,6 @@ export function parseRequest(line: string): Parsed {
   }
 }
 
-// The server's first line, `{"kind":"ready","url":"http://127.0.0.1:<port>/"}`:
-// its origin, or null for anything else.
 export function readyOrigin(line: string): string | null {
   let message: unknown;
   try {
@@ -116,8 +101,6 @@ export function readyOrigin(line: string): string | null {
   return parsed.origin;
 }
 
-// Whether the window may show `url`: the server's own origin, and nothing
-// else, apart from a frame's about:blank or about:srcdoc.
 export function mayShow(url: string, origin: string | null, mainFrame: boolean): boolean {
   if (!mainFrame && (url === "about:blank" || url === "about:srcdoc")) return true;
   try {
@@ -127,9 +110,6 @@ export function mayShow(url: string, origin: string | null, mainFrame: boolean):
   }
 }
 
-// The one permission a page may have: writing text to the clipboard, which
-// Copy needs, from the server's own origin. The page can't read the
-// clipboard, and every other permission is refused.
 export function mayUse(permission: string, requesting: string, origin: string | null): boolean {
   if (permission !== "clipboard-sanitized-write" || origin === null) return false;
   try {
@@ -139,12 +119,8 @@ export function mayUse(permission: string, requesting: string, origin: string | 
   }
 }
 
-// The link on the stopped page that starts the server again. The shell acts
-// on it only while the server is stopped.
 export const restartUrl = "http://restart.oriel.invalid/";
 
-// Whether a link the window won't show goes to the default browser: http and
-// https only.
 export function opensOutside(url: string): boolean {
   try {
     const { protocol } = new URL(url);
@@ -154,10 +130,7 @@ export function opensOutside(url: string): boolean {
   }
 }
 
-// Why the OS can't keep a secret for Oriel now, or null when it can. Only
-// ciphertext is ever written, so with no key from the OS, or on Linux with
-// no keyring, where safeStorage would fall back to a fixed key, nothing is
-// kept at all.
+// On Linux with no keyring, safeStorage would fall back to a fixed key, so nothing is kept.
 export function storageProblem(
   platform: string,
   available: boolean,
@@ -172,16 +145,13 @@ export function storageProblem(
   return null;
 }
 
-// Whether safe storage encrypted with a fixed key after all: on Linux,
-// ciphertext starting `v10` is under Chromium's hardcoded key, which it
-// falls back to when the keyring it picked fails. Such text is never kept.
+// On Linux, ciphertext starting `v10` is under Chromium's hardcoded key, which it falls back
+// to when the keyring it picked fails.
 export function fixedKey(platform: string, ciphertext: Uint8Array): boolean {
   return platform === "linux" && Buffer.from(ciphertext.subarray(0, 3)).toString() === "v10";
 }
 
-// A notification's text as the OS shows it: plain text on one line. A
-// thread's title is synced data, so on Linux, whose notification servers
-// read a body's tags, `&`, `<` and `>` are escaped.
+// A thread's title is synced data, and Linux notification servers read a body's tags.
 export function notificationText(platform: string, text: string): string {
   // oxlint-disable-next-line no-control-regex
   const line = text.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
@@ -190,8 +160,6 @@ export function notificationText(platform: string, text: string): string {
     : line;
 }
 
-// What the shell asks before quitting while Oriel works on `threads`
-// threads (decision 0045). Quit is the default, Cancel what Escape picks.
 export function quitQuestion(threads: number): {
   message: string;
   buttons: [string, string];
@@ -206,7 +174,6 @@ export function quitQuestion(threads: number): {
   };
 }
 
-// Splits a stream into lines, dropping any line longer than `max` bytes.
 export class Lines {
   private buffer = "";
   private dropping = false;
@@ -236,8 +203,7 @@ export class Lines {
   }
 }
 
-// PATH as a login shell printed it between two marker lines, which keep out
-// whatever its startup files print; null if it printed none.
+// The markers keep out whatever the login shell's startup files print.
 export const pathStart = "__ORIEL_PATH_START__";
 export const pathEnd = "__ORIEL_PATH_END__";
 export function printedPath(output: string): string | null {
@@ -250,8 +216,6 @@ export function printedPath(output: string): string | null {
   return path === "" || path.includes("\n") ? null : path;
 }
 
-// The server's PATH: the bundle's Deno first, then the person's own PATH,
-// then the usual install folders, absolute and each once.
 export function serverPath(deno: string, found: string | null, home: string): string {
   const usual = [
     "/opt/homebrew/bin",
@@ -267,8 +231,6 @@ export function serverPath(deno: string, found: string | null, home: string): st
   return [...new Set(dirs)].join(":");
 }
 
-// LANG as the shell's own environment has it, or else from the system's
-// locale, such as `en-GB`.
 export function lang(own: string | undefined, locale: string): string {
   if (own) return own;
   const [language, region] = locale.split(/[-_]/);
@@ -278,8 +240,6 @@ export function lang(own: string | undefined, locale: string): string {
     : `${language.toLowerCase()}.UTF-8`;
 }
 
-// Where the shell keeps things. `--data <dir>` moves all of it, logs included,
-// for development and tests.
 export function folders(
   argv: readonly string[],
   home: string,
@@ -291,11 +251,8 @@ export function folders(
   return { data, logs, shell: join(data, "Shell") };
 }
 
-// Every process descended from `root` in `ps -A -o pid=,ppid=`'s table,
-// parents before their children: what the server started, for when it
-// won't quit. The server's own sweep, as it exits, reads the table the same
-// way (packages/server/src/desktop/utility.ts), and a test keeps the two
-// alike.
+// The server's own sweep (packages/server/src/desktop/utility.ts) reads the table the same
+// way, and a test keeps the two alike.
 export function descendants(table: string, root: number): number[] {
   const children = new Map<number, number[]>();
   for (const row of table.split("\n")) {
@@ -314,13 +271,8 @@ export function descendants(table: string, root: number): number[] {
   return found;
 }
 
-// What a server that died without its own sweep left running, from a
-// `ps -A -o pid=,ppid=,pgid=` table: launchd (pid 1) has taken them, and
-// they're still in the shell's process group, as everything the server
-// starts is but a CLI's own group. Only when the shell leads that group, as
-// when it's launched from Finder, the Dock or `open`: from a terminal, the
-// group is the terminal's, which may hold others' orphans. Each one's own
-// children go too.
+// Launchd (pid 1) has taken them, still in the shell's group. Only when the shell leads it, as
+// from Finder, the Dock or `open`: a terminal's group may hold others' orphans.
 export function orphans(table: string, shell: number): number[] {
   const rows = table
     .split("\n")
@@ -334,12 +286,7 @@ export function orphans(table: string, shell: number): number[] {
   return left.flatMap((pid) => [pid, ...descendants(pairs, pid)]);
 }
 
-// Why the shell would bring its window forward: at launch, a second launch,
-// the server asking for it, a folder pick, the question before quitting, or
-// the person's own click on the Dock icon or a notification. With
-// `--background`, for development, only the person's click does, so a
-// launch from a script never covers what they're doing. "dock" is macOS's
-// activate, which opening the app again in front also sends; `open -g`
+// "dock" is macOS's activate, which opening the app again in front also sends; `open -g`
 // doesn't.
 export type Raise =
   | "launch"
@@ -354,29 +301,20 @@ export function raises(why: Raise, background: boolean): boolean {
   return !background || why === "dock" || why === "notification";
 }
 
-// Whether the secret store keeps secrets in memory, so the app never
-// reaches the OS's store (secrets.ts): with `--background`, so a try never
-// asks for the person's password or leaves an item in their keychain; and
-// with `--launch-file`, so whatever reads that file's cookie reaches a
-// server that holds none of the person's secrets.
+// So a scripted launch never asks for the person's password or leaves a keychain item, and
+// whatever reads the launch file's cookie reaches a server holding none of their secrets.
 export function secretsInMemory(argv: readonly string[]): boolean {
   return argv.includes("--background") || argv.includes("--launch-file");
 }
 
-// The server's arguments (desktop/PROTOCOL.md). A launch a script made, as
-// `secretsInMemory` reads it, adds `--placeholder-account`: its server
-// shows every account as a placeholder, never the person's email or plan,
-// since that script may take screenshots to publish (OA-308).
+// A scripted launch may take screenshots to publish, so its server shows every account as a
+// placeholder, never the person's email or plan.
 export function serverArguments(argv: readonly string[], data: string): string[] {
   return ["--desktop", "--data", data, ...(secretsInMemory(argv) ? ["--placeholder-account"] : [])];
 }
 
-// The shell's own switches, and whether each takes a value. Every other
-// argument is refused (main.ts): Chromium and Node read hundreds of
-// switches from the command line, and some open a debugger
-// (`--remote-debugging-port`, `--inspect`), write the launch cookie to a
-// file (`--log-net-log`) or send it through a proxy (`--proxy-server`).
-// Any program running as the person can launch the app with them.
+// Every other argument is refused: some of Chromium's and Node's open a debugger, write the
+// launch cookie to a file or send it through a proxy, and any program can launch the app.
 const shellSwitches: Readonly<Record<string, boolean>> = {
   "--background": false,
   "--launch-file": false,
@@ -384,13 +322,10 @@ const shellSwitches: Readonly<Record<string, boolean>> = {
   "--measure": true,
 };
 
-// macOS's process serial number, which Launch Services can still pass on
-// the first open from Finder of an app just downloaded: a pilot's first
-// launch. Chromium reads it as a switch that does nothing.
+// Launch Services can still pass this on the first open from Finder of a downloaded app;
+// Chromium reads it as a switch that does nothing.
 const processSerialNumber = /^-psn_\d+_\d+$/;
 
-// The arguments after the executable that aren't the shell's own switches
-// and their values, `--` included: none, for a launch to go on.
 export function refusedArguments(args: readonly string[]): string[] {
   const refused: string[] = [];
   for (let at = 0; at < args.length; at++) {
@@ -407,7 +342,6 @@ export function refusedArguments(args: readonly string[]): string[] {
   return refused;
 }
 
-// A refused argument's switch name, as Chromium's command line holds it.
 export function switchName(arg: string): string | null {
   const match = /^--?([^=]+)/.exec(arg);
   return match ? match[1]! : null;

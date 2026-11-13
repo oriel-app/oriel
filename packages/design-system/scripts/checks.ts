@@ -1,37 +1,3 @@
-// Every check. Oriel's `pnpm check` runs the ones that need no browser, in
-// about 2s; `pnpm ui-check` runs them all, the three in headless Chrome too.
-// Each prints one line, its time, and its problems, one line each, saying
-// what to do.
-//
-// The workshop's own:
-// - guide: every page has what its section needs, and specimen ids are
-//   unique and present;
-// - index: COMPONENTS.md is what `pnpm index` writes;
-// - links: every internal link on every page resolves, anchors included;
-// - chrome: the workshop's own pages give every control a name and a focus.
-//
-// Oriel's, read from the checkout ORIEL names:
-// - classes: every class a page documents or a specimen uses is in Oriel's
-//   window.css (or, marked proposed, in assets/proposals/), and screens use
-//   only classes a component documents;
-// - coverage, the other way: every class window.css styles and every
-//   component packages/web/src exports is on a guide page, or listed with a
-//   reason in UNDOCUMENTED.md; and nothing listed there is on a page now, or
-//   gone from Oriel;
-// - proposals: no proposal's class is also window.css's, every rule is
-//   scoped to a class, and none writes a literal Oriel's theme check forbids;
-// - references: every name a page cites (`.connect-actions` in `window.css`,
-//   `FolderStep` in `packages/web/src/connect-steps.tsx`) is in that file
-//   now, as many times as the page says; every file it names is there; and
-//   no page cites a line. The dated reports (DRIFT.md and CONTROLS.md, with
-//   `surveyed:` in their front matter) keep their commit's lines, and are
-//   skipped;
-// - contrast: every token pair the workshop claims clears its ratio, in
-//   every theme and scheme, by Oriel's own contrast code, and Oriel's own
-//   theme check passes;
-// - accessibility, in headless Chrome: in every specimen, drawn by Oriel's
-//   window.css, every control has an accessible name and every tab stop
-//   shows focus.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page as Tab } from "playwright-core";
@@ -63,7 +29,6 @@ const all = pages();
 const css = windowCss();
 const proposals = proposalsCss();
 
-// Class names a stylesheet's selectors use.
 function selectorClasses(sheet: string): Set<string> {
   const out = new Set<string>();
   for (const rule of themes.rules(sheet))
@@ -73,8 +38,6 @@ function selectorClasses(sheet: string): Set<string> {
 const oriel = selectorClasses(css);
 const proposed = selectorClasses(proposals);
 
-// Classes Oriel dropped that pages held for a review still cite, listed in
-// UNDOCUMENTED.md: the class and reference checks let these through.
 const gone = goneClasses(all.find((p) => p.file === listFile));
 
 const short = (file: string) => (file === windowCssPath ? "window.css" : file);
@@ -228,9 +191,7 @@ export const checks: Check[] = [
     run(problems) {
       let n = 0;
       for (const p of all) {
-        // A dated report keeps the lines of the commit it names.
         if (p.front["surveyed"] !== undefined) continue;
-        // No line anywhere on the page, fences and specimen titles included.
         for (const m of p.text.matchAll(/[\w-]+\.(?:css|tsx?|md|json):\d+/g))
           problems.push(
             `${p.file} cites ${m[0]}: cite the selector or name instead (pnpm -s ds where finds it)`,
@@ -289,7 +250,6 @@ export const checks: Check[] = [
           problems.push(
             `${j.fg} on ${j.bg} is ${j.ratio.toFixed(2)}:1 in ${j.theme} ${j.scheme}, under ${j.min}:1: change one of the two in window.css`,
           );
-      // Oriel's own check, for what the workshop's pairs didn't already say.
       const said = judged
         .filter((j) => j.claimed && !j.passes)
         .map((j) => `${j.theme}, ${j.scheme}: ${j.fg} on ${j.bg} `);
@@ -379,8 +339,8 @@ export const checks: Check[] = [
   },
 ];
 
-// Audit pages in a few tabs at once, each in a context of its own, so one
-// tab's focus never touches another's. CHECK_TABS sets how many.
+// Each tab gets a context of its own, so one tab's focus never touches another's.
+// CHECK_TABS sets how many.
 const tabs = Number(process.env["CHECK_TABS"] ?? 4);
 async function audits(
   browser: Browser,
@@ -406,8 +366,6 @@ async function audits(
     await context.close();
   };
   await Promise.all(Array.from({ length: Math.min(tabs, jobs.length) }, worker));
-  // One line per kind of element and problem, with how many places and
-  // the first: one rule in window.css is usually behind all of them.
   const kinds = new Map<string, { what: string; fix: string; places: string[] }>();
   for (const f of found.sort((a, b) => a.at - b.at))
     for (const x of f.said) {
@@ -444,7 +402,6 @@ const named = new Set([
 
 type Finding = { what: string; where: string; fix: string };
 
-// Every named role has a name; every tab stop looks different focused.
 async function audit(
   tab: Tab,
   where: string,
@@ -468,10 +425,6 @@ async function audit(
         fix: "give it text, aria-label or aria-labelledby",
       });
   }
-  // Every tab stop, in tab order, must look different focused, unless the
-  // specimen already forces its focus look. One walk in the page, not a Tab
-  // press per stop: the same stops, a quarter of the time, and two stops
-  // that look alike are both checked.
   const stops = await tab.evaluate((max) => {
     (document.activeElement as HTMLElement | null)?.blur();
     const look = (e: HTMLElement | null) => {
@@ -487,18 +440,13 @@ async function audit(
         s.textDecorationLine,
       ].join("|");
     };
-    // A field whose frame shows focus (:focus-within) counts too.
     const drawn = (e: HTMLElement) => look(e) + look(e.parentElement);
-    // An element's kind, for grouping: its tag and classes, the workshop's
-    // forced states aside.
     const kind = (el: HTMLElement) =>
       el.tagName.toLowerCase() +
       [...el.classList]
         .filter((c) => !c.startsWith("ws-"))
         .map((c) => `.${c}`)
         .join("");
-    // What Tab stops on: focusable, shown, not disabled or inert. A sketch's
-    // sandboxed frame is passed over, as Tab finds nothing in it.
     let els = [
       ...document.querySelectorAll<HTMLElement>(
         "a[href], area[href], button, input, select, textarea, summary, [tabindex], [contenteditable]",
@@ -510,7 +458,6 @@ async function audit(
         el.checkVisibility() &&
         el.closest("[inert]") === null,
     );
-    // One stop per radio group: its checked radio, or its first.
     const radio = (el: HTMLElement) =>
       el instanceof HTMLInputElement && el.type === "radio" && el.name !== "" ? el : null;
     els = els.filter((el) => {
@@ -554,8 +501,6 @@ async function audit(
   return n + stops.length;
 }
 
-// Run the checks named (all of `from` when none are), print each, and say
-// whether they all pass.
 export async function runChecks(from: Check[], asked: string[]): Promise<boolean> {
   const unknown = asked.filter((a) => !from.some((c) => c.name === a));
   if (unknown.length > 0) {
