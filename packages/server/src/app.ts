@@ -2102,6 +2102,17 @@ export async function createApp(options: AppOptions): Promise<App> {
     drawn,
     holding: (item) => holding(item),
     sketchBase: options.sketchBase,
+    // Each candidate's item, or a cluster's lead, that no open workstream
+    // holds, as the overview ranks them.
+    candidates: async () => {
+      const held = heldBy(openWorkstreams());
+      const byId = new Map(records().map((record) => [record.id as string, record]));
+      return (await overview()).candidates.rows.flatMap(({ subject }) => {
+        const id = subject.kind === "item" ? subject.item.id : subject.lead?.id;
+        const record = id === undefined ? undefined : byId.get(id);
+        return record && !held(record) ? [record.id] : [];
+      });
+    },
     ...(secondLooks ? { secondLook: (set: ChangeSet) => secondLooks.view(set) } : {}),
     get writable() {
       return opens().some(

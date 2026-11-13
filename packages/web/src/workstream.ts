@@ -50,6 +50,9 @@ export type WorkstreamModel = {
   removing: readonly { id: string; member: MemberView | null }[];
   // Removals that can still be undone, oldest first.
   removals: readonly Removal[];
+  // What the page suggests adding: an empty workstream's suggestions,
+  // kept while all it holds came from them, so several go in one by one.
+  suggested: readonly MemberView[];
   // The user is on the undos, by pointer or keyboard: none runs out meanwhile.
   held: Held;
 };
@@ -83,6 +86,7 @@ export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
       lost: null,
       removing: [],
       removals: [],
+      suggested: [],
       held: notHeld,
     },
     [get(`/api/workstreams/${id}`, { kind: "workstream", id })],
@@ -203,6 +207,18 @@ export const undoable = (removal: Removal): boolean => removal.undo !== null;
 const newer = (model: WorkstreamModel, view: WorkstreamView): WorkstreamView =>
   model.view && model.view.workstream.version > view.workstream.version ? model.view : view;
 
+// A reply's view, as `newer` picks it, and what the page suggests with it.
+function viewed(
+  model: WorkstreamModel,
+  answer: WorkstreamView,
+): Pick<WorkstreamModel, "view" | "suggested"> {
+  const view = newer(model, answer);
+  if (view.suggested) return { view, suggested: view.suggested };
+  const kept = new Set(model.suggested.map((each) => each.ref.id));
+  const fromThem = view.members.every((member) => kept.has(member.ref.id));
+  return { view, suggested: fromThem ? model.suggested : [] };
+}
+
 // The workstream loaded, or failed to: a load that works takes back what a
 // failed one said, and that Oriel couldn't be reached.
 function loaded(model: WorkstreamModel, msg: Replied): WorkstreamModel {
@@ -213,7 +229,7 @@ function loaded(model: WorkstreamModel, msg: Replied): WorkstreamModel {
   const notice = model.notice === model.lost ? null : reached(model.notice);
   return {
     ...model,
-    view: newer(model, msg.body as WorkstreamView),
+    ...viewed(model, msg.body as WorkstreamView),
     status: "ready",
     notice,
     lost: null,
@@ -239,15 +255,14 @@ export function workstreamReplied(
       if (!msg.ok) return [{ ...model, removing: rest, notice: errorOf(msg.body) }, next];
       const { undo: call, ...answer } = msg.body as Undoable<WorkstreamView>;
       if (done && answer.members.some((each) => each.ref.id === done.id))
-        return [{ ...model, view: newer(model, answer), status: "ready" }, []];
-      const view = newer(model, answer);
+        return [{ ...model, ...viewed(model, answer), status: "ready" }, []];
       const undo = done?.member
         ? { member: done.member, version: answer.workstream.version, countdown: 0, undo: call }
         : null;
       return [
         {
           ...model,
-          view,
+          ...viewed(model, answer),
           status: "ready",
           removing: rest,
           removals: undo ? [...model.removals, undo] : model.removals,
@@ -276,7 +291,7 @@ export function workstreamReplied(
       if (tag.workstreamId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
       const reply = msg.body as DropReply;
-      return [{ ...model, view: newer(model, reply.workstream), notice: dropNotice(reply) }, []];
+      return [{ ...model, ...viewed(model, reply.workstream), notice: dropNotice(reply) }, []];
     }
     case "threadOpened": {
       if (tag.workstreamId !== model.id) return [model, []];

@@ -417,6 +417,7 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
             threads={workstreamThreads(model, model.workstream.id)}
             ending={model.ending}
             added={props.added}
+            adds={model.panelAdds}
             dispatch={dispatch}
           />
         )

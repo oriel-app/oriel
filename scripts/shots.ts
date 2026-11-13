@@ -255,6 +255,9 @@ const quotedReply = [
   "> the passenger always keeps the cheaper fare",
 ].join("\n");
 
+// The workstream the empty-suggests scenes open, made with their server.
+let emptyWorkstream = "";
+
 // What the agent says when asked about saved cards: two stories, as chips,
 // to open from the window chat and step through.
 const savedCardsReply =
@@ -2999,7 +3002,9 @@ const scenes: Scene[] = [
   {
     name: "workstream-empty",
     path: `/workstreams/${emptied.id}`,
-    act: (page) => page.locator(".workstream-page .rail-empty").waitFor(),
+    // With nothing named in a thread, it suggests the top of Not in a
+    // workstream yet (OA-348).
+    act: (page) => page.locator(".workstream-page .add-member").first().waitFor(),
   },
   {
     // Two items removed with ×, each undoable for a few seconds.
@@ -5940,6 +5945,68 @@ scenes.push(
           .waitFor();
         await page.locator(".item-panel .panel-facts").waitFor();
       }
+    },
+  })),
+  // An empty workstream suggests items (OA-348): what its thread's answer
+  // named, in that order, then the top of Not in a workstream yet; each
+  // added with its +, which leaves the rest to add, and an Undo.
+  ...(["", "-added"] as const).map((step): Scene => ({
+    name: `empty-suggests${step}`,
+    path: "/",
+    // The refused add logs its 409.
+    ...(step === "-added" && { refused: 409 }),
+    make: async () => {
+      const on = (await writing()).serving;
+      const made = await post<{ workstreamId: string }>(
+        "/api/threads",
+        { text: "What's holding up saved cards?" },
+        on,
+      );
+      await on.app.settled();
+      emptyWorkstream = made.workstreamId;
+      return on;
+    },
+    act: async (page) => {
+      await page.goto(new URL(`/workstreams/${emptyWorkstream}`, page.url()).href);
+      const rows = page.locator(".workstream-page .members:has(.add-member) .member");
+      await rows.first().waitFor();
+      const keys = async () =>
+        (await rows.locator(".key").allTextContents()).map((key) => key.trim());
+      const top = await page.evaluate(async () => {
+        type Subject = { kind: string; item?: { key: string }; lead?: { key: string } | null };
+        const view = (await (await fetch("/api/overview")).json()) as {
+          candidates: { rows: { subject: Subject }[] };
+        };
+        return view.candidates.rows.flatMap(({ subject }) => {
+          const key = subject.kind === "item" ? subject.item?.key : subject.lead?.key;
+          return key ? [key] : [];
+        });
+      });
+      const named = ["SYN-99", "SYN-104"];
+      const want = [...new Set([...named, ...top])].slice(0, 5);
+      const got = await keys();
+      if (JSON.stringify(got) !== JSON.stringify(want))
+        throw new Error(`Suggested ${got.join(", ")}; expected ${want.join(", ")}`);
+      if (step === "") return;
+      // A refused add says so here, and its row stays to try again.
+      await page.route(/\/api\/workstreams\/[0-9A-Z]{26}\/add$/, (route) =>
+        route.fulfill({ status: 409, json: { error: "It moved." } }),
+      );
+      await page.getByRole("button", { name: "Add SYN-99" }).click();
+      await page.getByRole("alert").filter({ hasText: "Couldn't add SYN-99" }).waitFor();
+      await page.getByRole("button", { name: "Add SYN-99" }).waitFor();
+      await page.unrouteAll();
+      await page.getByRole("button", { name: "Add SYN-99" }).click();
+      await page
+        .locator(".workstream-page .members:not(:has(.add-member)) .member", {
+          hasText: "SYN-99",
+        })
+        .waitFor();
+      await page.getByRole("button", { name: /^Undo: Added SYN-99/ }).waitFor();
+      await expectCount(page.getByRole("alert").filter({ hasText: "Couldn't add" }), 0);
+      const left = await keys();
+      if (JSON.stringify(left) !== JSON.stringify(want.filter((key) => key !== "SYN-99")))
+        throw new Error(`After adding SYN-99, suggested ${left.join(", ")}`);
     },
   })),
 );

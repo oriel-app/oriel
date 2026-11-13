@@ -893,12 +893,52 @@ A program the person connected to Oriel's MCP door (decision 0058) changes a wor
 - **Where:** `History` in `packages/web/src/workstream-page.tsx` draws it, and `updateWorkstream` in `packages/web/src/workstream.ts` runs its Undo, which the server's `views` in `packages/server/src/views.ts` gives the version.
 - **The words:** "· by {name}, an outside tool". Never what the tool says of itself, only the name the person gave it.
 
+## An empty workstream
+
+A workstream that holds nothing, as one a conversation made, suggests up to five items instead: first what its threads' answers named as chips, in the order they named them, then the top of Not in a workstream yet. Each row's + adds it through the item panel's add, with its Undo in the window's stack; the rest stay to add while all the workstream holds came from them. With nothing to suggest, the list is one short line: "No items."
+
+```html specimen id=empty-suggests title="An empty workstream's suggestions"
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Items</h2>
+    <button type="button" class="quiet-action">Add from the window</button>
+  </div>
+  <h3 class="section-title suggested-title">Suggested</h3>
+  <ul class="members">
+    <li class="member" data-item="jira:SYN-99">
+      <span class="type" data-type="story" title="Story"></span>
+      <span class="key">SYN-99</span>
+      <span class="member-title">Save a card for next time</span>
+      <span class="status" data-category="todo">To Do</span>
+      <button type="button" class="add-member" aria-label="Add SYN-99">+</button>
+    </li>
+    <li class="member" data-item="jira:SYN-104">
+      <span class="type" data-type="story" title="Story"></span>
+      <span class="key">SYN-104</span>
+      <span class="member-title">Handle 3-D Secure challenges in the native checkout</span>
+      <span class="status" data-category="in-progress">In Progress</span>
+      <button type="button" class="add-member" aria-label="Add SYN-104">+</button>
+    </li>
+    <li class="member" data-item="jira:SYN-4">
+      <span class="type" data-type="epic" title="Epic"></span>
+      <span class="key">SYN-4</span>
+      <span class="member-title">Vehicle and freight reservations</span>
+      <span class="status" data-category="todo">To Do</span>
+      <button type="button" class="add-member" aria-label="Add SYN-4">+</button>
+    </li>
+  </ul>
+</section>
+```
+
+- **Where:** `WorkstreamPage` in `packages/web/src/workstream-page.tsx` draws it from `suggested`, which `views` in `packages/server/src/views.ts` puts on an empty workstream's view, and `viewed` in `packages/web/src/workstream.ts` keeps.
+- **The words:** "Suggested", and each + is "Add {key} to “{name}”" on its tooltip. No sentence says what the list is.
+
 ## Built from
 
 - [Sidebar](/components/sidebar): the shell, Needs you, the current workstream with its threads and "5 more", Done, Sources and Settings; and at 390, the bar with its menu.
 - [Page head](/components/page-head): the workstream's head, its name field, Mark done and Delete, and where it came from.
-- [Icon button](/components/icon-button): Mark done and Delete (`.head-action`), the remove × and the sidebar's disclosures.
-- [Tooltip](/components/tooltip): on Mark done, Delete and each remove ×.
+- [Icon button](/components/icon-button): Mark done and Delete (`.head-action`), the remove ×, a suggestion's + and the sidebar's disclosures.
+- [Tooltip](/components/tooltip): on Mark done, Delete, each remove × and each +.
 - [Chat input](/components/chat-input): the workstream's Ask box.
 - [Button](/components/button): Ask, and Add from the window.
 - [Overview sections](/components/overview-section): the small-caps section titles, with the action beside Items.

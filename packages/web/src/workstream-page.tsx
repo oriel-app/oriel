@@ -22,6 +22,7 @@ import {
   Stamp,
 } from "./parts.tsx";
 import type { UndoNote, Undos } from "./undos.ts";
+import { addOf, type PanelAdds } from "./panel-adds.ts";
 import type { MenuItem } from "./menu.tsx";
 import type { Carried, MovingMsg } from "./moving.ts";
 import type {
@@ -44,12 +45,15 @@ export function WorkstreamPage(props: {
   threads: ThreadSummaryView[];
   ending: EndingModel;
   added: Undos;
+  // Every add from the panel, or from a suggestion here, in flight or done.
+  adds: PanelAdds;
   dispatch: Dispatch;
 }) {
   const { model, threads, ending, dispatch } = props;
   const send = (msg: WorkstreamMsg) => dispatch({ type: "workstream", msg });
   const { view } = model;
   const list = useRef<HTMLUListElement>(null);
+  const suggestions = useRef<HTMLUListElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   // The item an undo brings back: its × takes focus once it shows again.
   const back = useRef<string | null>(null);
@@ -64,16 +68,18 @@ export function WorkstreamPage(props: {
     back.current = null;
     row.querySelector<HTMLButtonElement>(".remove-member")?.focus();
   }, [view]);
-  // A row's × that had focus hands it to the row below, or else above, so
-  // the keyboard stays in the list as rows go.
+  // A row's button that had focus hands it to the same one on the row
+  // below, or else above, so the keyboard stays in the list as rows go.
+  const handOn = (rows: HTMLUListElement | null, id: string, button: string) => {
+    const row = rowOf(rows, id);
+    if (!row?.contains(document.activeElement)) return;
+    const beside = [row.nextElementSibling, row.previousElementSibling]
+      .map((each) => each?.querySelector<HTMLButtonElement>(button))
+      .find((each) => each);
+    (beside ?? addButton.current)?.focus();
+  };
   const remove = (id: string) => {
-    const row = rowOf(list.current, id);
-    if (row?.contains(document.activeElement)) {
-      const beside = [row.nextElementSibling, row.previousElementSibling]
-        .map((each) => each?.querySelector<HTMLButtonElement>(".remove-member"))
-        .find((each) => each);
-      (beside ?? addButton.current)?.focus();
-    }
+    handOn(list.current, id, ".remove-member");
     send({ type: "memberRemoved", id });
   };
   const stack = (
@@ -115,6 +121,30 @@ export function WorkstreamPage(props: {
   const members = view.members.filter(
     (member) => !model.removing.some((each) => each.id === member.ref.id),
   );
+  // A suggestion goes once it's added, or on its way in.
+  const suggested = model.suggested.filter((each) => {
+    const add = addOf(props.adds, { item: each.ref.id, workstreamId: workstream.id });
+    const going = add?.pending === "add" || add?.done != null;
+    return !going && !members.some((member) => member.ref.id === each.ref.id);
+  });
+  // An add from here the server refused, which the panel may not be open to
+  // say: its row stays, to try again.
+  const refused = suggested.flatMap((each) => {
+    const problem = addOf(props.adds, { item: each.ref.id, workstreamId: workstream.id })?.problem;
+    return problem ? [`Couldn't add ${each.ref.key}: ${problem}`] : [];
+  });
+  // Through the panel's add, so its Undo is one more note in the stack.
+  const add = (member: MemberView) => {
+    handOn(suggestions.current, member.ref.id, ".add-member");
+    dispatch({
+      type: "panelAdd",
+      msg: {
+        type: "addClicked",
+        item: { id: member.ref.id, key: member.ref.key },
+        workstream: { id: workstream.id, name: workstream.name },
+      },
+    });
+  };
   // An item open beside the Ask box that the workstream doesn't hold is
   // read-only to the thread it starts, which Cite adds it to (decision 0062).
   const readOnly = (id: string) => !members.some((member) => member.ref.id === id);
@@ -219,7 +249,7 @@ export function WorkstreamPage(props: {
             </button>
           </div>
           {members.length === 0 ? (
-            <p class="rail-empty">No items. Add some from the window.</p>
+            suggested.length === 0 && <p class="rail-empty">No items.</p>
           ) : (
             <ItemListContext.Provider value={members.map((member) => member.ref.id)}>
               <ul class="members" ref={list}>
@@ -234,7 +264,28 @@ export function WorkstreamPage(props: {
               </ul>
             </ItemListContext.Provider>
           )}
-          {/* After the list, so the keyboard reaches them from the last row. */}
+          {suggested.length > 0 && (
+            <>
+              <h3 class="section-title suggested-title">Suggested</h3>
+              <ItemListContext.Provider value={suggested.map((each) => each.ref.id)}>
+                <ul class="members" ref={suggestions}>
+                  {suggested.map((each) => (
+                    <Member
+                      key={each.ref.id}
+                      member={each}
+                      adding={{ to: workstream.name, onAdd: () => add(each) }}
+                    />
+                  ))}
+                </ul>
+              </ItemListContext.Provider>
+              {refused.map((said) => (
+                <p key={said} class="rail-empty" role="alert">
+                  {said}
+                </p>
+              ))}
+            </>
+          )}
+          {/* After the lists, so the keyboard reaches them from the last row. */}
           {stack}
         </section>
 

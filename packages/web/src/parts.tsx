@@ -776,11 +776,14 @@ export function Stamp({ at, absolute }: { at: string; absolute?: (instant: strin
 export function Member({
   member,
   onRemove,
+  adding,
   inRegion = false,
   moving,
 }: {
   member: MemberView;
   onRemove?: () => void;
+  // A suggestion: the row's + adds it to the workstream named.
+  adding?: { to: string; onAdd(): void };
   // Found outside the workstream, though it holds this one too.
   inRegion?: boolean;
   // On a workstream's page: the row drags to another workstream in the
@@ -810,6 +813,18 @@ export function Member({
             onClick={onRemove}
           >
             ×
+          </button>
+        </Tooltip>
+      )}
+      {adding && (
+        <Tooltip text={`Add ${ref.key} to “${adding.to}”`}>
+          <button
+            type="button"
+            class="add-member"
+            aria-label={`Add ${ref.key}`}
+            onClick={adding.onAdd}
+          >
+            +
           </button>
         </Tooltip>
       )}

@@ -79,6 +79,9 @@ export type ViewDeps = {
   writable: boolean;
   // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
+  // The top of Not in a workstream yet, as item IDs, most worth curating
+  // first: what an empty workstream suggests after its threads' answers.
+  candidates?: () => Promise<readonly string[]>;
   // A change set's latest second look, for its thread's page (decision
   // 0054); absent where no model runs the agent, so none can be taken.
   secondLook?: (set: ChangeSet) => Promise<SecondLookView | null>;
@@ -86,6 +89,9 @@ export type ViewDeps = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+// How many items an empty workstream suggests: a few, no paging.
+const maxSuggested = 5;
 
 // What fits on one line of a list of threads beside a thread's workstream and time.
 const maxTitleChars = 60;
@@ -749,6 +755,38 @@ export function views(deps: ViewDeps) {
     return Object.fromEntries(await Promise.all(ids.map(async (id) => [id, await chip(id)])));
   };
 
+  // What an empty workstream suggests adding (OA-348): the items its
+  // threads' answers named as chips, in the order they were named, oldest
+  // thread first, then the
+  // top of Not in a workstream yet, each once, as live items it shows.
+  const suggested = async (workstreamId: Ulid): Promise<MemberView[]> => {
+    const { byId } = lookup();
+    // Oldest thread first: `ofWorkstream` lists the newest first.
+    const named = threads
+      .ofWorkstream(workstreamId, deps.now())
+      .toReversed()
+      .flatMap(({ thread }) =>
+        answered(
+          threads
+            .messages(thread.id)
+            .flatMap(
+              (m) => entry(m, { thread: thread.id, workstream: workstreamId }, new Set()) ?? [],
+            ),
+        ),
+      );
+    const ids = [...new Set([...named, ...((await deps.candidates?.()) ?? [])])].filter(
+      (id) => byId.has(id as ItemId) && (deps.shown?.(id) ?? true),
+    );
+    const asOf = deps.asOf();
+    return ids.slice(0, maxSuggested).map((id) => {
+      const record = byId.get(id as ItemId);
+      return {
+        ref: ref(record, id),
+        row: record ? itemRow(record, asOf, deps.presentations) : null,
+      };
+    });
+  };
+
   const regionIds = (workstreamId: Ulid, version: number): Set<string> =>
     new Set(workstreams.region(workstreamId, version)?.items.map((m) => m.id) ?? []);
 
@@ -769,11 +807,13 @@ export function views(deps: ViewDeps) {
     async workstream(id: Ulid): Promise<WorkstreamView | null> {
       const workstream = workstreams.get(id);
       if (!workstream) return null;
+      const held = members(workstreams.region(id, workstream.version)?.items ?? []);
       return {
         workstream: workstreamSummary(id),
-        members: members(workstreams.region(id, workstream.version)?.items ?? []),
+        members: held,
         changes: changeView(between(id, 0, workstream.version), workstream.version).toReversed(),
         threads: await Promise.all(threads.ofWorkstream(id, deps.now()).map(threadSummary)),
+        ...(held.length === 0 && { suggested: await suggested(id) }),
       };
     },
 
