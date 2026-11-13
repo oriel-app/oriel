@@ -8,18 +8,18 @@ summary: Three durations and two easings. Quick for a state, move for a place, m
 
 Oriel moves little. A dense tool read all day shouldn't make people wait for it, or pull their eye to something that isn't news. Motion says one of two things: a state changed here, or something arrived from somewhere. A third, the pulse, says work is going on.
 
-The bar is "a little life, never obnoxious" (2026-11-08): nothing takes over 200ms but a drop's settle and the bead's flourish, no overshoot you'd notice the tenth time, and nothing delays a click.
+The bar is "a little life, never obnoxious" (2026-11-08): nothing takes over 200ms but a drop's settle, the composer carried into the window chat's rail, and the bead's flourish, no overshoot you'd notice the tenth time, and nothing delays a click.
 
 ## The tokens
 
 "Motion: quick for a state, move for a place, and how a move settles" (`:root` in `window.css`).
 
 - `--duration-quick` (120ms): **a state**. Something changes where it is: a chevron turns, a switch flips, a hidden action fades in, a list dims while it reloads.
-- `--duration-move` (180ms): **a place**. Something travels or arrives: the window chat arrives, the sidebar folds, the drawer opens, a swiped row slides.
+- `--duration-move` (180ms): **a place**. Something travels or arrives: the window chat's rail comes in, the sidebar folds, the drawer opens, a swiped row slides.
 - `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`): how a move settles, fast then gentle. Use it for anything that arrives.
 - `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a small flourish** (decision 0056). Only [the bead](/components/bead) uses them, for its count's pop and its caught-up mark. Its shape moves on springs of its own, in script (see below).
 
-Shorter and longer steps are written from these, never as new numbers: a menu leaves, and a card dropped nowhere goes back, in two thirds of quick (`calc(var(--duration-quick) * 2 / 3)`, 80ms), a drop settles in four thirds of move (240ms), and arrivals stagger by a fifth of quick (24ms).
+Shorter and longer steps are written from these, never as new numbers: a menu leaves, and a card dropped nowhere goes back, in two thirds of quick (`calc(var(--duration-quick) * 2 / 3)`, 80ms), a drop settles, and Motion A's composer lands, in four thirds of move (240ms), and arrivals stagger by a fifth of quick (24ms).
 
 They're shared: no theme changes them. A rule may not write a duration as a literal, since Oriel's theme check fails it. Keyframe durations are the exception: the pulse's is the shared `--pulse` (1.6s), and the spinner's and the install bar's are literals. See [Drift](#drift).
 
@@ -30,9 +30,10 @@ tokens motion
 ## What moves
 
 - **The item panel** (`.item-panel` in `window.css`) slides in from `--slide-panel` (0.375rem) to the right and fades in, at quick speed (`--duration-quick`) with `--ease-out`: a click on an item should feel answered at once (2026-11-08). Its contents fade in again for each item it shows (`panel-fade`), at the same speed.
-- **The window chat** (`.window-chat` in `window.css`) arrives the same way, but at move speed. On a narrow screen it's a bottom sheet that rises `--space-6` (`@starting-style` in `window.css`).
-- **The window chat beside an item.** At 1100px and up, opening an item from the chat moves the chat into the page column: the item arrives at the window's edge as above, and the chat slides left into the column at move speed with `--ease-out` (its `left` and `right`), over the overview, which is hidden once it's covered. Closing the item reverses it: the overview is back at once, and the chat slides back to the right. Swapping items moves nothing: only the panel's contents fade (`panel-fade`). Nothing waits on the slide.
-- **The item panel's dock** (`.panel-dock` in `window.css`), below 1100px over a conversation, arrives with the panel, rising `--space-1` as it fades in (`arrive`). Folded with Chat, the panel leaves at once and the item's line above the composer (`.panel-folded`) arrives the same way; Show brings the panel back as it first came.
+- **The window chat's rail** (`.window-chat` in `window.css`), at 1100px and up, comes in from the window's edge as the page column narrows for it, and the composer travels from the page's foot into it: Oriel's first View Transition, [Motion A](#motion-a-the-composer-carried). Folding it reverses all three.
+- **The window chat's sheet**, under 1100px, rises from below the window (`@starting-style`, `translateY(100%)`), at move speed with `--ease-out`, its composer where the foot's was. Its grab bar takes it between 45vh and 85vh at the same speed (its `height`). Nothing travels.
+- **An item opened from the window chat** takes the rail's place, as wide, and arrives as the item panel always does; the overview keeps its width, so nothing in the page moves. Closing the item brings the rail back at once. Swapping items moves nothing: only the panel's contents fade (`panel-fade`).
+- **The item panel's dock** (`.panel-dock` in `window.css`), over the window chat at every width and over a thread's page below 1100px, arrives with the panel, rising `--space-1` as it fades in (`arrive`). Folded with Chat, the panel leaves at once and the item's line above the composer (`.panel-folded`) arrives the same way; Show brings the panel back as it first came.
 - **The sidebar's fold** (`.shell` in `window.css`): its grid column narrows to icons, at move speed.
 - **A change set folding itself** (`.change-set[data-closing]` in `window.css`): once its apply ends on screen and a 1.2s beat has passed, everything under its head closes to nothing and fades, at move speed with `--ease-out`, then it folds. Under reduced motion it folds at once.
 - **The drawer** on a narrow screen slides in from the left, and its scrim fades. Closing, it stays visible until the move ends, then leaves the tab order (`.sidebar` in `window.css`).
@@ -45,13 +46,37 @@ tokens motion
 - **Arrivals** (`.arrive` in `window.css`): something that shows up in place, as what a new thread's workstream holds once it's picked, fades in and rises `--space-1`, at move speed with `--ease-out`. Siblings that arrive together stagger, each a fifth of quick after the one before, up to the sixth, so a long list is never slow to show. A list that reloads in place doesn't arrive: only what's new to the person does.
 - **Fades:** a hidden row action appearing, Browse's clusters dimming to 0.55 while a grouping loads, and Needs you's background flashing the accent tint once when the overview's count points at it.
 
-Entries use `@starting-style`: the panel and the chat are drawn at their start (transparent, offset) for their first frame, then transition to rest. There's no script, but for the bead. An engine without `@starting-style` (Safari before 17.5, Firefox before 129) just shows them at rest, which is fine.
+Entries use `@starting-style`: the panel and the chat's sheet are drawn at their start (transparent, offset) for their first frame, then transition to rest. There's no script, but for the bead, the drag card, and Motion A's one call to start a View Transition. An engine without `@starting-style` (Safari before 17.5, Firefox before 129) just shows them at rest, which is fine.
 
 Every transition and animation in window.css now:
 
 ```live
 motion
 ```
+
+## Motion A: the composer carried
+
+The window chat's rail opening and folding is Oriel's first View Transition (`carrying` in `packages/web/src/carry.ts`). `useProgram` in `packages/web/src/use-program.ts` asks `railMoved` in `packages/web/src/app.tsx` of each new model: the rail opened or folded, on the window (the overview or Browse), with no item open before or after, at 1100px and up. Only then does it render inside `document.startViewTransition`; anything else renders as it always has. Models that arrive while it runs wait for it, and render with it.
+
+While it runs, `html[data-carrying]` is set, and it names the parts that move (`html[data-carrying] .shell-main` and the rules after it in `window.css`):
+
+| Name                    | What                                                              |
+| ----------------------- | ----------------------------------------------------------------- |
+| `window-page`           | The page column, `.shell-main`                                    |
+| `window-chat-rail`      | The rail, `.window-chat`                                          |
+| `window-composer`       | The composer, `.chat-input` in `.overview-dock` or `.window-chat` |
+| `window-composer-field` | Its field                                                         |
+| `window-composer-reads` | What it reads, `.chat-input-reads`                                |
+| `window-composer-send`  | Its button, Ask or Send                                           |
+
+- **The page** narrows at move speed with `--ease-out`. Its old and new snapshots cross-fade anchored at the top left (`object-fit: none`), so nothing in it stretches while the column changes width.
+- **The rail** comes in from the window's edge (`carry-in`, from `translate: 100% 0`) and leaves the same way as it folds (`carry-out`), at move speed with `--ease-out`.
+- **The composer's box** is drawn by its group, `::view-transition-group(window-composer)`: the border, `--radius-lg`, `--surface` and `--shadow`, as a raised composer has. Its own old and new images are hidden, so the box grows or shrinks between the foot's width and the rail's, never a stretched picture of its words.
+- **Its field, what it reads and its button** travel on their own, each to its new place, in 240ms (`calc(var(--duration-move) + var(--duration-quick) / 2)`), so the composer lands just after the rail settles.
+
+The names are set only while it runs, and taken off when it ends (`transition.finished`): a named element is its own stacking context and a part of every View Transition, and none of these should be either the rest of the time.
+
+Without View Transitions it just renders; skipped, as when the page is hidden, it renders all the same. Under 1100px nothing travels: the sheet rises (see [What moves](#what-moves)).
 
 ## Drag
 
@@ -138,7 +163,7 @@ The bead (decision 0056, amended) reads the same query in script (`reducedMotion
 
 The drag card follows the pointer level, with no lean (`reduced` in `drag-card.ts`); dropped, it only fades, and dropped nowhere it goes back to its row at once. Menus only fade, with no scale (`.context-menu` in the block). Arrivals fade, all together, with no rise or stagger (`.arrive`, which takes `panel-fade`), and so do the panel's dock and the folded item line (`.panel-dock`, `.panel-folded`).
 
-The window chat keeps its fade as the item panel does (`transition-property: opacity`), so beside an item it moves to the column at once, and the overview under it hides at once.
+Motion A carries nothing: `carrying` sets no `data-carrying`, so no part is named and only the root cross-fades, and the block sets `::view-transition-group(*)`, `::view-transition-old(*)` and `::view-transition-new(*)` to `--duration-quick` (120ms). The window chat's sheet keeps only its fade (`transition-property: opacity`), as the item panel does, so it's there at once, and its grab bar changes its height at once.
 
 One gap:
 
@@ -146,7 +171,7 @@ One gap:
 
 ## Drift
 
-- **Three easings.** The panel, the chat and the switch use `--ease-out`. The sidebar, drawer, swipe and the chevrons inside the sidebar use `ease`. `.chevron`, `.clusters` and `.make-workstream` use the default. Use `--ease-out` for anything new.
+- **Three easings.** The panel, the chat, Motion A and the switch use `--ease-out`. The sidebar, drawer, swipe and the chevrons inside the sidebar use `ease`. `.chevron`, `.clusters` and `.make-workstream` use the default. Use `--ease-out` for anything new.
 - **Keyframe durations are literals**: the spinner's 0.9s and the install bar's 1.8s. They're the only durations outside the tokens.
 
 ## Rules

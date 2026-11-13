@@ -883,9 +883,13 @@ The overview as a person opens it on a normal morning: the sidebar with what nee
 </div>
 ```
 
-## With the window chat and an item open
+## With the window chat
 
-The window chat opens over the page's right side. When the person opens an item from it, a chip in an answer, on a screen 1100px wide or more, the item takes the window's edge and the chat moves into the page column in the overview's place (`.shell[data-panel][data-chat]`), so the conversation and the item are on screen together, as on a thread's page. The chip stays marked ([Chip](/components/chip)), and the panel steps through the items that answer named ("1 of 2"). "‹ Window", in the chat's head where × was, puts the overview back with the item still open, and the composer at the foot offers "Back to the chat". Closing the item puts the chat back over the page's right side. From 1100 to 1279px the item narrows so the chat keeps 28rem; below 1100px the item covers the chat, as it always has. See [Layout](/foundations/layout) and [Motion](/foundations/motion); the shots are `ask-panel-beside`, `ask-panel-step` and `ask-panel-window`.
+Asked, the window chat opens in a rail at the window's right edge, and the page column narrows for it, so the overview stays whole beside the chat rather than under it (`.shell[data-chat]`). The composer leaves the page's foot for the rail's (Motion A). The rail stays on Browse too: it's the same conversation, still watched. **Hide the chat**, the fold in its head, puts the composer back at the foot, with its draft, what it's looking at, and "Back to the chat". Under 1100px there's no rail: the chat is a sheet over the page's foot, 45vh, or 85vh with its grab bar. See [Right rail](/components/right-rail#the-window-chat-s-rail), [Layout](/foundations/layout) and [Motion](/foundations/motion#motion-a-the-composer-carried); the shots are `window-rail-browse` and `ask-back`.
+
+When the person opens an item from it, a chip in an answer, the item takes the rail's place, as wide, so the overview keeps its width, and carries the chat in its dock, at every width. The chip stays marked ([Chip](/components/chip)), and the panel steps through the items that answer named ("1 of 2"). Chat in the dock folds the item to a line above the rail's composer; closing the item brings the rail back. The shots are `ask-panel-beside`, `ask-panel-step` and `ask-panel-window`.
+
+When the chat moves into its workstream, as when the agent gathers items into it, the conversation stays in the rail, ending "Now a thread in" its workstream, and the composer is a fresh chat's at once. Open as a thread hands it over the same way and goes to the thread. The shots are `window-moved`, `window-moved-asked-again`, `window-moved-opened` and `window-moved-continued`.
 
 ## Built from
 
@@ -893,6 +897,7 @@ The window chat opens over the page's right side. When the person opens an item 
 - [Tabs](/components/tabs): Overview and Browse.
 - [Page head](/components/page-head): the top strip and its counts.
 - [Chat input](/components/chat-input): the composer at the page's foot, and the questions to start from beside their headlines.
+- [Right rail](/components/right-rail#the-window-chat-s-rail): the window chat's rail, once asked.
 - [Button](/components/button): Ask, and Make a workstream.
 - [Overview sections](/components/overview-section): the columns, each section's head and count, the headlines with the review links' one, and the page's one spacing rule.
 - [List rows](/components/list-row): the workstream, candidate and person rows.

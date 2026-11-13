@@ -150,7 +150,7 @@ tokens shape
 Two shadows and a scrim. Most of Oriel is flat: things sit on the page, divided by hairlines. Elevation is only for what floats over the page.
 
 - `--shadow-sm`: barely lifted. The current page's nav link (`.nav-link[aria-current="page"]` in `window.css`) and the switch's knob (`.switch-knob` in `window.css`).
-- `--shadow`: floats over the page. The item panel over the page (`.item-panel` in `window.css`; it loses it when it sits beside the page at 1100px and up), the window chat (`.window-chat` in `window.css`), the narrow screen's drawer, a context menu (`.context-menu` in `window.css`), a tooltip (`.tooltip` in `window.css`), the delete question (`.confirm` in `window.css`), the selection bar (`.selection-bar` in `window.css`) and a thread's composer (`.chat-input[data-elevation="raised"]` in `window.css`).
+- `--shadow`: floats over the page. The item panel over the page (`.item-panel` in `window.css`; it loses it when it sits beside the page at 1100px and up), the window chat's sheet under 1100px (`.window-chat` in `window.css`; its rail has none), the narrow screen's drawer, a context menu (`.context-menu` in `window.css`), a tooltip (`.tooltip` in `window.css`), the delete question (`.confirm` in `window.css`), the selection bar (`.selection-bar` in `window.css`) and a thread's composer (`.chat-input[data-elevation="raised"]` in `window.css`).
 - `--scrim`: dims the page under the drawer (`.drawer-backdrop`) and the delete question (`.confirm::backdrop` in `window.css`). The ink at 32% in light, the paper at 40% in dark.
 
 Shadows are shared values today: neither theme sets its own, but each scheme does. Dark shadows are much heavier, since a soft shadow doesn't show on a dark page.
@@ -189,18 +189,18 @@ tokens elevation
 
 What stacks over what is one scale of shared tokens on `html` (`--layer-raised` in `window.css`), lowest first. A rule's `z-index` is always one of them, never a number:
 
-| Token            | Value | What                                        | Where                                               |
-| ---------------- | ----- | ------------------------------------------- | --------------------------------------------------- |
-| `--layer-raised` | 1     | A part over its sibling inside one thing    | `.anchor-pick` in `window.css`                      |
-| `--layer-bar`    | 3     | The narrow screen's bar                     | `.bar` in `window.css`                              |
-| `--layer-float`  | 4     | The selection bar                           | `.selection-bar` in `window.css`                    |
-| `--layer-sticky` | 5     | The sidebar, sticky                         | `.sidebar` in `window.css`                          |
-| `--layer-frame`  | 6     | The frame's band and corners, over the page | `.frame` in `window.css`                            |
-| `--layer-sheet`  | 18    | The window chat                             | `.window-chat` in `window.css`                      |
-| `--layer-panel`  | 19    | The item panel, over the window chat        | `.item-panel` in `window.css`                       |
-| `--layer-veil`   | 20    | The drawer's scrim, and the drop veil       | `.drawer-backdrop` and `.drop-veil` in `window.css` |
-| `--layer-drawer` | 21    | The sidebar as a drawer                     | `.sidebar` in `window.css`                          |
-| `--layer-toast`  | 22    | The bead, over everything in the window     | `.bead-wrap` in `window.css`                        |
+| Token            | Value | What                                         | Where                                               |
+| ---------------- | ----- | -------------------------------------------- | --------------------------------------------------- |
+| `--layer-raised` | 1     | A part over its sibling inside one thing     | `.anchor-pick` in `window.css`                      |
+| `--layer-bar`    | 3     | The narrow screen's bar                      | `.bar` in `window.css`                              |
+| `--layer-float`  | 4     | The selection bar                            | `.selection-bar` in `window.css`                    |
+| `--layer-sticky` | 5     | The sidebar, sticky; the window chat's rail  | `.sidebar` in `window.css`                          |
+| `--layer-frame`  | 6     | The frame's band and corners, over the page  | `.frame` in `window.css`                            |
+| `--layer-sheet`  | 18    | The window chat's sheet, under 1100px        | `.window-chat` in `window.css`                      |
+| `--layer-panel`  | 19    | The item panel, over the window chat's sheet | `.item-panel` in `window.css`                       |
+| `--layer-veil`   | 20    | The drawer's scrim, and the drop veil        | `.drawer-backdrop` and `.drop-veil` in `window.css` |
+| `--layer-drawer` | 21    | The sidebar as a drawer                      | `.sidebar` in `window.css`                          |
+| `--layer-toast`  | 22    | The bead, over everything in the window      | `.bead-wrap` in `window.css`                        |
 
 `--layer-raised` only orders things inside one stacking context, such as the bead over its under-layer; the rest order the window's own layers. Menus, tooltips and dialogs need none: they open in the top layer, as popovers or a modal. A new layer should too, if it can. z-index isn't a theme value, so no theme sets these.
 

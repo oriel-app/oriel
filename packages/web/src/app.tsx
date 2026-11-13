@@ -21,7 +21,7 @@ import { Closing, closingProblem } from "./close-thread.tsx";
 import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
-import { askable, currentWorkstream, type Model, type Msg } from "./root.ts";
+import { askable, currentWorkstream, type Model, type Msg, onWindow } from "./root.ts";
 import { panelName, placeIn } from "./panel.ts";
 import { expected } from "./thread.ts";
 import { addUndos } from "./panel-adds.ts";
@@ -40,10 +40,11 @@ import { SetupPage } from "./setup-page.tsx";
 import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
 import { ConnectNotices } from "./connect-steps.tsx";
-import { WindowChat, windowChatComposer } from "./window-chat-view.tsx";
+import { OverviewComposer, WindowChat, windowChatComposer } from "./window-chat-view.tsx";
+import { chatThread } from "./window-chat.ts";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
-  const [model, dispatch] = useProgram(program);
+  const [model, dispatch] = useProgram(program, railMoved);
   // Back and forward re-route the app from the address bar.
   useEffect(() => {
     const routed = () =>
@@ -53,9 +54,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   }, []);
   const [folded, setFolded] = useState(() => readFolded());
   const [drawer, setDrawer] = useState(false);
-  const beside = useMatches(besideChat);
-  const dock = beside ? null : dockOf(model, dispatch);
+  const dock = dockOf(model, useMatches(railRoom), dispatch);
   const itemFolded = dock?.folded === true;
+  const chatOpen = onWindow(model.route) && model.chat.open;
+  // The composer moves, into the rail, back to the page's foot, or into an
+  // item's dock, and keeps the cursor if it had it.
+  useComposerFocus([chatOpen, model.panel?.id, itemFolded]);
   // Closing the drawer by hand gives focus back to the menu that opened it.
   const closeDrawer = () => {
     if (!document.querySelector(".shell[data-drawer]")) return;
@@ -165,7 +169,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
                 data-folded={folded || undefined}
                 data-drawer={drawer || undefined}
                 data-panel={model.panel ? "" : undefined}
-                data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
+                data-chat={chatOpen ? "" : undefined}
               >
                 <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
                 <div class="frame" aria-hidden="true" />
@@ -192,16 +196,9 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
                     />
                   </ItemLinksContext.Provider>
                 </div>
-                {model.route.page === "overview" &&
-                  model.chat.open &&
-                  (!model.panel || beside || itemFolded) && (
-                    <WindowChat
-                      chat={model.chat}
-                      thread={model.thread}
-                      beside={model.panel !== null && beside}
-                      dispatch={dispatch}
-                    />
-                  )}
+                {chatOpen && (!model.panel || itemFolded) && (
+                  <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
+                )}
                 {model.panel && !itemFolded && (
                   <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
                     <ItemPanel
@@ -243,34 +240,74 @@ const noItems: ReadonlyMap<string, string> = new Map();
 // Where the sidebar is a drawer; window.css says the same.
 const narrow = "(max-width: 760px)";
 
-// Where the window chat stays beside an open item, in the page column, and
-// the item takes the window's edge; window.css says the same. Narrower, the
-// item covers the chat, as it always has.
-const besideChat = "(min-width: 1100px)";
+// The window chat's rail opening or folding with no item open, where
+// there's room for a rail: the composer travels between the page's foot
+// and the rail (carry.ts). Under 1100 nothing travels; the sheet rises.
+function railMoved(before: Model, after: Model): boolean {
+  const open = (model: Model) => onWindow(model.route) && model.chat.open && !model.panel;
+  return (
+    open(before) !== open(after) &&
+    onWindow(before.route) &&
+    onWindow(after.route) &&
+    before.panel === null &&
+    after.panel === null &&
+    matchMedia(railRoom).matches
+  );
+}
 
-// Below 1100, the conversation the open item lies over, which the panel
-// carries in its dock: the overview's window chat while it's open, or the
-// thread whose page this is (dock.tsx).
-function dockOf(model: Model, dispatch: Dispatch): Docked | null {
-  const { panel, thread, route } = model;
+// Where the window chat is a rail, and a thread's page stays beside the
+// open item, which needs no dock; window.css says the same.
+const railRoom = "(min-width: 1100px)";
+
+// The conversation the open item takes the place of, or lies over, which
+// the panel carries in its dock: the window chat while it's open, at every
+// width, or, below 1100, the thread whose page this is (dock.tsx).
+function dockOf(model: Model, wide: boolean, dispatch: Dispatch): Docked | null {
+  const { panel, route } = model;
   if (!panel) return null;
+  const chat = onWindow(route) && model.chat.open;
+  const thread = chat ? chatThread(model.thread) : model.thread;
   const view = thread && expected(thread);
-  const composer =
-    route.page === "overview" && model.chat.open
-      ? windowChatComposer(model.chat, thread, dispatch)
-      : route.page === "thread" && thread && view
-        ? threadComposer(thread, view, dispatch)
-        : null;
+  const composer = chat
+    ? windowChatComposer(model.chat, model.thread, dispatch)
+    : route.page === "thread" && thread && view && !wide
+      ? threadComposer(thread, view, dispatch)
+      : null;
   if (!composer) return null;
   return {
     composer,
     view,
-    asked: route.page === "overview" ? model.chat.asked : null,
+    asked: chat ? model.chat.asked : null,
     folded: model.panelFolded,
     item: panelName(panel),
     onFold: (folded) => dispatch({ type: "panelFolded", folded }),
     onClose: () => dispatch({ type: "panelClosed" }),
   };
+}
+
+// Where the cursor was in a composer that has since moved, it goes on in
+// the one on screen now: the panel's dock, the rail's, or the page's foot.
+// A composer gone takes the focus with it, which leaves it on the body.
+function useComposerFocus(moved: unknown[]) {
+  const had = useRef(false);
+  useEffect(() => {
+    const seen = (event: FocusEvent) => {
+      had.current =
+        event.target instanceof HTMLElement &&
+        event.target.matches(":is(.composer, .panel-dock) .chat-input-field");
+    };
+    addEventListener("focusin", seen);
+    return () => removeEventListener("focusin", seen);
+  }, []);
+  useEffect(() => {
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (!had.current || !lost) return;
+    document
+      .querySelector<HTMLTextAreaElement>(
+        ":is(.panel-dock, .window-chat, .overview-dock) .chat-input-field",
+      )
+      ?.focus();
+  }, moved);
 }
 
 // Whether a media query matches, kept as the window resizes.
@@ -320,6 +357,7 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
             connectors={model.connectors}
             browse={windowRoute(model.window)}
             chat={model.chat}
+            thread={model.thread}
             ongoing={model.thread !== null}
             firstRun={{
               line: model.setup.view?.firstRun?.line === true,
@@ -334,14 +372,29 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
     case "window":
       return (
         model.window && (
-          <WindowPage
-            model={model.window}
-            workstreams={model.workstreams}
-            connect={
-              <ConnectNotices connections={model.connections} connectors={model.connectors} />
-            }
-            dispatch={dispatch}
-          />
+          <>
+            <WindowPage
+              model={model.window}
+              workstreams={model.workstreams}
+              connect={
+                <ConnectNotices connections={model.connections} connectors={model.connectors} />
+              }
+              dispatch={dispatch}
+            />
+            {/* The chat hidden on Browse: its composer at the page's foot,
+                with its draft and Back to the chat, as on the overview,
+                until the person leaves. */}
+            {model.chat.hiddenOnBrowse && (
+              <OverviewComposer
+                chat={model.chat}
+                thread={model.thread}
+                ongoing={model.thread !== null}
+                questions={[]}
+                noAi={noAi(model.settings)}
+                dispatch={dispatch}
+              />
+            )}
+          </>
         )
       );
     case "workstream":

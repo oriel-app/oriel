@@ -11,6 +11,7 @@ import {
   looked,
   type LookingAt,
   type LookingMsg,
+  type LookItem,
   notLooking,
   updateLooking,
 } from "./looking.ts";
@@ -28,6 +29,9 @@ export type WindowChatModel = {
   // Whether the chat shows beside the overview. It opens with a question,
   // and closes back to the full-width overview.
   open: boolean;
+  // Hidden on Browse, which has no composer of its own: its composer stays
+  // at the page's foot until the person leaves (OA-355).
+  hiddenOnBrowse: boolean;
   problem: string | null;
   // What the chat's first question is about: the item open beside it
   // (decision 0062), as the composer shows it.
@@ -41,7 +45,8 @@ export type WindowChatMsg =
   | { type: "questionPicked"; question: Question }
   | { type: "newChatClicked" }
   | { type: "closeClicked" }
-  | { type: "openClicked" };
+  | { type: "openClicked" }
+  | { type: "openAsThreadClicked" };
 
 // A question to start from (decision 0030): its kind, which telemetry
 // counts by; its button's words, which may name its row; and the fixed
@@ -66,6 +71,7 @@ export const initWindowChat = (): WindowChatModel => ({
   asking: false,
   asked: null,
   open: false,
+  hiddenOnBrowse: false,
   problem: null,
   lookingAt: notLooking,
 });
@@ -147,6 +153,40 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
 // The root's slice the window chat changes: its own model and the thread.
 export type ChatState = { chat: WindowChatModel; thread: ThreadModel | null };
 
+// The thread shown, while it is still the window chat's. Once it moves into
+// its workstream (OA-347), as a plan applied there or the agent adding items
+// makes it, or with Open as a thread, the window's composer asks a fresh
+// chat at once. The conversation stays on screen until then, so nothing
+// the person was reading or pressing goes from under them.
+export const chatThread = (thread: ThreadModel | null): ThreadModel | null =>
+  thread?.view && !thread.view.windowChat ? null : thread;
+
+export const movedOut = (thread: ThreadModel | null): boolean =>
+  thread !== null && chatThread(thread) === null;
+
+// The words the person was typing to the chat's thread as it moved go on in
+// the fresh chat's composer, about what they were about. A place in the old
+// thread's entries means nothing in the new one.
+export function handedOver(before: ThreadModel | null, after: ChatState): ChatState {
+  const { thread, chat } = after;
+  if (!thread || thread.id !== before?.id || movedOut(before) || !movedOut(thread)) return after;
+  if (thread.draft === "" || chat.draft !== "") return after;
+  const unplaced = (item: LookItem | null) => item && { ...item, under: null };
+  const { lookingAt } = thread;
+  return {
+    thread: { ...thread, draft: "" },
+    chat: {
+      ...chat,
+      draft: thread.draft,
+      lookingAt: {
+        chips: lookingAt.chips.map(({ item, on }) => ({ item: { ...item, under: null }, on })),
+        offered: unplaced(lookingAt.offered),
+        open: unplaced(lookingAt.open),
+      },
+    },
+  };
+}
+
 const ask = (
   state: ChatState,
   text: string,
@@ -154,7 +194,8 @@ const ask = (
   looking = false,
 ): [ChatState, Effect[]] => {
   const trimmed = text.trim();
-  if (trimmed === "" || state.chat.asking || state.thread?.view?.running) return [state, []];
+  if (trimmed === "" || state.chat.asking || chatThread(state.thread)?.view?.running)
+    return [state, []];
   const about = looking ? aboutOf(state.chat.lookingAt) : undefined;
   return [
     { ...state, chat: { ...state.chat, asking: true, asked: trimmed, open: true, problem: null } },
@@ -194,6 +235,20 @@ export function updateWindowChat(state: ChatState, msg: WindowChatMsg): [ChatSta
       return [{ ...state, chat: { ...chat, open: false } }, []];
     case "openClicked":
       return [{ ...state, chat: { ...chat, open: true } }, []];
+    // The chat goes on as its workstream's thread, on its own page, and the
+    // window starts a fresh one (OA-355). One that moved already goes there
+    // as it is.
+    case "openAsThreadClicked": {
+      const { thread } = state;
+      if (thread === null) return [state, []];
+      const moving = movedOut(thread)
+        ? []
+        : [post("/api/window-chat/open", { thread: thread.id }, { kind: "windowChatOpened" })];
+      return [
+        { ...state, chat: { ...chat, open: false } },
+        [...moving, { type: "navigate", route: { page: "thread", id: thread.id } }],
+      ];
+    }
   }
 }
 
@@ -223,6 +278,7 @@ export function windowChatReplied(state: ChatState, msg: Replied): [ChatState, E
         id,
       );
     }
+    case "windowChatOpened":
     case "windowChatNew":
       if (msg.ok) return [state, []];
       return [{ ...state, chat: { ...state.chat, problem: errorOf(msg.body) } }, [loadWindowChat]];

@@ -113,6 +113,7 @@ import {
   updateOverview,
 } from "./overview.ts";
 import {
+  handedOver,
   initWindowChat,
   loadWindowChat,
   updateWindowChat,
@@ -195,8 +196,8 @@ type Under = { thread: string; seq: number };
 export type Model = {
   route: Route;
   overview: OverviewModel | null;
-  // The overview's composer and whether the window chat is open. While the overview is
-  // on screen, its thread is `thread`.
+  // The overview's composer and whether the window chat is open. While the
+  // window (the overview or Browse) is on screen, its thread is `thread`.
   chat: WindowChatModel;
   window: WindowModel | null;
   workstream: WorkstreamModel | null;
@@ -466,9 +467,12 @@ export function windowTelemetry(before: WindowModel, after: WindowModel): Effect
 // A thread's page watches its events only while it is on screen: leaving
 // stops watching, and entering, by a link, Back or the same link again,
 // loads it fresh and watches again from its last entry.
+// The window chat's thread is the window's, so it stays on screen, and
+// watched, between the overview and Browse (decision 0030).
 function enter(model: Model, route: Route): [Model, Effect[]] {
+  const keepsChat = onWindow(model.route) && onWindow(route) && model.thread !== null;
   const leaving: Effect[] = [
-    ...(model.thread ? [{ type: "unsubscribe" } as const] : []),
+    ...(model.thread && !keepsChat ? [{ type: "unsubscribe" } as const] : []),
     ...(model.route.page === "overview" && route.page !== "overview" ? left(model.overview) : []),
   ];
   // A thread's own stream says when any thread moves; every other page
@@ -476,11 +480,14 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
   const watching: Effect[] = [
     { type: route.page === "thread" ? "unwatchThreads" : "watchThreads" },
   ];
+  // Which window chat the window shows, unless it's on screen already.
+  const chat = keepsChat ? [] : [loadWindowChat];
   // A draft left behind is dropped: nothing was made for it.
   const base = {
     ...model,
     route,
-    thread: null,
+    chat: model.chat.hiddenOnBrowse ? { ...model.chat, hiddenOnBrowse: false } : model.chat,
+    thread: keepsChat ? model.thread : null,
     newThread: null,
     ending: samePage(model.route, route) ? model.ending : leftPage(model.ending),
     panelAdds: samePage(model.route, route) ? model.panelAdds : addsLeft(model.panelAdds),
@@ -497,13 +504,13 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
         : overview;
       return [
         { ...base, overview: kept },
-        [...leaving, ...effects, loadWindowChat, ...lists, ...watching],
+        [...leaving, ...effects, ...chat, ...lists, ...watching],
       ];
     }
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo, route);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists, ...watching]];
+        return [{ ...base, window }, [...leaving, ...effects, ...chat, ...lists, ...watching]];
       }
       // The address's filters, then its grouping, each loading the window
       // only if it changed; the last load stands.
@@ -518,7 +525,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow").slice(-1);
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists, ...watching],
+        [...leaving, ...loads, ...chat, ...lists, ...watching],
       ];
     }
     case "workstream": {
@@ -567,10 +574,20 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
   const seen = next.thread && seenUpTo(next.thread);
+  const shown = seen === next.thread ? next : { ...next, thread: seen };
   return [
-    looking(seen === next.thread ? next : { ...next, thread: seen }),
+    looking(handing(model.thread, shown)),
     [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest],
   ];
+}
+
+// On the window, words typed to the chat's thread as it moves into its
+// workstream go on in the fresh chat's composer.
+function handing(before: ThreadModel | null, model: Model): Model {
+  if (!onWindow(model.route)) return model;
+  const state = { chat: model.chat, thread: model.thread };
+  const handed = handedOver(before, state);
+  return handed === state ? model : { ...model, ...handed };
 }
 
 // Each composer on screen follows the item open beside it (decision 0062):
@@ -728,14 +745,16 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       return [{ ...model, workstream }, effects];
     }
     case "chat": {
-      // The window chat's thread is the overview's only.
-      if (model.route.page !== "overview") return [model, []];
+      // The window chat's thread is the window's only.
+      if (!onWindow(model.route)) return [model, []];
       const [state, effects] = updateWindowChat(
         { chat: model.chat, thread: model.thread },
         msg.msg,
       );
       const left = msg.msg.type === "newChatClicked" ? [loadWorkstreams, loadThreads] : [];
-      return [{ ...model, ...state }, [...effects, ...left]];
+      const hidden = msg.msg.type === "closeClicked" && model.route.page === "window";
+      const chat = hidden ? { ...state.chat, hiddenOnBrowse: true } : state.chat;
+      return [{ ...model, ...state, chat }, [...effects, ...left]];
     }
     case "thread": {
       if (model.thread === null) return [model, []];
@@ -898,16 +917,15 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       ];
     case "panelFolded":
       return [{ ...model, panelFolded: msg.folded }, []];
-    // The window chat is the overview's, so the item goes there, still open,
-    // and the chat opens beside it: the current one, or empty until the
-    // first question makes it. Its composer offers the item, as it offers
-    // the item open beside it anywhere (decision 0062).
+    // The window chat is the window's, so from anywhere else the item goes
+    // to the overview, still open, and the chat opens: the current one, or
+    // empty until the first question makes it. Its composer offers the item,
+    // as it offers the item open beside it anywhere (decision 0062).
     case "askAboutClicked": {
       const item = model.route.item;
       if (item === undefined || !askable(model)) return [model, []];
       const overview: Route = { page: "overview", item };
-      const going: Effect[] =
-        model.route.page === "overview" ? [] : [{ type: "navigate", route: overview }];
+      const going: Effect[] = onWindow(model.route) ? [] : [{ type: "navigate", route: overview }];
       return [
         { ...model, chat: { ...model.chat, open: true }, panelFolded: false },
         [...going, { type: "focusComposer" }, report({ name: "item.asked-about", item })],
@@ -985,10 +1003,11 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return [model, []];
     case "windowChat":
     case "windowChatAsked":
-    case "windowChatNew": {
-      // Answered after the user left the overview: the chat waits for them,
+    case "windowChatNew":
+    case "windowChatOpened": {
+      // Answered after the user left the window: the chat waits for them,
       // and loads again when they're back.
-      if (model.route.page !== "overview")
+      if (!onWindow(model.route))
         return [{ ...model, chat: { ...model.chat, asking: false, asked: null } }, []];
       const [state, effects] = windowChatReplied({ chat: model.chat, thread: model.thread }, msg);
       const made =
@@ -1189,6 +1208,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     default: {
       if (model.thread === null) return [model, []];
       const [thread, effects] = threadReplied(model.thread, msg);
+      // Continue in… takes the window chat's request to a thread, and the
+      // window starts a fresh chat, folded until the next question.
+      if (msg.tag.kind === "continued" && msg.ok && onWindow(model.route))
+        return [{ ...model, thread, chat: { ...model.chat, open: false } }, effects];
       // A thread that didn't load has no stream to say when others move.
       const unwatched =
         msg.tag.kind === "thread" && msg.tag.id === model.thread.id && !msg.ok && !thread.view;
@@ -1198,10 +1221,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       // does what they're about.
       const { chat } = model;
       if (
-        model.route.page === "overview" &&
+        onWindow(model.route) &&
         chat.open &&
         !model.thread.view &&
-        thread.view &&
+        thread.view?.windowChat &&
         thread.draft === ""
       )
         return [
@@ -1255,8 +1278,12 @@ export function askable(model: Model): boolean {
   const { route } = model;
   if (route.item === undefined || noAi(model.settings)) return false;
   if (route.page === "thread" || route.page === "new-thread") return false;
-  return !(route.page === "overview" && model.chat.open);
+  return !(onWindow(route) && model.chat.open);
 }
+
+// The window: the overview and Browse, which share the window chat.
+export const onWindow = (route: Route): boolean =>
+  route.page === "overview" || route.page === "window";
 
 // The workstream the page is about, which the panel's item can be added to:
 // the workstream's own page, a thread's, or the window adding items to one.

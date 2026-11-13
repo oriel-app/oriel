@@ -73,10 +73,12 @@ export type Tag =
   // and that undone.
   | { kind: "overviewMade"; key: string; grouping: GroupingId }
   | { kind: "overviewUnmade"; key: string }
-  // Which window chat the window shows; a question asked in it; New chat.
+  // Which window chat the window shows; a question asked in it; New chat;
+  // Open as a thread.
   | { kind: "windowChat" }
   | { kind: "windowChatAsked" }
   | { kind: "windowChatNew" }
+  | { kind: "windowChatOpened" }
   // The sidebar's search, by the query it asked about.
   | { kind: "search"; request: number }
   // An item read for the panel, and when the index last saw it change.

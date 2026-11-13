@@ -1,14 +1,13 @@
 // The window chat on screen (decisions 0027 and 0030): the overview's
-// composer at the page's foot, and the chat beside
-// the overview while it has a conversation, over the page's right side, or
-// as a sheet on a narrow window. While an item is open, on a window with
-// room, the chat moves into the page column beside it, and "‹ Window" puts
-// the overview back; narrower, the item covers it and carries the chat's
-// composer in its dock (dock.tsx). Its composer offers the item open as
-// what the next question is about (decision 0062). Its entries render as a
-// thread's page renders them, blocks included; its fields are the one
-// ChatInput.
-import { useEffect, useRef } from "preact/hooks";
+// composer at the page's foot, and, once asked, the chat in a rail at the
+// window's right edge, which the page column narrows for, on the overview
+// and Browse alike; under 1100, a sheet rising over the page's foot. An
+// item opened takes the rail's place and carries the chat's composer in
+// its dock (dock.tsx), so the overview keeps its width. Its composer offers
+// the item open as what the next question is about (decision 0062). Its
+// entries render as a thread's page renders them, blocks included; its
+// fields are the one ChatInput.
+import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatInput, type Composer, LookingChips, readsWith } from "./chat-input.tsx";
 import { FoldedItem } from "./dock.tsx";
 import { watchLatest } from "./effects.ts";
@@ -17,17 +16,27 @@ import { NewMessage } from "./new-message.tsx";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
 import { entriesOf, expected, type ThreadModel, type ThreadMsg, unseen } from "./thread.ts";
 import { ChatEntryItem, itemsOf } from "./thread-page.tsx";
-import type { Question, WindowChatModel, WindowChatMsg } from "./window-chat.ts";
+import { PanelIcon } from "./sidebar.tsx";
+import { Tooltip } from "./tooltip.tsx";
+import {
+  chatThread,
+  movedOut,
+  type Question,
+  type WindowChatModel,
+  type WindowChatMsg,
+} from "./window-chat.ts";
 
 // The overview's composer (decision 0030): a thread's, raised in a thread's
-// dock at the page's foot. Asking opens the window chat; while it's open,
-// the chat's own composer is the one to type in, so this one is hidden, as
-// a thread's is under the item panel's dock. The questions to start from
+// dock at the page's foot. Asking carries it into the window chat's rail
+// beside the overview, and hiding the chat brings it back here, with its
+// draft and what it's about: one composer, wherever it sits. The questions to start from
 // sit beside their headlines (`QuestionButton`); one with no headline on
 // screen, such as the empty window's plan, sits in its frame, unless an
 // item is in view: what the message is about comes first (decision 0062).
 export function OverviewComposer(props: {
   chat: WindowChatModel;
+  // The chat's thread, whose follow-up it holds once there is one.
+  thread: ThreadModel | null;
   // Whether there is a conversation to go back to, behind a closed chat.
   ongoing: boolean;
   // The questions no headline on screen holds.
@@ -38,6 +47,7 @@ export function OverviewComposer(props: {
 }) {
   const { chat, ongoing, dispatch } = props;
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
+  if (chat.open) return null;
   if (props.noAi)
     return (
       <div class="chat-dock overview-dock">
@@ -59,16 +69,23 @@ export function OverviewComposer(props: {
         </div>
       </div>
     );
-  const composer = windowChatComposer(chat, null, dispatch);
+  const drawn = windowChatComposer(chat, props.thread, dispatch);
+  // A follow-up from here goes to the same chat, and opens it again.
+  const composer = {
+    ...drawn,
+    onSubmit: () => {
+      if (drawn.draft.trim() !== "") send({ type: "openClicked" });
+      drawn.onSubmit();
+    },
+  };
   const starts = chat.lookingAt.chips.length === 0 ? props.questions : [];
   return (
-    <div class="chat-dock overview-dock" inert={chat.open || undefined}>
+    <div class="chat-dock overview-dock">
       <ChatInput
         {...composer}
         class="composer"
         elevation="raised"
         submitLabel="Ask"
-        notice={chat.open ? null : composer.notice}
         context={
           <>
             {starts.length > 0 && (
@@ -87,8 +104,7 @@ export function OverviewComposer(props: {
           </>
         }
         extra={
-          ongoing &&
-          !chat.open && (
+          ongoing && (
             <button
               type="button"
               class="quiet-action"
@@ -133,16 +149,17 @@ const noneReadOnly = () => false;
 export function WindowChat(props: {
   chat: WindowChatModel;
   thread: ThreadModel | null;
-  // An item is open beside it, so it stands in the page column for the
-  // overview.
-  beside: boolean;
   dispatch: Dispatch;
 }) {
   const { chat, thread, dispatch } = props;
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
   const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   const view = thread && expected(thread);
+  const moved = movedOut(thread);
   const list = useRef<HTMLOListElement>(null);
+  // Under 1100, a sheet: 45vh, or 85vh for reading a long answer.
+  const [tall, setTall] = useState(false);
+  const grabbed = useRef<number | null>(null);
   // The chat opens at its latest entry, and follows what arrives only while
   // it's there, as a thread's page does (`watchLatest`, `keptAtLatest`).
   useEffect(() => {
@@ -151,21 +168,48 @@ export function WindowChat(props: {
     entries.scrollTop = entries.scrollHeight;
     return watchLatest(sendThread, entries);
   }, [thread?.id]);
+  // The grab bar: up makes the sheet tall, down short, and down from short
+  // folds it; a press without a drag goes between the two heights.
+  const released = (y: number) => {
+    const from = grabbed.current;
+    grabbed.current = null;
+    if (from === null) return;
+    const dragged = y - from;
+    if (dragged < -24) setTall(true);
+    else if (dragged > 24 && tall) setTall(false);
+    else if (dragged > 24) send({ type: "closeClicked" });
+    else setTall(!tall);
+  };
   return (
-    <aside class="window-chat" aria-label="Ask about your window">
+    <aside class="window-chat" aria-label="The window chat" data-tall={tall || undefined}>
+      <button
+        type="button"
+        class="window-chat-grab"
+        aria-label={tall ? "Make the chat shorter" : "Make the chat taller"}
+        onPointerDown={(event) => {
+          grabbed.current = event.clientY;
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerUp={(event) => released(event.clientY)}
+        onPointerCancel={() => {
+          grabbed.current = null;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setTall(!tall);
+          }
+        }}
+      />
       <header class="window-chat-head">
-        {props.beside && (
-          <button
-            type="button"
-            class="quiet-action window-chat-back"
-            onClick={() => send({ type: "closeClicked" })}
-          >
-            ‹ Window
-          </button>
-        )}
-        <h2 class="window-chat-title">Ask about your window</h2>
+        <h2 class="rail-title window-chat-title">Chat</h2>
         {view && (
-          <Link route={{ page: "thread", id: view.id }} dispatch={dispatch} class="quiet-action">
+          <Link
+            route={{ page: "thread", id: view.id }}
+            msg={{ type: "chat", msg: { type: "openAsThreadClicked" } }}
+            dispatch={dispatch}
+            class="quiet-action"
+          >
             Open as a thread
           </Link>
         )}
@@ -177,17 +221,16 @@ export function WindowChat(props: {
         >
           New chat
         </button>
-        {/* Beside an item, "‹ Window" closes it instead. */}
-        {!props.beside && (
+        <Tooltip text="Hide the chat">
           <button
             type="button"
-            class="window-chat-close"
-            aria-label="Close the chat"
+            class="sidebar-fold window-chat-fold"
+            aria-label="Hide the chat"
             onClick={() => send({ type: "closeClicked" })}
           >
-            ×
+            <PanelIcon right />
           </button>
-        )}
+        </Tooltip>
       </header>
       <ol class="chat window-chat-entries" ref={list}>
         {view && thread && (
@@ -203,12 +246,22 @@ export function WindowChat(props: {
             ))}
           </ItemLinksContext.Provider>
         )}
+        {/* Moved into its workstream, the conversation stays until the next
+            question, which starts a fresh chat. */}
+        {moved && view && (
+          <li class="window-chat-moved">
+            Now a thread in{" "}
+            <Link route={{ page: "thread", id: view.id }} dispatch={dispatch}>
+              {view.workstream.name}
+            </Link>
+          </li>
+        )}
         {thread === null && !chat.asking && (
           <li class="window-chat-empty">
             Ask about what changed, what needs you, or what should become a workstream.
           </li>
         )}
-        {(chat.asking || view?.running) && (
+        {(chat.asking || (!moved && view?.running)) && (
           <li class="working" role="status">
             <span class="working-dot" /> Working…
           </li>
@@ -218,8 +271,10 @@ export function WindowChat(props: {
       <ChatInput
         {...windowChatComposer(chat, thread, dispatch)}
         class="composer"
+        elevation="raised"
         above={
           thread &&
+          !moved &&
           unseen(thread) && (
             <div class="composer-pills">
               <NewMessage onShow={() => sendThread({ type: "latestClicked" })} />
@@ -239,8 +294,10 @@ export function windowChatComposer(
   thread: ThreadModel | null,
   dispatch: Dispatch,
 ): Composer {
-  const view = thread && expected(thread);
-  if (thread && view) {
+  const live = chatThread(thread);
+  const view = live && expected(live);
+  if (live && view) {
+    const thread = live;
     const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
     // A held message's words in the composer send as they were held, about
     // nothing, so it offers nothing while they're there (decision 0062).

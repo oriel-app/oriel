@@ -294,6 +294,22 @@ export const actions = {
       tool: "It changes what the user's window shows, which is the user's.",
     },
   },
+  // Open as a thread (OA-355): the window chat goes on as its workstream's
+  // ordinary thread, as it does once that workstream gains a member
+  // (OA-347), and the window starts a fresh chat from the next question on.
+  "window.open-as-thread": {
+    doc: "Makes the window chat its workstream's own thread, and starts a fresh window chat.",
+    input: object({ thread: threadId }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "It changes only which chat the window shows; the thread and its workstream stay.",
+    },
+    closed: {
+      agent: "It changes what the user's window shows, which is the user's.",
+      tool: "It changes what the user's window shows, which is the user's.",
+    },
+  },
   // Continue in… (decision 0027, amended by 0062): the window chat changes
   // no item, so a request to change one goes on in a thread on the item's
   // workstream, or on a new one named for it, with the request sent there

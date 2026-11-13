@@ -14,6 +14,9 @@ html {
      two read as a pair. */
   --rail-beside: calc(var(--sidebar-open) - var(--frame-band));
   --chat: 44rem;
+  /* The window chat's rail at the window's edge, once asked (decision
+     0030); narrower under 1280. */
+  --chat-rail: 24rem;
   /* Every column's first line: how far down it starts, and how tall it is,
      its contents centred, so the sidebar, the page, the rail and the panel
      share one top line. */
@@ -5143,7 +5146,7 @@ button.ctx-chip:hover {
    grows (undo-stack.tsx, bead-motion.ts). It never reaches past the
    column's corners, and never a composer. */
 @media (min-width: 761px) {
-  .shell:is([data-panel], [data-chat]) {
+  .shell[data-panel] {
     --bead-beside: var(--panel);
   }
 }
@@ -6381,6 +6384,11 @@ button.ctx-chip:hover {
   margin-top: auto;
 }
 
+/* On Browse, with the chat hidden: the same dock, at the page's foot. */
+.shell-main > .overview-dock {
+  padding-inline: var(--space-6);
+}
+
 .overview-dock > .chat-input {
   width: 100%;
   max-width: var(--chat);
@@ -6708,6 +6716,65 @@ button.overview-title:hover {
   font-size: var(--text-md);
 }
 
+/* Without questions: one band that never wraps. The cells share the width
+   where all fit; where they don't, it scrolls sideways a headline at a
+   time, and while there's more to the right its end fades under a › that
+   shows the next. It ends with room for both, so the last scrolls clear. */
+.overview-band {
+  position: relative;
+  min-width: 0;
+}
+
+.band-track {
+  display: flex;
+  gap: var(--space-6);
+  overflow-x: auto;
+  padding-right: calc(var(--space-4) + 2rem);
+  scroll-padding-inline: var(--space-4);
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.band-track > .overview-headline {
+  flex: 1 0 10rem;
+  min-width: 10rem;
+  scroll-snap-align: start;
+}
+
+.overview-band[data-more] .band-track {
+  mask-image: linear-gradient(to right, var(--text) calc(100% - 4rem), transparent);
+}
+
+.band-next {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: var(--border-thin) solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-size: var(--text-lg);
+  cursor: pointer;
+  translate: 0 -50%;
+}
+
+.band-next:hover {
+  background: var(--surface-hover);
+}
+
+/* A phone swipes it. */
+@media (max-width: 760px) {
+  .band-next {
+    display: none;
+  }
+}
+
 /* With questions to start from: a row each, one a line, its questions at
    the row's end. The labels share one column, as wide as the longest. */
 .overview-headlines[data-questions] {
@@ -6750,12 +6817,30 @@ button.overview-title:hover {
 /* A narrow overview: a row is its label over its line, with its questions
    beside both, stacked. */
 @container overview (max-width: 700px) {
+  /* Beside the rail the overview is this narrow too, so a long question
+     wraps in at most half the row, and a row with none takes it whole. */
   .overview-headlines[data-questions] {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
   }
 
   [data-questions] :is(.overview-headline-label, .overview-headline-body) {
     grid-column: 1;
+  }
+
+  [data-questions] .overview-headline > .overview-headline-body:last-child {
+    grid-column: 1 / -1;
+  }
+
+  [data-questions] .overview-headline-label {
+    white-space: normal;
+  }
+
+  [data-questions] .headline-asks {
+    max-width: 50cqi;
+  }
+
+  [data-questions] .headline-asks .ask-question {
+    white-space: normal;
   }
 
   [data-questions] .headline-asks {
@@ -7034,6 +7119,7 @@ button.overview-title:hover {
   }
 
   .overview .headline-asks {
+    max-width: none;
     justify-self: start;
     flex-direction: row;
     align-items: center;
@@ -7120,33 +7206,24 @@ button.overview-title:hover {
   background: var(--accent-soft);
 }
 
-/* The window chat (decisions 0027 and 0030): beside the overview while it
-   has a conversation. */
+/* The window chat (decisions 0027 and 0030): once asked, a rail at the
+   window's right edge, in the frame's material, as a thread's rail is; the
+   page column narrows for it (`--beside`) rather than lying under it. An
+   item opened takes its place, as wide, so the page keeps its width. */
 .window-chat {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: var(--layer-sheet);
+  z-index: var(--layer-sticky);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  width: min(var(--panel), 100vw);
-  padding: var(--inset-top) var(--space-4) var(--space-4);
-  border-left: var(--border-thin) solid var(--line);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  width: var(--chat-rail);
+  padding: calc(var(--bar-height) + var(--frame-room)) var(--space-4) var(--space-4)
+    calc(var(--space-4) - var(--frame-band));
+  background: var(--frame);
   overflow-wrap: anywhere;
-  transition:
-    opacity var(--duration-move) var(--ease-out),
-    transform var(--duration-move) var(--ease-out);
-}
-
-@starting-style {
-  .window-chat {
-    opacity: 0;
-    transform: translateX(var(--slide-panel));
-  }
 }
 
 .window-chat-head {
@@ -7159,23 +7236,11 @@ button.overview-title:hover {
 .window-chat-title {
   flex: 1;
   margin: 0;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-strong);
 }
 
-.window-chat-close {
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 0;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-muted);
-  font-size: var(--text-xl);
-  cursor: pointer;
-}
-
-.window-chat-close:hover {
-  background: var(--surface-hover);
+/* The sidebar's fold button, mirrored, kept where the sidebar's goes. */
+.window-chat .window-chat-fold {
+  display: inline-grid;
 }
 
 .window-chat-entries {
@@ -7185,74 +7250,103 @@ button.overview-title:hover {
   padding-right: var(--space-1);
 }
 
-.window-chat-empty {
+.window-chat-empty,
+.window-chat-moved {
   color: var(--text-muted);
   font-size: var(--text-md);
 }
 
-/* Beside an open item, on a window with room (app.tsx's `besideChat`):
-   the item takes the window's edge and the chat stands in the page column
-   in the overview's place, as a thread's page sits beside its panel. As the
-   item arrives, the chat slides left into the column and the overview goes
-   under it; closing the item slides it back. Both of its edges are set on
-   either side of the move, so it can slide. The overview is hidden, not
-   unmounted, so it comes back where it was; the bead stays. */
+/* Moved into its workstream: where it went, under the last entry. */
+.window-chat-moved {
+  padding-top: var(--space-3);
+  border-top: var(--border-thin) solid var(--line);
+}
+
+.window-chat-grab {
+  display: none;
+}
+
 @media (min-width: 1100px) {
-  .window-chat {
-    left: calc(100% - var(--panel));
-    width: auto;
-    transition:
-      opacity var(--duration-move) var(--ease-out),
-      transform var(--duration-move) var(--ease-out),
-      left var(--duration-move) var(--ease-out),
-      right var(--duration-move) var(--ease-out);
-  }
-
-  /* Under the frame's band, as the page column is. */
-  .shell[data-panel] .window-chat {
-    left: var(--sidebar);
-    right: calc(var(--beside) + var(--frame-band));
-    z-index: var(--layer-sticky);
-    padding: var(--frame-room) var(--space-6) var(--space-4);
-    border-left: 0;
-    background: var(--bg);
-    box-shadow: none;
-  }
-
-  .shell[data-panel][data-chat] .shell-main > * {
-    visibility: hidden;
-    transition: visibility 0s var(--duration-move);
-  }
-
-  .shell[data-panel][data-chat] .bead-wrap {
-    visibility: visible;
+  .shell[data-chat] {
+    --beside: var(--chat-rail);
+    --panel: var(--chat-rail);
   }
 }
 
-/* Where the column would leave the chat less than 28rem, the item narrows
-   instead, down to 24rem; 30rem is the panel's own width. */
-@media (min-width: 1100px) and (max-width: 1279px) {
-  .shell[data-panel][data-chat] {
-    --panel: clamp(24rem, 100vw - var(--sidebar) - 28rem - var(--frame-band), 30rem);
+@media (max-width: 1279px) {
+  html {
+    --chat-rail: 22rem;
   }
 }
 
-/* On a narrow window it opens as a sheet over the overview. */
-@media (max-width: 760px) {
+/* Under 1100 there's no room for a rail: a sheet rises from the page's
+   foot over the page column, 45vh, or 85vh with its grab bar, which leaves
+   the head, the headlines and the first workstream in view above it, live.
+   Nothing travels: the sheet rises, its composer where the foot's was. */
+@media (max-width: 1099px) {
   .window-chat {
     top: auto;
-    left: 0;
-    width: 100vw;
-    height: min(85vh, 100%);
-    border-top: var(--border-thin) solid var(--line);
-    border-left: 0;
+    left: calc(var(--sidebar) + var(--space-3));
+    right: calc(var(--frame-band) + var(--space-3));
+    z-index: var(--layer-sheet);
+    width: auto;
+    height: 45vh;
+    padding: 0 var(--space-4) var(--space-4);
+    border: var(--border-thin) solid var(--line);
+    border-bottom: 0;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    transition:
+      height var(--duration-move) var(--ease-out),
+      transform var(--duration-move) var(--ease-out);
+  }
+
+  .window-chat[data-tall] {
+    height: 85vh;
   }
 
   @starting-style {
     .window-chat {
-      transform: translateY(var(--space-6));
+      transform: translateY(100%);
     }
+  }
+
+  /* The page scrolls clear of it. */
+  .shell[data-chat] .shell-main {
+    padding-bottom: 45vh;
+  }
+
+  .window-chat-grab {
+    display: block;
+    flex: none;
+    width: 100%;
+    height: var(--space-4);
+    margin-bottom: calc(-1 * var(--space-3));
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+
+  .window-chat-grab::before {
+    content: "";
+    display: block;
+    width: 2.5rem;
+    height: 0.25rem;
+    margin: var(--space-2) auto 0;
+    border-radius: var(--radius-sm);
+    background: var(--line-strong);
+  }
+}
+
+/* A phone: the sheet, edge to edge. */
+@media (max-width: 760px) {
+  .window-chat {
+    left: 0;
+    right: 0;
+    border-inline: 0;
   }
 }
 
@@ -8261,6 +8355,105 @@ a.button.primary {
   }
 }
 
+/* Motion A (OA-355, carry.ts): one View Transition carries the window's
+   composer from the page's foot into the window chat's rail, while the rail
+   slides in from the window's edge and the page column narrows; folding
+   reverses it. The names are set only while it runs. The page's old and
+   new snapshots cross-fade anchored top left, so nothing stretches. The
+   composer's box is drawn by its group, its own images hidden, and its
+   field, what it reads and its button each travel on their own, landing
+   just after the rail settles. */
+html[data-carrying] .shell-main {
+  view-transition-name: window-page;
+}
+
+html[data-carrying] .window-chat {
+  view-transition-name: window-chat-rail;
+}
+
+html[data-carrying] :is(.overview-dock, .window-chat) > .chat-input {
+  view-transition-name: window-composer;
+}
+
+html[data-carrying] :is(.overview-dock, .window-chat) > .chat-input > .chat-input-field {
+  view-transition-name: window-composer-field;
+}
+
+html[data-carrying] :is(.overview-dock, .window-chat) .chat-input-reads {
+  view-transition-name: window-composer-reads;
+}
+
+html[data-carrying] :is(.overview-dock, .window-chat) .chat-input-foot > :last-child {
+  view-transition-name: window-composer-send;
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root),
+::view-transition-group(window-page),
+::view-transition-old(window-page),
+::view-transition-new(window-page),
+::view-transition-group(window-chat-rail) {
+  animation-duration: var(--duration-move);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-old(window-page),
+::view-transition-new(window-page) {
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+}
+
+::view-transition-new(window-chat-rail):only-child {
+  animation: carry-in var(--duration-move) var(--ease-out);
+}
+
+::view-transition-old(window-chat-rail):only-child {
+  animation: carry-out var(--duration-move) var(--ease-out) forwards;
+}
+
+@keyframes carry-in {
+  from {
+    translate: 100% 0;
+  }
+}
+
+@keyframes carry-out {
+  to {
+    translate: 100% 0;
+  }
+}
+
+/* Over the rail coming in, which would otherwise cover it: the box, then
+   its parts over the box. */
+::view-transition-group(window-composer) {
+  z-index: 1;
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+::view-transition-old(window-composer),
+::view-transition-new(window-composer) {
+  display: none;
+}
+
+::view-transition-group(window-composer-field),
+::view-transition-group(window-composer-reads),
+::view-transition-group(window-composer-send) {
+  z-index: 2;
+}
+
+::view-transition-group(window-composer),
+::view-transition-group(window-composer-field),
+::view-transition-group(window-composer-reads),
+::view-transition-group(window-composer-send) {
+  animation-duration: calc(var(--duration-move) + var(--duration-quick) / 2);
+  animation-timing-function: var(--ease-out);
+}
+
 /* Reduced motion, once for the window (decision 0034), last so it wins over
    every rule above: every move and the pulse hold still, and the panel keeps
    its fade. */
@@ -8274,7 +8467,6 @@ a.button.primary {
   .fold-toggle .chevron,
   .swipe-row,
   .swipe-actions,
-  .shell[data-panel][data-chat] .shell-main > *,
   .switch,
   .switch-knob,
   .frame {
@@ -8291,6 +8483,14 @@ a.button.primary {
   .context-menu,
   .context-menu:popover-open {
     transform: none;
+  }
+
+  /* Motion A carries nothing (carry.ts names no part): the whole window
+     cross-fades, quickly. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: var(--duration-quick);
   }
 
   /* Arrivals fade, all at once, without the rise. */

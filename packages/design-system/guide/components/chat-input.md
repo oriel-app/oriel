@@ -13,8 +13,8 @@ summary: Where a person asks the agent: one ChatInput for the overview's compose
 
 The field a person asks the agent in, with its button. It's where "point, don't prompt" turns into a question, so it's the most-used control in Oriel. One component, `ChatInput`, draws it in every place (DRIFT D3, done):
 
-1. **The overview's composer** (decision 0030): a thread's, raised in a dock at the page's foot, "Ask about your window". Its questions to start from sit beside the headlines they come from.
-2. **The window chat's composer**: its first ask, and its follow-ups once there's an answer.
+1. **The overview's composer** (decision 0030): a thread's, raised in a dock at the page's foot, "Ask about your window". Its questions to start from sit beside the headlines they come from. Asking carries it into the window chat's rail, and it isn't drawn at the foot while the chat is open. Hiding the chat puts it back, with its draft and what it's looking at, and **Back to the chat** in its foot.
+2. **The window chat's composer**: its first ask, and its follow-ups once there's an answer. It sits at the rail's foot, raised, or the sheet's under 1100px; while an item is open, the item's dock carries it, at every width. Once the chat has moved into its workstream, it's a fresh chat's again ("Ask about your window"), and the next question starts that chat.
 3. **A thread's composer**: in a dock at the foot of the thread.
 4. **A workstream's Ask box**: on the workstream's page. It starts a thread.
 
@@ -24,7 +24,7 @@ Every one has the same frame, the same focus ring, the same problem line and the
 
 - Wherever the person asks the agent something: a thread, the window chat, a workstream, the overview. Import `ChatInput` from `packages/web/src/chat-input.tsx`; never copy it.
 - It has one shape: a field that grows, and follows Settings' send key (Enter, or ⌘Enter), read from `SendKeyContext` in `packages/web/src/parts.tsx`, everywhere (decision 0041).
-- Raise it (`elevation="raised"`) only where it floats in a dock at a page's foot: a thread's, and the overview's.
+- Raise it (`elevation="raised"`) only where it floats at a foot: a thread's dock, the overview's, and the window chat's rail.
 
 ## When not to
 
@@ -274,8 +274,8 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
 
 - The component: `ChatInput` in `packages/web/src/chat-input.tsx`. CSS `.chat-input`, `.chat-input-field`, `.chat-input-foot`, `.chat-input-reads`, `.chat-input-notice` and `.chat-input[data-off]` in `window.css`.
 - The overview's composer: `OverviewComposer` in `packages/web/src/window-chat-view.tsx`, with its props from `windowChatComposer`, mounted at the foot by `OverviewPage` in `packages/web/src/overview-page.tsx`. Its questions: `QuestionButton` in the same file, placed by `Headline`; CSS `.overview-dock`, `.ask-starts`, `.headline-asks` and `.ask-question` in `window.css`.
-- The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`, which imports only `ChatInput` for them, with its props from `windowChatComposer`.
-- In the item panel's dock, below 1100px: the conversation under the item hands its composer's props (`Composer` in `packages/web/src/chat-input.tsx`, from `windowChatComposer` or `threadComposer`) to `PanelDock` in `packages/web/src/item-panel.tsx`, which draws the same `ChatInput`, flat. See [Item panel](/components/item-panel#the-dock-over-a-conversation-below-1100px).
+- The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`, at the rail's foot, which imports only `ChatInput` for them, with its props from `windowChatComposer`. `OverviewComposer` draws nothing while the chat is open.
+- In the item panel's dock, over the window chat at every width, and over a thread's page below 1100px: the conversation under the item hands its composer's props (`Composer` in `packages/web/src/chat-input.tsx`, from `windowChatComposer` or `threadComposer`) to `PanelDock` in `packages/web/src/item-panel.tsx`, which draws the same `ChatInput`, flat. See [Item panel](/components/item-panel#the-dock).
 - The thread composer: `ThreadPage` and `NewThreadPage` in `packages/web/src/thread-page.tsx`, inside `Dock`, with the thread's props from `threadComposer`. While the item panel's dock carries it, `Dock` is `inert` and hidden. CSS `.chat-dock` in `window.css`. `composer` stays on the frame as a placement hook: the pill for a change set out of view (`ToReview`) and `focusComposer` find it.
 - The workstream's Ask box: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`, with `.workstream-ask` for its margin.
 - What a message is about: `LookingChips` and `readsWith` in `packages/web/src/chat-input.tsx`, fed by `lookedAt` in `packages/web/src/looking.ts`, which `update` in `packages/web/src/root.ts` runs against the open panel. CSS `.ctx`, `.ctx-chip`, `.ctx-label`, `.ctx-name`, `.ctx-x` and `.ctx-action` in `window.css`.
