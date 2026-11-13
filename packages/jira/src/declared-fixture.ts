@@ -1,6 +1,3 @@
-// SYN as Jira's declared fixture (decision 0049): `fixtures/jira/`, its
-// frozen regions, and its index after any number of its source edits, read
-// from the snapshot with no site behind it.
 import {
   type ChangeLogEntry,
   facetChanges,
@@ -32,13 +29,11 @@ import type { JiraScope } from "./references.ts";
 import { jiraSource } from "./source.ts";
 import { memoryTransport, readOnly } from "./transport.ts";
 
-// Where its items say they are.
 export const jiraFixtureSite = "https://oriel.atlassian.net";
 
 export const jiraDeclaredFixture: SourceFixture<Estimates, JiraScope, JiraWrites> = {
   load: () => loaded(loadJiraFixture()),
   everyCase: true,
-  // Recorded window cases had it on through its own connection.
   windowCase: true,
   connection: () => ({
     identity: jiraFixtureSite,
@@ -48,7 +43,6 @@ export const jiraDeclaredFixture: SourceFixture<Estimates, JiraScope, JiraWrites
   memory: async (connection, via) => overMemory(connection, via),
 };
 
-// The instant SYN is frozen at: its last change, an issue's or an edit's.
 export function frozenAt(fixture: JiraFixture): Instant {
   const { records } = fixtureSnapshot(fixture, jiraFixtureSite, fixture.edits.length);
   // Instants sort as strings.
@@ -59,16 +53,11 @@ export function frozenAt(fixture: JiraFixture): Instant {
   return last as Instant;
 }
 
-// SYN as the server opens it: read from the snapshot after every edit, as of
-// its last, with no site behind it, so it's read-only. A test that gives an
-// in-memory site (`via.fetch`) has change sets written there.
 function opened(fixture: JiraFixture, connection: ToOpen, via: OpenVia): OpenedJira {
   const site = connection.identity;
   const edited = fixture.edits.length;
   const project = fixture.project.key;
   const send = via.fetch;
-  // Nothing syncs the site, so its boards are found once, at the first
-  // write that needs a points field.
   const writes: JiraWrites | null = send
     ? {
         site,
@@ -93,9 +82,6 @@ function opened(fixture: JiraFixture, connection: ToOpen, via: OpenVia): OpenedJ
   };
 }
 
-// A connection over a test's in-memory site, read and written through it as
-// Jira's REST API, with no credential: what a test, a shot or a timing that
-// acts in Jira as others do reads, and every sync sees what changed there.
 function overMemory(connection: ToOpen, via: OpenVia & { fetch: typeof fetch }): OpenedJira {
   const site = connection.identity;
   const project = jiraProject(connection.options);
@@ -107,7 +93,6 @@ function overMemory(connection: ToOpen, via: OpenVia & { fetch: typeof fetch }):
     attrs: jiraAttrs,
     about: `${project} on ${URL.parse(site)?.host ?? site}`,
     scope: { projects: [project] },
-    // What the last sync found on the boards; nothing before one.
     context: () => ({ none: boards.unestimating() ?? new Set(), home: project }),
     writes: { site, memory: via.fetch, project, boards },
     incremental: true,
@@ -123,7 +108,6 @@ function loaded(fixture: JiraFixture): LoadedFixture<Estimates> {
     edits: fixture.edits.length,
     firstEdit: (firstEdit ?? null) as Instant | null,
     regions: fixture.regions,
-    // An issue by its key, such as SYN-12.
     item: (key) =>
       stableIds.has(`jira:${key}`)
         ? { id: itemId("jira", key) }
@@ -136,7 +120,6 @@ function loaded(fixture: JiraFixture): LoadedFixture<Estimates> {
       ),
     connect: async (edited) => {
       const snapshot = fixtureSnapshot(fixture, jiraFixtureSite, edited);
-      // Each issue's text as its sync gives it; the records in the fixture's order.
       const { texts } = await listed(
         fixtureSource(fixture, { site: jiraFixtureSite, edited }).sync(null),
       );
@@ -150,7 +133,6 @@ function loaded(fixture: JiraFixture): LoadedFixture<Estimates> {
               ? { id, status: "ok", content }
               : { id, status: "gone", reason: "deleted" };
           }),
-        // As the app has it with no estimates turned off, and SYN its home.
         context: { none: new Set(), home: fixture.project.key },
         changes: (now) => changes(fixture, edited, now),
         close: () => {},
@@ -159,8 +141,6 @@ function loaded(fixture: JiraFixture): LoadedFixture<Estimates> {
   };
 }
 
-// What the first `edited` edits changed, logged as a sync would log them,
-// each at its edit's time.
 function changes(
   fixture: JiraFixture,
   edited: number,

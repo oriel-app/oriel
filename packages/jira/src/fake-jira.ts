@@ -1,6 +1,4 @@
-// For tests: a transport that answers from hand-written payloads, shaped like
-// the examples in Atlassian's REST v3 and Agile docs, and keeps every request.
-// All names and content are made up.
+// Shaped like the examples in Atlassian's REST v3 and Agile docs. All names and content are made up.
 import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
 
 export const site = "https://oriel.atlassian.net";
@@ -28,7 +26,6 @@ export const missing: JiraResponse = {
   },
 };
 
-// The board list and configuration that discovery reads.
 export function discovery(
   project = "SYN",
   estimation: unknown = {
@@ -122,7 +119,6 @@ export const parent = (key: string, type: keyof typeof issueTypes = "Epic") => (
   },
 });
 
-// A search or issue result. `fields` replaces any default.
 export function jiraIssue(key: string, fields: Record<string, unknown> = {}) {
   const id = String(10000 + Number(key.slice(key.indexOf("-") + 1)));
   return {
@@ -143,7 +139,6 @@ export function jiraIssue(key: string, fields: Record<string, unknown> = {}) {
   };
 }
 
-// A paragraph document, as Jira returns rich text.
 export const doc = (...paragraphs: string[]) => ({
   type: "doc",
   version: 1,

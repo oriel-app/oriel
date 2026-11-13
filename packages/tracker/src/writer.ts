@@ -1,8 +1,4 @@
-// The stand-in tracker's writer (decision 0059): what an approved change set's
-// apply and revert write, into Oriel's own store of its issues. Each write
-// lands its issue's index row, its change log and what it keeps beside the
-// row in one transaction, so nothing is half written: a write that fails
-// changed nothing, and is refused as unsent.
+// Each write lands in one transaction, so nothing is half written: a write that fails changed nothing, and is refused as unsent.
 import {
   type Instant,
   isItemId,
@@ -32,7 +28,6 @@ export function trackerWriter(writes: TrackerWrites): SourceWriter<"tracker"> {
     return isTrackerId(id) && key !== undefined ? issues.byKey(key) : null;
   };
 
-  // A story's epic, by its ID, as the tracker has it now.
   const epicOf = (epic: string | null): Issue["epic"] => {
     if (epic === null) return null;
     const issue = isItemId(epic) ? found(epic) : null;
@@ -49,7 +44,6 @@ export function trackerWriter(writes: TrackerWrites): SourceWriter<"tracker"> {
     };
   };
 
-  // A set op on one issue: what it held of `fields` before, and after.
   const changed = async (
     issue: Issue,
     next: Partial<Issue>,
@@ -193,8 +187,6 @@ function parsed<O extends TrackerOp>(op: O, args: unknown): TrackerArgs<O> {
   return result.value as TrackerArgs<O>;
 }
 
-// The tracker's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for it (decision 0049).
 export function trackerWriterOf(writes: TrackerWrites, _log: Log): SourceWriter<"tracker"> {
   return trackerWriter(writes);
 }

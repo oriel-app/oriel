@@ -1,10 +1,3 @@
-// The stand-in tracker's fixture (decision 0059): a fresh first run's, which
-// holds no issue, then one edit, a small plan a person approved, so a case or
-// a measure can hold its items. It is synthetic, kept here beside the code
-// that writes it, as the tracker's issues live in Oriel's own database and
-// nothing syncs them from a source with data of its own. Tests, evals and
-// the server's fixture mode open it as the server opens the tracker; the
-// server lends its own store, so what the agent drafts into it lands there.
 import { type Instant, type ItemId, listed, type SourceFixture } from "@oriel/core";
 import { idOf, type Issue, issuesIn } from "./issues.ts";
 import { memoryItems } from "./memory.ts";
@@ -13,7 +6,6 @@ import { trackerSource } from "./source.ts";
 
 const planned = "2026-10-28T10:00:00.000Z" as Instant;
 
-// The plan: an epic and three stories, one estimated and assigned.
 const plan: Issue[] = [
   {
     key: "T-1",
@@ -54,7 +46,6 @@ const plan: Issue[] = [
   })),
 ];
 
-// A store holding the fixture after its first `edited` edits.
 async function stored(edited: number) {
   const own = memoryItems();
   if (edited > 0)
@@ -67,7 +58,6 @@ export const trackerDeclaredFixture: SourceFixture<TrackerOn, undefined, Tracker
     edits: 1,
     firstEdit: null,
     regions: [],
-    // An issue by its key, once the plan is made.
     item: (name) =>
       plan.some((issue) => issue.key === name)
         ? { id: idOf(name) }

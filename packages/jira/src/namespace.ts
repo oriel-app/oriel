@@ -1,7 +1,3 @@
-// The `jira` namespace of a region's module: Jira's read helpers, and a write
-// for each op in Jira's catalogue that a run may capture (decision 0019).
-// Bindings build it only for a region holding Jira items, and its functions
-// take only those, or for a region with no items yet, which may only create. The composition root hands it to bindings.
 import {
   containerRules,
   idUnion,
@@ -31,9 +27,8 @@ import { keyOf, projectOf } from "./rest.ts";
 const outside = (id: string) =>
   new RangeError(`${JSON.stringify(id)} isn't in this region; use search() to look outside it`);
 
-// The guest's view of a Jira read. Built field by field, so the value has
-// exactly the shape `JiraItem` declares and nothing the reader added. A
-// reader may sit behind any transport, so what it returns is checked here.
+// Built field by field, so the value has exactly the shape `JiraItem` declares and nothing the reader added;
+// a reader may sit behind any transport, so what it returns is checked here.
 function itemView(id: ItemId, content: unknown) {
   const parsed = jiraContent(content);
   if (!parsed.ok) throw new Error(`the source returned ${id} in a shape Oriel can't read`);
@@ -59,7 +54,6 @@ function itemView(id: ItemId, content: unknown) {
   };
 }
 
-// A Jira item in the region: anything else is refused with what to use.
 function jiraMember(id: string, host: NamespaceHost): ItemId<"jira"> {
   if (!host.has(id)) throw outside(id);
   if (!isJiraId(id))
@@ -80,8 +74,6 @@ function writable(id: string, host: NamespaceHost): ItemId<"jira"> | NewRef {
   );
 }
 
-// The region's Jira items, the epic its workstream was made around, if any, the
-// epics a new story may go in, and where estimates can't go.
 type JiraScope = {
   ids: readonly ItemId<"jira">[];
   anchor: ItemId<"jira"> | null;
@@ -89,23 +81,15 @@ type JiraScope = {
   estimates: Estimates;
 };
 
-// The projects whose boards take no estimates, as the last sync found them
-// (`JiraBoards`), and the project a story with no epic is created in.
-// Approval can't write an estimate there, so a run can't propose one: an
-// item read there has no points, and the refusal says why.
+// Approval can't write an estimate there, so a run can't propose one.
 export type Estimates = { none: ReadonlySet<string>; home: string | null };
 
-// The project a Jira item is in, or a new story goes in: an item's own, and
-// otherwise the region's epic's, or with none, the home project. A story
-// created earlier in this run counts as in the region's epic, or the home
-// project. That guess, or a handle whose item has since moved project, can
-// miss; approval then refuses the estimate, as it did before.
+// A guess for a story created in this run, or an item since moved project, can miss; approval then refuses the estimate.
 function projectFor(scope: JiraScope, at: string | null): string | null {
   if (at !== null && isJiraId(at)) return projectOf(keyOf(at));
   return scope.anchor ? projectOf(keyOf(scope.anchor)) : scope.estimates.home;
 }
 
-// Refuses an estimate in a project whose board takes none.
 function estimable(scope: JiraScope, at: string | null, what: string) {
   const project = projectFor(scope, at);
   if (project !== null && scope.estimates.none.has(project))
@@ -123,9 +107,6 @@ const getItem = read({
   },
 });
 
-// What a list of Jira items holds that a block can show (decision 0030):
-// each item's fields a person reads it by, its assignee's name and its
-// estimate among them.
 const listed = (source: string): ResultFields => ({
   source,
   lists: {
@@ -175,9 +156,6 @@ const listStories = (scope: JiraScope, epic: ItemId<"jira">) =>
       ),
   });
 
-// A new story's fields: each one's validator and its type as the agent sees
-// it, under the same keys. A field is optional exactly when its validator
-// takes undefined, so the declared `?` follows the validator.
 const storyKeys = ["summary", "description", "points"] as const;
 const storyFields = {
   summary: string,
@@ -194,16 +172,12 @@ const epicField = optional(nullable(string));
 const field = (key: string, check: Validator<unknown>, type: string) =>
   `${key}${check(undefined).ok ? "?" : ""}: ${type}`;
 
-// `epic` names the type a story's epic is given as, when it may have one.
 function storyType(epic: string | null): string {
   const fields = storyKeys.map((key) => field(key, storyFields[key], storyTypes[key]));
   if (epic) fields.push(field("epic", epicField, `${epic} | null`));
   return `{ ${fields.join("; ")} }`;
 }
 
-// In a region made around an epic, a new story goes in that epic. Elsewhere
-// it may go in one of the region's epics, by kind at bind time, or in none; a
-// region without epics doesn't offer the choice.
 function createStory(scope: JiraScope): NamespaceWrite {
   const doc = "Returns its ref, which later writes in this run can target.";
   const { anchor, epics } = scope;
@@ -244,14 +218,11 @@ function createStory(scope: JiraScope): NamespaceWrite {
   });
 }
 
-// A new story gets points only where its board takes estimates.
 function unpointed(scope: JiraScope, story: { points?: number | null }, epic: string | null) {
   if (story.points !== undefined && story.points !== null)
     estimable(scope, epic, "create the story without points");
 }
 
-// A region with no items yet offers only creates, to start a plan from
-// nothing: an epic, and stories in it or in none.
 const epicKeys = ["summary", "description"] as const;
 const createEpic = write({
   name: "createEpic",
@@ -286,17 +257,11 @@ const createStoryInNewEpic = (scope: JiraScope) =>
 
 const target = param("id", "Target", string);
 
-// The ops a run may capture: every op in Jira's catalogue but its
-// revert-only ones.
 type Offered = {
   [O in JiraOp]: (typeof jiraOps)[O]["revertOnly"] extends false ? O : never;
 }[JiraOp];
 
-// How each one is offered in a region with items. Typed over Jira's
-// catalogue, so an op added there must be offered here or marked
-// revert-only; a new epic starts a plan, so only a blank region offers it.
-// Each item takes one comment a run: a diff would show a second as
-// rewriting the first.
+// Each item takes one comment a run: a diff would show a second as rewriting the first.
 const writes: {
   [O in Exclude<Offered, "createEpic">]: (
     scope: JiraScope,
@@ -387,8 +352,7 @@ const offered = (Object.keys(jiraOps) as JiraOp[]).filter(
   (op): op is Exclude<Offered, "createEpic"> => !jiraOps[op].revertOnly && op !== "createEpic",
 );
 
-// What a Jira item is, in the declarations' `Item` (see `ItemDocs` in
-// bindings): shape only, never source text.
+// Shape only, never source text.
 export const jiraItemDoc =
   "A Jira item is a tracker item, such as a story or an epic: its title is its summary, its text its summary, description and comments.";
 
@@ -434,16 +398,12 @@ function types(scope: JiraScope): string[] {
   ];
 }
 
-// Jira's namespace. `kinds` holds each Jira item's kind facet from the index:
-// only an epic can parent a new story. `estimates` says where estimates
-// can't go; by default, everywhere they can.
 export function jiraNamespace(
   kinds: ReadonlyMap<string, string | undefined>,
   estimates: Estimates = { none: new Set(), home: null },
 ): NamespaceSpec {
   const jiraScope = ({ ids, anchor }: NamespaceScope): JiraScope => {
     const jira = ids.filter(isJiraId);
-    // A new story in a region made around an epic always goes in that epic.
     if (anchor !== null && isJiraId(anchor))
       return { ids: jira, anchor, epics: [anchor], estimates };
     return {
@@ -458,7 +418,6 @@ export function jiraNamespace(
     ops: jiraOps,
     blank: true,
     types: (scope) => types(jiraScope(scope)),
-    // Region reads, then the writes in catalogue order.
     fns(given): NamespaceFn[] {
       const scope = jiraScope(given);
       const commented = new Set<string>();

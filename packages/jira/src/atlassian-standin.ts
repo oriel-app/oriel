@@ -1,15 +1,5 @@
-// A stand-in for Atlassian's Rovo MCP server (OA-276), so Jira's support
-// through a source server can be built and tried with no Atlassian account:
-// it reports the real server's name and lists the tools it lists flat at
-// the address Atlassian's instructions give, with the operations Oriel runs
-// through `executeRead` and `executeWrite`, and answers each from SYN,
-// `fixtures/jira`, in memory, in the real server's shapes, as recorded in
-// fixtures/jira-mcp/real.json: JSON under `data`, the "full" view's, rich
-// text as Markdown, custom fields by their labels, and a failure as
-// `{"error": true, "message", "statusCode"}`. Writes change only this
-// process's copy. Never published, never bundled. Served over stdio by
-// packages/standin-mcp, and in memory to this package's tests:
-// `@oriel/jira/standin`.
+// A stand-in for Atlassian's Rovo MCP server, answering from SYN in memory in the real server's shapes (fixtures/jira-mcp/real-sync.json
+// and real-read.json). Writes change only this process's copy. Never published, never bundled.
 import { type StandInAnswer, type StandInTool, standInCalls } from "@oriel/core";
 import { adfToText, textToAdf } from "./adf.ts";
 import { fromMarkdown, toMarkdown } from "./atlassian.ts";
@@ -17,24 +7,19 @@ import { frozenAt } from "./declared-fixture.ts";
 import { loadJiraFixture } from "./fixture.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
 
-// A tool as a stand-in serves it, and its answer, as core gives them.
 export type { StandInTool } from "@oriel/core";
 type ToolResult = StandInAnswer;
 
-// Its value as a tool's text, under `data`, as the real server answers.
 const ok = (value: unknown): ToolResult => ({
   content: [{ type: "text", text: JSON.stringify({ data: value }) }],
 });
-// A failure, as the real server answers one: its words and REST's status.
 const failed = (message: string, statusCode = 400): ToolResult => ({
   content: [{ type: "text", text: JSON.stringify({ error: true, message, statusCode }) }],
   isError: true,
 });
 
-// What it reports in its handshake, as the real one does.
 export const atlassianInfo = { name: "atlassian-mcp-server", version: "standin" };
 
-// The one site it reaches, as the resources tool lists it.
 export const standInCloudId = "8f3c2a71-5d0e-4b6a-9c1f-2e7d4b8a6f10";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -49,8 +34,6 @@ const schema = (properties: Record<string, unknown>, required: string[]) => ({
   required: ["cloudId", ...required],
 });
 
-// An issue as the real server gives one: its description in Markdown, and
-// each custom field by a label, with its ID and value.
 const asServer = (raw: unknown): unknown => {
   if (!isObject(raw) || !isObject(raw.fields)) return raw;
   const fields: Record<string, unknown> = {};
@@ -71,21 +54,15 @@ const asServer = (raw: unknown): unknown => {
 const commentAsServer = (raw: unknown): unknown =>
   isObject(raw) ? { ...raw, body: toMarkdown(adfToText(raw.body)) } : raw;
 
-// SYN in memory, as the stand-in starts from.
 export const standInSite = () => {
   const fixture = loadJiraFixture();
   return memorySite(fixture, frozenAt(fixture));
 };
 
-// Its tools as a caller in this process: what the person's agent would
-// answer through it, for tests.
 export const standInCaller = (tools: readonly StandInTool[] = atlassianStandIn()) =>
   standInCalls(tools);
 
-// The tools it serves, and what each is. Each read is marked read-only, as
-// the real server's are; each write isn't.
 export function atlassianStandIn(site = standInSite()) {
-  // A REST call to the site in memory, as the real tool makes it.
   const rest = async (method: string, path: string, body?: unknown) => {
     const response = await site.fetch(`${memorySiteOrigin}${path}`, {
       method,
@@ -94,7 +71,6 @@ export function atlassianStandIn(site = standInSite()) {
     const text = await response.text();
     return { status: response.status, body: text ? (JSON.parse(text) as unknown) : null };
   };
-  // Its answer as the tool's: the body, or Jira's own words for a failure.
   const answer = async (
     method: string,
     path: string,
@@ -112,7 +88,6 @@ export function atlassianStandIn(site = standInSite()) {
   };
   const key = (args: Record<string, unknown>) => String(args.issueIdOrKey ?? "");
   const issue = (args: Record<string, unknown>) => `/rest/api/3/issue/${key(args)}`;
-  // A rich-text argument as REST takes it: Markdown made a document.
   const doc = (value: unknown) =>
     typeof value === "string" ? textToAdf(fromMarkdown(value)) : value;
 
@@ -142,7 +117,6 @@ export function atlassianStandIn(site = standInSite()) {
     annotations: { readOnlyHint: false },
     call,
   });
-  // A tool the real server has that Oriel never calls.
   const unused = (name: string, description: string, readOnly: boolean): StandInTool => ({
     name,
     description,
@@ -151,8 +125,6 @@ export function atlassianStandIn(site = standInSite()) {
     call: async () => failed(`${name} isn't in the stand-in.`),
   });
 
-  // The operations `executeRead` runs by name, as the real one's discover
-  // names them: only those Oriel runs.
   const operations: Record<string, (inputs: Record<string, unknown>) => Promise<ToolResult>> = {
     listJiraIssueRemoteIssueLinks: (inputs) => answer("GET", `${issue(inputs)}/remotelink`),
     listJiraBoards: (inputs) =>
@@ -377,7 +349,6 @@ export function atlassianStandIn(site = standInSite()) {
     },
     unused("search", "Search Jira and Confluence.", true),
   ];
-  // Every call names the one site it reaches.
   return tools.map((tool): StandInTool =>
     tool.name === "getAccessibleAtlassianResources"
       ? tool
@@ -391,6 +362,5 @@ export function atlassianStandIn(site = standInSite()) {
   );
 }
 
-// A REST listing's values.
 const listed = (body: unknown): unknown[] =>
   isObject(body) && Array.isArray(body.values) ? body.values : [];

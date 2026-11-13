@@ -1,6 +1,4 @@
-// Linear, a tracker Oriel reads and writes only through Linear's own MCP
-// server (decision 0059, OA-278). The read side only: the writer is
-// exported from `@oriel/linear/writer`, and nothing here imports it.
+// The read side only: the writer is exported from `@oriel/linear/writer`, and nothing here imports it.
 export { linearDeclaration } from "./declaration.ts";
 export { linearDeclaredFixture, standInFound, standInServer } from "./declared-fixture.ts";
 export {

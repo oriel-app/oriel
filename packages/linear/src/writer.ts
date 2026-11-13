@@ -1,12 +1,5 @@
-// Linear's writer (OA-278): a change set's replay through Linear's MCP
-// server, each mutation one call of its write tools, from a process with
-// only those (decision 0059). What a write checks first, the item it
-// targets, a status, a person or a cycle by name, it reads through the read
-// tools, and anything that fails before the write goes out sent nothing.
-//
-// No tool of the server deletes an issue or a project, so a create can't be
-// undone through it: the writer says so up front (`unsendable`), and no
-// change set that made one offers a Revert.
+// Each mutation is one call of the server's write tools, from a process with only those; what it checks first is read
+// through the read tools, and a failure before the write goes out sent nothing. No tool deletes an issue or a project.
 import {
   type ItemId,
   type FieldValues,
@@ -47,7 +40,6 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
     return issue && issue.identifier === key ? { kind: "issue", issue } : null;
   };
 
-  // Its fields, each of `fields` it has; an unknown name is left out.
   const valuesOf = async (item: Found, fields: readonly string[]): Promise<FieldValues> => {
     const all: Record<string, unknown> = {};
     if (item.kind === "project") {
@@ -95,11 +87,8 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
       ? { id: idOf(item.issue.identifier), stableId: item.issue.id }
       : { id: idOf(`P-${item.project.slugId}`), stableId: item.project.id };
 
-  // A status, a person or a cycle by what the agent called it, as the team
-  // has it now, or a refusal naming what it has.
   const statusNamed = async (name: string) => {
     const statuses = await reads.statuses(team.id);
-    // Its exact name, else the one it is but for case; two such is none.
     const alike = statuses.filter((each) => each.name.toLowerCase() === name.toLowerCase());
     const found =
       statuses.find((each) => each.name === name) ?? (alike.length === 1 ? alike[0] : undefined);
@@ -166,8 +155,7 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
         ...(project ? { project: project.id } : {}),
       });
     });
-    // What a create sets, and nothing it didn't: no assignee, which would
-    // read as handing the work off, nor a status or labels it never chose.
+    // Nothing it didn't choose: no assignee, which would read as handing the work off, nor a status or labels.
     return result(null, { kind: "issue", issue }, [
       "summary",
       "description",
@@ -177,7 +165,6 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
     ]);
   };
 
-  // A set op on one issue or project: one save of the field it sets.
   const edit = async (op: LinearOp, item: Found, raw: unknown) => {
     const onIssue = (field: string, send: () => Promise<Record<string, unknown>>) => {
       if (item.kind !== "issue") throw refused(`${op} takes an issue, not a project`);
@@ -287,8 +274,6 @@ function parsed<O extends LinearOp>(op: O, args: unknown): LinearArgs<O> {
   return result.value as LinearArgs<O>;
 }
 
-// Linear's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for it (decision 0049).
 export function linearWriterOf(writes: LinearWrites, _log: Log): SourceWriter<"linear"> {
   return linearWriter(writes);
 }

@@ -1,8 +1,3 @@
-// A Linear connection, opened (decision 0049): only through Linear's own MCP
-// server (decision 0059), with no API key or token of Oriel's. It reads one
-// team, the one its options name by key, else the first the server lists;
-// its namespace's context and its writer go by what its last sync found of
-// that team.
 import {
   type Instant,
   type Opened,
@@ -19,9 +14,6 @@ import type { TeamWorld } from "./items.ts";
 import { type LinearTeam, linearReads } from "./linear-mcp.ts";
 import { linearSource } from "./source.ts";
 
-// What a Linear connection's writer is built from, by its line in
-// packages/changeset/src/writers.ts: its team, and the server's reads and
-// writes, each from its own process.
 export type LinearWrites = {
   team: LinearTeam;
   read: ToolCaller;
@@ -29,13 +21,10 @@ export type LinearWrites = {
   prefix?: string;
 };
 
-// What the namespace takes: the team as the last sync found it, and now,
-// which tells the cycle under way.
 export type LinearContext = { world: TeamWorld; now: Instant };
 export type LinearScope = { team: string };
 export type OpenedLinear = Opened<LinearContext | undefined, LinearScope, LinearWrites>;
 
-// The team a connection reads, from its options.
 export const linearTeam = (options: Readonly<Record<string, unknown>>): string =>
   typeof options.team === "string" ? options.team : "";
 
@@ -54,8 +43,6 @@ export async function openThrough(
   const teams = await reads.teams();
   const named = linearTeam(connection.options);
   const team = named ? teams.find((each) => each.key === named) : teams[0];
-  // A team picked that it no longer lists doesn't fit its options: it
-  // waits for another (decision 0051).
   if (!team && named) throw new OptionsUnfit(`${server.known.name} lists no team ${named}`);
   if (!team) throw new Error(`${server.known.name} lists no Linear team`);
   const source = linearSource({ reads, team, prefix: connection.prefix });
@@ -75,8 +62,6 @@ export async function openThrough(
   };
 }
 
-// What the person sees when Linear can't be synced through its server,
-// naming it. A sync that fails this way keeps the index as it was.
 export function linearProblem(error: unknown, server: string): string {
   if (error instanceof ServerUnreadable)
     return `${server} answered in a way Oriel didn't expect, so Oriel kept the window as it was.`;

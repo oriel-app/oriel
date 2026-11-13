@@ -1,8 +1,4 @@
-// The stand-in tracker's agent side, from core's issue shape (OA-327): its
-// ops are named as Jira's are where they mean the same, so the agent's
-// namespace reads the same for both; its assignee is a name, as it keeps
-// people, and a label is added one at a time. Two ops exist only as
-// reverts: removeLabel undoes addLabel, and deleteItem undoes a create.
+// Its ops are named as Jira's are where they mean the same, so the agent's namespace reads the same for both.
 import { type Infer, issueShape, type IssueOps } from "@oriel/core";
 import { trackerEdit } from "./edit.ts";
 import { description, label, personName, points, status, summary } from "./ops.ts";
@@ -15,8 +11,7 @@ import {
   trackerContent,
 } from "./issues.ts";
 
-// What a tracker item is, in the declarations' `Item`: shape only, never
-// source text.
+// Shape only, never source text.
 export const trackerItemDoc =
   "A tracker item is an issue in Oriel's own tracker, an epic or a story: its title is its summary, its text its summary and description.";
 
@@ -84,8 +79,6 @@ const declared = {
       labels: c.labels,
     };
   },
-  // Its type, status, assignee, estimate and labels, its description, and
-  // the form a person edits it in, in place (decision 0059).
   panel: (content: unknown) => {
     const read = trackerContent(content);
     if (!read.ok || !isStatusName(read.value.status)) return null;
@@ -110,7 +103,6 @@ const declared = {
       edit: trackerEdit(issue),
     };
   },
-  // On or off: on, it knows nothing beyond the index.
   region: (on: boolean) => (on ? { doc: "This region's tracker items." } : undefined),
 } as const;
 

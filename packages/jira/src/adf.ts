@@ -1,6 +1,4 @@
-// Atlassian Document Format, Jira's rich text, to and from plain text, and
-// into the panel's typed blocks. Text is content, never markup, every way:
-// nothing in it is interpreted.
+// Text is content, never markup, every way: nothing in it is interpreted.
 import {
   array,
   type Infer,
@@ -13,9 +11,7 @@ import {
   unknown,
 } from "@oriel/core";
 
-// Plain text as a document: blank lines split paragraphs and single newlines
-// become hard breaks. `adfToText` reads it back unchanged, except that a run
-// of blank lines comes back as one.
+// `adfToText` reads it back unchanged, except that a run of blank lines comes back as one.
 export function textToAdf(text: string) {
   return {
     type: "doc",
@@ -82,8 +78,6 @@ const indent = (text: string, prefix: string, rest = " ".repeat(prefix.length)) 
     .map((line, i) => (i === 0 ? prefix : rest) + line)
     .join("\n");
 
-// Blocks are separated by a blank line, list items by a newline. Unknown nodes
-// keep their children's text.
 export function adfToText(doc: unknown): string {
   const root = node(doc);
   return root ? render(root) : "";
@@ -173,15 +167,12 @@ function render(n: Node): string {
   }
 }
 
-// A link keeps its address beside its words, unless they are the same.
 function text(n: Node): string {
   const words = n.text ?? "";
   const link = n.marks?.find((mark) => mark.type === "link")?.attrs?.href;
   return typeof link === "string" && link && link !== words ? `${words} (${link})` : words;
 }
 
-// Whether a document is only paragraphs of unmarked text, which plain text
-// says as well.
 export function plainDocument(doc: unknown): boolean {
   const root = node(doc);
   const plain = (n: Node): boolean =>
@@ -191,14 +182,9 @@ export function plainDocument(doc: unknown): boolean {
   return root === null || plain(root);
 }
 
-// Lists and quotes nest at most this deep; deeper, their text is a paragraph.
 const deepest = 8;
 
-// A document as the panel's blocks: paragraphs, headings, lists, quotes, code
-// and rules, with bold, italics, code, links and mentions inside them. What
-// has no block of its own reads as text: a table row by row, a panel or an
-// expand as its contents, an attachment as "[attachment]". A link is kept
-// only to an http(s) address; any other is its words.
+// A link is kept only to an http(s) address; any other is its words.
 export function adfToProse(doc: unknown): PanelProse[] {
   const root = node(doc);
   return root ? proseOf(root, 0) : [];
@@ -237,7 +223,6 @@ function proseOf(n: Node, depth: number): PanelProse[] {
           kind: "list",
           ordered,
           start: ordered ? Number(attr(n, "order")) || 1 : 1,
-          // An item of more than one block keeps its paragraphs apart.
           tight: items.every((item) => item.length <= 1),
           items,
         },
@@ -299,8 +284,6 @@ function inlineOf(n: Node): PanelInline[] {
   }
 }
 
-// A text node with its marks: code, then strong and em, then a link around
-// them all. Other marks (strike, underline, colour) leave it as it is.
 function marked(n: Node): PanelInline[] {
   const words = n.text ?? "";
   if (words === "") return [];
@@ -315,7 +298,6 @@ function marked(n: Node): PanelInline[] {
   return href ? [{ kind: "link", href, children: out }] : out;
 }
 
-// An address the panel may link to: http(s) only, as the browser writes it.
 function webHref(href: string): string | null {
   const url = URL.parse(href);
   return url && (url.protocol === "http:" || url.protocol === "https:") ? url.href : null;

@@ -1,9 +1,4 @@
-// What Jira's recordings share: the REST cassettes under
-// packages/jira/test-data/, recorded from the live SYN before Jira moved to
-// Atlassian's server (decision 0059), which replay.test.ts replays; the
-// regions' reads a recording makes; and how a recording's people and times
-// are scrubbed, so no real person's details are committed, which
-// scripts/record-source-mcp.ts applies to Atlassian's server's answers too.
+// A recording's people and times are scrubbed, so no real person's details are committed.
 import type { ItemId } from "@oriel/core";
 import type { JiraFixture } from "./fixture.ts";
 import type { JiraSourceOptions } from "./source.ts";
@@ -20,7 +15,6 @@ export const recordedSource = (transport: ReadTransport): JiraSourceOptions => (
   log: () => {},
 });
 
-// Every frozen region's items, in order, each once.
 export const recordedReads = (fixture: JiraFixture): ItemId<"jira">[] => [
   ...new Set(fixture.regions.flatMap((region) => region.items)),
 ];
@@ -29,9 +23,7 @@ const dropped = new Set(["emailAddress", "avatarUrls", "timeZone", "locale"]);
 // Jira writes times in the account's offset, such as 2026-10-29T09:00:00.000+0100.
 const zoned = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})([+-]\d{2})(\d{2})$/;
 
-// Each person (any object with an accountId, a mention, or a bare
-// userAccountId) becomes a placeholder, the same one wherever they appear.
-// Times keep Jira's format but move to UTC, which hides the account's zone.
+// Each person becomes a placeholder, the same wherever they appear; times move to UTC, which hides the account's zone.
 export function scrub(value: unknown, people = new Map<string, string>()): unknown {
   const person = (accountId: string) => {
     const placeholder = people.get(accountId) ?? `person-${people.size + 1}`;

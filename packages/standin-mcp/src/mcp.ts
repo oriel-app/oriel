@@ -1,9 +1,5 @@
-// A stand-in's MCP server, on no SDK: a JSON-RPC message in, its answer out,
-// over stdio, one message a line. It offers tools only, and speaks the two
-// revisions `packages/sheets-mcp` does: 2025-06-18, which opens with
-// `initialize`, and 2026-07-28, where a client may ask `server/discover`
-// instead and each request may carry its revision in `_meta`.
-// https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
+// Speaks the two revisions packages/sheets-mcp does: 2025-06-18, which opens with `initialize`, and 2026-07-28, where a
+// client may ask `server/discover` instead. https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
 import { createInterface } from "node:readline";
 import type { StandInTool } from "@oriel/core";
 
@@ -39,7 +35,6 @@ export function standInServer(info: { name: string; version: string }, tools: St
   }));
 
   return {
-    // The answer to one message, or null for a notification or an answer.
     async handle(message: unknown): Promise<Answer | null> {
       const id: Id | null =
         isObject(message) && (typeof message.id === "string" || typeof message.id === "number")
@@ -98,8 +93,7 @@ export function standInServer(info: { name: string; version: string }, tools: St
 
 export type StandInServer = ReturnType<typeof standInServer>;
 
-// Serves `server` on `input` and `output` until the input ends: nothing but
-// answers on `output`, one a line.
+// Nothing but answers on `output`, one a line.
 export async function serveLines(
   server: StandInServer,
   input: NodeJS.ReadableStream,

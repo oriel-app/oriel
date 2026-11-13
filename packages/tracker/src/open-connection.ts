@@ -1,18 +1,10 @@
-// The stand-in tracker's one connection, over Oriel's own store of its issues
-// (decision 0059), which the composition root lends it: its source reads
-// them, its writer writes them, and a person's edit in its panel applies at
-// once. Nothing syncs it: its index rows are its issues.
 import type { Instant, Opened, OpenVia, OwnItems, ToOpen } from "@oriel/core";
 import { unknown } from "@oriel/core";
 import { trackerEditor } from "./edit.ts";
 import { trackerSource } from "./source.ts";
 
-// What its writer is built from: the store, and the clock its issues' update
-// times are read from.
 export type TrackerWrites = { own: OwnItems; now: () => Instant };
 
-// Its namespace's context: that it's on. A namespace with none offers
-// nothing, as the tracker is off.
 export type TrackerOn = { on: true };
 
 export async function openTracker(

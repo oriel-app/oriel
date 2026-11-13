@@ -1,9 +1,3 @@
-// The synthetic Jira project, SYN, as frozen fixtures: a base state, ordered
-// `edits` made directly in the source after it, and frozen regions. CI, evals
-// and the window render from it, and `pnpm seed:jira` recreates it on the
-// throwaway site. Fixtures are the source of truth. `fixtureSnapshot` is the
-// one mapping from fixtures to index records and content, shared by sources
-// and tests.
 import { readFileSync } from "node:fs";
 import {
   array,
@@ -53,18 +47,15 @@ export const fixturePerson = object({ id: string, displayName: string, active: b
 
 export const fixtureIssue = object({
   key: issueKey,
-  // The stable ID: Jira's numeric issue ID.
   id: refine(string, (id) => /^[1-9][0-9]*$/.test(id), "expected a numeric issue ID"),
   issueType: union(literal("Epic"), literal("Story"), literal("Task"), literal("Bug")),
   summary: string,
-  // Plain text; paragraphs are separated by a blank line.
   description: string,
   status: object({
     name: string,
     category: union(literal("todo"), literal("in-progress"), literal("done")),
   }),
   epic: nullable(issueKey),
-  // A person ID.
   assignee: nullable(string),
   points: nullable(number),
   labels: array(string),
@@ -73,16 +64,12 @@ export const fixtureIssue = object({
   updatedAt: utc,
 });
 
-// An edit someone made directly in the source, not an Oriel change set.
 export const fixtureEdit = union(
   object({ kind: literal("setEpic"), key: issueKey, epic: issueKey, at: utc }),
   object({ kind: literal("setSummary"), key: issueKey, summary: string, at: utc }),
   object({ kind: literal("delete"), key: issueKey, at: utc }),
 );
 
-// Item IDs snapshotted against the base state, as a region would be, with an
-// origin as stored. For the epic grouping, `cluster` is the epic's stable ID
-// and `anchor` its item ID.
 export const fixtureRegion = object({
   name: string,
   origin: union(
@@ -97,7 +84,6 @@ export const fixtureRegion = object({
   items: array(jiraItemId),
 });
 
-// The fixture as its files hold it.
 export const jiraFixtureFile = object({
   project: fixtureProject,
   people: array(fixturePerson),
@@ -111,17 +97,13 @@ export type FixtureIssue = Infer<typeof fixtureIssue>;
 export type FixtureEdit = Infer<typeof fixtureEdit>;
 export type JiraFixtureFile = Infer<typeof jiraFixtureFile>;
 
-// A frozen region as Oriel uses it, with its origin in core's terms.
 export type FixtureRegion = { name: string; origin: WorkstreamOrigin; items: ItemId<"jira">[] };
 export type JiraFixture = Omit<JiraFixtureFile, "regions"> & { regions: FixtureRegion[] };
 
-// Each part is stored as `<part>.json` in `fixtures/jira/`.
 export const jiraFixtureParts = ["project", "people", "issues", "edits", "regions"] as const;
 
-// Where the fixture is kept.
 export const jiraFixtureDir = new URL("../../../fixtures/jira/", import.meta.url);
 
-// Reads `<dir>/<part>.json` as one checked fixture.
 export function loadJiraFixture(dir: URL = jiraFixtureDir): JiraFixture {
   const input = Object.fromEntries(
     jiraFixtureParts.map((part) => [
@@ -139,11 +121,7 @@ const badSummary = (summary: string) => !isSummary(summary);
 
 const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 
-// Shape first, then what shapes can't say: references resolve, keys are
-// unique and ascending, epics precede their children (the seed creates in key
-// order), each edit applies to the state the earlier ones left, and an epic
-// region holds its epic and that epic's children. The fixture as stored, for
-// the generator that writes it.
+// Beyond shapes: references resolve, keys are unique and ascending, and epics precede their children (the seed creates in key order).
 export function parseJiraFixtureFile(input: unknown): Result<JiraFixtureFile> {
   const shaped = jiraFixtureFile(input);
   if (!shaped.ok) return shaped;
@@ -151,13 +129,9 @@ export function parseJiraFixtureFile(input: unknown): Result<JiraFixtureFile> {
   return problems.length ? { ok: false, issues: problems } : shaped;
 }
 
-// The fixture as Oriel uses it: checked as stored, then each region's origin
-// in core's terms.
 export function parseJiraFixture(input: unknown): Result<JiraFixture> {
   const parsed = parseJiraFixtureFile(input);
   if (!parsed.ok) return parsed;
-  // The anchor by its stable ID too, from the base; the checks above
-  // guarantee an epic region's anchor is there.
   const stableIds = new Map(parsed.value.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
   const regions = parsed.value.regions.map(({ name, origin, items }): FixtureRegion => ({
     name,
@@ -302,8 +276,6 @@ function applyEdit(issue: FixtureIssue, edit: FixtureEdit): FixtureIssue | null 
   return { ...issue, summary: edit.summary, updatedAt: edit.at };
 }
 
-// The issues after the first `edited` source edits (0 is the base state), in
-// key order, with the stable IDs those edits deleted.
 export function applySourceEdits(
   fixture: JiraFixture,
   edited: number,
@@ -327,12 +299,9 @@ export function applySourceEdits(
 export type FixtureSnapshot = {
   records: JiraRecord[];
   content: Map<ItemId<"jira">, JiraContent>;
-  // Stable IDs the applied edits deleted.
   gone: string[];
 };
 
-// Pure. `site` is the origin item locations point at, such as
-// "https://oriel.atlassian.net"; `edited` is how many source edits to apply.
 // Records and content share no objects.
 export function fixtureSnapshot(
   fixture: JiraFixture,
@@ -341,11 +310,9 @@ export function fixtureSnapshot(
 ): FixtureSnapshot {
   const people = new Map(fixture.people.map((person) => [person.id, person]));
   const name = (id: string) => people.get(id)?.displayName ?? id;
-  // Stable IDs never change, and no edit deletes an epic that has children.
   const stableIds = new Map(fixture.issues.map((issue) => [issue.key, issue.id]));
   const { issues, gone } = applySourceEdits(fixture, edited);
-  // The fixture has no workflows: any status SYN uses may follow any other,
-  // as in a workflow that allows every transition. Listed from to-do to done.
+  // The fixture has no workflows: any status SYN uses may follow any other.
   const order = { todo: 0, "in-progress": 1, done: 2 };
   const statuses = [
     ...new Map(fixture.issues.map((issue) => [issue.status.name, issue.status])).values(),

@@ -23,7 +23,6 @@ function logged() {
   return { lines, log };
 }
 
-// Search pages, chained by nextPageToken like Jira's enhanced search.
 function pages(...issues: unknown[][]): Route {
   return (request: JiraRequest) => {
     const body = request.body as { nextPageToken?: string };

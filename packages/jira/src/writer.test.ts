@@ -27,17 +27,14 @@ import { memorySite, memorySiteOrigin } from "./memory-site.ts";
 import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
 import { jiraWriter, memoryTransport } from "./writer.ts";
 
-// Stands in for packages/changeset, the only place that mints approvals in
-// production. These tests cover the REST mapping, not the approval gate.
-// scripts/check-repo.ts allows this cast only in an adapter's writer test.
+// Stands in for packages/changeset, the only place that mints approvals: these tests cover the REST mapping, not the
+// approval gate. scripts/check-repo.ts allows this cast only in an adapter's writer test.
 const approve = (request: WriteRequest<"jira">) =>
   request as Parameters<SourceWriter<"jira">["apply"]>[0];
 
-// The fake's update time after its nth accepted write.
 const at = (n: number) => new Date(Date.UTC(2026, 9, 29, 9, 0, n)).toISOString();
 
 let seq = 0;
-// The fake site's stable ID for a key, as the region would know it.
 const stableIdOf = (target: ItemId<"jira">) =>
   String(10000 + Number(target.slice(target.lastIndexOf("-") + 1)));
 const request = (
@@ -54,7 +51,6 @@ const request = (
     args,
   });
 
-// A small stateful Jira: issues and remote links that writes change.
 function fakeSite() {
   const issues = new Map<string, { id: string; fields: Record<string, unknown> }>();
   const links = new Map<string, { id: number; url: string; title: string }[]>();
@@ -143,7 +139,6 @@ function fakeSite() {
     return { status: 405, body: null };
   };
 
-  // Each accepted write moves the issue's `updated` on a second, as Jira does.
   let clock = 0;
   const transport: Transport = async (req) => {
     calls.push(structuredClone(req));
@@ -294,15 +289,12 @@ const unsent = (error: unknown) => error instanceof SourceRefused && !error.sent
 
 test("anything that fails before the write goes out sent nothing", async () => {
   const jira = fakeSite();
-  // The read before the write.
   const unread: Transport = async (req) =>
     req.method === "GET" ? { status: 500, body: { errorMessages: ["No."] } } : jira.transport(req);
   await assert.rejects(
     writer(unread).apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
     unsent,
   );
-  // The writer's own checks: a link that isn't there, a board with no points
-  // field, a project with no Story type, a request it can't check.
   await assert.rejects(
     writer(jira.transport).apply(request("removeLink", "jira:SYN-12", { linkId: "10999" })),
     unsent,
@@ -328,8 +320,6 @@ test("anything that fails before the write goes out sent nothing", async () => {
   assert.deepEqual(jira.writes(), []);
 });
 
-// SYN-12 under a workflow: To Do may go to In Progress, In Progress to Done,
-// and Done nowhere. Moves land in `at`, and every request is kept.
 function workflowSite(start = "To Do") {
   const workflow: Record<string, [string, string, "new" | "indeterminate" | "done"][]> = {
     "To Do": [["21", "In Progress", "indeterminate"]],

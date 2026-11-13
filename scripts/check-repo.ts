@@ -368,6 +368,10 @@ export const commentsCleaned = [
   "packages/bindings/",
   "packages/sandbox/",
   "scripts/",
+  "packages/jira/",
+  "packages/linear/",
+  "packages/tracker/",
+  "packages/standin-mcp/",
 ];
 export const commentsCleanedLater = [
   "packages/core/src/telemetry.ts",

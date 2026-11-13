@@ -1,8 +1,4 @@
-// Linear's read side, through its server's read tools (OA-278): a sync
-// lists the team's statuses, cycles, projects and issues, and lands them
-// only once every page read, so an answer it can't read keeps the index as
-// it was. A read asks for each item by itself. What the last sync found of
-// the team is what the namespace and the writer go by.
+// A sync lands only once every page is read, so an answer it can't read keeps the index as it was.
 import {
   type IndexRecord,
   type ItemId,
@@ -23,7 +19,6 @@ import {
 import { type LinearReads, type LinearTeam } from "./linear-mcp.ts";
 
 export type LinearSource = Source<"linear", IssueAttrs, LinearContent> & {
-  // The team as the last sync found it, or as a read before any found it.
   world(): Promise<TeamWorld>;
   known(): TeamWorld | null;
 };
@@ -36,7 +31,6 @@ export function linearSource(options: {
   const { reads, team } = options;
   const prefix = options.prefix ?? "linear";
   let found: TeamWorld | null = null;
-  // Each issue's identifier by its UUID, for a parent's, from the last sync.
   let identifiers = new Map<string, string>();
 
   const look = async (): Promise<TeamWorld> => ({
@@ -99,6 +93,5 @@ export function linearSource(options: {
   };
 }
 
-// An item ID under a later connection's prefix, as `linear.2:ENG-4`.
 const withPrefix = (id: ItemId<"linear">, prefix: string): ItemId<"linear"> =>
   prefix === "linear" ? id : (`${prefix}:${parseItemId(id)?.key ?? ""}` as ItemId<"linear">);

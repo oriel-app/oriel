@@ -1,7 +1,4 @@
-// A person's own edit of an issue in its panel (decision 0059), applied at
-// once, with an Undo that sets back what it replaced: the form's fields, by
-// the names `trackerEdit` gives them, checked as the ops check them. Never
-// the agent's: its writes are change sets.
+// Never the agent's: its writes are change sets.
 import {
   nullable,
   object,
@@ -34,7 +31,6 @@ const fields: readonly Field[] = [
   "labels",
 ];
 
-// The form its panel shows: an epic takes no estimate.
 export function trackerEdit(issue: Issue): PanelEdit {
   return {
     fields: [

@@ -1,16 +1,5 @@
-// Linear through Linear's own MCP server (decision 0059, OA-278): the entry
-// Oriel knows it by, and the parser, both ways. Linear is reached only
-// through its server: Oriel has no API key or token connection of its own
-// to it.
-//
-// Linear documents its server's address and how to add it to an agent
-// (https://linear.app/docs/mcp), not its tools. Their names and arguments
-// are from the server's own tool list as published third-party listings
-// show it; their answers aren't shown anywhere. Where an answer's shape
-// isn't known, this reads the likely ones, a list bare or under its name,
-// a status as a name or an object, and anything else it can't read stops
-// the sync, naming the server (`ServerUnreadable`): the index stays as it
-// was. packages/standin-mcp/README.md lists what's assumed.
+// Linear documents its server's address (https://linear.app/docs/mcp), not its tools, and shows their answers nowhere: this reads
+// the likely shapes and stops the sync on any other. packages/standin-mcp/README.md lists what's assumed.
 import {
   answerText,
   narrowed,
@@ -23,7 +12,6 @@ import {
 } from "@oriel/core";
 import { type StatusType, statusTypes } from "./world.ts";
 
-// Its tools Oriel calls, by what each does.
 export const linearTools = {
   teams: "list_teams",
   statuses: "list_issue_statuses",
@@ -39,11 +27,8 @@ export const linearTools = {
 
 const t = linearTools;
 
-// Linear's MCP server, as Oriel knows it: by its address, as what it reports
-// in its handshake isn't documented. Its read-only address,
-// `/mcp/readonly`, has no write tools, so it isn't this one. No tool
-// deletes an issue or a project, so a create can't be undone through it
-// (`unsendable` in writer.ts).
+// Known by its address: what it reports in its handshake isn't documented. Its read-only address, `/mcp/readonly`, has no
+// write tools, so it isn't this one. No tool deletes an issue or a project (`unsendable` in writer.ts).
 export const linearServer: SourceServer = {
   name: "Linear's MCP server",
   reports: "linear",
@@ -51,7 +36,6 @@ export const linearServer: SourceServer = {
   reads: [t.teams, t.statuses, t.cycles, t.users, t.projects, t.project, t.issues, t.issue],
   writes: [t.saveIssue, t.saveProject],
   instructions: "https://linear.app/docs/mcp",
-  // The team a connection reads, by its key, from those the server lists.
   picks: [
     {
       name: "team",
@@ -78,7 +62,6 @@ export type LinearCycle = {
 export type LinearPerson = { id: string; name: string; active: boolean };
 export type LinearProject = {
   id: string;
-  // The 12 hex digits its URL ends in, which Oriel keys it by.
   slugId: string;
   name: string;
   description: string;
@@ -93,11 +76,9 @@ export type LinearIssue = {
   identifier: string;
   title: string;
   description: string;
-  // Its status by name, and its type where the answer gives one.
   status: string;
   statusType: StatusType | null;
   assignee: { id: string; name: string } | null;
-  // Its project's and its cycle's UUIDs, and its parent's, each or null.
   project: string | null;
   cycle: string | null;
   parent: string | null;
@@ -111,9 +92,7 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// A tool's answer as JSON: its structured content, or its text parsed. A
-// failed one is `failed` with its words, which only say whether it was a
-// refusal and are never passed on.
+// A failed one's words only say whether it was a refusal, and are never passed on.
 function bodyOf(tool: string, answer: ToolAnswer): { failed: string } | { body: unknown } {
   if (!isObject(answer) || !Array.isArray(answer.content))
     throw new ServerUnreadable(`${tool} answered with no content`);
@@ -129,16 +108,13 @@ function bodyOf(tool: string, answer: ToolAnswer): { failed: string } | { body: 
 
 const notFound = (words: string) =>
   /\b(not found|does not exist|no such|could not find)\b/i.test(words);
-// Words that say the server turned a write away unmade, such as an argument
-// it doesn't take. A write that failed for a reason it doesn't give may
-// have landed.
+// A write that failed for a reason it doesn't give may have landed.
 const turnedAway = (words: string) =>
   notFound(words) ||
   /\b(invalid|validation|required|not allowed|forbidden|permission|unauthori[sz]ed|unknown|must be)\b/i.test(
     words,
   );
 
-// A list a tool may answer as itself or under its name, or as `nodes`.
 function listOf(tool: string, body: unknown, key: string): unknown[] {
   if (Array.isArray(body)) return body;
   if (isObject(body)) {
@@ -148,9 +124,6 @@ function listOf(tool: string, body: unknown, key: string): unknown[] {
   throw new ServerUnreadable(`${tool} answered with no ${key}`);
 }
 
-// The cursor a page gives for the next: `pageInfo`'s, or one beside the
-// list. `null` when it says there's no more; `undefined` when it doesn't
-// say.
 function nextOf(tool: string, body: unknown): string | null | undefined {
   if (!isObject(body)) return undefined;
   const info = isObject(body.pageInfo) ? body.pageInfo : body;
@@ -166,14 +139,11 @@ function nextOf(tool: string, body: unknown): string | null | undefined {
 
 // How many a listing asks for at a time; Linear's limit is 250.
 export const pageSize = 250;
-// A sweep that goes on longer than this is a server that keeps answering
-// the same page.
+// A bound on one sweep, so a server that pages without end can't hold a sync forever.
 const mostPages = 200;
 
-// Every item a listing tool gives, page by page. A page that says more
-// remain gives the cursor to them; one that doesn't say is followed by the
-// page after its last item (`after`, "an ID to start from"), while it was
-// full. A cursor given twice can't be read.
+// A page that says more remain gives the cursor to them; one that doesn't say is followed by the page after its last item
+// while it was full. A cursor given twice can't be read.
 async function listAll(
   read: ToolCaller,
   tool: string,
@@ -208,14 +178,12 @@ async function listAll(
 }
 
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
-// A field that is an object with an ID, or its ID beside it as `<field>Id`.
 const idOf = (item: Json, field: string): string | null =>
   isObject(item[field]) && typeof (item[field] as Json).id === "string"
     ? ((item[field] as Json).id as string)
     : text(item[`${field}Id`]);
 const isStatusType = (value: unknown): value is StatusType =>
   statusTypes.includes(value as StatusType);
-// A number, or `{ value }` as an estimate or a priority may come.
 const numberOf = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value)
     ? value
@@ -235,7 +203,6 @@ const pageOf = (url: string | null, names: string): string => {
     : "";
 };
 
-// A slug ID: the answer's own, or the 12 hex digits its URL ends in.
 function slugOf(project: Json): string | null {
   const own = text(project.slugId);
   if (own && /^[0-9a-f]{12}$/.test(own)) return own;
@@ -330,8 +297,6 @@ export function readIssue(value: unknown, tool: string = t.issues): LinearIssue 
     !Number.isFinite(Date.parse(updatedAt))
   )
     throw unreadable();
-  // Its status as a name, or as an object with its type, as `status` or
-  // `state`.
   const state = value.status ?? value.state;
   const status = isObject(state) ? text(state.name) : text(state);
   if (status === null) throw unreadable();
@@ -367,7 +332,6 @@ export function readIssue(value: unknown, tool: string = t.issues): LinearIssue 
   };
 }
 
-// The server's reads, parsed, from the process with only its read tools.
 export function linearReads(read: ToolCaller) {
   const one = async <T>(tool: string, args: Json, parse: (value: unknown) => T) => {
     const answer = bodyOf(tool, await read({ tool, args }));
@@ -375,7 +339,6 @@ export function linearReads(read: ToolCaller) {
       if (notFound(answer.failed)) return null;
       throw new ServerUnreadable(`${tool} answered with an error`);
     }
-    // One item, bare or under its name.
     const body = answer.body;
     return parse(
       isObject(body) && isObject(body.issue)
@@ -415,10 +378,7 @@ export function linearReads(read: ToolCaller) {
 
 export type LinearReads = ReturnType<typeof linearReads>;
 
-// The server's writes, from the process with only its write tools: what
-// each saved, as the server answers it. An answer that says it turned the
-// write away is a refusal, with nothing made; any other failure may have
-// landed.
+// An answer that says it turned the write away is a refusal, with nothing made; any other failure may have landed.
 export function linearWrites(write: ToolCaller) {
   const save = async <T>(tool: string, args: Json, parse: (value: unknown) => T): Promise<T> => {
     const answer = bodyOf(

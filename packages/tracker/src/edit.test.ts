@@ -7,7 +7,6 @@ import { memoryItems } from "./memory.ts";
 
 const now = () => "2026-11-06T09:00:00.000Z" as Instant;
 
-// A store holding an epic and a story in it.
 async function store() {
   const own = memoryItems();
   const issues = issuesIn(own);
@@ -76,7 +75,6 @@ test("a person's edit applies at once, and setting back what it replaced undoes 
       fields: ["summary", "description", "status", "points", "assignee", "labels"],
     },
   ]);
-  // Its Undo.
   const undone = await edit("tracker:T-2", done.before);
   assert.deepEqual(undone, { before: done.after, after: done.before });
   assert.equal(issues.byKey("T-2")?.summary, "Pricing");

@@ -1,9 +1,3 @@
-// Linear's items as Oriel keeps them (OA-278): its issues, ENG-4, and its
-// projects, P-5e2a9c41b7d0, each mapped onto core's issues shape (decision
-// 0059). A project is what Browse's epic grouping hangs an issue off, as a
-// Jira epic is; a sub-issue's parent is its issue. A team's cycles, a
-// project's lead and target date, and an issue's team and cycle are Linear's
-// own extras, in its read content and its panel.
 import {
   array,
   type IndexRecord,
@@ -31,7 +25,6 @@ import type { StatusType } from "./world.ts";
 
 export const linearKind = "linear";
 
-// An issue's key is its team's key and its number; a project's, its slug ID.
 // Neither carries text a person wrote.
 export const linearKeyShape = /^(?:[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,8}|P-[0-9a-f]{12})$/;
 const issueKeyShape = /^[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,8}$/;
@@ -52,7 +45,6 @@ export const linearPresentation: Presentation = {
   details: issueDetails,
 };
 
-// Where each status type stands, in core's words.
 const categories: Record<StatusType, State> = {
   triage: "todo",
   backlog: "todo",
@@ -61,7 +53,6 @@ const categories: Record<StatusType, State> = {
   completed: "done",
   canceled: "done",
 };
-// A project's, by its status's type; one Oriel doesn't know is to do.
 const projectCategories: Record<string, State> = {
   started: "in-progress",
   paused: "in-progress",
@@ -69,9 +60,7 @@ const projectCategories: Record<string, State> = {
   canceled: "done",
 };
 
-// What a read gives, an issue's or a project's: its title and text, and
-// its fields by name, as the namespace and the panel read them. Source
-// content: it reaches the model only in tool results.
+// Source content: it reaches the model only in tool results.
 export const linearContent = union(
   object({
     kind: literal("issue"),
@@ -106,8 +95,6 @@ export const linearContent = union(
 export type LinearContent = Infer<typeof linearContent>;
 export type IssueContent = Extract<LinearContent, { kind: "issue" }>;
 
-// What a sync knows of the team, beside its issues: each status's type,
-// each cycle and each project, by their UUIDs.
 export type TeamWorld = {
   team: { id: string; key: string; name: string };
   statuses: readonly LinearStatus[];
@@ -118,7 +105,6 @@ export type TeamWorld = {
 const textOf = (title: string, description: string) =>
   description === "" ? title : `${title}\n\n${description}`;
 
-// A project as the index keeps it: an epic, with no assignee or estimate.
 export function projectRecord(project: LinearProject): IndexRecord<"linear", IssueAttrs> {
   const fields: IssueFields = {
     kind: "epic",
@@ -156,8 +142,6 @@ export function projectContent(project: LinearProject): LinearContent {
   };
 }
 
-// An issue's status's type: the answer's, or its team's status of that
-// name's. A status its team doesn't list can't be read.
 function statusTypeOf(issue: LinearIssue, world: TeamWorld): StatusType {
   const type =
     issue.statusType ?? world.statuses.find((status) => status.name === issue.status)?.type;
@@ -165,8 +149,6 @@ function statusTypeOf(issue: LinearIssue, world: TeamWorld): StatusType {
   return type;
 }
 
-// An issue as the index keeps it. Its key must be its team's, and its
-// project and parent are by their stable IDs, as the sync found them.
 export function linearIssueRecord(
   issue: LinearIssue,
   world: TeamWorld,

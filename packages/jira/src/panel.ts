@@ -1,11 +1,7 @@
-// A Jira issue as the panel beside the page shows it, from a live read: its
-// type, status, assignee and estimate, its description and its comments.
 import { issueFacts, type PanelBlock, type PanelOf, type PanelProse } from "@oriel/core";
 import { adfToProse } from "./adf.ts";
 import { jiraContent } from "./attrs.ts";
 
-// Rich text written with structure keeps it, read into typed blocks; none
-// when it is plain text, which stays as written.
 const proseOf = (doc: unknown): PanelProse[] => (doc === undefined ? [] : adfToProse(doc));
 
 export const jiraPanel: PanelOf = (content) => {
@@ -14,7 +10,6 @@ export const jiraPanel: PanelOf = (content) => {
   const issue = read.value;
   const prose = proseOf(issue.descriptionDoc);
   const blocks: PanelBlock[] = [
-    // A board that takes no estimates has none to show, or to lack.
     issueFacts({
       type: issue.issueType,
       status: issue.status,
@@ -22,7 +17,6 @@ export const jiraPanel: PanelOf = (content) => {
       ...(issue.points === undefined ? {} : { estimate: issue.points }),
       labels: issue.labels,
     }),
-    // Otherwise it is plain text, which stays as written.
     prose.length > 0
       ? { kind: "rich", heading: "Description", prose }
       : {

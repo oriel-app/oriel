@@ -1,12 +1,7 @@
-// Jira taking in the stand-in tracker's issues once it's on (decision
-// 0059): one create of a change set for each, epics first, then each story,
-// in its epic's create when its epic is among them. The stand-in's own words
-// go into Jira as they are; an estimate goes where the board takes one.
 import type { CapturedMutation, ItemId, NewRef, TakenIssue } from "@oriel/core";
 import { isSummary, maxSummary } from "./ops.ts";
 
-// Jira's summary limit, kept: a longer one is cut at a character, never a
-// half of one.
+// A longer summary is cut at a character, never half of one.
 const summaryOf = (text: string) =>
   isSummary(text) ? text : [...text.trim()].slice(0, maxSummary).join("") || "Untitled";
 

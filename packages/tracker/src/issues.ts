@@ -1,8 +1,4 @@
-// The stand-in tracker's issues (decision 0059): Oriel's own small tracker,
-// on while no other tracker is connected. Its issues are epics and stories
-// in core's issues shape, kept in Oriel's own database: each one's index row
-// is its source of truth, and what the row lacks, its description, is kept
-// beside it (`OwnItems`). Nothing syncs them.
+// Each issue's index row is its source of truth, and what the row lacks is kept beside it; nothing syncs them.
 import {
   array,
   type IndexRecord,
@@ -30,8 +26,7 @@ import {
 
 export const trackerKind = "tracker";
 
-// A key people can read: T-12. Its number is its stable ID, as keys never
-// move or come back.
+// Its number is its stable ID: keys never move or come back.
 export const trackerKeyShape = /^T-[1-9][0-9]*$/;
 
 export function isTrackerId(id: string): id is ItemId<"tracker"> {
@@ -48,7 +43,6 @@ export const trackerPresentation: Presentation = {
   details: issueDetails,
 };
 
-// Its one workflow: any status may move to any other.
 export const statuses = [
   { name: "To do", category: "todo" },
   { name: "In progress", category: "in-progress" },
@@ -60,32 +54,24 @@ export const isStatusName = (name: string): name is StatusName => statusNames.in
 const categoryOf = (name: StatusName) =>
   statuses.find((status) => status.name === name)?.category ?? "todo";
 
-// What it is: an epic, which holds stories, or a story, which an epic may
-// hold. An epic takes no estimate.
 export type IssueKind = "epic" | "story";
 const typeNames: Record<IssueKind, string> = { epic: "Epic", story: "Story" };
 
-// One issue as the tracker has it.
 export type Issue = {
   key: string;
   kind: IssueKind;
   summary: string;
   description: string;
   status: StatusName;
-  // Its epic, a story's; an epic's is null.
   epic: { id: ItemId<"tracker">; stableId: string } | null;
-  // The person it is assigned to, by the name they go by.
   assignee: string | null;
-  // Story points; null when not estimated yet. An epic's is null.
   points: number | null;
   labels: string[];
   updatedAt: Instant;
 };
 
-// What it keeps beyond its index row (migration 0030).
 export const ownContent = object({ description: string });
 
-// Where an issue is: in Oriel itself, which opens it in its panel.
 export const locationOf = (key: string) => `/browse?item=${encodeURIComponent(`tracker:${key}`)}`;
 
 export const idOf = (key: string): ItemId<"tracker"> => itemId(trackerKind, key);
@@ -116,11 +102,8 @@ export const recordOf = (issue: Issue): IndexRecord =>
     fieldsOf(issue),
   );
 
-// What search keeps of it: its summary and description.
 export const textOf = (issue: Issue) => [issue.summary, issue.description].join("\n\n");
 
-// An issue from its index row and what it keeps beside it, or null when the
-// row isn't one of the tracker's.
 export function issueOf(record: IndexRecord, content: unknown): Issue | null {
   const key = parseItemId(record.id)?.key;
   const attrs = issueAttrs(record.attrs);
@@ -144,9 +127,8 @@ export function issueOf(record: IndexRecord, content: unknown): Issue | null {
   };
 }
 
-// One write at a time to a store, each reading what the one before wrote:
-// a new key must be past every key given, and an edit starts from the
-// issue as it is now.
+// One write at a time to a store, each reading what the one before wrote: a new key must be past every key given,
+// and an edit starts from the issue as it is now.
 const turns = new WeakMap<OwnItems, Promise<unknown>>();
 export function inTurn<T>(own: OwnItems, work: () => Promise<T>): Promise<T> {
   const turn = (turns.get(own) ?? Promise.resolve()).then(work);
@@ -157,7 +139,6 @@ export function inTurn<T>(own: OwnItems, work: () => Promise<T>): Promise<T> {
   return turn;
 }
 
-// The tracker's issues, read from Oriel's own store.
 export function issuesIn(own: OwnItems) {
   const all = () =>
     own.records().flatMap((record) => {
@@ -168,10 +149,8 @@ export function issuesIn(own: OwnItems) {
     const record = own.records().find((each) => each.id === idOf(key));
     return record ? issueOf(record, own.content(record.stableId)) : null;
   };
-  // The next key: one past every key its issues have had.
   const nextKey = () =>
     `T-${Math.max(0, ...own.keys().map((key) => Number(stableIdOf(key)) || 0)) + 1}`;
-  // Lands issues as they are now, and takes keys away, at once.
   const put = (what: OwnWrite, issues: readonly Issue[], gone: readonly string[] = []) =>
     own.write({
       what,
@@ -185,7 +164,6 @@ export function issuesIn(own: OwnItems) {
   return { all, byKey, nextKey, put };
 }
 
-// What a live read gives of an issue, as its panel and the agent read it.
 export const trackerContent = object({
   key: string,
   kind: union(literal("epic"), literal("story")),

@@ -4,7 +4,6 @@ import { memoryTransport, readOnly, type Transport } from "./transport.ts";
 
 const site = "https://oriel.atlassian.net";
 
-// A fetch that answers from a list and keeps what it was sent.
 function fetchFrom(...responses: Response[]) {
   const sent: { url: string; init: RequestInit }[] = [];
   const fake = async (url: string | URL | Request, init?: RequestInit) => {

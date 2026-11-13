@@ -1,5 +1,3 @@
-// Linear's declaration (OA-278), on its fixture through the stand-in of its
-// server.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ItemId, type NamespaceHost, type NamespaceWrite } from "@oriel/core";

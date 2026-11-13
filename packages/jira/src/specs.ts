@@ -15,17 +15,6 @@ import {
 } from "@oriel/core";
 import { issueFields, type JiraOp, jiraOps } from "./ops.ts";
 
-// How change sets treat Jira's ops. Field names are core's (`FieldValues`),
-// as the Jira writer reports them in `current`, `before` and `after`:
-// - `summary`, `description` ("" when empty), `points`, `epic` (an item ID),
-//   `assignee` (an account ID) and `status` (its name in the workflow);
-// - `link:<linkId>`: a remote link as `{ url, title }`, or null once removed;
-// - `comment:<commentId>`: a comment's text, or null once deleted;
-// - `updated`: the item's last update time, an instant. Every `after` carries
-//   it except deleteItem's, and `current(id, ["updated"])` returns it.
-// A set op's one argument sets one field, so its revert restores
-// `applied.before[field]` under that argument's key.
-
 const maxTitleChars = 80;
 
 function quoted(text: string): string {
@@ -74,8 +63,6 @@ function fieldOf(values: FieldValues, prefix: string): string | null {
   return Object.keys(values).find((field) => field.startsWith(prefix)) ?? null;
 }
 
-// A set op's revert: the same op, with the value the source reported before.
-// `arg` is the argument that sets `field`, when its name differs.
 function restore<T>(name: string, field: string, validator: Validator<T>, arg = field) {
   return (_args: T, applied: WriteResult): Undo => {
     if (!Object.hasOwn(applied.before, field))
@@ -86,8 +73,6 @@ function restore<T>(name: string, field: string, validator: Validator<T>, arg = 
   };
 }
 
-// One entry per op in Jira's own catalogue, which supplies each one's
-// arguments and whether it exists only as a revert.
 const ops: Record<JiraOp, OpSpec> = {
   createEpic: op(jiraOps.createEpic, {
     creates: true,
@@ -217,8 +202,7 @@ const ops: Record<JiraOp, OpSpec> = {
     },
     undo: () => ({ refused: "a removed link can't be put back by a revert" }),
   }),
-  // A comment adds to an item without touching what's in it. Jira names it
-  // when it posts it; until then it is `comment:new`.
+  // Jira names the comment when it posts it; until then it is `comment:new`.
   addComment: op(jiraOps.addComment, {
     after: (a) => ({ "comment:new": a.body }),
     describe: (_a, context) => `Comment on ${named(context.subject)}.`,
@@ -242,8 +226,6 @@ const ops: Record<JiraOp, OpSpec> = {
   }),
 };
 
-// Why a revert stopped, for a comment Oriel added; Oriel's own words for
-// the rest.
 function explain(conflict: Conflict, title: string | null): string | null {
   if (!conflict.field.startsWith("comment:")) return null;
   const on = title === null ? key(conflict.target) : `${quoted(title)} (${key(conflict.target)})`;
@@ -254,7 +236,6 @@ function explain(conflict: Conflict, title: string | null): string | null {
     : `the comment Oriel added to ${on} was edited since`;
 }
 
-// What the composition root hands change sets for Jira.
 export const jiraSpecs: OpSpecs = {
   name: "Jira",
   titleField: "summary",

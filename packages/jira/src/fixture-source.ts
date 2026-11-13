@@ -1,18 +1,10 @@
-// SYN as a source, from the frozen fixtures, for unit tests and evals. It
-// behaves like the Jira source where tests can tell: pages ordered by update,
-// an `updated` cursor, no gone IDs from a listing (Jira's search can't list
-// deletions, so the sync worker's full sweep must find them), each record's
-// summary and description as its text, and a deleted issue read as gone.
+// No gone IDs from a listing: Jira's search can't list deletions, so the sync worker's full sweep must find them.
 import type { FieldValues, ItemId } from "@oriel/core";
 import { jiraText } from "./attrs.ts";
 import { type FixtureSnapshot, fixtureSnapshot, type JiraFixture } from "./fixture.ts";
 import { jiraOps } from "./ops.ts";
 import type { JiraSource } from "./source.ts";
 
-// SYN's current field values, in core's field names (`FieldValues`), as
-// Jira's writer reports them: what a diff reads for a change set when
-// writing to Jira isn't configured, so it can still be reviewed. A field
-// the item doesn't have reads as null.
 export function fixtureFields(fixture: JiraFixture, options: FixtureSourceOptions) {
   const { records, content } = fixtureSnapshot(fixture, options.site, options.edited);
   const updated = new Map(records.map((record) => [record.id, record.updatedAt]));
@@ -49,9 +41,7 @@ export function fixtureFields(fixture: JiraFixture, options: FixtureSourceOption
 }
 
 export type FixtureSourceOptions = {
-  // Where item locations point, such as "https://oriel.atlassian.net".
   site: string;
-  // How many of the fixture's source edits have happened (0 is the base).
   edited: number;
   pageSize?: number;
 };

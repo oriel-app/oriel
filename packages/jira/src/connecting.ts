@@ -1,8 +1,3 @@
-// What a person sets on a Jira connection, and how the window offers Jira
-// and names what a connection reads. Jira turns on through Atlassian's own
-// MCP server in the person's agent (decision 0059), so nothing here asks
-// for an address or an account: a person picks the project through the
-// server.
 import {
   boolean,
   type ConnectOffer,
@@ -15,13 +10,9 @@ import {
 import { jiraProject } from "./open-connection.ts";
 import { projectKey } from "./rest.ts";
 
-// What a person sets per connection beside the project they pick through
-// Atlassian's server: whether Oriel may propose changes to it.
 export const jiraOptionFields = [
   { kind: "read-only", name: "readOnly" },
 ] as const satisfies readonly OptionField[];
-// Through Atlassian's server, a connection with none reads the first
-// project it lists (decision 0059).
 export const jiraOptions = object({
   readOnly: optional(boolean),
   project: optional(
@@ -29,7 +20,6 @@ export const jiraOptions = object({
   ),
 });
 
-// How the window offers Jira, OA-191's words.
 export const jiraOffer: ConnectOffer = {
   firstRun: 1,
   mark: "J",
@@ -50,6 +40,5 @@ export const jiraOffer: ConnectOffer = {
   },
 };
 
-// What a connection reads: its project.
 export const jiraReads = ({ options }: { options: Readonly<Record<string, unknown>> }): string =>
   jiraProject(options);

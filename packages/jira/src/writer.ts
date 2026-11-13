@@ -1,14 +1,5 @@
-// The Jira writer. Only packages/changeset imports this subpath (checked by
-// scripts/check-repo.ts), and `apply` takes only a request a person approved:
-// its type comes from `SourceWriter`, so nothing here can mint one.
-//
-// Before and after values are keyed by core's field names (`FieldValues`):
-// "summary", "description"
-// (plain text), "points", "assignee" (an account ID), "epic" (an item ID),
-// "status" (its name in the item's workflow), "link:<linkId>" ({ url, title },
-// or null when there is no such link) and "comment:<commentId>" (its plain
-// text, or null when there is no such comment). A create has no before
-// values and a delete no after values.
+// Only packages/changeset imports this subpath (scripts/check-repo.ts), and `apply` takes only a request a person
+// approved: its type comes from `SourceWriter`, so nothing here can mint one.
 import {
   array,
   boolean,
@@ -65,20 +56,14 @@ export type { JiraWrites } from "./open-connection.ts";
 
 export type JiraWriterOptions = {
   transport: Transport;
-  // Where a story with no epic is created.
   project: string;
   log: Log;
-  // What each project's board estimates in, shared with the source, which
-  // refreshes it on each sync. Without it, the writer finds each board's once.
   boards?: JiraBoards;
 };
 
-// A write's target: an item's handle and the stable ID it must have.
 type Target = { id: ItemId<"jira">; stableId: string } | null;
 type Send = (request: JiraRequest) => Promise<JiraResponse>;
 
-// What the writer reads: an issue's fields, and its status, which a delete
-// doesn't empty and a create doesn't set.
 const readable = [...issueFields, "status"] as const;
 type IssueField = (typeof readable)[number];
 const isIssueField = (name: string): name is IssueField =>
@@ -128,11 +113,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   const { transport, log } = options;
   if (!projectKey.test(options.project)) throw new RangeError("expected a project key, like SYN");
 
-  // Each write is one request, its `send`. A 4xx to it is Jira refusing it,
-  // having made no change; any other failure of it may have landed. Each
-  // apply gets its own, which notes when the write goes out: the transport
-  // throws what stops it before then (the time left, the request's
-  // credentials) as sending nothing.
+  // A 4xx is Jira refusing the write, having made no change; any other failure may have landed.
+  // The transport throws what stops it before it goes out (the time left, the credentials) as sending nothing.
   const sender =
     (sent: () => void): Send =>
     async (request) => {
@@ -158,8 +140,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return field;
   };
 
-  // The item's current values for `names`, or "gone". Reads follow a moved
-  // issue to its new key.
   const values = async (
     key: string,
     names: readonly string[],
@@ -219,8 +199,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { url: found.object.url, title: found.object.title ?? found.object.url };
   };
 
-  // One comment on an issue: its plain text and who wrote it, or null when
-  // the issue has no such comment.
   const commentOf = async (key: string, commentId: string) => {
     if (!numericId(commentId).ok) return null;
     const request: JiraRequest = {
@@ -246,11 +224,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return found;
   };
 
-  // Once Jira has accepted a write, the change set must hear about it, so a
-  // failed read afterwards leaves `after` empty instead of throwing. Revert's
-  // conflict check then has nothing to match, and stops. `after` also carries
-  // the item's `updated`, which tells revert whether anyone has touched an
-  // item Oriel created since Oriel last wrote to it.
+  // Once Jira has accepted a write the change set must hear of it, so a failed read afterwards leaves `after` empty
+  // instead of throwing, and revert's conflict check stops on it.
   const afterwards = async (key: string, stableId: string, names: readonly string[]) => {
     try {
       const after = await existing({ id: itemId("jira", key), stableId }, [...names, "updated"]);
@@ -267,7 +242,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     }
   };
 
-  // Reads before, sends, reads after.
   const edit = async (
     send: Send,
     target: Target,
@@ -309,7 +283,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { before: {}, ...(await afterwards(made.value.key, made.value.id, names)) };
   };
 
-  // A new epic goes in the project the writer was made for.
   const createEpic = async (
     send: Send,
     args: JiraArgs<"createEpic">,
@@ -415,8 +388,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     }
   };
 
-  // The transition that leads `key` from `was` to `status`, or, when its
-  // workflow offers none, why not, in a person's words.
   const wayTo = async (
     key: string,
     was: unknown,
@@ -440,10 +411,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     };
   };
 
-  // Jira moves an item only along its workflow: the transition that leads to
-  // `status` is sent, and with none, nothing is, and sending it again won't
-  // change that. An item already in `status` needs no move, so a retry of one
-  // that landed sends nothing again.
+  // Jira moves an item only along its workflow: with no transition to `status`, nothing is sent. An item already
+  // in `status` needs no move, so a retry of one that landed sends nothing again.
   const move = async (
     send: Send,
     target: Target,
@@ -483,17 +452,13 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
   };
 
-  // The IDs and plain text of every comment on an issue.
   const commentsOn = async (key: string) =>
     (
       await call(transport, { method: "GET", path: `${api}/issue/${key}/comment` }, commentList)
     ).comments.map((each) => ({ id: each.id, text: adfToText(each.body) }));
 
-  // A comment's ID is read from Jira's answer where it gives one, as REST
-  // does. Atlassian's server answers without one Oriel can read, so the
-  // comment is found among the issue's: the one with the approved text that
-  // wasn't there before it was sent. With none or more than one, Oriel can't
-  // tell which landed, and says it may have.
+  // Atlassian's server answers without a comment ID Oriel can read, so the comment is found among the issue's: the one
+  // with the approved text that wasn't there before. With none or more than one, Oriel can't tell which landed.
   const addComment = async (
     send: Send,
     target: Target,
@@ -542,8 +507,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 
   return {
     kind: "jira",
-    // A target must come with the stable ID it is expected to have, and a
-    // create with none. A failure before the write went out sent nothing.
+    // A target must come with the stable ID it is expected to have, and a create with none. A failure before the write went out sent nothing.
     apply: ({ op, target, expectedStableId, args }) =>
       noteSent(async (sent) => {
         const send = sender(sent);
@@ -556,7 +520,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
           throw new Error(`${op}: no stable ID to check ${target} against`);
         return await write(send, op, { id: target, stableId: expectedStableId }, args);
       }),
-    // A status move, against the item's workflow as Jira gives it now.
     checks: ["setStatus"],
     check: async (op, target, expectedStableId, args) => {
       if (op !== "setStatus") return null;
@@ -577,10 +540,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   };
 }
 
-// A Jira connection's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for Jira (decision 0049). Through a
-// source server, its writes are the server's write tools, its reads its
-// read tools (decision 0059); a fixture's, to its in-memory site.
 export function jiraWriterOf(writes: JiraWrites, log: Log): SourceWriter<"jira"> {
   const { through, memory } = writes;
   const transport = through

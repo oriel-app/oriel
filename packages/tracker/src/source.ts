@@ -1,5 +1,3 @@
-// The stand-in tracker's issues as a source: live reads of Oriel's own store,
-// and, should anything list them, the index rows they already are.
 import {
   type IndexRecord,
   type OwnItems,

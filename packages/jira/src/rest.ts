@@ -1,5 +1,4 @@
-// Jira Cloud REST v3 shapes, shared by the source and the writer. Only what
-// Oriel reads is validated; everything else in a response is dropped.
+// Only what Oriel reads is validated; everything else in a response is dropped.
 import {
   array,
   boolean,
@@ -28,7 +27,6 @@ export const api = "/rest/api/3";
 
 const offset = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)(Z|[+-]\d{2}:?\d{2})$/;
 
-// Jira's timestamps, like 2026-10-01T12:00:00.000+0100, as canonical UTC instants.
 export function jiraInstant(text: string): Instant | null {
   const match = offset.exec(text);
   if (!match) return null;
@@ -64,7 +62,6 @@ const issueType = object({
 
 const user = object({ accountId: string, displayName: string });
 
-// The fields the index keeps, as the search and issue endpoints return them.
 export const indexFieldShape = {
   summary: string,
   issuetype: issueType,
@@ -107,20 +104,16 @@ const isStandard = (type: Infer<typeof issueType>) =>
 export const epicOf = (fields: Pick<IndexFields, "issuetype" | "parent">): ItemId<"jira"> | null =>
   fields.parent && isStandard(fields.issuetype) ? itemId("jira", fields.parent.key) : null;
 
-// The parent by its handle and stable ID: as the epic, a container, for a
-// standard issue, and as its parent otherwise.
 const parentOf = (fields: Pick<IndexFields, "issuetype" | "parent">, epic: boolean) =>
   fields.parent && isStandard(fields.issuetype) === epic
     ? { id: itemId("jira", fields.parent.key), stableId: fields.parent.id }
     : null;
 
-// An estimate is a number; anything else on the field isn't one.
 export const pointsOf = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
 const rawFields = object({ fields: record(unknown) });
 
-// A field whose ID is only known at run time, read from the raw issue.
 export function rawField(raw: unknown, field: string | undefined): unknown {
   if (field === undefined) return undefined;
   const parsed = rawFields(raw);
@@ -135,8 +128,6 @@ const assigneeOf = (fields: IndexFields) =>
     ? { accountId: fields.assignee.accountId, name: fields.assignee.displayName }
     : null;
 
-// The issue in the issues shape. `field` is the project's points field,
-// undefined when its board takes no estimates.
 export function issueOf(fields: IndexFields, raw: unknown, field: string | undefined) {
   return jiraIssueFields({
     type: fields.issuetype,
@@ -150,9 +141,6 @@ export function issueOf(fields: IndexFields, raw: unknown, field: string | undef
   });
 }
 
-// What a read returns about the fields the index also keeps. As in the
-// index, there are no points when the project's board takes no estimates:
-// `field`, its points field, is undefined.
 export function fieldsOf(
   fields: IndexFields,
   raw: unknown,
@@ -168,7 +156,6 @@ export function fieldsOf(
   };
 }
 
-// An issue's transitions, as `expand=transitions` returns them.
 export const transitionsShape = optional(
   array(
     object({
@@ -178,8 +165,6 @@ export const transitionsShape = optional(
   ),
 );
 
-// The statuses an issue's workflow lets it move to now, each once, in the
-// order Jira lists them: not the one it is in.
 export function movesOf(
   transitions: Infer<typeof transitionsShape>,
   current: string,
@@ -191,12 +176,10 @@ export function movesOf(
   return [...moves].map(([name, category]) => ({ name, category }));
 }
 
-// An answer in a shape Oriel doesn't read.
 export class UnexpectedAnswer extends Error {
   override name = "UnexpectedAnswer";
 }
 
-// Sends a request, refuses anything but a 2xx, and validates the body.
 export async function call<T, R extends JiraRequest>(
   transport: (request: R) => Promise<JiraResponse>,
   request: R,
@@ -224,11 +207,8 @@ const boardConfig = object({
   ),
 });
 
-// Each project's estimate field, from its board's estimation config: a Scrum
-// board's if it has one, else its first board's. The field ID differs per
-// site and per project style, so it is never hardcoded. A project whose board
-// counts issues or estimates in time has no points field; time fields are
-// system fields, not custom ones.
+// The field ID differs per site and per project style, so it is never hardcoded. A board that counts issues or
+// estimates in time has no points field: time fields are system fields, not custom ones.
 export async function discoverPoints(
   transport: ReadTransport,
   projects: readonly string[],
