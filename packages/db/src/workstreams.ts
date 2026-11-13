@@ -1,7 +1,3 @@
-// Workstreams and their versioned membership (decision 0018). Each change takes
-// the workstream's next version and records what caused it; a region is the
-// membership at one version. Members are matched by source and stable ID, so
-// an item that moved (a new handle, the same stable ID) is the same member.
 import type { DatabaseSync } from "node:sqlite";
 import {
   type Workstream,
@@ -83,8 +79,6 @@ function parse<T>(validator: Validator<T>, raw: unknown, what: string): T {
   return result.value;
 }
 
-// The same item named twice counts once; an ID with no source or an empty
-// stable ID is refused.
 function distinct(members: readonly WorkstreamMember[]): (WorkstreamMember & { source: string })[] {
   const seen = new Map<string, WorkstreamMember & { source: string }>();
   for (const member of members) {
@@ -98,8 +92,6 @@ function distinct(members: readonly WorkstreamMember[]): (WorkstreamMember & { s
   return [...seen.values()];
 }
 
-// Everything a workstream holds, then the workstream: what deleting one
-// takes. A thread names its workstream, so none may be left to.
 export const dropWorkstream = [
   "delete from workstream_done_marks where workstream_id = ?",
   "delete from workstream_members where workstream_id = ?",
@@ -108,8 +100,6 @@ export const dropWorkstream = [
   "delete from workstreams where id = ?",
 ];
 
-// A workstream the user deleted while threads used it is out of every list
-// and lookup, its threads too, with its rows kept for its Undo (decision 0028).
 const shown = "not exists (select 1 from deleted_workstreams d where d.workstream_id = g.id)";
 
 export type WorkstreamStore = ReturnType<typeof workstreamStore>;
@@ -162,7 +152,6 @@ export function workstreamStore(db: DatabaseSync) {
   const selectChanges = db.prepare(
     "select version, at, cause from workstream_changes where workstream_id = ? and version > ? order by version",
   );
-  // A thread works in it, or one deleted and kept for what it wrote did.
   const selectUsed = db.prepare("select 1 from threads where workstream_id = ? limit 1");
   const drop = dropWorkstream.map((sql) => db.prepare(sql));
   const selectTouched = db.prepare(`
@@ -211,8 +200,6 @@ export function workstreamStore(db: DatabaseSync) {
     };
   };
 
-  // In one transaction: picks the members a change would touch, and only if
-  // there are any, records the next version and applies the change to them.
   const next = (
     workstreamId: Ulid,
     members: readonly WorkstreamMember[],
@@ -243,10 +230,6 @@ export function workstreamStore(db: DatabaseSync) {
   return {
     get,
 
-    // A workstream's name is a label for it, not part of its membership, so
-    // renaming takes no version. Once the user names a workstream, the name is
-    // theirs: Oriel renaming it then changes nothing. A rename is the user's
-    // unless it says otherwise. Says whether the name changed.
     rename(workstreamId: Ulid, name: string, by: Workstream["namedBy"] = "user"): boolean {
       if (by === "oriel") return Number(nameByOriel.run(name, workstreamId, name).changes) === 1;
       return transaction(db, () => {
@@ -257,8 +240,6 @@ export function workstreamStore(db: DatabaseSync) {
       });
     },
 
-    // Gives a workstream's name back to Oriel, as it was before the user named
-    // it, so Oriel may name it again: what undoing the user's rename does.
     giveBack(workstreamId: Ulid, name: string): void {
       transaction(db, () => {
         mustGet(workstreamId);
@@ -267,8 +248,6 @@ export function workstreamStore(db: DatabaseSync) {
       });
     },
 
-    // Deletes the workstream with its log, unless a thread uses it. Says
-    // whether it did.
     delete(workstreamId: Ulid): boolean {
       return transaction(db, () => {
         mustGet(workstreamId);
@@ -278,8 +257,6 @@ export function workstreamStore(db: DatabaseSync) {
       });
     },
 
-    // Hides a workstream threads use, and its threads, keeping every row:
-    // what deleting one does (decision 0028).
     hide(workstreamId: Ulid, now: Instant): void {
       transaction(db, () => {
         mustGet(workstreamId);
@@ -287,13 +264,10 @@ export function workstreamStore(db: DatabaseSync) {
       });
     },
 
-    // Brings back a workstream of `workspaceId` that was hidden, with its
-    // threads, as they were. Says whether there was one.
     restore(workstreamId: Ulid, workspaceId: Ulid): boolean {
       return Number(removeDeleted.run(workstreamId, workspaceId).changes) === 1;
     },
 
-    // A workspace's workstreams, newest first.
     list(workspaceId: Ulid): Workstream[] {
       return selectByWorkspace.all(workspaceId).map((raw) => {
         const row = parse(object({ id: ulidValue }), raw, "workstreams row");
@@ -301,8 +275,6 @@ export function workstreamStore(db: DatabaseSync) {
       });
     },
 
-    // A new workstream at version 1, holding `members`; its first version
-    // records who made it, the user unless it says otherwise.
     create(
       workstream: { id: Ulid; workspaceId: Ulid; name: string; origin: WorkstreamOrigin },
       members: readonly WorkstreamMember[],
@@ -327,9 +299,6 @@ export function workstreamStore(db: DatabaseSync) {
       return mustGet(workstream.id);
     },
 
-    // Adds the members the workstream doesn't hold yet, as its next version. One it
-    // holds under another handle, as after a move, is already there. Null
-    // when nothing changes.
     add(
       workstreamId: Ulid,
       members: readonly WorkstreamMember[],
@@ -354,8 +323,6 @@ export function workstreamStore(db: DatabaseSync) {
       );
     },
 
-    // Removes the members the workstream holds, by source and stable ID, as its
-    // next version. Null when nothing changes.
     remove(
       workstreamId: Ulid,
       members: readonly WorkstreamMember[],
@@ -372,9 +339,6 @@ export function workstreamStore(db: DatabaseSync) {
       );
     },
 
-    // The workstream's membership at `version`, or null for a workstream or version
-    // that doesn't exist. A version whose members no longer include the
-    // item the workstream was made around has no anchor.
     region(workstreamId: Ulid, version: number): Region | null {
       const workstream = get(workstreamId);
       if (!workstream || !Number.isInteger(version) || version < 1 || version > workstream.version)
@@ -400,8 +364,6 @@ export function workstreamStore(db: DatabaseSync) {
       };
     },
 
-    // The changes after `version`, oldest first: what a thread's markers say
-    // when it catches up.
     changes(workstreamId: Ulid, after: number): WorkstreamChange[] {
       return selectChanges.all(workstreamId, after).map((raw) => change(workstreamId, raw));
     },

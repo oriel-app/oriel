@@ -1,4 +1,3 @@
-// Oriel's own lines in a thread are notes, never the agent's text (OA-91).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, type Ulid, ulid } from "@oriel/core";
@@ -34,8 +33,6 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
     t0,
   );
   const threadId = id(2);
-  // As threadStore opens one, written by hand: the store reads columns
-  // later migrations add.
   db.exec(`
     insert into threads (id, workspace_id, workstream_id, region_version, created_at)
     select '${threadId}', '${workspaceId}', workstream_id, max(version), '${t0}'
@@ -62,13 +59,9 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
     ["agent", done, t0],
     ["agent", asked("You rejected this change set"), at(1)],
     ["agent", done, at(1)],
-    // Before #72, a review link's holder was named.
     ["agent", asked("Ana rejected this change set"), at(3)],
     ["agent", asked("This change set was rejected on its review link"), at(4)],
-    // The agent's own words, even about a rejection, stay its own.
     ["agent", '{"kind":"text","text":"You rejected this change set, so I will stop."}', at(5)],
-    // Oriel never asked about an Undo, nor about a review link's rejection
-    // in the user's words.
     ["agent", asked("You rejected this change set"), at(7)],
   ];
   rows.forEach(([role, content, when], i) =>
@@ -96,7 +89,6 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
       [id(10), "thread"],
     ],
   );
-  // Each entry keeps its place and time.
   assert.deepEqual(
     chat.map((m) => [m.seq, m.at]),
     rows.map(([, , when], i) => [i + 1, when]),

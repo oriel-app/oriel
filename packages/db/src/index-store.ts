@@ -90,7 +90,6 @@ const changeRow = object({
   gone: union(literal(0), literal(1)),
 });
 
-// A record and everything in it, frozen.
 function frozen<T>(value: T): T {
   if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
   for (const inner of Object.values(value)) frozen(inner);
@@ -104,21 +103,13 @@ type Searchable = {
   prefixes: ReadonlySet<string>;
 };
 
-// What a source's last sync changed: items new to the index or back from
-// gone, items it changed, and items gone from the source. A disconnect
-// isn't a sync, and counts none.
 export type SyncCounts = { new: number; changed: number; removed: number };
 
-// The index the sync worker writes and the window, `search()` and the stale
-// marker read. One complete sync of a source is one snapshot version. Run one
-// sync at a time per workspace.
+// Run one sync at a time per workspace.
 export function indexStore(db: DatabaseSync) {
   const retireHandle = db.prepare(`
     update items set gone_at = ?, snapshot = ?, text = null
     where workspace_id = ? and item_id = ? and stable_id is not ? and gone_at is null`);
-  // A new item comes with its text, if the page gives one, so search's index
-  // takes it in one write (migration 0028); an item already there takes it
-  // from `keepText`.
   const upsert = db.prepare(`
     insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot, added_in, text)
     values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?12)
@@ -132,8 +123,6 @@ export function indexStore(db: DatabaseSync) {
       or items.location is not excluded.location or items.updated_at is not excluded.updated_at
       or items.facets is not excluded.facets or items.attrs is not excluded.attrs
       or items.gone_at is not null`);
-  // The live item a record replaces, by stable ID, and the live item that
-  // holds the record's handle under another stable ID.
   const selectStored = db.prepare(`
     select item_id, stable_id, title, location, updated_at, facets, attrs from items
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
@@ -171,13 +160,9 @@ export function indexStore(db: DatabaseSync) {
       on i.workspace_id = r.workspace_id and i.source = r.to_source
         and i.stable_id = r.to_stable_id and i.gone_at is null
     where r.workspace_id = ? order by r.rowid`);
-  // A record's text, written beside it without making it a change: a sync
-  // that only gives a text the index lacked counts nothing.
   const keepText = db.prepare(`
     update items set text = ? where workspace_id = ? and source = ? and stable_id = ?
       and text is not ?`);
-  // Each live item's rowid, which search's index finds it by, and the rows
-  // a query matches there (migration 0028).
   const selectRows = db.prepare(
     "select rowid as row, item_id from items where workspace_id = ? and gone_at is null",
   );
@@ -190,12 +175,8 @@ export function indexStore(db: DatabaseSync) {
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?, text = null
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
-  // Search's full-text index (migration 0028), written in the same
-  // transaction as the items it follows, after them, one row a statement: a
-  // live item is in it as it ends up, and a gone one isn't. The table
-  // flushes what it holds at every later statement in the transaction that
-  // could stop partway, as an upsert, a trigger or an insert from a select
-  // can, so writing it any other way doubles a full sync's time.
+  // FTS5 flushes what it holds at every later statement that could stop partway (an upsert, a trigger,
+  // an insert from a select), so it's written last, one row a statement: any other way doubles a full sync.
   const searchInsert = db.prepare(
     "insert into item_search (rowid, key, title, text) values (?, ?, ?, ?)",
   );
@@ -210,7 +191,6 @@ export function indexStore(db: DatabaseSync) {
       indexFold(title),
       indexFold(text ?? ""),
     );
-  // A live item, as search's index has it.
   const searched = (workspaceId: Ulid, source: SourceKind, stableId: string) => {
     const raw = selectSearched.get(workspaceId, source, stableId);
     if (!raw) return null;
@@ -221,14 +201,9 @@ export function indexStore(db: DatabaseSync) {
   const searchForget = db.prepare(`
     delete from item_search where rowid in
       (select rowid from items where workspace_id = ? and source = ? and gone_at is null)`);
-  // The version of a source's last sync that finished and changed something:
-  // what its syncs since tagged, a crashed one's too, is theirs to claim.
   const selectSince = db.prepare(
     "select max(version) as version from snapshots where workspace_id = ? and source = ?",
   );
-  // What the syncs since `?3` changed, from the items they tagged: live and
-  // added since, new; live and added before, changed; gone, removed, unless
-  // it was new since too. `rows` counts them all.
   const changedIn = db.prepare(`
     select count(*) as rows,
       sum(gone_at is null and added_in > ?3) as new_items,
@@ -261,8 +236,6 @@ export function indexStore(db: DatabaseSync) {
     "select cursor, synced_at, new_items, changed_items, removed_items from sources where workspace_id = ? and source = ?",
   );
 
-  // A stand-in's own items' content (migration 0030), and every key its
-  // items have had, gone ones too.
   const selectOwn = db.prepare(
     "select content from own_items where workspace_id = ? and source = ? and stable_id = ?",
   );
@@ -276,9 +249,6 @@ export function indexStore(db: DatabaseSync) {
     "select item_id from items where workspace_id = ? and source = ? order by item_id",
   );
 
-  // A disconnected connection's items, as decision 0049 has them forgotten.
-  // References to them wait again by handle, from now, as one to an item the
-  // index never had does.
   const forgetMade = db.prepare(
     "delete from item_references where workspace_id = ? and source = ?",
   );
@@ -326,7 +296,6 @@ export function indexStore(db: DatabaseSync) {
     };
   };
 
-  // Each live item's resolved references, by its source and stable ID.
   const referencesOf = (workspaceId: Ulid) => {
     const by = new Map<string, { id: ItemId; stableId: string }[]>();
     for (const raw of selectReferences.all(workspaceId)) {
@@ -340,10 +309,8 @@ export function indexStore(db: DatabaseSync) {
     return by;
   };
 
-  // The live records, read from the table and checked once after each write
-  // to the index rather than on every request: the overview, Browse and
-  // the Jira view each read them all. Frozen, since every reader shares
-  // them; each gets its own array.
+  // Read and checked once after each write rather than per request: the overview, Browse and the Jira
+  // view each read them all. Frozen, since every reader shares them; each gets its own array.
   const read = new Map<string, WeakMap<Validator<unknown>, readonly IndexRecord[]>>();
   const logged = new Map<string, readonly ChangeLogEntry[]>();
   const searchable = new Map<string, Searchable>();
@@ -376,9 +343,6 @@ export function indexStore(db: DatabaseSync) {
     return [...records];
   };
 
-  // What search ranks the live records by, by the rowid search's index
-  // finds each by, and their prefixes: read on the first search after a
-  // write, as the records are. Keys and titles only; texts stay on disk.
   const searchableOf = (workspaceId: Ulid): Searchable => {
     const kept = searchable.get(workspaceId);
     if (kept) return kept;
@@ -405,9 +369,6 @@ export function indexStore(db: DatabaseSync) {
       if (!row.ok) throw new Error(`corrupt search row: ${JSON.stringify(row.issues)}`);
       return row.value.row;
     });
-  // Every live item that matches `query`, as `Found`, read from item_search
-  // rather than any copy of the texts held here, with the terms it was
-  // matched by. Only the `sources` given, when given.
   const found = (workspaceId: Ulid, query: string, sources?: readonly SourceKind[]) => {
     const { byRow, prefixes } = searchableOf(workspaceId);
     const terms = searchTerms(query, prefixes);
@@ -442,14 +403,12 @@ export function indexStore(db: DatabaseSync) {
       });
     });
 
-  // A record as a read would return it: its facets in their checked shape.
   const readBack = (r: IndexRecord): IndexRecord => {
     const checked = facets(JSON.parse(JSON.stringify(r.facets)), "$.facets");
     return checked.ok ? { ...r, facets: checked.value } : r;
   };
 
-  // Pages are checked the way reads check rows, attrs included after a JSON
-  // round trip, so one bad record can't break the window later.
+  // Checked as reads check rows, attrs after a JSON round trip, so one bad record can't break the window later.
   const check = <A>(source: SourceKind, attrs: Validator<A>, page: SyncPage) => {
     for (const r of page.records) {
       if (parseItemId(r.id)?.prefix !== source) {
@@ -471,7 +430,6 @@ export function indexStore(db: DatabaseSync) {
   const store = {
     snapshot,
 
-    // One source's live records, with attrs checked against that source's shape.
     records<A>(
       workspaceId: Ulid,
       source: SourceKind,
@@ -480,15 +438,7 @@ export function indexStore(db: DatabaseSync) {
       return live(workspaceId, source, attrs);
     },
 
-    // Opens a sync of one source; `attrs` is that source's shape and
-    // `declared` its declared facets. Each page commits on its own, with
-    // what it changed in the change log: per item already indexed, the
-    // facets that changed, and each item it tombstoned. `finish` takes the
-    // snapshot version if anything changed, records the cursor (null keeps
-    // the stored one) and the finish time, prunes the change log of what is
-    // past keeping, and returns the version the index is at. A crash partway
-    // leaves pages tagged with an unclaimed version, which the next sync
-    // reclaims.
+    // A crash partway leaves pages tagged with an unclaimed version, which the next sync reclaims.
     beginSync<A>(
       workspaceId: Ulid,
       source: SourceKind,
@@ -510,9 +460,6 @@ export function indexStore(db: DatabaseSync) {
           const textOf = (stableId: string) =>
             Object.hasOwn(given, stableId) ? (given[stableId] ?? "").slice(0, maxSearchText) : null;
           transaction(db, () => {
-            // What search's index drops, by rowid, and adds as it ends up,
-            // by stable ID, once everything else is written. An item new or
-            // back from gone in this page isn't in it to drop.
             const drops = new Set<number>();
             const adds = new Set<string>();
             const fresh = new Set<string>();
@@ -527,7 +474,6 @@ export function indexStore(db: DatabaseSync) {
               retireHandle.run(now, version, workspaceId, r.id, r.stableId);
               if (retired?.ok) gone(source, retired.value.stable_id);
               const stored = selectStored.get(workspaceId, source, r.stableId);
-              // New, or back from gone; or live, with a new key or title.
               const was = stored && itemRow(stored);
               if (!was) fresh.add(r.stableId);
               if (!was || !was.ok || was.value.item_id !== r.id || was.value.title !== r.title) {
@@ -548,7 +494,6 @@ export function indexStore(db: DatabaseSync) {
                 since,
                 textOf(r.stableId),
               );
-              // Compared as the index reads both back.
               const changed =
                 stored && facetChanges(declared, recordOf(stored, unknown), readBack(r));
               if (changed)
@@ -636,21 +581,13 @@ export function indexStore(db: DatabaseSync) {
       };
     },
 
-    // The change log in the order it committed: everything kept, or only
-    // what committed after the entry `after`, such as the last one the user
-    // had seen (`lastSeen`). Read once after each write to the index, as the
-    // records are.
     changes(workspaceId: Ulid, after = 0): ChangeLogEntry[] {
       const kept = logged.get(workspaceId) ?? readChanges(workspaceId);
       logged.set(workspaceId, kept);
       return kept.filter((entry) => entry.seq > after);
     },
 
-    // The escape hatch, across every source: by key, title or text, title
-    // hits first, a text hit with its excerpt, as core's `ranked` orders
-    // them. Only the `sources` given, when given: a source the workspace no
-    // longer reads is left out before ranking, so it can't crowd out the
-    // rest.
+    // Filtered before ranking, so a source the workspace no longer reads can't crowd out the rest.
     search(
       workspaceId: Ulid,
       query: string,
@@ -661,27 +598,19 @@ export function indexStore(db: DatabaseSync) {
       return ranked(hits, terms, limit, writtenText(workspaceId));
     },
 
-    // Every live item `query` finds, as search() finds them, by its ID, and
-    // whether only its text matched: Browse's item search (decision 0027).
     matches(workspaceId: Ulid, query: string): ReadonlyMap<ItemId, "title" | "text"> {
       return new Map(found(workspaceId, query).hits.map((hit) => [hit.record.id, hit.matched]));
     },
 
-    // For the sync worker's full sweep: whatever the source no longer returns is gone.
     liveStableIds(workspaceId: Ulid, source: SourceKind): string[] {
       return selectLiveIds.all(workspaceId, source).map((row) => String(row.stable_id));
     },
 
-    // For the sync worker: what the index holds as gone, which a listing that
-    // lags may still return.
+    // A listing that lags may still return what the index holds as gone.
     goneStableIds(workspaceId: Ulid, source: SourceKind): string[] {
       return selectGoneIds.all(workspaceId, source).map((row) => String(row.stable_id));
     },
 
-    // Forgets everything the index keeps of one connection's items, by its
-    // prefix: the items, tombstones too, their change log, the references
-    // they made and its sync state. Takes a snapshot version when it held
-    // any item, and returns the version the index is at.
     forget(workspaceId: Ulid, source: string, now: Instant): number {
       written();
       return transaction(db, () => {
@@ -698,11 +627,7 @@ export function indexStore(db: DatabaseSync) {
       });
     },
 
-    // A stand-in's own items (decision 0059), whose index rows are their
-    // source of truth: nothing syncs them. `write` lands a page and the
-    // content each record keeps beyond its row, as one snapshot version,
-    // in one transaction with its change log, and returns the version the
-    // index is at. Run it between syncs, as a sync is run.
+    // Nothing syncs a stand-in's own items, so run `write` between syncs, as a sync is run.
     own<A>(workspaceId: Ulid, source: SourceKind, attrs: Validator<A>, declared?: DeclaredFacets) {
       return {
         write: (
@@ -718,12 +643,11 @@ export function indexStore(db: DatabaseSync) {
             for (const stableId of page.gone) deleteOwn.run(workspaceId, source, stableId);
             return run.finish(null, at);
           }),
-        // What a live item keeps beyond its row, or null.
         content: (stableId: string): unknown => {
           const raw = selectOwn.get(workspaceId, source, stableId);
           return raw && typeof raw.content === "string" ? JSON.parse(raw.content) : null;
         },
-        // Every key its items have had, gone ones too, so none is given twice.
+        // Gone ones too, so no key is given twice.
         keys: (): string[] =>
           selectKeys
             .all(workspaceId, source)

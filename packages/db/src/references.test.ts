@@ -20,8 +20,6 @@ import { ensureWorkspace } from "./workspaces.ts";
 const day = 86_400_000;
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 const later = (days: number) => instant(new Date(Date.parse(t0) + days * day));
-// Finds Jira keys and Slack message keys, as each source's own recognizer
-// would: this test is about what the sync and the index do with them.
 const recognize: Recognizer = (text) =>
   (text.match(/\b(?:SYN-\d+|C0FW1WEATHR-\d{10}\.\d{6})\b/g) ?? []).map((key): ItemId =>
     key.startsWith("SYN") ? `jira:${key}` : `slack:${key}`,
@@ -121,14 +119,11 @@ test("a connection forgotten takes its items, their references and its sync stat
       .map((row) => ({ ...row })),
     [{ to_source: "jira", to_handle: "SYN-54", at: later(1) }],
   );
-  // Nothing more to forget takes no version.
   assert.equal(index.forget(workspaceId, "jira", later(2)), before + 1);
-  // Connected again, the same item is named again.
   await sync("jira", [issue("SYN-54", "10054")], later(3));
   assert.deepEqual(references("slack:C0FW1WEATHR-1788444000.000100"), [
     { id: "jira:SYN-54", stableId: "10054" },
   ]);
-  // Forgetting Slack takes the references its messages made.
   index.forget(workspaceId, "slack", later(4));
   assert.deepEqual(db.prepare("select * from item_references").all(), []);
 });

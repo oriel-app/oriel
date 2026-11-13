@@ -6,8 +6,6 @@ import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 
 const now = instant(new Date(Date.UTC(2026, 9, 29)));
-// Migrations before 0012 named workstreams groups: a test of one of them
-// stops before it.
 const beforeWorkstreams = () => loadMigrations().filter((m) => m.version < 12);
 const tables = (db: ReturnType<typeof open>) =>
   db
@@ -118,7 +116,6 @@ test("0002 rewrites the index's old Jira rows readably and starts every sync ove
   const [first, ...rest] = loadMigrations();
   assert.ok(first);
   migrate(db, [first], now);
-  // As 0001's index kept them: everything Jira's in attrs.
   const old = (fields: Record<string, unknown>) =>
     JSON.stringify({
       issueType: "Story",
@@ -153,7 +150,6 @@ test("0002 rewrites the index's old Jira rows readably and starts every sync ove
       labels: ["payments"],
     }),
   );
-  // Its epic isn't in the index.
   insert.run("10004", "jira:SYN-4", now, old({ epic: "jira:SYN-9" }));
   migrate(db, [first, ...rest], now);
 
@@ -191,7 +187,6 @@ test("0002 rewrites the index's old Jira rows readably and starts every sync ove
       },
     ],
   );
-  // The old attrs' shape is gone: a reader of the old shape would fail now.
   assert.throws(() =>
     indexStore(db).records("w1" as Ulid, "jira", object({ status: object({ name: string }) })),
   );
@@ -291,7 +286,6 @@ test("0012 renames groups to workstreams and keeps every row", () => {
     "user_named_workstreams",
     "threads",
   ].map(rows);
-  // Only Oriel's blank name for a thread's workstream changes.
   const named = before[0]?.map((row) =>
     row[0] === "blank" ? ["blank", ...row.slice(1, 2), "New workstream", ...row.slice(3)] : row,
   );
@@ -312,7 +306,6 @@ test("0012 renames groups to workstreams and keeps every row", () => {
       .map((row) => String(row.name)),
     ["threads_by_workstream", "workstream_members_live", "workstreams_by_workspace"],
   );
-  // The foreign keys follow the renamed tables.
   assert.throws(() =>
     db.exec(
       `insert into threads (id, workspace_id, workstream_id, region_version, created_at) values ('t2', '${workspaceId}', 'nope', 1, '${now}')`,

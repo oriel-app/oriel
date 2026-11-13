@@ -1,6 +1,4 @@
-// The outside tools a person connected (decision 0058), and their tokens,
-// kept only as hashes: a token itself is shown once, or handed to the tool
-// by OAuth (OA-72), and never stored. See migrations/0029_outside_tools.sql.
+// Tokens are kept only as hashes: a token is shown once, or handed over by OAuth, and never stored.
 import type { DatabaseSync } from "node:sqlite";
 import {
   type Instant,
@@ -28,8 +26,6 @@ const toolRow = object({
   revoked_at: nullable(instant),
 });
 
-// The OAuth client a tool signed in as: the ID Oriel gave it when it
-// registered, and the loopback addresses its sign-in may return to.
 export type ToolClient = { id: string; redirects: string[] };
 
 export type StoredTool = {
@@ -96,8 +92,7 @@ export function outsideToolStore(db: DatabaseSync) {
   return {
     list: (workspaceId: Ulid): StoredTool[] => selectAll.all(workspaceId).map(read),
 
-    // A tool and its first tokens, at once. A name a live tool has is
-    // refused, as a name is who acted in every record.
+    // A name a live tool has is refused: the name is who acted in every record.
     connect(
       workspaceId: Ulid,
       tool: Omit<StoredTool, "usedAt" | "revokedAt">,
@@ -120,8 +115,6 @@ export function outsideToolStore(db: DatabaseSync) {
       });
     },
 
-    // The tool a token's hash is, and what kind of token it is; null for
-    // none, or a revoked tool's.
     byHash(
       workspaceId: Ulid,
       hash: string,
@@ -138,7 +131,6 @@ export function outsideToolStore(db: DatabaseSync) {
       markUsed.run(at, workspaceId, id);
     },
 
-    // Revoked from now: its tokens are gone, and its row stays.
     revoke(workspaceId: Ulid, id: Ulid, at: Instant): boolean {
       return transaction(db, () => {
         if (markRevoked.run(at, workspaceId, id).changes === 0) return false;

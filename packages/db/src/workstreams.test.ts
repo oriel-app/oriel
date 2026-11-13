@@ -41,7 +41,6 @@ test("an item removed and added again is out of the versions between", () => {
   assert.deepEqual(ids(workstream.id, 1), ["jira:SYN-1", "jira:SYN-2"]);
   assert.deepEqual(ids(workstream.id, 2), ["jira:SYN-1"]);
   assert.deepEqual(ids(workstream.id, 3), ["jira:SYN-1", "jira:SYN-2"]);
-  // And out again: each stint is its own.
   workstreams.remove(workstream.id, [syn2], user, later(3));
   assert.deepEqual(ids(workstream.id, 3), ["jira:SYN-1", "jira:SYN-2"]);
   assert.deepEqual(ids(workstream.id, 4), ["jira:SYN-1"]);
@@ -62,12 +61,10 @@ test("members are matched by stable ID, so a moved item is the same member", () 
   // SYN-13 moved to another project and is FER-7 now.
   const moved = m("FER-7", "10013");
   assert.equal(workstreams.add(workstream.id, [moved], user, later(1)), null);
-  // The region keeps the handle the member was added with; reads follow moves.
   assert.deepEqual(ids(workstream.id, 1), ["jira:SYN-1", "jira:SYN-13"]);
   const removed = workstreams.remove(workstream.id, [moved], user, later(2));
   assert.deepEqual(removed?.removed, [m("SYN-13", "10013")]);
   assert.deepEqual(ids(workstream.id, 2), ["jira:SYN-1"]);
-  // A handle reused by another item is another member.
   const reused = workstreams.add(workstream.id, [m("SYN-1", "20001")], user, later(3));
   assert.deepEqual(reused?.added, [m("SYN-1", "20001")]);
   assert.deepEqual(workstreams.region(workstream.id, 3)?.items, [syn1, m("SYN-1", "20001")]);

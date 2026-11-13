@@ -1,6 +1,3 @@
-// Noticed's store (decision 0052): the signals a person
-// dismissed, by fingerprint, and their pins, each a block's spec rerun on
-// every look (decision 0030).
 import type { DatabaseSync } from "node:sqlite";
 import {
   blockSpec,
@@ -19,16 +16,13 @@ export type Pin = {
   createdAt: Instant;
 };
 
-// A signal's kind, the start of its ID.
 export const kindOfSignal = (signal: string): SignalKind | null => {
   const kind = signal.slice(0, signal.indexOf(":"));
   return isSignalKind(kind) ? kind : null;
 };
 
-// How long a dismissal holds at most.
 export const dismissedDays = 30;
 
-// At most this many pins (decision 0030).
 export const maxPins = 4;
 
 export function dismissals(
@@ -84,7 +78,6 @@ export function pins(db: DatabaseSync, workspaceId: Ulid): Pin[] {
     });
 }
 
-// Adds a pin, or says why not: a fifth is refused, naming the four.
 export function addPin(db: DatabaseSync, workspaceId: Ulid, pin: Pin): { refused: string } | null {
   const held = pins(db, workspaceId);
   if (pin.signal && held.some((each) => each.signal === pin.signal))
@@ -104,8 +97,7 @@ export function removePin(db: DatabaseSync, workspaceId: Ulid, id: Ulid): boolea
   );
 }
 
-// The last pass's picks, as `picks` was written: the service checks them
-// against the signals on offer before it shows any.
+// `picks` is the model's output as written: the service checks it against the signals on offer before showing any.
 export type StoredPass = { key: string; at: Instant; model: string; picks: unknown };
 
 export function lastPass(db: DatabaseSync, workspaceId: Ulid): StoredPass | null {

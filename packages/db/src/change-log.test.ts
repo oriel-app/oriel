@@ -20,8 +20,6 @@ const day = 86_400_000;
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 const later = (days: number) => instant(new Date(Date.parse(t0) + days * day));
 const attrs = object({ size: nullable(number) });
-// The source's own facet, as a source declares it: core and the store only
-// carry it.
 const declared: DeclaredFacets = {
   size: { label: "Size", of: (record) => (record.attrs as { size: number | null }).size },
 };
@@ -92,7 +90,6 @@ test("what the user hasn't seen is what committed after the entry the overview t
   sync([record("1", "SYN-1", { state: "todo" })], t0);
   sync([record("1", "SYN-1", { state: "in-progress" })], later(1));
   const shown = index.changes(workspaceId).at(-1)?.seq ?? 0;
-  // A sync that started before the user left, and committed after.
   const run = index.beginSync(workspaceId, "jira", attrs, later(2), declared);
   markSeen(db, workspaceId, later(3), shown);
   run.apply({ records: [record("1", "SYN-1", { state: "done" })], gone: [], cursor: null });
@@ -103,11 +100,9 @@ test("what the user hasn't seen is what committed after the entry the overview t
     index.changes(workspaceId, seen?.seq).map((entry) => entry.facets.state?.after),
     ["done"],
   );
-  // The stamp's time never goes back, nor what it had seen.
   markSeen(db, workspaceId, later(1), 0);
   assert.equal(lastSeen(db, workspaceId)?.at, later(3));
   assert.equal(lastSeen(db, workspaceId)?.seq, seen?.seq);
-  // An entry no page could have shown, not committed yet, isn't seen.
   markSeen(db, workspaceId, later(5), Number.MAX_SAFE_INTEGER);
   assert.equal(lastSeen(db, workspaceId)?.at, later(5));
   assert.deepEqual(index.changes(workspaceId, lastSeen(db, workspaceId)?.seq), []);

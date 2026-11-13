@@ -49,7 +49,6 @@ test("a stand-in's write lands its rows, their text, content and change log at o
   );
   assert.deepEqual(own.content("1"), { description: "The pricing page" });
   assert.equal(index.search(workspaceId, "pricing", 5)[0]?.id, "tracker:T-1");
-  // An estimate set: the change log has it, in the version the write took.
   assert.equal(own.write({ records: [issue(1, 3, t1)], gone: [], texts: {} }, {}, t1), 2);
   assert.deepEqual(
     index
@@ -57,7 +56,6 @@ test("a stand-in's write lands its rows, their text, content and change log at o
       .map(({ stableId, version, facets }) => ({ stableId, version, facets })),
     [{ stableId: "1", version: 2, facets: { declared: { estimate: { before: null, after: 3 } } } }],
   );
-  // Deleted: its row is a tombstone, its content goes, and its key stays taken.
   own.write({ records: [], gone: ["1"], texts: {} }, {}, t1);
   assert.deepEqual(index.records(workspaceId, "tracker", unknown), []);
   assert.equal(own.content("1"), null);

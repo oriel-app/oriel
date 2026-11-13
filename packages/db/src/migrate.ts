@@ -8,7 +8,6 @@ export type Migration = { version: number; name: string; sql: string };
 
 const defaultDir = new URL("../migrations/", import.meta.url);
 
-// Numbered files `NNNN_name.sql`, consecutive from 0001.
 export function loadMigrations(dir: URL = defaultDir): Migration[] {
   const migrations = readdirSync(dir)
     .filter((file) => file.endsWith(".sql"))
@@ -36,12 +35,8 @@ const checksum = (sql: string) => createHash("sha256").update(sql).digest("hex")
 
 const appliedRow = object({ version: number, name: string, checksum: string });
 
-// Applies what's missing, each migration in its own transaction. Refuses to run
-// if an applied migration's file changed, or if the database is ahead of the
-// code. Safe when two processes start at once: each migration re-checks inside
-// its write transaction. Foreign keys are off while migrating, so a migration
-// can rebuild a referenced table (SQLite's procedure), and are verified before
-// each commit. Returns the versions it applied.
+// Each migration re-checks inside its write transaction, so two processes may start at once.
+// Foreign keys are off for SQLite's table rebuild (sqlite.org/lang_altertable.html#otheralter).
 export function migrate(
   db: DatabaseSync,
   migrations: readonly Migration[],
