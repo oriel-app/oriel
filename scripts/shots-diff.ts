@@ -1,6 +1,6 @@
 // `pnpm shots:diff <dirA> <dirB> [--tolerance <n>]`; exits 1 if any screenshot differs.
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { inflateSync } from "node:zlib";
 
@@ -94,22 +94,41 @@ const pngsUnder = (dir: string): string[] =>
     .map((path) => relative(dir, join(dir, path)))
     .sort();
 
-export function diffDirs(dirA: string, dirB: string, tolerance = 0): string[] {
+export type Noise = { scene: string; pixels: number; reason: string };
+
+export const noiseFor = (path: string, noise: Noise[]): Noise | undefined =>
+  noise
+    .filter((entry) => basename(path).startsWith(entry.scene))
+    .sort((a, b) => b.scene.length - a.scene.length)[0];
+
+export function diffDirs(
+  dirA: string,
+  dirB: string,
+  tolerance = 0,
+  noise: Noise[] = [],
+): { differ: string[]; noisy: string[] } {
   const inA = new Set(pngsUnder(dirA));
   const inB = new Set(pngsUnder(dirB));
-  const lines: string[] = [];
+  const differ: string[] = [];
+  const noisy: string[] = [];
   for (const path of [...new Set([...inA, ...inB])].sort()) {
-    if (!inB.has(path)) lines.push(`${path}\tonly in ${dirA}`);
-    else if (!inA.has(path)) lines.push(`${path}\tonly in ${dirB}`);
+    if (!inB.has(path)) differ.push(`${path}\tonly in ${dirA}`);
+    else if (!inA.has(path)) differ.push(`${path}\tonly in ${dirB}`);
     else {
       const [fileA, fileB] = [dirA, dirB].map((dir) => readFileSync(join(dir, path)));
       if (!fileA || !fileB || fileA.equals(fileB)) continue;
       const result = compare(decode(fileA), decode(fileB), tolerance);
-      if ("size" in result) lines.push(`${path}\tsize ${result.size}`);
-      else if (result.pixels) lines.push(`${path}\t${result.pixels} pixels\t${result.box}`);
+      if ("size" in result) differ.push(`${path}\tsize ${result.size}`);
+      else if (result.pixels) {
+        const line = `${path}\t${result.pixels} pixels\t${result.box}`;
+        const known = noiseFor(path, noise);
+        if (!known) differ.push(line);
+        else if (result.pixels <= known.pixels) noisy.push(`${line}\t${known.reason}`);
+        else differ.push(`${line}\tover its noise limit of ${known.pixels}`);
+      }
     }
   }
-  return lines;
+  return { differ, noisy };
 }
 
 if (import.meta.main) {
@@ -123,12 +142,18 @@ if (import.meta.main) {
     console.error("usage: pnpm shots:diff [--tolerance <0-255>] <dirA> <dirB>");
     process.exit(2);
   }
-  const lines = diffDirs(dirA, dirB, tolerance);
-  for (const line of lines) console.log(line);
+  const noise = JSON.parse(
+    readFileSync(new URL("shots-noise.json", import.meta.url), "utf8"),
+  ) as Noise[];
+  const { differ, noisy } = diffDirs(dirA, dirB, tolerance, noise);
+  for (const line of differ) console.log(line);
+  if (noisy.length) {
+    console.log(`known noise (scripts/shots-noise.json), not counted:`);
+    for (const line of noisy) console.log(`  ${line}`);
+  }
+  const total = new Set([...pngsUnder(dirA), ...pngsUnder(dirB)]).size;
   console.log(
-    lines.length
-      ? `${lines.length} of ${new Set([...pngsUnder(dirA), ...pngsUnder(dirB)]).size} differ`
-      : `${pngsUnder(dirA).length} the same`,
+    differ.length ? `${differ.length} of ${total} differ` : `${total - noisy.length} the same`,
   );
-  process.exitCode = lines.length ? 1 : 0;
+  process.exitCode = differ.length ? 1 : 0;
 }
