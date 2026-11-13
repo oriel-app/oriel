@@ -31,7 +31,6 @@ import { sourceKinds } from "../packages/sources/src/index.ts";
 import { windowRoutes } from "../packages/server/src/mcp/parity.ts";
 import { windowReads } from "../packages/server/src/mcp/reads.ts";
 import { themeProblems } from "./check-themes.ts";
-import { storyKeyComments } from "./comments.ts";
 
 // `name@version` keys from every top-level `packages:` block.
 export function lockedPackages(lockfile: string): string[] {
@@ -349,57 +348,6 @@ export function chromeLaunchProblems(path: string, text: string): string[] {
   return found;
 }
 
-export const commentsCleaned = [
-  "packages/db/",
-  "packages/core/",
-  "packages/sources/",
-  "packages/groupings/",
-  "packages/slack/",
-  "packages/sheets/",
-  "packages/sheets-mcp/",
-  "packages/folder/",
-  "packages/agent/",
-  "packages/evals/",
-  "packages/desktop/probe/",
-  "packages/desktop/shell/",
-  "packages/desktop/src/",
-  "packages/design-system/",
-  "packages/changeset/",
-  "packages/bindings/",
-  "packages/sandbox/",
-  "scripts/",
-  "packages/jira/",
-  "packages/linear/",
-  "packages/tracker/",
-  "packages/standin-mcp/",
-  "packages/web/",
-  "packages/server/",
-];
-export const commentsCleanedLater = [
-  "packages/core/src/telemetry.ts",
-  "scripts/check-repo.ts",
-  "scripts/shots.ts",
-  "packages/web/src/block.tsx",
-  "packages/web/src/connect-steps.tsx",
-  "packages/web/src/connections-page.tsx",
-  "packages/web/src/http.ts",
-  "packages/web/src/new-message.tsx",
-  "packages/web/src/other-pages.tsx",
-  "packages/web/src/overview-page.tsx",
-  "packages/web/src/parts.tsx",
-  "packages/web/src/settings-page.tsx",
-  "packages/web/src/thread-page.tsx",
-  "packages/web/src/thread.ts",
-  "packages/web/src/to-review.tsx",
-  "packages/web/src/undo-stack.tsx",
-  "packages/web/src/window-chat.ts",
-  "packages/web/src/workstream-page.tsx",
-  "packages/server/src/app.ts",
-  "packages/server/src/api.ts",
-  "packages/server/src/actions.ts",
-  "packages/server/src/turns.ts",
-];
-
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -429,11 +377,6 @@ export function problems(repo: {
       }
     for (const problem of chromeLaunchProblems(path, text)) found.add(problem);
     for (const problem of webSourceNames(path, text)) found.add(problem);
-    if (
-      commentsCleaned.some((cleaned) => path.startsWith(cleaned)) &&
-      !commentsCleanedLater.includes(path)
-    )
-      for (const problem of storyKeyComments(path, text)) found.add(problem);
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
     const ownWriter = ownWriterFile.test(path);

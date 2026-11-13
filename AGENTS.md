@@ -4,7 +4,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 No UI copy that merely restates a visible label or obvious interaction.
 
-Almost no code comments. Write one only when reading the code can't tell you why: a security invariant, an outside system's quirk, a workaround with its link. Never what the code does, a story key, a decision number on its own, or the change's history; those belong in the commit, the PR and `docs/decisions/`. Rename or restructure before explaining.
+Almost no code comments. Write one only when reading the code can't tell you why: a security invariant, an outside system's quirk, a workaround with its link. Never what the code does, a story key or PR number, a decision number on its own, or the change's history; those belong in the commit, the PR and `docs/decisions/`. Rename or restructure before explaining.
 
 ## Commands
 
