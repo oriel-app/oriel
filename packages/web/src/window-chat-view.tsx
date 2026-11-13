@@ -307,8 +307,7 @@ export function windowChatComposer(
     const thread = live;
     const sendThread = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
     // A held message's words in the composer send as they were held, about
-    // nothing, so it offers nothing, and takes no drop, while they're there
-    // (decision 0062).
+    // nothing, so it offers nothing while they're there (decision 0062).
     const followUp = thread.composing ? notLooking : thread.lookingAt;
     return {
       label: "Message",

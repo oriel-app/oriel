@@ -1,12 +1,6 @@
 # 0062 A message says what it is about: looking at an item adds nothing
 
-<<<<<<< HEAD
-Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged. Amended 2026-11-10 (epic OA-332): asked to change an item outside the region, a thread adds it first, and the window chat offers Continue in….
-||||||| parent of f0e290d3 (fix(web): no Cite in the composer, read-only said once, no version in its foot (OA-345))
-Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged.
-=======
-Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged. Amended by OA-345.
->>>>>>> f0e290d3 (fix(web): no Cite in the composer, read-only said once, no version in its foot (OA-345))
+Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged. Amended 2026-11-10 (epic OA-332): asked to change an item outside the region, a thread adds it first, and the window chat offers Continue in…. Amended 2026-11-12 (OA-345): an item's row dropped on a composer; the composer offers no Cite.
 
 Adds: none
 
@@ -39,7 +33,6 @@ Adds: none
 - Story OA-333 keeps the window chat beside an open item; until it lands, the window chat's chip shows once the item closes with words typed.
 - Telemetry: none new. What a message is about is never counted by its items.
 
-<<<<<<< HEAD
 **Amended 2026-11-10 (epic OA-332).** Asked to change the item they're looking at ("close it", "reassign to Dana"), the agent could only say it couldn't. The maintainer picked the option where the agent proposes and one click makes it possible, and added: "i dont need a bunch of explainer text. the UI should guide people without them having to read flavor text."
 
 - **In a thread, the agent adds it first.** An item outside the region stays read-only until it joins the workstream. Oriel's note says so: "read-only until added", and asked to change one, the agent adds it with `workstream.add()`, then proposes the change in a later run of the same turn (OA-312). The person sees it join, with its Undo and its marker, and the change set says the agent put it there. A thread that looked outside its region declares its `LookedId` "read-only until workstream.add() joins them". Looking alone still adds nothing: the agent adds an item only when asked to change it.
@@ -48,7 +41,5 @@ Adds: none
 - **Unchanged:** a source's write still binds only the region's IDs, and the change-set engine still checks its targets against the region. The draft names only an item the person chose, one their messages were about or one in the chat's region, never one a read found, which synced text could steer it to; Oriel, not the agent, names the window chat and the message it continues.
 - **Costs:** the base module and system prompt are unchanged. Every window chat's module gains `window.continue()`: 131 bytes, on a budget of its own (140), as `source.off`'s is. The note for an outside item is 27 bytes longer in a thread; in the window chat it's 52 bytes longer than it was. A thread that looked outside its region has 34 bytes more in its module.
 - **Telemetry:** `window-chat.continued` (SPEC §7's "Continue in used"): the chat, the thread it went on in, whether a workstream was made, and whether the chat stayed working. `thread.marked-done` gains `via: "continue"`.
-||||||| parent of f0e290d3 (fix(web): no Cite in the composer, read-only said once, no version in its foot (OA-345))
-=======
-**Amended by OA-345, 2026-11-12.** An item's row dropped on a composer goes in what the next message is about, as + puts it, and stays while other items open and close beside it until the message is sent; the read-only rule is the same, and nothing joins the workstream. The composer no longer offers Cite beside a read-only item: the item panel's Add to workstream adds it, with its Undo, and the agent may still add it, as 0024 allows. A read-only item says so on its chip alone; the foot names it plainly ("Reads 14 items, and SYN-54"), and names no version, which the rail shows. Telemetry: `item.dropped-on-composer`, by the item's source kind.
->>>>>>> f0e290d3 (fix(web): no Cite in the composer, read-only said once, no version in its foot (OA-345))
+
+**Amended 2026-11-12 (OA-345).** An item's row dropped on a composer goes in what the next message is about, as + puts it, and stays while other items open and close beside it until the message is sent; the read-only rule is the same, and nothing joins the workstream. The composer no longer offers Cite beside a read-only item: the item panel's Add to workstream adds it, with its Undo, and the agent may still add it, as 0024 allows. A read-only item says so on its chip alone; the foot names it plainly ("Reads 14 items, and SYN-54"), and names no version, which the rail shows. Telemetry: `item.dropped-on-composer`, by the item's source kind.

@@ -254,8 +254,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
 export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: Dispatch): Composer {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   // A held message's words in the composer send as they were held, about
-  // nothing, so it offers nothing, and takes no drop, while they're there
-  // (decision 0062).
+  // nothing, so it offers nothing while they're there (decision 0062).
   const looking = model.composing ? notLooking : model.lookingAt;
   return {
     label: "Message",
@@ -1782,7 +1781,7 @@ function Dock({ children }: { children: ComponentChildren }) {
 
 // What the agent will read, for the composer's foot: the thread's items;
 // behind its workstream, the workstream as it is now, which the next message
-// catches up with. The rail says the version.
+// catches up with.
 export function readsOf(view: ThreadView): string | null {
   if (view.regionVersion < view.workstream.version) return "Reads its workstream as it is now";
   if (view.members.length === 0) return null;

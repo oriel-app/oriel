@@ -149,16 +149,8 @@ Over the field, the composer offers the item open beside it as what the next mes
 </form>
 ```
 
-<<<<<<< HEAD
-```html specimen id=looking-off title="Not sending, and read-only with Cite"
-<form class="chat-input">
-||||||| parent of f0e290d3 (fix(web): no Cite in the composer, read-only said once, no version in its foot (OA-345))
-```html specimen id=looking-off title="Not sending, and read-only with Cite"
-<form class="chat-input" data-lines="grow">
-=======
 ```html specimen id=looking-off title="Not sending, and read-only"
-<form class="chat-input" data-lines="grow">
->>>>>>> f0e290d3 (fix(web): no Cite in the composer, read-only said once, no version in its foot (OA-345))
+<form class="chat-input">
   <div class="ctx" role="group" aria-label="What your message is about">
     <span class="ctx-chip" data-off
       ><span class="ctx-label">Not sending</span

@@ -4418,7 +4418,6 @@ const scenes: Scene[] = [
       await page.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
       await closePanelOnPhone(page);
       await page.locator(".ctx-chip:visible", { hasText: "read-only" }).waitFor();
-      await page.getByRole("button", { name: "Cite" }).waitFor();
     },
   },
   // Sent with the chip, the agent reads the item by its ID (the scripted
@@ -6421,7 +6420,6 @@ scenes.push({
   },
 });
 
-// An item's row dropped on a composer goes in what the next message is about.
 // Drags need the rail or the sidebar beside the page; narrower, + is the way.
 let dropThread = "";
 const dropping = async () => {
@@ -6446,8 +6444,6 @@ async function openDropThread(page: Page): Promise<void> {
   await page.goto(new URL(`/threads/${dropThread}`, page.url()).href);
   await railRow(page, 1).waitFor();
 }
-// The second rail item dropped, a question typed, then SYN-54, outside the
-// workstream, opened in place (so the question stays) and its panel dropped.
 async function droppedTwo(page: Page): Promise<string> {
   const composer = threadComposer(page);
   const row = railRow(page, 1);
@@ -6456,6 +6452,7 @@ async function droppedTwo(page: Page): Promise<string> {
   await composer.locator(".ctx-chip", { hasText: "Looking at" }).filter({ hasText: key }).waitFor();
   await expectCount(composer.locator(".ctx-chip", { hasText: "read-only" }), 0);
   await composer.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
+  // Opened in place, so the typed question stays.
   await page.evaluate(
     `history.pushState(null, "", location.pathname + ${JSON.stringify(outsideItem)});
      dispatchEvent(new PopStateEvent("popstate"));`,

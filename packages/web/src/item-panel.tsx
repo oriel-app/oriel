@@ -130,8 +130,6 @@ export function ItemPanel(props: {
         </nav>
       )}
       <Fragment key={model.id}>
-        {/* The item drags as its row does: onto a composer, or onto a
-            workstream in the sidebar, which it joins (drag-move.ts). */}
         <header
           class="panel-head"
           {...(shown

@@ -34,10 +34,7 @@ export function ChatInput(props: {
   extra?: ComponentChildren;
   // What floats over it, such as the pill for a change set out of view.
   above?: ComponentChildren;
-  // What the next message is about, drawn over the field; an item's row
-  // dropped on the composer goes in it.
   looking?: Looking;
-  // Over the field, before what it's about, such as questions to start from.
   context?: ComponentChildren;
   class?: string;
   onDraft(text: string): void;
@@ -113,7 +110,7 @@ export type Composer = Parameters<typeof ChatInput>[0];
 // 0062): the item open beside it, "Looking at", with × to leave it out;
 // left out, dashed, "Not sending", with Add back; and the item opened since
 // beside a draft that keeps its own, dashed, which + adds. One outside the
-// thread's region says read-only; looking never adds it to the workstream.
+// thread's region says read-only.
 export type Looking = {
   lookingAt: LookingAt;
   readOnly(id: string): boolean;
@@ -184,7 +181,7 @@ function LookingChips(props: Looking) {
 }
 
 // The foot's line with what the message is about: "Reads your whole
-// window, and SYN-99". Its chip says which are read-only.
+// window, and SYN-99".
 export function readsWith(reads: string | null, lookingAt: LookingAt): string | null {
   const on = lookingAt.chips.filter((chip) => chip.on).map((chip) => chip.item);
   if (on.length === 0) return reads;
