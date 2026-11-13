@@ -5037,8 +5037,12 @@ scenes.push(
       const list = await row.locator(".pick-list .choices").boundingBox();
       const button = await use.boundingBox();
       const height = page.viewportSize()?.height ?? 0;
-      if (!list || !button || list.height > 18 * 16 + 1 || button.y + button.height > height)
-        throw new Error("Use these isn't in sight under the list");
+      // Scrolled into view, the button's foot meets the window's, give or
+      // take the fraction of a pixel the scroll snaps away (OA-351).
+      if (!list || !button || list.height > 18 * 16 + 1 || button.y + button.height > height + 1)
+        throw new Error(
+          `Use these isn't in sight under the list: ${JSON.stringify({ list, button, height })}`,
+        );
       await row.locator(".pick-list").evaluate((list) => list.scrollIntoView({ block: "center" }));
     },
   },
