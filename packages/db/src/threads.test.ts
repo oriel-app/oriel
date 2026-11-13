@@ -12,7 +12,6 @@ const day = 24 * 60 * 60 * 1000;
 const after = (ms: number): Instant => instant(new Date(Date.parse(t0) + ms));
 const id = (n: number): Ulid => ulid(n, new Uint8Array(10));
 
-// A workspace with a workstream of two items at version 1, and a thread on it.
 function fresh() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -38,7 +37,6 @@ function fresh() {
         "insert into messages (id, workspace_id, thread_id, seq, role, content, at) values (?, ?, ?, ?, 'user', '\"hi\"', ?)",
       )
       .run(id(100 + ++seq), workspaceId, threadId, seq, at);
-  // A change set with one mutation per `after`, applied at `at` unless null.
   const changeSet = (mutations: { after: Record<string, unknown>; at: Instant | null }[]) => {
     const changeSetId = id(200 + ++seq);
     db.prepare(
@@ -68,7 +66,6 @@ function fresh() {
     return changeSetId;
   };
   let decided = 0;
-  // A decision on a change set, as the change set engine records one.
   const decide = (changeSetId: Ulid, kind: "approved" | "rejected", at: Instant) =>
     db
       .prepare(
@@ -118,7 +115,6 @@ test("of two change sets, applying one leaves the thread working while the other
       }),
       changeSetId,
     );
-  // Decided in either order: done only once both have applied.
   for (const order of ["earlier first", "later first"]) {
     const { db, changeSet, decide, state } = fresh();
     const earlier = changeSet([pending]);
@@ -128,12 +124,10 @@ test("of two change sets, applying one leaves the thread working while the other
     apply(db, first, after(1500));
     assert.deepEqual(state(after(2000)), ["working", null], order);
     decide(second, "approved", after(3000));
-    // Decided and not yet applied: it is being applied.
     assert.deepEqual(state(after(3200)), ["working", null], order);
     apply(db, second, after(3500));
     assert.deepEqual(state(after(4000)), ["done", "applied"], order);
   }
-  // One approved, the other rejected, in either order: done.
   for (const order of ["reject first", "approve first"]) {
     const { db, changeSet, decide, state } = fresh();
     const kept = changeSet([pending]);

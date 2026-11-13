@@ -1,6 +1,3 @@
-// A source that reads only the parts of it that moved, such as a
-// spreadsheet's tabs, says which parts a sync listed in full and which it
-// couldn't read, and the sync worker marks gone only what it should.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {

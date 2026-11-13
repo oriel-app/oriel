@@ -15,7 +15,6 @@ function fresh() {
   return { db, workspaceId };
 }
 
-// A workstream at version 1 and a working thread on it.
 function withThread() {
   const { db, workspaceId } = fresh();
   db.exec(`

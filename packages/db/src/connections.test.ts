@@ -38,7 +38,6 @@ test("a disconnected connection is a tombstone, which connecting the same thing 
   assert.deepEqual(connections.live(workspaceId, "folder"), []);
   assert.equal(connections.configure(workspaceId, notes.connection.id, { depth: 3 }), false);
 
-  // Another folder takes the next number, never the tombstone's.
   assert.deepEqual(connections.planned(workspaceId, "folder", "/Users/pm/plans"), { number: 2 });
   const plans = connections.connect(
     workspaceId,
@@ -48,7 +47,6 @@ test("a disconnected connection is a tombstone, which connecting the same thing 
   assert.ok("connection" in plans);
   assert.equal(plans.connection.prefix, "folder.2");
 
-  // The same folder again is the same connection, under its ID and number.
   assert.deepEqual(connections.planned(workspaceId, "folder", "/Users/pm/notes"), {
     revives: tombstone,
   });

@@ -24,7 +24,6 @@ function fresh() {
   const workspaceId = ulid(0, new Uint8Array(10));
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
   const index = indexStore(db);
-  // One complete sync of the given pages.
   const sync = (
     pages: { records: IndexRecord<"jira">[]; gone?: string[]; texts?: Record<string, string> }[],
     now: Instant = t1,

@@ -26,8 +26,6 @@ export function ensureWorkspace(
   ).run(workspace.id, workspace.name, now);
 }
 
-// The workspace this database holds, the oldest if it holds more than one,
-// or null before there is any (SPEC §7: one workspace for now).
 export function firstWorkspace(db: DatabaseSync): Ulid | null {
   const raw = db.prepare("select id from workspaces order by created_at, id limit 1").get();
   if (!raw) return null;
@@ -36,9 +34,6 @@ export function firstWorkspace(db: DatabaseSync): Ulid | null {
   return row.value.id;
 }
 
-// When the user last left the overview, and the last change log entry that
-// had committed then, or null before they ever have. What committed after
-// it is what they haven't seen (decision 0027).
 export function lastSeen(db: DatabaseSync, workspaceId: Ulid): { at: Instant; seq: number } | null {
   const raw = db
     .prepare("select seen_at, seen_seq from overview_seen where workspace_id = ?")
@@ -49,9 +44,6 @@ export function lastSeen(db: DatabaseSync, workspaceId: Ulid): { at: Instant; se
   return { at: row.value.seen_at, seq: row.value.seen_seq };
 }
 
-// The user left the overview at `at`, having seen the change log up to
-// entry `seq` (no further than what has committed): the stamp moves there,
-// and never back.
 export function markSeen(db: DatabaseSync, workspaceId: Ulid, at: Instant, seq: number): void {
   db.prepare(`
     insert into overview_seen (workspace_id, seen_at, seen_seq)

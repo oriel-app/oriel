@@ -11,9 +11,6 @@ import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { ensureWorkspace } from "./workspaces.ts";
 
-// An index of `records` alone, in memory, that searches as the app's does:
-// for an eval's world, whose items come from its fixtures rather than a
-// sync (OA-264). `texts` is each one's text, by item ID. Close it when done.
 export function searchOnly(
   records: readonly IndexRecord[],
   texts: ReadonlyMap<string, string>,

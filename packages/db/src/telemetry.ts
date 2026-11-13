@@ -1,5 +1,3 @@
-// Pilot telemetry, stored locally (SPEC §7). Only raw events are kept;
-// metrics such as the onboarding budget are derived from them when read.
 import type { DatabaseSync } from "node:sqlite";
 import {
   type Instant,
@@ -34,7 +32,6 @@ export function telemetryStore(db: DatabaseSync) {
       insert.run(id, workspaceId, name, at, JSON.stringify(data));
     },
 
-    // A workspace's events, oldest first.
     list(workspaceId: Ulid): StoredEvent[] {
       return select.all(workspaceId).map((raw) => {
         const row = eventRow(raw);

@@ -1,8 +1,3 @@
-// Which kinds are on (decision 0059): the person's choice per kind, with the
-// source server it came through, and what the last look for the person's
-// servers found that Oriel knows, with the overview's card of what changed.
-// See migrations/0032_source_kinds.sql. And the change set that moves a
-// stand-in's issues into a kind that turned on: migrations/0033.
 import type { DatabaseSync } from "node:sqlite";
 import type { Instant, Ulid } from "@oriel/core";
 
@@ -12,18 +7,12 @@ export type KindChoice = {
   by: "person" | "agent";
 };
 
-// A known server the agent listed: the kind it serves and its name there.
 export type FoundKind = { kind: string; server: string };
 
-// What changed since the look before: the servers that appeared and those
-// that went.
 export type FoundChange = { appeared: FoundKind[]; gone: FoundKind[] };
 
 export type Finds = { agent: string; found: FoundKind[]; card: FoundChange | null };
 
-// The change set that moves a stand-in's issues into `into`: its thread and
-// change set, the stand-in's item each create makes again, by its ref, and
-// when it applied, or null.
 export type StandInMove = {
   standIn: string;
   into: string;
@@ -73,7 +62,6 @@ export function sourceKindStore(db: DatabaseSync) {
     "update stand_in_moves set moved_at = ? where workspace_id = ? and change_set_id = ?",
   );
   return {
-    // Every move Oriel offered, oldest first.
     moves(workspaceId: Ulid): StandInMove[] {
       return selectMoves.all(workspaceId).map((row) => {
         const each = row as Record<string, string | null>;
@@ -105,11 +93,9 @@ export function sourceKindStore(db: DatabaseSync) {
         at,
       );
     },
-    // When it applied, or null once reverted.
     moved(workspaceId: Ulid, changeSetId: Ulid, at: Instant | null): void {
       markMoved.run(at, workspaceId, changeSetId);
     },
-    // Each kind a person or the agent chose for, by kind.
     choices(workspaceId: Ulid): Map<string, KindChoice> {
       return new Map(
         selectChoices.all(workspaceId).flatMap((row) => {
@@ -128,8 +114,6 @@ export function sourceKindStore(db: DatabaseSync) {
         }),
       );
     },
-    // Keeps a choice, or with null forgets it, as an Undo back to no choice
-    // does.
     choose(workspaceId: Ulid, kind: string, choice: KindChoice | null, at: Instant): void {
       if (choice === null) remove.run(workspaceId, kind);
       else upsert.run(workspaceId, kind, choice.state, choice.server, choice.by, at);
@@ -155,7 +139,6 @@ export function sourceKindStore(db: DatabaseSync) {
         at,
       );
     },
-    // The card's change, dismissed: it shows again only for a new one.
     dismiss(workspaceId: Ulid): void {
       clearCard.run(workspaceId);
     },

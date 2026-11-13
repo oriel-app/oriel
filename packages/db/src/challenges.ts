@@ -1,6 +1,3 @@
-// Second looks at change sets (decision 0054), as core's `Challenge`
-// has them: one row per look, the latest for a change set first. Each is
-// checked on the way out, as every row is.
 import type { DatabaseSync } from "node:sqlite";
 import {
   array,
@@ -64,7 +61,6 @@ const companion: Validator<CapturedMutation> = object({
   ),
   ref: nullable(refine(string, isNewRef, "expected a new:N ref")),
   args: unknown,
-  // The kind a create writes into, as its namespace captured it.
   into: optional(string),
 });
 const coverage: Validator<Coverage> = object({
@@ -103,7 +99,6 @@ export function challengeStore(db: DatabaseSync) {
   const selectUsage = db.prepare(`
     select coalesce(sum(input_tokens), 0) as input, coalesce(sum(output_tokens), 0) as output
     from challenges where thread_id = ?`);
-  // A look left running when Oriel stopped never finishes.
   const abandon = db.prepare(`
     update challenges set state = 'failed', error = ?, finished_at = ?
     where state = 'running'`);
@@ -181,32 +176,25 @@ export function challengeStore(db: DatabaseSync) {
       failed.run(id, why, model, usage.inputTokens, usage.outputTokens, at);
     },
 
-    // The person added the companion at `place` to the change set.
     added(id: Ulid, place: number): void {
       const look = load(selectOne.get(id));
       if (!look || look.added.includes(place)) return;
       setAdded.run(JSON.stringify([...look.added, place].sort((a, b) => a - b)), id);
     },
 
-    // The person dismissed the look (OA-257), or, with null, asked to see
-    // it again.
     dismissed(id: Ulid, at: Instant | null): void {
       setDismissed.run(at, id);
     },
 
     get: (id: Ulid): Challenge | null => load(selectOne.get(id)),
 
-    // What the thread's second looks have spent, in tokens.
     usage(threadId: Ulid): { inputTokens: number; outputTokens: number } {
       const row = selectUsage.get(threadId) as { input: number; output: number } | undefined;
       return { inputTokens: row?.input ?? 0, outputTokens: row?.output ?? 0 };
     },
 
-    // The change set's latest second look, or null.
     latest: (changeSetId: Ulid): Challenge | null => load(selectLatest.get(changeSetId)),
 
-    // Ends every look still running, as Oriel starts: none of them will
-    // finish.
     abandonRunning(at: Instant): void {
       abandon.run("Oriel stopped before the second look finished.", at);
     },

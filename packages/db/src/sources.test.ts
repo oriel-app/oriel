@@ -1,5 +1,3 @@
-// The sources table takes any kind, a migration that rebuilds it keeps every
-// source's cursor and last sync, and search can leave a source out.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, ulid } from "@oriel/core";
@@ -11,10 +9,7 @@ import { ensureWorkspace } from "./workspaces.ts";
 const now = instant(new Date(Date.UTC(2026, 9, 31)));
 const workspaceId = ulid(0, new Uint8Array(10));
 const insert = "insert into sources (workspace_id, kind, cursor, synced_at) values (?, ?, ?, ?)";
-// Migrations before 0020 named the column `kind`: a test of one of them
-// stops before it.
 const beforeConnections = () => loadMigrations().filter((m) => m.version < 20);
-// 0025 starts every cursor over, so each source's next sync gives every text.
 const beforeItemText = () => loadMigrations().filter((m) => m.version < 25);
 
 test("a kind no migration names can sync, and taking any keeps each source's cursor", () => {
@@ -86,7 +81,6 @@ test("connections name each source's column for what it holds, a connection's pr
     { source: "jira", cursor: "2026-10-30T09:00:00.000Z", synced_at: now },
     { source: "slack", cursor: null, synced_at: now },
   ]);
-  // The folder is a connection, under its own ID, which its keys hash.
   assert.deepEqual(
     rows(
       "select id, kind, number, identity, name, options, connected_at, disconnected_at from connections",

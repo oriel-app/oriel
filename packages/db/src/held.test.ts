@@ -1,5 +1,3 @@
-// A held message: words from anyone but the user, kept in a thread's chat
-// until the user sends them on or discards them (decision 0024).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, type Ulid, ulid } from "@oriel/core";
@@ -29,7 +27,6 @@ function fresh() {
   return { threads, threadId };
 }
 
-// A review link's holder, as the sender of a held message.
 const fromLink = (by: string, changeSet: Ulid, askFirst = false) =>
   ({ kind: "review-link", by, changeSet, askFirst }) as const;
 
@@ -58,13 +55,11 @@ test("a held message waits on the user until it is settled, once, by its place i
   );
   assert.equal(threads.settle(threadId, 2, "discarded"), true);
   assert.equal(threads.settle(threadId, 2, "sent"), false);
-  // Only a held entry settles: the user's message at 1 isn't one.
   assert.equal(threads.settle(threadId, 1, "sent"), false);
   assert.deepEqual(
     threads.held(threadId).map((h) => h.seq),
     [3],
   );
-  // The chat keeps it where it was, with what became of it.
   const chat = threads.messages(threadId);
   assert.deepEqual(
     chat.map((m) => (m.role === "held" ? [m.seq, m.outcome] : [m.seq, m.role])),
@@ -94,7 +89,6 @@ test("a draft is held as a held message is, and only applied or discarded (decis
       [2, draft, over, null],
     ],
   );
-  // A draft is applied, never sent; a message is sent, never applied.
   assert.equal(threads.settle(threadId, 1, "sent"), false);
   assert.equal(threads.settle(threadId, 1, "applied"), true);
   assert.equal(threads.settle(threadId, 2, "discarded"), true);
@@ -103,7 +97,6 @@ test("a draft is held as a held message is, and only applied or discarded (decis
     threads.messages(threadId).map((m) => (m.role === "held" ? m.outcome : m.role)),
     ["applied", "discarded"],
   );
-  // Only a draftable action is drafted.
   assert.throws(
     () =>
       threads.append(
@@ -139,8 +132,6 @@ test("a review link's holder's name and reason are capped, as they type both", (
   assert.equal(threads.held(threadId).length, 1);
 });
 
-// A workstream holding SYN-1, id 1, and a thread on it, id 2, written as the
-// tables were before 0012 named them groups.
 const oldWorkstreamAndThread = (db: ReturnType<typeof open>) =>
   db.exec(`
     insert into groups values ('${id(1)}', '${id(0)}', 'Checkout', '{"kind":"picked"}', '${t0}');
@@ -175,7 +166,6 @@ test("0011 moves what a review link's holder sent under who it is from, and whet
     [
       "user",
       [fromLink("Ana", id(10)), "Wrong title.", "sent"],
-      // Not asked as it was held: Oriel asks first.
       [fromLink("Ana", id(11), true), "Wrong title.", null],
     ],
   );

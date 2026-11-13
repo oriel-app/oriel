@@ -1,6 +1,4 @@
-// Runs, as SPEC §7 records them: what each one read and used, so production
-// runs are attributable. Each proxied read keeps its arguments and a hash of
-// its payload, never the payload.
+// A proxied read keeps its arguments and a hash of its payload, never the payload.
 import type { DatabaseSync } from "node:sqlite";
 import type { ProxiedRead, Run, Ulid } from "@oriel/core";
 import { transaction } from "./open.ts";
@@ -19,7 +17,6 @@ export function runStore(db: DatabaseSync) {
   const selectModel = db.prepare("select model from runs where id = ?");
 
   return {
-    // The run and its reads, together or not at all.
     record(run: Run, reads: readonly ProxiedRead[]): void {
       transaction(db, () => {
         insertRun.run(
@@ -55,7 +52,6 @@ export function runStore(db: DatabaseSync) {
       });
     },
 
-    // The model a run ran on, or null for a run never recorded.
     model(id: Ulid): string | null {
       const row = selectModel.get(id) as { model: string } | undefined;
       return row?.model ?? null;

@@ -31,6 +31,7 @@ import { sourceKinds } from "../packages/sources/src/index.ts";
 import { windowRoutes } from "../packages/server/src/mcp/parity.ts";
 import { windowReads } from "../packages/server/src/mcp/reads.ts";
 import { themeProblems } from "./check-themes.ts";
+import { storyKeyComments } from "./comments.ts";
 
 // `name@version` keys from every top-level `packages:` block.
 export function lockedPackages(lockfile: string): string[] {
@@ -348,6 +349,8 @@ export function chromeLaunchProblems(path: string, text: string): string[] {
   return found;
 }
 
+export const commentsCleaned = ["packages/db/"];
+
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -377,6 +380,8 @@ export function problems(repo: {
       }
     for (const problem of chromeLaunchProblems(path, text)) found.add(problem);
     for (const problem of webSourceNames(path, text)) found.add(problem);
+    if (commentsCleaned.some((cleaned) => path.startsWith(cleaned)))
+      for (const problem of storyKeyComments(path, text)) found.add(problem);
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
     const ownWriter = ownWriterFile.test(path);

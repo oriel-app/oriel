@@ -1,6 +1,3 @@
-// A workstream ends done or deleted (decision 0028), in the stores: its done
-// mark records which threads it marked, and a deleted one hides with its
-// threads, rows kept.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Instant, instant, type Ulid, ulid } from "@oriel/core";
@@ -15,8 +12,6 @@ const day = 24 * 60 * 60 * 1000;
 const after = (ms: number): Instant => instant(new Date(Date.parse(t0) + ms));
 const id = (n: number): Ulid => ulid(n, new Uint8Array(10));
 
-// A workstream with three threads: working, dropped (opened 8 days before
-// `now`) and marked done.
 function fresh() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -48,12 +43,10 @@ test("a workstream's done mark marks its working and dropped threads, and reopen
   });
   assert.deepEqual(marked?.toSorted(), [w.dropped, w.working].toSorted());
   assert.deepEqual(w.threads.workstreamDone(w.workstreamId, w.now), { at: w.now, by: "agent" });
-  // Done already, it changes nothing.
   assert.equal(
     w.threads.markWorkstreamDone(w.workstreamId, after(9 * day), { kind: "user" }),
     null,
   );
-  // Another mark's time takes nothing off.
   assert.equal(w.threads.reopenWorkstream(w.workstreamId, after(1), w.now), null);
   const later = after(9 * day);
   assert.deepEqual(
@@ -73,12 +66,10 @@ test("a deleted workstream hides its threads from every lookup, and restoring br
   assert.deepEqual(w.threads.list(w.workspaceId, w.now), []);
   assert.deepEqual(w.threads.ofWorkstream(w.workstreamId, w.now), []);
   assert.equal(w.threads.get(w.done, w.now), null);
-  // Only its own workspace brings it back.
   assert.equal(w.workstreams.restore(w.workstreamId, id(9)), false);
   assert.equal(w.workstreams.restore(w.workstreamId, w.workspaceId), true);
   assert.equal(w.workstreams.restore(w.workstreamId, w.workspaceId), false);
   assert.equal(w.threads.list(w.workspaceId, w.now).length, 3);
   assert.equal(w.threads.get(w.done, w.now)?.state, "done");
-  // A thread uses it, so it isn't deleted with its log.
   assert.equal(w.workstreams.delete(w.workstreamId), false);
 });

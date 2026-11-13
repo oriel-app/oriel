@@ -1,7 +1,5 @@
-// Threads, their chat and their states (SPEC §1.3, decision 0018). A
-// thread's state is derived from what happened in it, never stored; only
-// marking it done has no other record, so that time is kept, and who did it.
-// `now` is passed in.
+// A thread's state is derived from what happened in it, never stored; only a done mark,
+// which has no other record, is kept.
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import {
   type About,
@@ -65,14 +63,9 @@ const messageRow = object({
   content: string,
   at: instantValue,
 });
-// Rows written before 0003 hold a user's text as a bare JSON string; one
-// sent with items open beside the composer holds what it is about
-// (decision 0062), and one sent before that holds none.
+// Rows written before migration 0003 hold a user's text as a bare JSON string.
 const userContent = union(object({ text: string, about: optional(aboutValue) }), string);
 const markerContent = object({ from: number, to: number });
-// A held message, who it is from, and its text within that sender's limit;
-// or a draft of the agent's, of a draftable action, with what it was
-// drafted over (decision 0051).
 const heldContent = union(
   refine(
     object({
@@ -100,13 +93,6 @@ const wroteRow = object({
   items: string,
 });
 
-// What can be added to a thread's chat. The agent's entries are its events
-// as the server receives them; the server checks their shape on the way out.
-// A marker says the thread moved from one version of its workstream to a later
-// one; what changed between them is in the workstream's own log, so it isn't
-// copied here. A held entry is a message from anyone but the user, which
-// waits for them (decision 0024). A note is Oriel's own line about what
-// someone did, never the agent's (OA-91).
 export type NewMessage =
   | { role: "user"; text: string; about?: About }
   | { role: "agent"; event: unknown }
@@ -115,45 +101,27 @@ export type NewMessage =
   | { role: "held"; from: HeldSender; text: string }
   | { role: "held"; draft: Draft; over: unknown };
 
-// A held message, who it is from, and what the user did with it: sent it to
-// the agent, as it was or edited, or discarded it. Or a draft of the
-// agent's, with what it was drafted over, such as the options a connection
-// had, so one they've moved past shows as stale; and what the user did with
-// it: applied it, as it was or edited, or discarded it (decision 0051).
-// Null while it waits on them.
 export type Held = { role: "held" } & (
   | { from: HeldSender; text: string; outcome: "sent" | "discarded" | null }
   | { draft: Draft; over: unknown; outcome: "applied" | "discarded" | null }
 );
 
-// One entry in a thread's chat. `seq` orders the chat.
 export type Message = (Exclude<NewMessage, { role: "held" }> | Held) & {
   seq: number;
   at: Instant;
 };
 
-// A thread that moved to a newer version of its workstream, and its marker's seq.
 export type Move = { threadId: Ulid; from: number; to: number; seq: number };
 
-// A thread with the time anything last happened in it, markers aside.
 export type ThreadSummary = { thread: Thread; activityAt: Instant };
 
-// What a thread's change sets did to its sources: the changes that landed
-// and still stand, those a revert since undid, those sent with no answer,
-// which may have landed, and the sources anything landed in.
 export type Wrote = { applied: number; reverted: number; unconfirmed: number; sources: string[] };
 
-// A deleted thread: `kept` when it wrote to a source, so its records stay
-// out of sight; `workstreamRemoved` when its workstream went with it.
 export type Deleted = { workstreamId: Ulid; kept: boolean; workstreamRemoved: boolean };
 
-// A thread the user deleted is gone from every list and lookup; one kept for
-// what it wrote is in deleted_threads. So is every thread of a workstream
-// the user deleted, which keeps them for its Undo (decision 0028).
 const live = `not exists (select 1 from deleted_threads d where d.thread_id = threads.id)
   and not exists (select 1 from deleted_workstreams w where w.workstream_id = threads.workstream_id)`;
 
-// A working thread with no activity this long is dropped.
 const idleMs = 7 * 24 * 60 * 60 * 1000;
 
 export type ThreadStore = ReturnType<typeof threadStore>;
@@ -178,13 +146,11 @@ export function threadStore(db: DatabaseSync) {
   const selectByWorkspace = db.prepare(`
     select id from threads where workspace_id = ? and ${live}
     order by created_at desc, id desc`);
-  // The window chat's threads (decision 0027). Prepared when first used, so
-  // a store over a database migrated only part way still opens.
+  // Prepared on first use, so a store over a database migrated only part way still opens.
   let windowChats: Record<"newest" | "start" | "is" | "leave" | "forget", StatementSync> | null =
     null;
   const windowChat = () =>
     (windowChats ??= {
-      // The newest the user hasn't left with New chat.
       newest: db.prepare(`
         select threads.id from window_chats c join threads on threads.id = c.thread_id
         where c.workspace_id = ? and c.left_at is null and ${live}
@@ -214,12 +180,9 @@ export function threadStore(db: DatabaseSync) {
   const selectMessages = db.prepare(
     "select seq, role, content, at from messages where thread_id = ? and seq > ? order by seq",
   );
-  // The user's latest message, or one held for them: either makes a settled
-  // thread working again, the second because it waits on them.
   const lastMessage = db.prepare(
     "select max(at) as at from messages where thread_id = ? and role in ('user', 'held')",
   );
-  // Held messages the user hasn't sent or discarded yet.
   const selectHeld = db.prepare(`
     select seq, role, content, at from messages
     where thread_id = ? and role = 'held' and json_extract(content, '$.outcome') is null
@@ -237,16 +200,12 @@ export function threadStore(db: DatabaseSync) {
     where thread_id = ?1 and seq = ?2 and role = 'held'
       and json_extract(content, '$.outcome') is null
       and (?3 = 'discarded' or (?3 = 'applied') = (json_extract(content, '$.draft') is not null))`);
-  // A draft applied, with the input it applied as, which the user may have
-  // edited (decision 0051).
   const applyHeld = db.prepare(`
     update messages
     set content = json_set(content, '$.outcome', 'applied', '$.draft.input', json(?3))
     where thread_id = ?1 and seq = ?2 and role = 'held'
       and json_extract(content, '$.outcome') is null
       and json_extract(content, '$.draft') is not null`);
-  // Anything that happened in the thread, for the idle rule. A marker alone
-  // isn't activity (decision 0018).
   const lastActivity = db.prepare(`
     select max(at) as at from (
       select created_at as at from threads where id = ?1
@@ -254,12 +213,7 @@ export function threadStore(db: DatabaseSync) {
       union all select created_at from change_sets where thread_id = ?1
       union all select d.at from decisions d join change_sets c on c.id = d.change_set_id
         where c.thread_id = ?1)`);
-  // The change set last applied in full, at the time it completed, and
-  // whether it handed the work off: any of its mutations set an assignee or
-  // attached a link, in core's field names (`FieldValues`). A set only partly
-  // applied settles nothing. Completion is when the set's last change
-  // applied by whichever path, an edit or a revert included, as the change
-  // set engine records it; for a row written without it, its last apply.
+  // A row written without the change set engine has no completed_at: its last apply counts.
   const lastApplied = db.prepare(`
     select coalesce(c.completed_at, max(json_extract(m.applied, '$.at'))) as at,
       max(exists (
@@ -270,10 +224,6 @@ export function threadStore(db: DatabaseSync) {
     where c.thread_id = ? group by c.id
     having count(*) = sum(m.status = 'applied')
     order by at desc, handed_off desc limit 1`);
-  // A change set still awaiting review or being applied: something in it
-  // hasn't applied, and nobody rejected or dismissed it, by its latest
-  // decision; one undone leaves it undecided (OA-258). While one does, an
-  // apply settles nothing (OA-259).
   const selectAwaiting = db.prepare(`
     select 1 from change_sets c
     where c.thread_id = ?
@@ -284,11 +234,7 @@ export function threadStore(db: DatabaseSync) {
       ), 'open') != 'rejected'
     limit 1`);
 
-  // What the thread's change sets did to a source. A change that landed
-  // counts as reverted once an applied reverse mutation undid it; a revert's
-  // own changes count as nothing more. A row the engine left failed was sent
-  // with no answer, so it may have landed: a refusal before sending puts it
-  // back to pending. Items are what anything landed in.
+  // A row the engine left failed was sent with no answer, so it may have landed.
   const selectWrote = db.prepare(`
     select
       count(*) filter (where m.status = 'applied' and c.revert_of is null and not undone)
@@ -308,12 +254,10 @@ export function threadStore(db: DatabaseSync) {
   const insertDeleted = db.prepare(
     "insert into deleted_threads (thread_id, workspace_id, deleted_at) values (?, ?, ?)",
   );
-  // A kept thread's change sets can't be reviewed from anywhere.
   const revokeLinks = db.prepare(`
     update review_links set revoked_at = ?2 where revoked_at is null
       and change_set_id in (select id from change_sets where thread_id = ?1)`);
-  // Everything a thread holds, children first. Only a thread that wrote
-  // nothing goes this way, so no revert anywhere names its change sets.
+  // Only for a thread that wrote nothing, so no revert anywhere names its change sets.
   const purge = [
     "delete from decisions where change_set_id in (select id from change_sets where thread_id = ?)",
     "delete from review_links where change_set_id in (select id from change_sets where thread_id = ?)",
@@ -326,20 +270,15 @@ export function threadStore(db: DatabaseSync) {
     "delete from done_marks where thread_id = ?",
     "delete from threads where id = ?",
   ].map((sql) => db.prepare(sql));
-  // A workstream made for a thread from nothing, or for the window chat, once
-  // it holds no thread, kept or
-  // not, and no item, as when its one thread was abandoned.
   const selectEmptyWorkstream = db.prepare(`
     select g.id from workstreams g
     where g.id = ?1 and json_extract(g.origin, '$.kind') in ('thread', 'window')
       and not exists (select 1 from threads where workstream_id = ?1)
       and not exists (select 1 from workstream_members where workstream_id = ?1 and removed_version is null)`);
   const dropEmpty = dropWorkstream.map((sql) => db.prepare(sql));
-  // Latest first.
   const selectWorkstreamMarks = db.prepare(
     "select done_at, done_by, threads from workstream_done_marks where workstream_id = ? order by done_at desc",
   );
-  // Two marks in one instant are one, holding both marks' threads.
   const markWorkstream = db.prepare(`
     insert into workstream_done_marks (workspace_id, workstream_id, done_at, done_by, threads)
     select workspace_id, id, ?2, ?3, ?4 from workstreams where id = ?1
@@ -355,7 +294,6 @@ export function threadStore(db: DatabaseSync) {
     const row = wroteRow(selectWrote.get(id));
     if (!row.ok) throw new Error(`corrupt mutations: ${JSON.stringify(row.issues)}`);
     const items: unknown = JSON.parse(row.value.items);
-    // Each item's connection, once.
     const sources = (Array.isArray(items) ? items : []).flatMap((id) =>
       typeof id === "string" ? (parseItemId(id)?.prefix ?? []) : [],
     );
@@ -393,8 +331,7 @@ export function threadStore(db: DatabaseSync) {
     return found;
   };
 
-  // Appends to the chat and returns the entry's seq. The caller holds the
-  // transaction, so two appends can't take the same seq.
+  // The caller holds the transaction, so two appends can't take the same seq.
   const append = (
     thread: { id: Ulid; workspace_id: Ulid },
     message: NewMessage,
@@ -427,8 +364,7 @@ export function threadStore(db: DatabaseSync) {
     return next.value.next;
   };
 
-  // Moves a thread to its workstream's latest version, with a marker, if it is
-  // behind. The caller holds the transaction.
+  // The caller holds the transaction.
   const move = (id: Ulid, now: Instant, markerId: Ulid): Move | null => {
     const thread = mustLoad(id);
     const latest = versionRow(selectLatest.get(thread.workstream_id));
@@ -472,12 +408,6 @@ export function threadStore(db: DatabaseSync) {
     return { seq, at: when, role, from: marker.value.from, to: marker.value.to };
   };
 
-  // The thread as of `now`. Done (a change set applied in full, or the
-  // user's mark), handed off (an applied assignee change or attached link)
-  // or, failing those, dropped after 7 idle days; anything else is working.
-  // An apply settles it only once none of its change sets awaits review or
-  // is being applied. A message from the person after it settled makes it
-  // working again; of two settlings, the later counts.
   const get = (id: Ulid, now: Instant): Thread | null => {
     const row = load(id);
     if (!row) return null;
@@ -516,8 +446,6 @@ export function threadStore(db: DatabaseSync) {
     };
   };
 
-  // The workstream's done marks, latest first: when, who (by kind) and the
-  // threads each marked done.
   const workstreamMarks = (workstreamId: Ulid) =>
     selectWorkstreamMarks.all(workstreamId).map((raw) => {
       const row = workstreamMarkRow(raw);
@@ -534,8 +462,6 @@ export function threadStore(db: DatabaseSync) {
       };
     });
 
-  // Whether the workstream is done now: marked done, and none of its threads
-  // working since its latest mark (decision 0028).
   const workstreamDone = (workstreamId: Ulid, now: Instant) => {
     const [done] = workstreamMarks(workstreamId);
     if (!done) return null;
@@ -556,16 +482,11 @@ export function threadStore(db: DatabaseSync) {
   };
 
   return {
-    // A new thread on a workstream, working in the workstream's latest version.
     open(thread: { id: Ulid; workspaceId: Ulid; workstreamId: Ulid }, now: Instant): void {
       const { changes } = insert.run(thread.id, thread.workspaceId, now, thread.workstreamId);
       if (Number(changes) !== 1) throw new RangeError(`no workstream ${thread.workstreamId}`);
     },
 
-    // Marks the thread done, as one over read-only items needs, and records
-    // who did: the user unless it says otherwise. One marked done already
-    // keeps who marked it, and when: false, and nothing changes. Reopened,
-    // or working again since, it takes a new mark.
     markDone(id: Ulid, now: Instant, by: Actor = { kind: "user" }): boolean {
       return transaction(db, () => {
         const thread = get(id, now);
@@ -577,16 +498,8 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // The workstream's done mark, while it is done: when, and who marked it.
     workstreamDone,
 
-    // Marks the workstream done, and each of its open threads, working or
-    // dropped, with the same time, recording who did and which threads it
-    // marked: what reopening it undoes (decision 0028). A thread done or
-    // handed off already keeps its state, and who marked it. An earlier mark
-    // stays, with the threads it marked, as when a thread worked in the
-    // workstream since. Null, and nothing changes, when the workstream is
-    // done already.
     markWorkstreamDone(
       workstreamId: Ulid,
       now: Instant,
@@ -612,11 +525,6 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // Takes the workstream's done marks off, and the mark each put on its
-    // threads, where that is still the thread's: one marked again since
-    // stays done. With `at`, only the latest mark, if it was made then, as
-    // an Undo takes off. The threads it reopened, as of `now`, leaving out
-    // one working again already; or null if it had no such mark.
     reopenWorkstream(workstreamId: Ulid, at: Instant | null, now: Instant): Ulid[] | null {
       return transaction(db, () => {
         const marks = workstreamMarks(workstreamId);
@@ -634,9 +542,6 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // Takes the thread's done mark off, so it is as it was before: working,
-    // unless something else settled it. With `at`, only the mark made then.
-    // False if it had none, or another.
     reopen(id: Ulid, at: Instant | null = null): boolean {
       return transaction(db, () => {
         if (Number(unmark.run(id, at).changes) !== 1) return false;
@@ -645,19 +550,11 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // What deleting the thread would lose: what it wrote, which stays in
-    // its sources but can no longer be reverted from here.
     wrote(id: Ulid): Wrote {
       mustLoad(id);
       return wrote(id);
     },
 
-    // The user deletes the thread. One that wrote nothing to a source goes
-    // with everything in it, and so does its workstream, if that was made for it
-    // and is now empty. One that wrote is kept, out of sight, so what it
-    // wrote stays on record with its reverse diff, and its review links are
-    // revoked. Null, and nothing deleted, while `applying` says one of its
-    // change sets is being applied.
     delete(id: Ulid, now: Instant, applying: (changeSetId: Ulid) => boolean): Deleted | null {
       return transaction(db, () => {
         const thread = mustLoad(id);
@@ -669,9 +566,7 @@ export function threadStore(db: DatabaseSync) {
           return { workstreamId: thread.workstream_id, kept: true, workstreamRemoved: false };
         }
         windowChat().forget.run(id);
-        // Its change sets' second looks first; prepared here, since a store
-        // may open on a database migrated only part way, as a migration's
-        // own test does.
+        // Prepared here: a store may open on a database migrated only part way, as a migration's own test does.
         db.prepare("delete from challenges where thread_id = ?").run(id);
         for (const statement of purge) statement.run(id);
         const empty = selectEmptyWorkstream.get(thread.workstream_id) !== undefined;
@@ -682,7 +577,6 @@ export function threadStore(db: DatabaseSync) {
 
     get,
 
-    // The title the model wrote for the thread, or null before it did.
     title(id: Ulid): string | null {
       const raw = selectTitle.get(id);
       if (!raw) return null;
@@ -695,19 +589,12 @@ export function threadStore(db: DatabaseSync) {
       if (Number(nameIt.run(id, title, now).changes) !== 1) throw new RangeError(`no thread ${id}`);
     },
 
-    // A workspace's threads, newest first, with their latest activity.
-    // The window chat the window shows: the newest one the user hasn't left
-    // with New chat, while it is working. Once that one is done or dropped,
-    // there is none, and the next question starts a fresh one.
     windowChat(workspaceId: Ulid, now: Instant): Thread | null {
       const [id] = ids(windowChat().newest.all(workspaceId));
       const thread = id === undefined ? null : get(id, now);
       return thread?.state === "working" ? thread : null;
     },
 
-    // The thread is a window chat: its workstream's first, made by the
-    // window chat's first question. Any other thread on that workstream is
-    // an ordinary one.
     startWindowChat(id: Ulid): void {
       windowChat().start.run(id);
     },
@@ -716,15 +603,10 @@ export function threadStore(db: DatabaseSync) {
       return windowChat().is.get(id) !== undefined;
     },
 
-    // The user started a fresh window chat: this one is no longer the
-    // window's, whatever its state.
     leaveWindowChat(id: Ulid, now: Instant): void {
       windowChat().leave.run(id, now);
     },
 
-    // The window chat moved into its workstream, which gained a member: it
-    // is that workstream's ordinary thread from now on, out of the window,
-    // where New chat never reaches it (OA-347).
     moveWindowChat(id: Ulid): void {
       windowChat().forget.run(id);
     },
@@ -733,21 +615,14 @@ export function threadStore(db: DatabaseSync) {
       return ids(selectByWorkspace.all(workspaceId)).map((id) => summary(id, now));
     },
 
-    // A workstream's threads, newest first.
     ofWorkstream(workstreamId: Ulid, now: Instant): ThreadSummary[] {
       return ids(selectByWorkstream.all(workstreamId)).map((id) => summary(id, now));
     },
 
-    // Adds to the chat; returns the entry's seq.
     append(id: Ulid, message: NewMessage, messageId: Ulid, now: Instant): number {
       return transaction(db, () => append(mustLoad(id), message, messageId, now));
     },
 
-    // The person's message. A thread behind its workstream (one that settled, or
-    // was dropped, while the workstream changed) first catches up, with a marker,
-    // so the message is about the workstream as it is now (decision 0018).
-    // What it is about, if anything, is marked against the region it is
-    // sent in, once the thread has caught up (decision 0062).
     say(
       id: Ulid,
       text: string,
@@ -766,16 +641,10 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // The user acted in the thread on its workstream, as by an Undo under
-    // the agent's reply: it catches up, with a marker, whatever its state,
-    // as their message would make it.
     catchUp(id: Ulid, now: Instant, markerId: Ulid): Move | null {
       return transaction(db, () => move(id, now, markerId));
     },
 
-    // After the workstream changed: each of its working threads moves to the
-    // latest version, with a marker. Settled and dropped ones keep theirs
-    // until a new message. `newId` names each marker.
     follow(workstreamId: Ulid, now: Instant, newId: () => Ulid): Move[] {
       return transaction(db, () =>
         ids(selectByWorkstream.all(workstreamId)).flatMap((id) => {
@@ -785,12 +654,10 @@ export function threadStore(db: DatabaseSync) {
       );
     },
 
-    // The chat after `after`, oldest first.
     messages(id: Ulid, after = 0): Message[] {
       return selectMessages.all(id, after).map(message);
     },
 
-    // The messages held in the thread that wait on the user, oldest first.
     held(id: Ulid): (Held & { seq: number; at: Instant })[] {
       return selectHeld.all(id).flatMap((raw) => {
         const held = message(raw);
@@ -798,24 +665,16 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // An event of the agent's at `seq`, as the host now has it: the list
-    // under its reply, once the user undid a line of it. False if there's
-    // none there.
     rewrite(id: Ulid, seq: number, event: unknown): boolean {
       const json = JSON.stringify(event);
       if (json === undefined) throw new TypeError("a message's content must be JSON");
       return Number(rewriteAgent.run(id, seq, json).changes) === 1;
     },
 
-    // The user sent or discarded the message held at `seq`, or applied or
-    // discarded the draft. False, and nothing changed, if none waits on them
-    // there.
     settle(id: Ulid, seq: number, outcome: "sent" | "discarded" | "applied"): boolean {
       return Number(settleHeld.run(id, seq, outcome).changes) === 1;
     },
 
-    // The user applied the draft at `seq`, as `input`: the card says what
-    // applied. False, and nothing changed, if none waits on them there.
     applied(id: Ulid, seq: number, input: Record<string, unknown>): boolean {
       return Number(applyHeld.run(id, seq, JSON.stringify(input)).changes) === 1;
     },

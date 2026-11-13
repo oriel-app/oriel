@@ -11,9 +11,6 @@ const t0 = instant(new Date(Date.UTC(2026, 9, 31, 9)));
 const after = (ms: number): Instant => instant(new Date(Date.parse(t0) + ms));
 const id = (n: number): Ulid => ulid(n, new Uint8Array(10));
 
-// A thread on a workstream, with a message, a run with a read, and a change set
-// with one mutation, a decision and a live review link. `status` and
-// `error` are that mutation's.
 function fresh(
   options: {
     origin?: WorkstreamOrigin;
@@ -147,7 +144,6 @@ test("a thread that wrote to a source is kept out of sight, with its records, an
 });
 
 test("a change sent with no answer may have landed, so its thread is kept too", () => {
-  // As the engine leaves it: failed, with what went wrong, and no mark.
   const { threads, threadId, count } = fresh({
     status: "failed",
     error: "fetch failed. This may already be in Jira; check before trying again.",
@@ -160,7 +156,6 @@ test("a change sent with no answer may have landed, so its thread is kept too", 
   });
   assert.equal(threads.delete(threadId, after(1000), () => false)?.kept, true);
   assert.equal(count("mutations"), 1);
-  // A refusal before sending puts the row back to pending: nothing written.
   const refused = fresh({ status: "pending", error: "SYN-1 is no longer in the workstream." });
   assert.equal(refused.threads.delete(refused.threadId, after(1000), () => false)?.kept, false);
 });
