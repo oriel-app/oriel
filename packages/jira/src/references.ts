@@ -1,13 +1,8 @@
-// Jira's recognizer (decision 0027): the issue keys in the projects Oriel
-// syncs, wherever they stand in a text, a link to the issue included, as its
-// key is in the link. A key of another project, or a word shaped like one
-// (`UTF-8`, `SHA-256`), names nothing.
+// A key of another project, or a word shaped like one (`UTF-8`, `SHA-256`), names nothing.
 import { itemId, type Recognizer } from "@oriel/core";
 
-// What only the composition root knows: the projects Oriel syncs.
 export type JiraScope = { projects: readonly string[] };
 
-// A project key is a capital letter, then capitals, digits or underscores.
 const projectShape = /^[A-Z][A-Z0-9_]*$/;
 
 export function jiraRecognizer({ projects }: JiraScope): Recognizer {

@@ -1,5 +1,3 @@
-// Jira's rich text as the panel's typed blocks (OA-93): structure kept,
-// links only to http(s), and what has no block read as text.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PanelInline, PanelProse } from "@oriel/core";

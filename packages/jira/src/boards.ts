@@ -1,26 +1,13 @@
-// What each project's board estimates in: its points field, or none when the
-// board takes no estimates. The composition root makes one per connection
-// and hands it to the source, which rediscovers it at the start of each sync,
-// to the writer, and to the agent's module, so all three give one answer,
-// and a board that turns estimation on or off is followed from the next
-// sync, without a restart.
+// Shared by the source, the writer and the agent's module, so all three give one answer; a board that turns estimation
+// on or off is followed from the next sync, without a restart.
 import type { Log } from "@oriel/core";
 import { discoverPoints } from "./rest.ts";
 import type { ReadTransport } from "./transport.ts";
 
 export type JiraBoards = {
-  // Rediscovers the listed projects' boards.
   refresh(): Promise<ReadonlyMap<string, string>>;
-  // Each listed project's points field, as last discovered, or discovered
-  // now if never.
   fields(): Promise<ReadonlyMap<string, string>>;
-  // One project's points field, undefined when its board takes no
-  // estimates. A project not listed, as one an item moved to, is discovered
-  // on its own and kept until the next refresh.
   field(project: string): Promise<string | undefined>;
-  // The listed projects whose boards the last discovery found taking no
-  // estimates, null before one. It knows a project with no items yet, and a
-  // board changed since the index last saw an item.
   unestimating(): ReadonlySet<string> | null;
 };
 

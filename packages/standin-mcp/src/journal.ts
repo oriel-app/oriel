@@ -1,8 +1,4 @@
-// Stand-ins share their writes through a journal file, in dev, so a sync's
-// process sees what a replay's process wrote (OA-276): each write call that
-// worked is a line in it, and before every call a process makes the writes
-// other processes added since, in order, to its own copy. Without one, a
-// stand-in's writes change only its own process's copy.
+// Without a journal a stand-in's writes change only its own process's copy; with one, a sync's process sees what a replay's wrote.
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import type { StandInTool } from "@oriel/core";
 

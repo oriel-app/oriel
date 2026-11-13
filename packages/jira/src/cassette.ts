@@ -1,5 +1,3 @@
-// Recorded REST exchanges, replayed in tests so they run without the
-// network, as recorded from the live SYN (recorded.ts).
 import { array, type Infer, literal, number, object, string, union, unknown } from "@oriel/core";
 import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
 
@@ -17,8 +15,6 @@ export type Exchange = Infer<typeof exchange>;
 const keyOf = (request: JiraRequest) =>
   `${request.method} ${request.path} ${JSON.stringify(request.body ?? null)}`;
 
-// Answers each request with the first recorded exchange that matches it
-// exactly, and throws for anything the cassette doesn't hold.
 export function replay(exchanges: readonly Exchange[]): Transport {
   const answers = new Map<string, Exchange["response"]>();
   for (const { request, response } of exchanges) {
@@ -32,7 +28,6 @@ export function replay(exchanges: readonly Exchange[]): Transport {
   };
 }
 
-// Passes requests through and keeps each exchange.
 export function recording<R extends JiraRequest>(
   inner: (request: R) => Promise<JiraResponse>,
   into: Exchange[],

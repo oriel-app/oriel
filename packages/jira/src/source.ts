@@ -1,7 +1,4 @@
-// The Jira source over Cloud REST v3: `sync` pages the search endpoint from an
-// `updated` cursor, `read` fetches full content live, and `records` reads
-// index records by key. It never writes; the writer lives behind this
-// package's `./writer` subpath.
+// It never writes; the writer lives behind this package's `./writer` subpath.
 import {
   array,
   boolean,
@@ -53,35 +50,25 @@ export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & { readonly ops
 
 export type JiraSourceOptions = {
   transport: ReadTransport;
-  // Where item locations point, such as "https://oriel.atlassian.net".
   site: string;
-  // The project keys to index.
   projects: readonly string[];
   log: Log;
   pageSize?: number;
-  // What each project's board estimates in, shared with the writer and the
-  // agent's module; the source's own over `transport` when not given.
   boards?: JiraBoards;
-  // Through a source server (decision 0059): a sync reads every page before
-  // it gives one, and a listed issue it can't read stops it, so one that
-  // fails leaves the index as it was.
+  // A sync reads every page before it gives one, and a listed issue it can't read stops it: the index stays as it was.
   whole?: true;
 };
 
 // Jira's search caps a page that returns fields at 100 issues.
 const maxPage = 100;
-// JQL compares `updated` to the minute, in the searching user's time zone,
-// where an hour repeats when clocks go back. Each incremental sync reaches
-// back this far; records it reads again change nothing in the index.
+// JQL compares `updated` to the minute, in the searching user's time zone, where an hour repeats when clocks go back.
+// Each incremental sync reaches back this far; records it reads again change nothing in the index.
 const overlapMs = 60 * 60 * 1000;
 // With the zone unknown, dates are written in UTC, which Jira may read in a
 // zone up to 12 hours behind, so the overlap grows to cover that too.
 const unknownZoneOverlapMs = 14 * 60 * 60 * 1000;
 const readConcurrency = 4;
 
-// An issue's fields as the source asks for them: the index's, and the
-// description, which a read returns and a listing hands to Oriel's sync as
-// text to find references in.
 const listedFields = object({ ...indexFieldShape, description: optional(unknown) });
 const searchPage = object({
   issues: array(unknown),
@@ -114,9 +101,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     throw new RangeError("expected one or more project keys, like SYN");
   const pageSize = Math.min(Math.max(Math.trunc(options.pageSize ?? maxPage), 1), maxPage);
 
-  // Rediscovered at the start of each sync, so a board's new estimate field
-  // applies to the issues the next sync lists. Changing the field doesn't touch
-  // `updated`, so other issues keep their old points until a full sweep.
+  // Rediscovered each sync. Changing the field doesn't touch `updated`, so other issues keep their old points until a full sweep.
   const boards = options.boards ?? jiraBoards({ transport, projects, log });
   // The points fields a read of one issue asks for: every listed project's,
   // and its own project's, which may not be listed, as one an item moved to.
@@ -126,13 +111,11 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     const own = await boards.field(project);
     return own === undefined ? points : new Map([...points, [project, own]]);
   };
-  // The fields every request asks for, the description last.
   const fieldList = (points: ReadonlyMap<string, string>) => [
     ...new Set([...indexFieldNames, ...points.values(), "description"]),
   ];
 
-  // An index record, and its summary and description as one text for Oriel's
-  // sync to find references in. The text never reaches the record.
+  // Its summary and description as one text for Oriel's sync to find references in; the text never reaches the record.
   const toRecord = (
     raw: unknown,
     points: ReadonlyMap<string, string>,
@@ -158,8 +141,6 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     };
   };
 
-  // Where an incremental sync starts: the cursor less the overlap, in the zone
-  // Jira reads JQL dates in.
   const windowFrom = async (since: Instant) => {
     const { timeZone } = await call(transport, { method: "GET", path: `${api}/myself` }, myself);
     const known = timeZone !== undefined && validZone(timeZone);
@@ -216,7 +197,6 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   };
 
   // Reading an issue by key sees a write at once; the search sees it later.
-  // Null for one in a shape Oriel can't read.
   const recordOf = async (
     id: ItemId<"jira">,
     listed: ReadonlyMap<string, string>,
@@ -273,8 +253,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
       return mapLimit(ids, readConcurrency, (id) => readOne(id, points));
     },
 
-    // A deleted issue and one this account can't see are both null: Jira
-    // answers 404 for either, and 403 for some.
+    // Jira answers 404 for a deleted issue and for one this account can't see, and 403 for some.
     async records(ids) {
       const points = await boards.fields();
       const read = await mapLimit(ids, readConcurrency, (id) => recordOf(id, points));
@@ -287,10 +266,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     },
   };
 
-  // A null cursor lists everything. Otherwise the cursor is the latest
-  // `updated` seen so far, and only issues updated since (less the overlap)
-  // are listed. Jira's search can't list deleted issues, so pages report no
-  // gone IDs: the sync worker's full sweep finds those.
+  // Jira's search can't list deleted issues, so pages report no gone IDs: the sync worker's full sweep finds those.
   async function* pages(cursor: string | null): AsyncGenerator<SyncPage<"jira", JiraAttrs>> {
     const since = cursor !== null && isInstant(cursor) ? cursor : null;
     const points = await boards.refresh();
@@ -333,7 +309,6 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         texts[record.stableId] = text;
         if (latest === null || record.updatedAt > latest) latest = record.updatedAt;
       }
-      // With nothing seen yet there is no cursor to report.
       if (latest !== null)
         yield { records, gone: [], cursor: latest, texts } satisfies SyncPage<"jira", JiraAttrs>;
       token = page.nextPageToken ?? null;
@@ -353,7 +328,6 @@ function validZone(timeZone: string): boolean {
   }
 }
 
-// A JQL date, "yyyy-MM-dd HH:mm" in the given zone, rounded down to the minute.
 export function jqlDate(at: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -368,7 +342,6 @@ export function jqlDate(at: Date, timeZone: string): string {
   return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
 }
 
-// Like Promise.all over `items`, with at most `limit` running at once. Order is kept.
 async function mapLimit<T, U>(
   items: readonly T[],
   limit: number,

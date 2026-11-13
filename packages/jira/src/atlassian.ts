@@ -1,19 +1,5 @@
-// Jira through Atlassian's own MCP server (decision 0059, OA-276): the entry
-// Oriel knows it by, and the parser, both ways. The parser is a transport:
-// each REST request the source, its boards and the writer make becomes one
-// call of the server's tools, and the tool's answer becomes the REST body
-// they already check, so everything they do works the same through it. A
-// request with no tool to answer it is refused before anything is sent.
-//
-// At the address Atlassian's own instructions give, the server lists a few
-// Jira tools flat, and reaches the rest by name through `executeRead` and
-// `executeWrite` (`discover` names them; Oriel's are fixed, below). Its
-// answers are JSON under `data`, in the "full" view, with rich text as
-// Markdown and custom fields by their labels; a failed one says so under
-// `error`, with REST's status. What isn't so stops the sync, naming the
-// server (`ServerUnreadable`): the index stays as it was. Recorded from the
-// real server in fixtures/jira-mcp/real.json.
-// https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/
+// The server lists a few Jira tools flat and reaches the rest by name through `executeRead` and `executeWrite`; answers are
+// JSON under `data` ("full" view, rich text as Markdown, custom fields by label). https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/
 import {
   answerText,
   narrowed,
@@ -34,7 +20,6 @@ import {
   type Transport,
 } from "./transport.ts";
 
-// Its tools Oriel calls, by what each does.
 export const atlassianTools = {
   resources: "getAccessibleAtlassianResources",
   search: "searchJiraIssuesUsingJql",
@@ -48,11 +33,8 @@ export const atlassianTools = {
   executeWrite: "executeWrite",
 } as const;
 
-// The operations Oriel runs through `executeRead` and `executeWrite`, by
-// what each does: only these, each through its own, so the read side can
-// run no write, and nothing runs `executeDestructive`, which Oriel never
-// loads. Atlassian's server has no operation to delete an issue, a comment
-// or a link, so a revert that would is refused before anything is sent.
+// Each through its own tool, so the read side can run no write, and nothing runs `executeDestructive`. Atlassian's
+// server can't delete an issue, a comment or a link, so a revert that would is refused before anything is sent.
 export const atlassianOperations = {
   links: "listJiraIssueRemoteIssueLinks",
   boards: "listJiraBoards",
@@ -76,8 +58,6 @@ const o = atlassianOperations;
 // for, such as an issue's parent and description.
 const view = "full";
 
-// One run of an operation by its name, as `executeRead` or `executeWrite`
-// takes it, with the site it's on.
 export const operationCall = (
   cloudId: string,
   name: ReadOperation | WriteOperation,
@@ -93,9 +73,7 @@ export const operationCall = (
   return { tool, args: { cloudId, name, inputs } };
 };
 
-// Atlassian's MCP server, as Oriel knows it: at its address, whatever it
-// lists beyond Oriel's tools, and an address compares without its query,
-// so one added with `?tools=all` is it too.
+// An address compares without its query, so one added with `?tools=all` is it too.
 export const atlassianServer: SourceServer = {
   name: "Atlassian's Rovo MCP server",
   reports: "atlassian-mcp-server",
@@ -104,7 +82,6 @@ export const atlassianServer: SourceServer = {
   writes: [t.create, t.edit, t.transition, t.comment, t.executeWrite],
   instructions:
     "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
-  // The project a connection reads, from those the server lists on its site.
   picks: [
     {
       name: "project",
@@ -116,7 +93,6 @@ export const atlassianServer: SourceServer = {
           : null;
         const site = siteOf(await read({ tool: t.resources, args: {} }), named);
         if (!site) return { choices: [], more: false };
-        // Page by page, as REST's project search pages, at most 10 pages.
         const projects: ReturnType<typeof projectChoicesOf> = [];
         for (let page = 0; page < 10; page++) {
           const answer = await read(
@@ -139,18 +115,13 @@ export const atlassianServer: SourceServer = {
   ],
 };
 
-// A tool's answer Oriel can't read: core's, so every connector's sync
-// stops the same way.
 export { ServerUnreadable };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// A failed tool's words as the status REST would have answered, so the
-// source reads a missing issue as gone and the writer a refusal as nothing
-// changed. Only words that say so are a refusal: a write that failed for a
-// reason it doesn't give may have landed, so it reads as a server's error;
-// a read that did reads as a refusal, which stops it either way.
+// Only words that say so are a refusal: a write that failed for a reason it doesn't give may have landed, so it reads
+// as a server's error; a failed read reads as a refusal, which stops it either way.
 function statusOf(words: string, write: boolean): number {
   // A status as the words name one, never a number an issue's key holds.
   const code = /\b(?:status|http|answered|code|error)\W{0,3}([45]\d\d)\b/i.exec(words)?.[1];
@@ -162,7 +133,6 @@ function statusOf(words: string, write: boolean): number {
   return write ? 502 : 400;
 }
 
-// A failure as the server gives one: `{"error": true, "message", "statusCode"}`.
 function failedWith(words: string, write: boolean): JiraResponse {
   let parsed: unknown = null;
   try {
@@ -179,10 +149,7 @@ function failedWith(words: string, write: boolean): JiraResponse {
   return { status, body: { errorMessages: [message.slice(0, 300)] } };
 }
 
-// A tool's answer as a REST response: what its text gives under `data`, or,
-// for a failed one, the status it names. Its structured content, where an
-// agent passes it on, isn't read: it holds another shape than the text, and
-// Claude Code passes on the text alone.
+// Its structured content isn't read: it holds another shape than the text, and Claude Code passes on the text alone.
 export function bodyOf(tool: string, answer: ToolAnswer, write = false): JiraResponse {
   if (!isObject(answer) || !Array.isArray(answer.content))
     throw new ServerUnreadable(`${tool} answered with no content`);
@@ -200,7 +167,6 @@ export function bodyOf(tool: string, answer: ToolAnswer, write = false): JiraRes
   return { status: 200, body: parsed.data };
 }
 
-// A list a tool may answer as itself or inside an object, as REST's `values`.
 const listOf = (body: unknown, key: string): unknown[] | null =>
   Array.isArray(body)
     ? body
@@ -208,24 +174,18 @@ const listOf = (body: unknown, key: string): unknown[] | null =>
       ? (body[key] as unknown[])
       : null;
 
-// Rich text as the server gives it, Markdown, as the plain text it holds:
-// a line break as a newline, and each mark it escaped as itself.
 export const fromMarkdown = (markdown: string): string =>
   markdown.replace(/ {2}\n/g, "\n").replace(/\\([\\`*_{}[\]()#+\-.!|~<>=])/g, "$1");
 
-// Plain text as the server's Markdown takes it, so it lands as the text the
-// person approved: every mark escaped, and a line break as Markdown's.
+// Every mark escaped, so it lands as the text the person approved.
 export const toMarkdown = (text: string): string =>
   text
     .replace(/[\\`*_{}[\]()#+\-.!|~<>=]/g, (mark) => `\\${mark}`)
     .replace(/([^\n])\n(?=[^\n])/g, "$1  \n");
 
-// Rich text as REST gives it, a document, from the server's Markdown.
 const docOf = (value: unknown): unknown =>
   typeof value === "string" ? textToAdf(fromMarkdown(value)) : value;
 
-// An issue as REST gives it: its description a document, and each custom
-// field under its ID, as the server gives them by their labels.
 function restIssue(tool: string, raw: unknown): unknown {
   if (!isObject(raw) || !isObject(raw.fields)) return raw;
   const { customFields, description, ...fields } = raw.fields;
@@ -249,13 +209,10 @@ function restIssue(tool: string, raw: unknown): unknown {
   };
 }
 
-// A comment as REST gives it, its body a document.
 const restComment = (raw: unknown): unknown =>
   isObject(raw) && "body" in raw ? { ...raw, body: docOf(raw.body) } : raw;
 
-// The search's answer as REST's: its issues, and the token for the next
-// page, or none on the last. One that says more remain but gives no way to
-// them can't be read: a sweep that stopped there would take the rest away.
+// One that says more remain but gives no way to them can't be read: a sweep that stopped there would take the rest away.
 export function searchBody(body: unknown): unknown {
   if (!isObject(body) || !Array.isArray(body.issues))
     throw new ServerUnreadable(`${t.search} answered with no issues`);
@@ -275,14 +232,11 @@ export function searchBody(body: unknown): unknown {
 
 const issuePath = /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/[a-z]+(?:\/[0-9]+)?)?$/;
 
-// What a request asks, parsed: its path without the query, and the query.
 const partsOf = (path: string) => {
   const url = new URL(path, "https://jira.invalid");
   return { path: url.pathname, query: url.searchParams };
 };
 
-// A REST body's `fields` as the server's edit takes them: a description as
-// Markdown, everything else as REST has it.
 const fieldsOf = (body: unknown): Record<string, unknown> => {
   const fields = isObject(body) && isObject(body.fields) ? body.fields : {};
   return "description" in fields
@@ -294,25 +248,18 @@ const fieldsOf = (body: unknown): Record<string, unknown> => {
 // gives.
 const commentPage = 20;
 
-// What answers a request no tool does: as Jira refuses a request it can't
-// take, with nothing sent.
 const noTool = (what: string): JiraResponse => ({
   status: 405,
   body: { errorMessages: [`Atlassian's server has no tool to ${what}`] },
 });
 
 export type AtlassianOptions = {
-  // The site's cloud ID, as its resources tool gives it, which every call
-  // names.
   cloudId: string;
   read: ToolCaller;
-  // A change set's replay; absent on the read side.
   write?: ToolCaller;
 };
 
-// Jira's REST requests answered through Atlassian's server: reads through
-// `read`, writes through `write`. Each issue type's name, which its create
-// takes in place of REST's ID, comes from the last listing of them.
+// Each issue type's name, which its create takes in place of REST's ID, comes from the last listing of them.
 export function atlassianTransport(options: AtlassianOptions): Transport {
   const { cloudId } = options;
   const typeNames = new Map<string, string>();
@@ -332,7 +279,6 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
     ask(options.read, operationCall(cloudId, name, inputs), false);
   const write = (tool: string, args: Record<string, unknown>) =>
     ask(options.write, { tool, args: { cloudId, ...args } }, true);
-  // A read whose answer is reshaped into REST's, unless it failed.
   const reshaped = async (
     response: Promise<JiraResponse>,
     shape: (body: unknown) => unknown,
@@ -345,7 +291,6 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
     if (!found) throw new ServerUnreadable(`${tool} answered with no ${key}`);
     return found;
   };
-  // Every comment on an issue, page by page, as REST's one page.
   const comments = async (key: string): Promise<JiraResponse> => {
     const all: unknown[] = [];
     for (;;) {
@@ -373,7 +318,6 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
       ? { status: 404, body: { errorMessages: [`No ${what} ${id}`] } }
       : { status: 200, body: match };
   };
-  // A write the server has no operation for: nothing is sent.
   const cannot = (what: string): never => {
     throw new WriteStalled(`Atlassian's server has no tool to ${what}`);
   };
@@ -528,15 +472,11 @@ export function atlassianTransport(options: AtlassianOptions): Transport {
   };
 }
 
-// The read side of it: no writer, so a write is refused before anything is
-// sent, as `readOnly` refuses one too.
 export const atlassianReads = (options: Omit<AtlassianOptions, "write">): ReadTransport => {
   const transport = atlassianTransport(options);
   return (request: ReadRequest) => transport(request);
 };
 
-// The site a cloud ID names, from the resources tool: the one at `site`
-// when it's given, else the first with Jira. Null when there's none.
 export function siteOf(
   answer: ToolAnswer,
   site: string | null,
@@ -569,12 +509,9 @@ export function siteOf(
   return found?.jira ? { cloudId: found.cloudId, url: found.url, name: found.name } : null;
 }
 
-// The projects the server lists, by key, in its order.
 export const projectsOf = (answer: ToolAnswer): string[] =>
   projectChoicesOf(answer).map((each) => each.key);
 
-// The same, each with its name, its key where it has none, and, where the
-// server says, how many issues it holds and when one last changed.
 export function projectChoicesOf(
   answer: ToolAnswer,
 ): { key: string; name: string; count: number | null; updatedAt: string | null }[] {

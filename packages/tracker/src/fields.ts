@@ -1,12 +1,8 @@
-// An issue's fields by the names change sets read them under (specs.ts),
-// which its writer and a person's edits in its panel both report.
 import type { FieldValues } from "@oriel/core";
 import type { Issue } from "./issues.ts";
 
 export const labelField = "label:";
 
-// Its fields, each of `fields` it has: `label:<label>` says whether it has
-// that label; an unknown name is left out.
 export function valuesOf(issue: Issue, fields: readonly string[]): FieldValues {
   const all: Record<string, unknown> = {
     summary: issue.summary,

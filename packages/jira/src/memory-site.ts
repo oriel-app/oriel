@@ -1,18 +1,4 @@
-// For tests: SYN as a Jira site in memory, answering the REST calls the
-// writer makes over `fetch`, so a composition root can be tested writing
-// without a network. It starts from the fixture after its source edits, with
-// the same stable IDs the index has. Every write moves the item's `updated`
-// one second on from `clock`. It answers the source's search and reads too,
-// so an app can sync from it as from a live site. With an `account`, it
-// answers only requests signed as that account, and 401 to any other. With
-// `estimates: false`, its board counts issues instead, so it has no points
-// field, as a team-managed board without one doesn't; `estimation` changes
-// that later. `statuses` adds to the workflow statuses SYN doesn't use, such
-// as a column for stories ready to pick up. `projects` lists more projects
-// beside SYN, which hold nothing this site serves. Whoever signs in, the
-// site answers as Amara Okafor's account, as the Slack fixture's workspace
-// does: the comments Oriel adds are hers.
-// Exported as `@oriel/jira/testing`.
+// Whoever signs in, the site answers as Amara Okafor's account, as the Slack fixture's workspace does: the comments Oriel adds are hers.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
 import { adfToText, textToAdf } from "./adf.ts";
@@ -29,12 +15,8 @@ type Issue = {
   issueType: string;
   summary: string;
   description: string;
-  // The description as rich text a teammate wrote in Jira; the plain text
-  // above is what Oriel writes and reads back.
   document?: unknown;
   labels: string[];
-  // Each with the ID Jira gives it, and as rich text too, when a teammate
-  // wrote it in Jira's editor.
   comments: (FixtureIssue["comments"][number] & { id: string; document?: unknown })[];
   epic: string | null;
   assignee: string | null;
@@ -80,12 +62,7 @@ export function memorySite(
     ]),
   );
   const people = new Map(fixture.people.map((person) => [person.id, person.displayName]));
-  // The statuses SYN uses, each with its category as Jira keys it. Any may
-  // follow any other, as in a workflow that allows every transition, except
-  // out of a status made final.
   const keys = { todo: "new", "in-progress": "indeterminate", done: "done" } as const;
-  // Listed from to-do to done, as the fixture's snapshot lists an issue's
-  // moves.
   const order = { todo: 0, "in-progress": 1, done: 2 };
   const statuses = new Map(
     [...fixture.issues.map((issue) => issue.status), ...(options.statuses ?? [])]
@@ -110,16 +87,10 @@ export function memorySite(
   let ticks = 0;
   let nextIssue = 900;
   let nextLink = 90001;
-  // Items whose writes Jira refuses, as when a field is locked.
   const refused = new Set<string>();
-  // Items whose writes land, but whose answers are lost on the way back.
   const unanswered = new Set<string>();
-  // Every request, in order.
   const calls: { method: string; path: string }[] = [];
-  // What the search answers from while it lags the site; null once caught up.
   let searchable: Map<string, Issue> | null = null;
-  // How the site fails every request, if it does: the network is down, it no
-  // longer takes the credential, or it answers as if the project were gone.
   let outage: "offline" | "signed-out" | "unexpected" | null = null;
   let estimates = options.estimates !== false;
 
@@ -173,8 +144,6 @@ export function memorySite(
       return json(200, { issueTypes: [type("Epic"), type("Story")] });
     if (method === "GET" && path === "/rest/api/3/myself")
       return json(200, { accountId: self, timeZone: "UTC" });
-    // SYN with how many issues it holds and when one last changed, then the
-    // others listed, as Jira's project search pages them.
     const own = () => ({
       id: "10000",
       key: project,
@@ -355,7 +324,6 @@ export function memorySite(
     return json(405, { errorMessages: [`${method} ${path} isn't something this site answers`] });
   };
 
-  // Writes held in flight, by item.
   const holds = new Map<string, { reached: PromiseWithResolvers<void>; release: Promise<void> }>();
 
   const fetchFn: typeof fetch = async (input, init) => {
@@ -392,14 +360,9 @@ export function memorySite(
   return {
     fetch: fetchFn,
     calls,
-    // The item as the site holds it now.
     issue: (key: string) => structuredClone(issues.get(key) ?? null),
-    // Writes to this item are refused from now on; or land with no answer;
-    // or work again.
     refuse: (key: string) => refused.add(key),
     loseAnswers: (key: string) => unanswered.add(key),
-    // Writes to this item wait, in flight, until released; or, held as
-    // "search", every search does.
     hold(key: string) {
       const reached = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();
@@ -412,7 +375,6 @@ export function memorySite(
         },
       };
     },
-    // The workflow lets nothing leave this status from now on.
     makeFinal(status: string) {
       final.add(status);
     },
@@ -420,25 +382,19 @@ export function memorySite(
       refused.delete(key);
       unanswered.delete(key);
     },
-    // Jira's search catches up with writes a while after them: from here it
-    // answers as the site stands now, until `searchCatchesUp`. Reading an
-    // issue by key never lags.
+    // Jira's search catches up with writes a while after them; reading an issue by key never lags.
     searchLags() {
       searchable = new Map(structuredClone([...issues]));
     },
     searchCatchesUp() {
       searchable = null;
     },
-    // The board starts or stops taking estimates in its points field, as
-    // when someone changes its estimation.
     estimation(on: boolean) {
       estimates = on;
     },
-    // From here every request fails, as `outage` says; null works again.
     outage(kind: typeof outage) {
       outage = kind;
     },
-    // A teammate makes an epic or a story directly in Jira. Its key.
     add(made: { issueType: "Epic" | "Story"; summary: string; epic?: string }): string {
       const issue: Issue = {
         id: String(20000 + nextIssue),
@@ -459,23 +415,19 @@ export function memorySite(
       issues.set(issue.key, issue);
       return issue.key;
     },
-    // A teammate deletes the item directly in Jira.
     remove(key: string) {
       if (!issues.delete(key)) throw new Error(`no issue ${key}`);
     },
-    // A teammate edits the item directly in Jira.
     edit(key: string, change: Partial<Pick<Issue, "summary" | "points" | "status">>) {
       const issue = issues.get(key);
       if (!issue) throw new Error(`no issue ${key}`);
       Object.assign(issue, change, { updated: tick() });
     },
-    // A teammate writes the description in Jira's editor, as rich text.
     describe(key: string, document: unknown) {
       const issue = issues.get(key);
       if (!issue) throw new Error(`no issue ${key}`);
       Object.assign(issue, { document, description: adfToText(document), updated: tick() });
     },
-    // A teammate comments in Jira's editor, as rich text, by their account ID.
     comment(key: string, author: string, document: unknown) {
       const issue = issues.get(key);
       if (!issue) throw new Error(`no issue ${key}`);
@@ -483,7 +435,6 @@ export function memorySite(
       issue.comments.push({ id: commentId(), author, body: adfToText(document), at, document });
       issue.updated = at;
     },
-    // A teammate rewrites a comment in Jira, as plain text.
     editComment(key: string, id: string, body: string) {
       const comment = issues.get(key)?.comments.find((c) => c.id === id);
       if (!comment) throw new Error(`no comment ${id} on ${key}`);
@@ -501,10 +452,7 @@ const text = (words: string, marks?: unknown[]) => ({
 const paragraph = (...content: unknown[]) => ({ type: "paragraph", content });
 const item = (...content: unknown[]) => ({ type: "listItem", content: [paragraph(...content)] });
 
-// A description as Jira's editor writes it, for `describe`: a heading, lists,
-// marks, a code block and links, one of them to a scheme no browser should
-// follow, and a table, a panel and a mention, which the panel has no blocks
-// for.
+// For `describe`: one link goes to a scheme no browser should follow, and a table, a panel and a mention have no panel blocks.
 export const richDescription = {
   type: "doc",
   version: 1,
@@ -571,8 +519,6 @@ export const richDescription = {
   ],
 };
 
-// A comment as Jira's editor writes it, for `comment`: a list, a code block
-// and a link.
 export const richComment = {
   type: "doc",
   version: 1,

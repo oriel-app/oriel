@@ -1,8 +1,3 @@
-// Linear through Linear's MCP server (OA-278): the parser on each tool's
-// answer, from `fixtures/linear-mcp/`'s recorded calls, and its failing
-// closed on an answer it can't read. No server runs: the recordings answer,
-// or the stand-in in memory. Each mutation as the server's write call is in
-// writer.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -46,7 +41,6 @@ const listAll = async (read: ToolCaller) => {
   return { opened, records };
 };
 
-// One recorded answer changed: each to `tool`.
 const altered = (
   tool: string,
   change: (answer: ToolAnswer, call: ToolCall) => ToolAnswer,
@@ -64,8 +58,6 @@ const text = (value: unknown): ToolAnswer => ({
 });
 
 test("a page that doesn't say whether more remain is followed by the one after its last item, while it was full", async () => {
-  // Past one full page of Linear's 250, as a server with no page info
-  // answers: bare lists.
   const tools = standInCaller(linearStandIn());
   for (let i = 0; i < 260; i += 1)
     await tools({ tool: t.saveIssue, args: { team: "ENG", title: `Filler ${i}` } });
@@ -80,7 +72,6 @@ test("a page that doesn't say whether more remain is followed by the one after i
   assert.equal(asked.length, 2);
   assert.equal(asked[0]?.args.after, undefined);
   assert.match(String(asked[1]?.args.after), /^00000007-/, "after the first page's last issue");
-  // One that gives the same page again can't be read.
   const stuck: ToolCaller = async (call) =>
     call.tool === t.issues
       ? text(json(await tools({ ...call, args: { ...call.args, after: undefined } })).issues)
@@ -119,8 +110,7 @@ test("an answer Oriel can't read stops the sync, naming the server, never quotin
         }),
     ],
     [t.teams, () => ({ content: [{ type: "text", text: "Unauthorized" }], isError: true })],
-    // What reaches the declarations or a pattern is checked: a team's key,
-    // and a cycle's number and dates.
+    // What reaches the declarations or a pattern is checked: a team's key, and a cycle's number and dates.
     [t.teams, () => text({ teams: [{ id: "x", key: "ENG */ declare", name: "Odd" }] })],
     [
       t.cycles,

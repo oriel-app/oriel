@@ -1,5 +1,3 @@
-// Oriel's own small issue tracker, the stand-in for one (decision 0059): on
-// while no other tracker is connected, its issues kept in Oriel's database.
 export { trackerDeclaration } from "./declaration.ts";
 export { trackerDeclaredFixture } from "./declared-fixture.ts";
 export { trackerEdit, trackerEditor } from "./edit.ts";

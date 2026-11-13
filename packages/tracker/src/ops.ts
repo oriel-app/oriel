@@ -1,6 +1,3 @@
-// The stand-in tracker's checks on what its ops take, which its panel's
-// form checks too (edit.ts): core's issue shape builds its catalogue from
-// them (shape.ts).
 import { array, number, refine, shortText, string } from "@oriel/core";
 import { isStatusName, statusNames } from "./issues.ts";
 
@@ -17,7 +14,6 @@ export const description = refine(
   `expected at most ${maxDescription} characters`,
 );
 export const personName = shortText(maxName, "a name");
-// A label is one word people filter by, as trackers keep them.
 export const label = refine(
   shortText(maxLabel, "a label"),
   (text) => !/\s/.test(text),

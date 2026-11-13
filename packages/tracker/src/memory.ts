@@ -1,6 +1,3 @@
-// Oriel's own store of the tracker's issues, in memory, for tests and the
-// eval harness, as the composition root's is over its database: `written`
-// keeps what each write was.
 import type { IndexRecord, OwnItems, OwnWrite } from "@oriel/core";
 
 export function memoryItems(): OwnItems & { written: OwnWrite[]; texts: Map<string, string> } {

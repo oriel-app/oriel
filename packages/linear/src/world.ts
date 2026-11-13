@@ -1,9 +1,3 @@
-// A Linear workspace written down (OA-278): its teams, each team's workflow
-// and cycles, its people, projects and issues, as the stand-in for Linear's
-// MCP server answers from in memory. `fixtures/linear/world.json` is one,
-// written by scripts/fixtures/linear.ts: Ferrowick's engineering team, with
-// the SYN fixture's people and a launch-shaped project. Shapes are Linear's
-// own (UUIDs, a team's key and number, a status's type), never Oriel's.
 import { readFileSync } from "node:fs";
 import {
   array,
@@ -24,9 +18,7 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// Kept as text, as the generator writes it.
 const instant = refine(string, (text: string): boolean => isInstant(text), "expected an instant");
-// A date with no time, as a project's target and a cycle's ends are kept.
 const day = refine(string, (text) => /^\d{4}-\d{2}-\d{2}$/.test(text), "expected a date");
 const uuid = refine(
   string,
@@ -34,7 +26,6 @@ const uuid = refine(
   "expected a UUID",
 );
 
-// A status's type, Linear's category of it.
 export const statusTypes = [
   "triage",
   "backlog",
@@ -46,7 +37,6 @@ export const statusTypes = [
 export type StatusType = (typeof statusTypes)[number];
 const statusType = union(...statusTypes.map((type) => literal(type)));
 
-// A project's status, by its type.
 export const projectStatusTypes = [
   "backlog",
   "planned",
@@ -73,7 +63,6 @@ const cycle = object({
 });
 const project = object({
   id: uuid,
-  // The 12 hex digits ending its URL, which Oriel keys it by.
   slugId: refine(string, (text) => /^[0-9a-f]{12}$/.test(text), "expected a slug ID"),
   name: string,
   description: string,
@@ -105,7 +94,6 @@ const region = object({
     object({
       kind: literal("cluster"),
       grouping: literal("epic"),
-      // The project's UUID, and its item ID.
       cluster: uuid,
       anchor: string,
     }),
@@ -115,7 +103,6 @@ const region = object({
 });
 
 export const linearWorldFile = object({
-  // Its address on linear.app, as `https://linear.app/<urlKey>/…`.
   workspace: object({ urlKey: string, name: string }),
   teams: array(team),
   statuses: array(status),
@@ -140,15 +127,11 @@ export type LinearWorld = Omit<LinearWorldFile, "regions"> & {
 
 export const linearWorldPath = new URL("../../../fixtures/linear/world.json", import.meta.url);
 
-// An issue's identifier, its team's key and its number: ENG-4.
 export const identifierOf = (world: Pick<LinearWorldFile, "teams">, each: WorldIssue) =>
   `${world.teams.find((one) => one.id === each.team)?.key ?? "?"}-${each.number}`;
 
 export const projectKey = (slugId: string) => `P-${slugId}`;
 
-// Shape first, then what shapes can't say: every reference resolves, an
-// identifier is used once, and a region's items are the world's, a
-// tombstone's aside.
 export function parseLinearWorld(input: unknown): Result<LinearWorld> {
   const shaped = (linearWorldFile as Validator<LinearWorldFile>)(input);
   if (!shaped.ok) return shaped;

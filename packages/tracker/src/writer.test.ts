@@ -14,13 +14,11 @@ import { memoryItems } from "./memory.ts";
 import { trackerSpecs } from "./shape.ts";
 import { trackerWriter } from "./writer.ts";
 
-// Stands in for packages/changeset, the only place that mints approvals in
-// production. These tests cover the writes, not the approval gate.
-// scripts/check-repo.ts allows this cast only in an adapter's writer test.
+// Stands in for packages/changeset, the only place that mints approvals: these tests cover the writes, not the
+// approval gate. scripts/check-repo.ts allows this cast only in an adapter's writer test.
 const approve = (request: WriteRequest<"tracker">) =>
   request as Parameters<SourceWriter<"tracker">["apply"]>[0];
 
-// A store and its writer, on a clock a second on at each read.
 function tracker() {
   const own = memoryItems();
   let tick = 0;
@@ -37,7 +35,6 @@ function tracker() {
         args,
       }),
     );
-  // What the spec says undoes an applied write, sent.
   const undo = (op: string, target: ItemId<"tracker">, args: unknown, applied: WriteResult) => {
     const back = trackerSpecs.ops[op]?.undo(args, applied);
     assert.ok(back && "op" in back, `${op} undoes`);

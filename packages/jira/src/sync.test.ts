@@ -49,7 +49,6 @@ function fresh() {
 const byId = <R extends { id: string }>(records: R[]) =>
   records.toSorted((a, b) => a.id.localeCompare(b.id));
 
-// Passes the fixture source's pages through `change`, and keeps each cursor it was asked for.
 function wrapped(
   edited: number,
   change: (page: SyncPage<"jira", unknown>, at: number) => SyncPage<"jira", unknown> | "throw",
@@ -125,8 +124,6 @@ test("a source that fails partway marks nothing gone, and the next sync reclaims
   assert.ok(!index.liveStableIds(workspaceId, "jira").includes(deletedId));
 });
 
-// A record the fixture doesn't have, as a change set might create it, updated
-// after everything else.
 const created = (() => {
   const base = fixtureSnapshot(fixture, site, 0).records.find((r) => r.facets.kind === "story");
   assert.ok(base);

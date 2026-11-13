@@ -1,5 +1,3 @@
-// The stand-in tracker as it declares itself to the composition root: a
-// tracker like Jira, on while no other tracker is (decision 0059).
 import {
   issueDeclaredFacets,
   issueOverview,
@@ -13,7 +11,6 @@ import { trackerKeyShape, trackerPresentation } from "./issues.ts";
 import { openTracker, type TrackerOn, type TrackerWrites } from "./open-connection.ts";
 import { tracker, trackerItemDoc } from "./shape.ts";
 
-// Its keys in any text, as T-12.
 const recognizer: Recognizer = (text) =>
   [...new Set(text.match(/\bT-[1-9][0-9]*\b/g) ?? [])].map((key) => itemId("tracker", key));
 
@@ -26,10 +23,8 @@ export const trackerDeclaration = {
   recognizer: () => recognizer,
   facets: issueDeclaredFacets,
   overview: issueOverview,
-  // Off, it offers the agent nothing.
   namespace: (records, on: TrackerOn | undefined) => tracker.namespace(records, on !== undefined),
   specs: tracker.specs,
-  // Its item doc and its namespace.
   budget: 2_400,
   open: openTracker,
   options: object({}),

@@ -1,8 +1,3 @@
-// Linear's writer through Linear's MCP server (OA-278): each mutation is
-// one call of a write tool, from the process with only those, with what it
-// checks first read through the read tools; what it can't take is refused
-// before anything is sent; and a create, which no tool can delete, says so
-// before a Revert is offered. The stand-in answers, in memory.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -98,7 +93,6 @@ test("each set op is one save of the field it sets, reporting it before and afte
     assert.equal(result.before[field], before, op);
     assert.equal(result.after[field], after, op);
     assert.equal(typeof result.after.updated, "string", op);
-    // Its revert sets back what it was.
     const undo = linearSpecs.ops[op]?.undo(args, result);
     assert.ok(undo && !("refused" in undo), op);
   }
@@ -132,7 +126,6 @@ test("what Linear can't take is refused before anything is sent", async () => {
 test("no tool deletes an issue or a project, so the writer says so before Revert is offered", async () => {
   const { writer, apply, writes } = writing();
   assert.ok(writer.unsendable?.deleteItem);
-  // Each create's revert is that delete.
   assert.deepEqual(linearSpecs.ops.createIssue?.undo({ title: "X", project: null }, {} as never), {
     op: "deleteItem",
     args: {},

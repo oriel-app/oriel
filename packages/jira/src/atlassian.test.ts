@@ -1,6 +1,3 @@
-// Jira through Atlassian's MCP server (OA-276): the parser on each tool's
-// answer, from `fixtures/jira-mcp/`'s recorded calls, and its failing closed
-// on an answer it can't read. No server runs: the recordings answer.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type {
@@ -60,10 +57,8 @@ const listAll = async (read: ToolCaller) => {
   return { opened, records };
 };
 
-// One recorded answer changed: the one to `tool`.
 const altered = (tool: string, change: (answer: ToolAnswer) => ToolAnswer): ToolCaller => {
   const replay = replayCalls(synced.calls);
-  // A call the recording doesn't hold is changed from nothing.
   return async (call) =>
     call.tool === tool ? change(await replay(call).catch(() => ({ content: [] }))) : replay(call);
 };
@@ -77,8 +72,6 @@ test("what Atlassian's own server answered, recorded, syncs SYN whole, with each
   const records: IndexRecord[] = [];
   for await (const page of opened.source.sync(null)) records.push(...page.records);
   assert.ok(records.length >= 100, `${records.length} issues`);
-  // Its epics, from each issue's parent, and its points, from the custom
-  // field the server gives by its label.
   assert.ok(records.some((record) => record.facets?.container));
   assert.ok(records.some((record) => typeof record.facets?.estimate === "number"));
 });
@@ -104,7 +97,6 @@ test("an answer without its data, or a custom field without its ID, stops the sy
     () => bodyOf("t", { content: [{ type: "text", text: "Done." }] }),
     ServerUnreadable,
   );
-  // A failure says REST's status, as the server gives it.
   assert.equal(
     bodyOf("t", {
       ...answer({ error: true, message: "Issue not found", statusCode: 404 }),

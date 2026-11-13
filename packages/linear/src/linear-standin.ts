@@ -1,16 +1,5 @@
-// A stand-in for Linear's MCP server (OA-278), so Linear's support through
-// a source server can be built and tried with no Linear workspace: it
-// reports the real server's tool names and arguments, and answers each from
-// Ferrowick's Linear, `fixtures/linear`, in memory. Writes change only this
-// process's copy, each at the next minute after the world's last change, so
-// no clock is read. Never published, never bundled.
-//
-// Linear documents neither its tools' arguments nor their answers: those
-// here are the parser's (`linear-mcp.ts`), to be checked against the real
-// server's (packages/standin-mcp/README.md, "Re-recording"). It rejects an
-// argument it doesn't take, as Linear's server has since May 2026. Served
-// over stdio by packages/standin-mcp, and in memory to this package's
-// tests: `@oriel/linear/standin`.
+// Answers from `fixtures/linear` in memory; writes change only this copy, a minute after the world's last change, so no clock is read.
+// It rejects an argument it doesn't take, as Linear's server has since May 2026. Never published, never bundled.
 import { type Instant, type StandInAnswer, type StandInTool, standInCalls } from "@oriel/core";
 import { linearTools as t } from "./linear-mcp.ts";
 import {
@@ -38,11 +27,9 @@ const boolean = { type: "boolean" };
 const nullableString = { type: ["string", "null"] };
 const nullableNumber = { type: ["number", "null"] };
 
-// The fixture's world, a copy a stand-in may change.
 export const standInWorld = (world: LinearWorld = loadLinearWorld()): LinearWorld =>
   structuredClone(world);
 
-// Its tools as a caller in this process, for tests.
 export const standInCaller = (tools: readonly StandInTool[] = linearStandIn()) =>
   standInCalls(tools);
 
@@ -76,8 +63,6 @@ export function linearStandIn(world: LinearWorld = standInWorld()): StandInTool[
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
-  // An issue as the stand-in answers it: flat, each thing it names by name
-  // with its ID beside it.
   const issueView = (issue: WorldIssue) => {
     const status = world.statuses.find((each) => each.id === issue.status);
     const team = world.teams.find((each) => each.id === issue.team);
@@ -150,9 +135,6 @@ export function linearStandIn(world: LinearWorld = standInWorld()): StandInTool[
     tool(name, description, {}, [], readOnly, () => failed(`${name} isn't in the stand-in.`));
   const listing = { limit: number, after: string, before: string, orderBy: string };
 
-  // A save's fields, each as Linear takes it: a person, a status and a
-  // cycle by name, number or ID, a project by name, ID or slug; null
-  // removes one.
   const saveIssue = (args: Record<string, unknown>): StandInAnswer => {
     const existing = args.id === undefined ? null : issueBy(args.id);
     if (args.id !== undefined && !existing) return failed("Issue not found");

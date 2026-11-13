@@ -1,8 +1,4 @@
-// Ferrowick's Linear as Linear's declared fixture (decision 0049):
-// `fixtures/linear/`, read through a stand-in of Linear's MCP server in
-// memory, so tests, evals and the server's fixture mode read it through
-// the same parser as Linear's own server. Its change sets are written to
-// that stand-in, in memory, unless a test gives its own server.
+// Read through a stand-in of Linear's MCP server in memory, so tests, evals and fixture mode go through the same parser as Linear's own server.
 import {
   type FoundServer,
   type ItemId,
@@ -24,10 +20,8 @@ import {
 } from "./open-connection.ts";
 import { identifierOf, type LinearWorld, loadLinearWorld, projectKey } from "./world.ts";
 
-// The team its connection reads.
 const team = "ENG";
 
-// The stand-in as the person's agent would list it.
 export const standInFound: FoundServer = {
   name: "linear",
   status: "connected",
@@ -38,7 +32,6 @@ export const standInFound: FoundServer = {
   transport: "http",
 };
 
-// A stand-in of Linear's server on the world, both ways, in this process.
 export function standInServer(world: LinearWorld = standInWorld()): ThroughServer {
   const calls = standInCaller(linearStandIn(world));
   return { known: linearServer, found: standInFound, read: calls, write: calls };
@@ -83,7 +76,6 @@ export const linearDeclaredFixture: SourceFixture<
       edits: 0,
       firstEdit: null,
       regions: world.regions,
-      // An issue by its identifier, such as ENG-4, or a project by its key.
       item: (name) =>
         has(name)
           ? { id: itemId("linear", name) }

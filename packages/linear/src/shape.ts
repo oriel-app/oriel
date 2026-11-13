@@ -1,9 +1,3 @@
-// Linear's agent side, from core's issue shape (OA-327), in Linear's words:
-// a project, an issue in it, its title, estimate, assignee and status, and a
-// label. Its own are a team's statuses and cycles: an issue is planned into
-// a cycle, and team() gives what both are named. Two ops exist only as
-// reverts: removeLabel undoes addLabel, and deleteItem undoes a create,
-// which no tool of Linear's server can send (writer.ts).
 import {
   type Infer,
   issueShape,
@@ -48,15 +42,13 @@ export const cycleNumber = refine(
   "expected a cycle's number",
 );
 
-// What a Linear item is, in the declarations' `Item`: shape only, never
-// source text.
+// Shape only, never source text.
 export const linearItemDoc =
   "A Linear item is an issue or a project of one Linear team, its text its title and description. Issues are planned into the team's cycles.";
 
 const cycled = (cycle: unknown) => (typeof cycle === "number" ? `cycle ${cycle}` : "no cycle");
 
-// The team's statuses and cycles, as its last sync found them: their names
-// are the source's text, so they come back here, never in a declaration.
+// Status and cycle names are the source's text, so they come back here, never in a declaration.
 const team = (context: LinearContext) =>
   read({
     name: "team",
@@ -70,9 +62,7 @@ const team = (context: LinearContext) =>
     }),
   });
 
-// While Linear is on: its team's statuses and cycles to come, by number and
-// date only, as a cycle's name is the source's text, which only a tool
-// result carries (team()).
+// Cycles by number and date only: a cycle's name is the source's text, which only a tool result carries (team()).
 function region(context: LinearContext | undefined) {
   if (!context) return undefined;
   const today = context.now.slice(0, 10);
@@ -206,10 +196,6 @@ const declared = {
       labels: issue?.labels ?? [],
     };
   },
-  // Its status, assignee, estimate and labels, and Linear's own extras, an
-  // issue's team, project, cycle and parent, a project's lead and target
-  // date; then its description, which Linear keeps as markdown. The facts
-  // name a status, never its category.
   panel: (content: unknown) => {
     const read = linearContent(content);
     if (!read.ok) return null;
@@ -249,7 +235,7 @@ const declared = {
     };
   },
   region,
-  // A stand-in's estimate, whole and at most 64, as Linear takes one.
+  // Whole and at most 64, as Linear takes an estimate.
   take: { maxTitle, estimate: (points: number) => Math.min(64, Math.round(points)) },
 } as const;
 
