@@ -1,5 +1,3 @@
-// The write path, end to end through the routes: change sets write to SYN as
-// a Jira site in memory, through the writer @oriel/changeset builds.
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +7,6 @@ import type { ChangeSetView, DiffView, ThreadSummaryView, ThreadView } from "@or
 import { sendLeaseMs } from "@oriel/changeset";
 import { json, type Script, testApp } from "./testing.ts";
 
-// SYN-1's epic, whose stories SYN-23, SYN-99 and SYN-104 have no estimate.
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 const unestimated = ["jira:SYN-23", "jira:SYN-99", "jira:SYN-104"];
 
@@ -45,7 +42,6 @@ async function proposed(t: TestContext, script: Script = estimate) {
       body: json<Acted & { error?: string; revert?: string; warnings?: string[] }>(reply),
     };
   };
-  // Approving what the diff shows now, a moment later than the last message.
   const approve = async (id = entry.changeSetId) => {
     app.advance(1000);
     return act("approve", { hash: (await diff(id)).hash }, id);
@@ -108,8 +104,6 @@ test("a stopped change can be left out, and the rest approved again", async (t) 
   const stoppedLine = (await app.diff()).lines[1];
   assert.ok(stoppedLine);
   const edited = await app.act("edit", { remove: [stoppedLine.mutationId] });
-  // The edit voids the approval; what's left needs approving again, once a
-  // diff has shown it.
   assert.equal(edited.body.changeSet.status, "partial");
   assert.equal((await app.act("apply")).status, 409);
   assert.equal(app.site.issue("SYN-104")?.points, null);
@@ -158,7 +152,6 @@ test("a change whose item left the workstream since is stopped, and never sent",
   assert.equal(stopped.body.changeSet.status, "partial");
   assert.equal(stopped.body.changeSet.sentUnapplied, false);
   assert.equal(app.site.issue("SYN-99")?.points, null);
-  // Trying again stops at it again: it's never sent.
   await app.act("apply");
   assert.equal(app.site.issue("SYN-99")?.points, null);
 });
@@ -232,14 +225,12 @@ test("a change set whose apply stalls on its source shows stalled, back in Needs
   const set = async () => (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
   assert.equal((await summary())?.waitingOn, "apply");
   assert.equal((await set())?.stalled, false);
-  // A send's lease with no answer: stalled, and still nothing to do with it.
   app.advance(sendLeaseMs);
   assert.equal((await summary())?.waitingOn, "stalled");
   assert.deepEqual(
     [(await set())?.stalled, (await set())?.status, (await set())?.nextSteps],
     [true, "applying", []],
   );
-  // Its source answers: applied, and stalled no more.
   held.release();
   const applied = await approving;
   assert.equal(applied.body.changeSet.stalled, false);
@@ -258,7 +249,6 @@ test("a partly applied change set's review link can't reject it, dismisses only 
   );
   const token = new URL(minted.url).pathname.split("/").at(-1);
   const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
-  // Part of it applied, so it can't be rejected.
   const rejected = await app.post("/api/review/decide", {
     token,
     changeSet: app.changeSetId,
@@ -274,7 +264,6 @@ test("a partly applied change set's review link can't reject it, dismisses only 
   assert.equal((await dismiss(opened.diff.hash)).status, 409);
 });
 
-// SYN-99 is To Do; marking it done is what a PM asks once it's built.
 const finish: Script = async () => ({
   value: null,
   writes: [["jira.setStatus", ["jira:SYN-99", "Done"]]],
@@ -293,7 +282,6 @@ test("a move the workflow has no way to is flagged in the diff, can't be approve
   assert.equal(app.site.issue("SYN-99")?.status, "Done");
 });
 
-// Estimates SYN-23, moves SYN-99 to Done, then estimates SYN-104.
 const moveBetween: Script = async () => ({
   value: null,
   writes: [
@@ -336,7 +324,6 @@ test("a move the workflow refuses once approved stops the set for good: no retry
       [false, true, null],
     ],
   );
-  // It no longer waits on the person's review.
   assert.notEqual(await waiting(), "review");
 });
 

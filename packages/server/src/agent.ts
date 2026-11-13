@@ -1,6 +1,4 @@
-// The agent contract is @oriel/agent's. The server persists each event a
-// turn emits and streams it to the window; what comes back from the database
-// is checked here on the way out.
+// What comes back from the database is checked here on the way out.
 import type { AgentDeps, AgentEvent } from "@oriel/agent";
 import type { Message } from "@oriel/db";
 import {
@@ -45,11 +43,8 @@ export type {
   TurnInput,
 } from "@oriel/agent";
 
-// What the server builds an agent from: everything but the provider, which
-// only the model-backed agent has.
 export type ServerAgentDeps = Omit<AgentDeps, "provider">;
 
-// A run's result is checked as far as the window renders it.
 const ulidValue = refine(string, isUlid, "expected a ULID");
 const runError = object({
   phase: union(literal("typecheck"), literal("runtime"), literal("limit")),
@@ -82,18 +77,16 @@ const capturedMutation = object({
   ),
   ref: nullable(newRef),
   args: unknown,
-  // The kind a create writes into, as its namespace captured it.
   into: optional(
     refine(string, (kind) => isPrefix(kind) && !kind.includes("."), "expected a kind"),
   ),
 });
-// One of Oriel's own actions, as a run recorded it or a line under a reply
-// names it; its input is checked again whenever it is dispatched.
 const actionName = refine(
   string,
   (name): name is ActionName => Object.hasOwn(actions, name),
   "expected one of Oriel's actions",
 );
+// Its input is checked again whenever it is dispatched.
 const intent: Validator<Intent> = object({ action: actionName, input: record(unknown) });
 // A run stored before its result had intents, or drafts, recorded none.
 const intents: Validator<Intent[]> = (input, path) =>
@@ -115,7 +108,6 @@ export const searchHit: Validator<SearchHit> = object({
   updatedAt: refine(string, isInstant, "expected an instant"),
 });
 
-// What the host did with an intent: applied, with its Undo, or refused, and why.
 const touched = object({
   kind: union(literal("workstream"), literal("thread")),
   id: nullable(ulidValue),
@@ -160,8 +152,7 @@ export const agentEvent: Validator<AgentEvent> = union(
 
 export const stoppedText = "Stopped.";
 
-// A turn that did anything before it failed offers no Try again: asking
-// again would repeat what it did.
+// A turn that did anything before it failed offers no Try again: asking again would repeat what it did.
 export function failedTurn(
   messages: readonly Message[],
 ): { said: Extract<Message, { role: "user" }>; error: number } | null {

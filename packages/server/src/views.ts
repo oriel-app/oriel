@@ -1,5 +1,3 @@
-// The view data the JSON routes return, built from the stores. Plain data in
-// the shapes @oriel/web/view declares; the window renders it as it is.
 import {
   type Block,
   escapeHatchBlock,
@@ -57,51 +55,29 @@ import { listedWorkstreams } from "./window-chat.ts";
 export type ViewDeps = {
   workstreams: WorkstreamStore;
   threads: ThreadStore;
-  // The index's live records, from every source.
   records: () => readonly IndexRecord[];
-  // Whether a workstream shows a member: not one of a kind turned off
-  // (decision 0059), which it keeps for when it's on again. All, if absent.
   shown?: (id: string) => boolean;
   presentations: Presentations;
-  // The instant item rows count idle days back from.
   asOf: () => Instant;
   now: () => Instant;
   running: (threadId: Ulid) => boolean;
   changeSets: Pick<ChangeSets, "get" | "ofThread" | "nextSteps" | "applying" | "stalled">;
-  // What a draft would replace now, and the name of what it sets; null when
-  // that's gone (decision 0051).
   drafted: (draft: Draft) => { over: unknown; name: string } | null;
-  // A draft as Oriel draws it from its source, when its connector drafts in
-  // its own form; null otherwise.
   drawn?: (draft: Draft) => { tables: ReviewTable[]; said: string[] } | null;
-  // The open workstream holding an item, which Continue in… carries a
-  // request about it to (decision 0062); none, if absent.
   holding?: (item: ItemId) => { id: Ulid; name: string } | null;
   writable: boolean;
-  // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
-  // The top of Not in a workstream yet, as item IDs, most worth curating
-  // first: what an empty workstream suggests after its threads' answers.
   candidates?: () => Promise<readonly string[]>;
-  // A change set's latest second look, for its thread's page (decision
-  // 0054); absent where no model runs the agent, so none can be taken.
   secondLook?: (set: ChangeSet) => Promise<SecondLookView | null>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// How many items an empty workstream suggests: a few, no paging.
 const maxSuggested = 5;
 
-// What fits on one line of a list of threads beside a thread's workstream and time.
 const maxTitleChars = 60;
 
-// A thread's title until the model's arrives, or if it never does: the
-// first line of what the person asked, or as many of its sentences as fit
-// if they fill half the line, or else its words up to the limit, with an
-// ellipsis. A closing full stop
-// or colon goes; a question mark stays.
 export function clippedTitle(text: string): string | null {
   const line = text
     .split("\n")
@@ -136,10 +112,7 @@ const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 export const identity = (item: { id: string; stableId: string }) =>
   `${parseItemId(item.id)?.prefix ?? ""}\u0000${item.stableId}`;
 
-// The member of a workstream a handle names. Through the index, by identity, so
-// an item that moved is found under its current handle; failing that, by the
-// handle the member was added with, if no live item has that member's
-// identity (it was deleted, or its key was reused by another item).
+// By identity, so an item that moved is found under its current handle; failing that, by the handle it was added with.
 export function memberOf(
   handle: string,
   held: readonly WorkstreamMember[],
@@ -153,8 +126,6 @@ export function memberOf(
   );
 }
 
-// What a diff field's value reads as: a person by name, an item by its key,
-// a link by its title. Blank text is empty.
 function display(
   field: string,
   value: unknown,
@@ -171,9 +142,6 @@ function display(
   return JSON.stringify(value) ?? null;
 }
 
-// Where a change set stands, from its rows: applied in full or in part; or,
-// with nothing applied, approved, stopped (approved, and apply stopped at a
-// change, which says why), rejected or open.
 export function changeSetStatus(set: ChangeSet): ChangeSetStatus {
   const applied = set.mutations.filter((m) => m.status === "applied").length;
   if (applied > 0 && applied === set.mutations.length) return "applied";
@@ -184,9 +152,6 @@ export function changeSetStatus(set: ChangeSet): ChangeSetStatus {
   return "open";
 }
 
-// Where a change set stands, in a person's words (`ChangeSetState`). One a revert undid, in any
-// part, is reverted; one applied in part is applied; one approved but
-// stopped before anything landed is still approved.
 export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): ChangeSetState {
   const undone = all.some(
     (other) => other.revertOf === set.id && other.mutations.some((m) => m.status === "applied"),
@@ -198,9 +163,7 @@ export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): Chang
   return status === "rejected" ? "rejected" : "pending";
 }
 
-// What can be done with it comes from the change set engine (`nextSteps`),
-// never from here; while it applies, nothing can. `stalled`: its apply's
-// last send has had no answer for a send's lease.
+// What can be done with it comes from the change set engine (`nextSteps`), never from here.
 export function changeSetView(
   set: ChangeSet,
   all: readonly ChangeSet[],
@@ -265,8 +228,6 @@ function runView(result: Extract<AgentEvent, { kind: "run.finished" }>["result"]
 export function views(deps: ViewDeps) {
   const { workstreams, threads } = deps;
 
-  // The index by handle and by identity (source and stable ID), which
-  // outlives a handle.
   const lookup = () => {
     const records = deps.records();
     const byId = new Map(records.map((r) => [r.id, r]));
@@ -352,8 +313,6 @@ export function views(deps: ViewDeps) {
     return first?.role === "user" ? clippedTitle(first.text) : null;
   };
 
-  // Where each of a thread's change sets stands, and what the engine says
-  // can be done with it.
   const changeSetsOf = async (threadId: Ulid) =>
     Promise.all(
       (await deps.changeSets.ofThread(threadId)).map(async (set) => ({
@@ -363,7 +322,6 @@ export function views(deps: ViewDeps) {
       })),
     );
 
-  // What's held in a working thread for the user: a message, a draft.
   const heldIn = (thread: Thread) => {
     const held = thread.state === "working" ? threads.held(thread.id) : [];
     return {
@@ -391,12 +349,9 @@ export function views(deps: ViewDeps) {
     activityAt,
   });
 
-  // A workstream's changes after version `from`, up to `to`.
   const between = (workstreamId: Ulid, from: number, to: number): WorkstreamChange[] =>
     workstreams.changes(workstreamId, from).filter((change) => change.version <= to);
 
-  // `latest`: the workstream's version now, whose change an outside tool
-  // made the window can undo.
   const changeView = (
     changes: readonly WorkstreamChange[],
     latest: number | null = null,
@@ -421,9 +376,6 @@ export function views(deps: ViewDeps) {
     }));
   };
 
-  // What undoes an outside tool's latest change to a workstream (decision
-  // 0058): what it added comes out, or what it took out goes back, if the
-  // index still has it; null for one that did both, or nothing to undo.
   const toolUndo = (
     change: WorkstreamChange,
     find: (member: WorkstreamMember) => IndexRecord | undefined,
@@ -439,8 +391,6 @@ export function views(deps: ViewDeps) {
     return back.length ? { action: "workstream.add", input: { workstream, items: back } } : null;
   };
 
-  // The items of a thread's workstream that the agent or an outside tool
-  // put there, by the handle each joined under, and who.
   const broughtIn = (threadId: Ulid): Map<string, "agent" | "tool"> => {
     const thread = threads.get(threadId, deps.now());
     const by = new Map<string, "agent" | "tool">();
@@ -454,15 +404,11 @@ export function views(deps: ViewDeps) {
     return by;
   };
 
-  // A block as the window shows it: rows of items as Browse shows them, from
-  // the index now, each from outside the region that the region holds too
-  // saying so.
   const blockView = (built: Block, region: ReadonlySet<string>): BlockView => {
     const { spec: _spec, ...block } = built;
     if (block.form === "preview") return block;
     if (block.form !== "rows") {
-      // Labels that are items, in any form, by the name the index has for
-      // each now (decision 0053): Oriel's data, never the agent's.
+      // Labels that are items show by the index's name for each now: Oriel's data, never the agent's.
       const labels = itemLabels(built);
       if (!labels.length) return block;
       const { byId } = lookup();
@@ -487,8 +433,6 @@ export function views(deps: ViewDeps) {
     return { ...block, items };
   };
 
-  // A move's thread (decision 0059): what the rail says in place of its
-  // items, since a move's go to the workstreams that held the stand-in's.
   const moveOf = (messages: readonly Message[]) => {
     const notes = messages.flatMap((m) => (m.role === "note" ? [m.note] : []));
     const moved = notes.findLast((note) => note.kind === "moved");
@@ -496,15 +440,12 @@ export function views(deps: ViewDeps) {
     return notes.some((note) => note.kind === "moving") ? { move: { went: null } } : {};
   };
 
-  // Workstreams by ID, as a line links to them, less any gone since.
   const wentTo = (ids: readonly string[]) =>
     ids.flatMap((id) => {
       const workstream = workstreams.get(id as Ulid);
       return workstream ? [{ id, name: workstream.name }] : [];
     });
 
-  // A stored chat message as the window shows it; null for an agent event
-  // in a shape this server doesn't know.
   const entry = (
     message: Message,
     own: { thread: Ulid; workstream: Ulid },
@@ -512,8 +453,6 @@ export function views(deps: ViewDeps) {
   ): ChatEntry | null => {
     const workstreamId = own.workstream;
     const at = { seq: message.seq, at: message.at };
-    // What it was about, by ID, and whether each was outside the region then
-    // (decision 0062).
     if (message.role === "user")
       return {
         ...at,
@@ -528,8 +467,6 @@ export function views(deps: ViewDeps) {
       "draft" in message &&
       message.draft.action === "window.continue"
     ) {
-      // Continue in…, drawn from Oriel's own data: the item, and the
-      // workstream the request goes on in, or went on in, by its name now.
       const { draft, outcome } = message;
       const item = String(draft.input["item"]);
       const to = draft.input["to"];
@@ -547,8 +484,6 @@ export function views(deps: ViewDeps) {
       };
     }
     if (message.role === "held" && "draft" in message) {
-      // Drawn from Oriel's own data: the connection by its name, and each
-      // option the draft changes, as it was drafted over and as drafted.
       const { draft, over, outcome } = message;
       const now = deps.drafted(draft);
       const id = draft.input["connection"];
@@ -573,8 +508,6 @@ export function views(deps: ViewDeps) {
     }
     if (message.role === "held") {
       const { from, text, outcome } = message;
-      // Who it is from, as the user reads it: what each sender says of
-      // itself, less Oriel's own bookkeeping.
       const sender: HeldFrom =
         from.kind === "review-link"
           ? { kind: from.kind, by: from.by, changeSetId: from.changeSet }
@@ -584,8 +517,6 @@ export function views(deps: ViewDeps) {
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "note") {
-      // The agent alone reads of unknown chips: the answer showed each. A
-      // check of the answer's quotes captions them (`ThreadView.quotes`).
       if (
         message.note.kind === "unknown-chips" ||
         message.note.kind === "quotes" ||
@@ -636,12 +567,7 @@ export function views(deps: ViewDeps) {
         to: message.to,
         added: changes.flatMap((c) => c.added),
         removed: changes.flatMap((c) => c.removed),
-        // This thread's agent made every change it covers, so the list of
-        // what it did says it already.
         ...(causes.length > 0 && causes.every(ownAgent) ? { ownAgent: true as const } : {}),
-        // It covers the user's Undo or Redo under this thread's agent's
-        // reply, and nothing but that and what the agent did, which the
-        // lines there say.
         ...(causes.some(fromLine) && causes.every((cause) => fromLine(cause) || ownAgent(cause))
           ? { fromLine: true as const }
           : {}),
@@ -657,10 +583,6 @@ export function views(deps: ViewDeps) {
         return { ...at, kind: "run.started", runId: event.runId, script: event.script };
       case "run.finished":
         return { ...at, kind: "run.finished", runId: event.runId, run: runView(event.result) };
-      // The escape hatch: what a run reached outside the region, as rows,
-      // marked so (decision 0030). An item the region holds too says so.
-      // What a run reached outside the region shows unasked, as the escape
-      // hatch's block (decision 0030), built as any block is.
       case "search": {
         const block = escapeHatchBlock(event.hits);
         return block ? { ...at, kind: "block", block: blockView(block, region) } : null;
@@ -670,7 +592,6 @@ export function views(deps: ViewDeps) {
         return null;
       case "block":
         return { ...at, kind: "block", block: blockView(event.block, region) };
-      // A sketch, framed from the sketch origin, which checks it again.
       case "sketch": {
         const { id, height } = event.sketch;
         const src = new URL(`${own.thread}/${id}`, deps.sketchBase).href;
@@ -689,8 +610,6 @@ export function views(deps: ViewDeps) {
           kind: "actions",
           lines: event.lines.map((line) => {
             const view = actionLineView(line, own);
-            // Nothing links to what is gone since, as a workstream whose
-            // making was undone.
             const { touched } = view;
             const gone =
               touched &&
@@ -709,12 +628,7 @@ export function views(deps: ViewDeps) {
     }
   };
 
-  // What each ID a thread's answers name is, as its chip draws it (decision
-  // 0032): an item from the index, by its handle now, or a thread, change
-  // set or workstream from Oriel's own data; null for one Oriel can't
-  // resolve. An item the thread's workstream has held, gone from the index
-  // since, is its key, as the workstream shows it. Nothing comes from the
-  // answer's own words.
+  // Nothing comes from the answer's own words.
   const chips = async (ids: readonly string[], threadId: Ulid): Promise<Chips> => {
     const { byId } = lookup();
     const asOf = deps.asOf();
@@ -767,10 +681,6 @@ export function views(deps: ViewDeps) {
     return Object.fromEntries(await Promise.all(ids.map(async (id) => [id, await chip(id)])));
   };
 
-  // What an empty workstream suggests adding (OA-348): the items its
-  // threads' answers named as chips, in the order they were named, oldest
-  // thread first, then the
-  // top of Not in a workstream yet, each once, as live items it shows.
   const suggested = async (workstreamId: Ulid): Promise<MemberView[]> => {
     const { byId } = lookup();
     // Oldest thread first: `ofWorkstream` lists the newest first.
@@ -805,8 +715,6 @@ export function views(deps: ViewDeps) {
   return {
     workstreamSummary,
     members,
-    // A block outside any thread, as the overview shows a Noticed card's or
-    // a pin's.
     block: (built: Block) => blockView(built, new Set()),
 
     workstreams(workspaceId: Ulid): WorkstreamSummary[] {
@@ -852,10 +760,7 @@ export function views(deps: ViewDeps) {
       steps: ReadonlyMap<string, readonly NextStep[]>,
       applying: (changeSetId: string) => boolean,
       stalled: (changeSetId: string) => boolean,
-      // Whether a change set can be approved here; by the thread's own
-      // `writable` unless given.
       writable: (changeSetId: string) => boolean = () => deps.writable,
-      // Why one that applied can't be undone, where a writer can't send it.
       cannotUndo: (changeSetId: string) => string | null = () => null,
     ): Promise<ThreadView | null> {
       const thread = threads.get(id, deps.now());
@@ -864,8 +769,6 @@ export function views(deps: ViewDeps) {
       if (!workstream) return null;
       const region = workstreams.region(thread.workstreamId, thread.regionVersion);
       const messages = threads.messages(id);
-      // Each entry against the version the thread was in when it was stored:
-      // the one its last marker moved it to, or the one it opened in.
       const firstMarker = messages.find((m) => m.role === "marker");
       let version = firstMarker?.role === "marker" ? firstMarker.from : thread.regionVersion;
       const versions = new Map<number, Set<string>>();
@@ -882,8 +785,6 @@ export function views(deps: ViewDeps) {
           return { ...shown, tryAgain: true as const };
         return shown ?? [];
       });
-      // Each undecided change set's second look, or null for one the person
-      // may still ask for; its quotes are drawn under their items' chips.
       const looks = new Map<string, SecondLookView | null>();
       for (const set of sets) {
         if (!deps.secondLook || set.decision !== null || set.revertOf !== null) continue;
@@ -900,7 +801,6 @@ export function views(deps: ViewDeps) {
           id: workstream.id,
           name: workstream.name,
           version: workstream.version,
-          // Behind, how many items the workstream holds now, of those shown.
           ...(thread.regionVersion < workstream.version && {
             items: (
               workstreams.region(thread.workstreamId, workstream.version)?.items ?? []
@@ -910,8 +810,6 @@ export function views(deps: ViewDeps) {
         state: thread.state,
         doneBy: thread.doneBy,
         regionVersion: thread.regionVersion,
-        // When the thread last moved to its workstream's version: its last
-        // marker, or when it opened.
         syncedAt: messages.findLast((m) => m.role === "marker")?.at ?? thread.createdAt,
         members: members(region?.items ?? []),
         ...moveOf(messages),
@@ -952,8 +850,6 @@ export function views(deps: ViewDeps) {
     diff(diff: Diff, set: ChangeSet, applying: boolean): DiffView {
       const { byId } = lookup();
       const person = people();
-      // An item a value names, by the title the diff gives it; a new item
-      // has no key or link yet.
       const item = (value: unknown, title: string | null, created: boolean): ItemValue | null => {
         if (typeof value !== "string") return null;
         if (created) return { title, key: null, url: null, created };
@@ -966,7 +862,6 @@ export function views(deps: ViewDeps) {
         };
       };
       const rows = new Map(set.mutations.map((m) => [m.id, m]));
-      // Rejected once part of it was sent: dismissed.
       const dismissal =
         set.decision?.kind === "rejected" && set.mutations.some((m) => m.status !== "pending");
       const brought = broughtIn(set.threadId);
@@ -984,8 +879,6 @@ export function views(deps: ViewDeps) {
         lines: diff.lines.map((line) => {
           const row = rows.get(line.mutationId);
           const applied = row?.status === "applied";
-          // Once dismissed, what was left is only that: why it stopped and
-          // what to check were said before.
           const dismissed = !applied && dismissal;
           const error =
             !applied && !applying && !dismissed && row?.error ? plainError(row.error) : null;
@@ -1026,15 +919,12 @@ export function views(deps: ViewDeps) {
 
 export type Views = ReturnType<typeof views>;
 
-// The items the person's messages were about, which their lines name as
-// chips (decision 0062).
 const looked = (entries: readonly ChatEntry[]): string[] =>
   entries.flatMap((entry) =>
     entry.kind === "user" ? (entry.about ?? []).map((each) => each.id) : [],
   );
 
-// The IDs a thread's answers name as chips. An answer streams in as many
-// text entries, which may split an ID, so each run of them is read whole.
+// An answer streams in as many text entries, which may split an ID, so each run of them is read whole.
 const linked = (entries: readonly ChatEntry[]): string[] =>
   entries.flatMap((entry) =>
     entry.kind === "held" && entry.from.kind === "thread"

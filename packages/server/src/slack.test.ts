@@ -1,5 +1,3 @@
-// A Slack message's text reaches the agent through tool results, never the
-// declarations its scripts are typed against.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ThreadView } from "@oriel/web/view";

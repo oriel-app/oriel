@@ -1,6 +1,3 @@
-// Continue in… (decision 0027), as a thread dragged onto another workstream
-// does it. Keep class 2, a thread a person can lose: its Undo deletes the
-// new thread only while nothing was said in it, and gives the old one back.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { ContinuedView, ThreadView, Undoable } from "@oriel/web/view";

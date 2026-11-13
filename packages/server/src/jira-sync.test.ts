@@ -1,5 +1,3 @@
-// Syncing Jira against SYN in memory: a sync that didn't finish marks nothing
-// gone, and what a revert deleted doesn't come back while Jira's search lags.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChangeSetView, DiffView, WorkstreamView, ThreadView } from "@oriel/web/view";
@@ -67,8 +65,6 @@ test("what a revert deleted stays gone while Jira's search lags, however long", 
   assert.equal(site.issue("SYN-900"), null);
   assert.ok(!keys(app).has("SYN-900"));
 
-  // Long after the app stopped reading the epic by key, a sync of each kind:
-  // one a dropped link starts, then a Sync.
   app.advance(60 * 60 * 1000);
   const drop = await app.post(`/api/workstreams/${workstreamId}/drop`, {
     links: ["https://oriel.atlassian.net/browse/SYN-999"],

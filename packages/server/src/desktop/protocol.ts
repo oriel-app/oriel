@@ -1,8 +1,4 @@
-// The messages between the desktop app's shell and its server (decision
-// 0036), as validated types. PROTOCOL.md beside this file tells the shell's
-// side in prose: the launch secret on stdin's first line, its cookie, then
-// one JSON object per line each way. The server asks; the shell answers each
-// request once, by its id, in any order.
+// PROTOCOL.md beside this file tells the shell's side in prose.
 import { isAbsolute } from "node:path";
 import {
   type Infer,
@@ -17,22 +13,14 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// The cookie the shell puts in the webview's store, holding the secret.
 export const launchCookie = "oriel-launch";
 
-// 32 bytes, as 64 lowercase hex characters.
 export const isLaunchSecret = (line: string): boolean => /^[0-9a-f]{64}$/.test(line);
 
-// The secrets the server may keep, by name, as the shell's rules.ts takes
-// them. The server keeps none since decision 0059 (no connection keeps one,
-// and no AI runs on an API key), and the shell deletes `anthropic-key` as
-// its store opens; the name stays only so the channel stays whole for
-// whatever keeps a secret next.
+// The server keeps none; the name stays only so the channel stays whole for whatever keeps a secret next.
 export const isSecretName = (text: string): boolean => text === "anthropic-key";
 const name = refine(string, isSecretName, "a secret the server keeps");
 const secret = refine(string, (text) => Buffer.byteLength(text) <= 16_384, "at most 16 KiB");
-// Where a click on a notification takes the window: a path on the server's
-// own origin, such as `/threads/<id>`.
 const open = refine(
   string,
   (path) => path.length <= 200 && /^\/(?![/\\])[!-~]*$/.test(path),
@@ -41,24 +29,18 @@ const open = refine(
 const id = refine(number, (n) => Number.isSafeInteger(n) && n > 0, "a positive integer");
 const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "a count");
 
-// What the server asks the shell for, without its id.
 export const request = union(
   object({ kind: literal("folder.pick"), prompt: string }),
   object({ kind: literal("secret.get"), name }),
   object({ kind: literal("secret.set"), name, secret }),
   object({ kind: literal("secret.delete"), name }),
   object({ kind: literal("notify"), title: string, body: string, open }),
-  // The first run brings Oriel back to the front once the CLI's sign-in in
-  // the browser ends (decision 0038).
   object({ kind: literal("window.focus") }),
-  // How many threads Oriel is working on, for asking before quitting
-  // (decision 0045); 0 while Settings has that off.
   object({ kind: literal("working"), threads: count }),
 );
 export type ShellRequest = Infer<typeof request>;
 export type RequestKind = ShellRequest["kind"];
 
-// What a successful answer's `value` is, for each kind of request.
 export const answers = {
   "folder.pick": nullable(refine(string, isAbsolute, "an absolute path")),
   "secret.get": nullable(string),
@@ -78,5 +60,4 @@ export const reply = union(
 );
 export type ShellReply = Infer<typeof reply>;
 
-// Lines to the shell.
 export type ServerLine = { kind: "ready"; url: string } | ({ id: number } & ShellRequest);

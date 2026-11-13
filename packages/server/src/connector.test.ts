@@ -1,5 +1,3 @@
-// No declared kind takes one of Oriel's own names in a region's module, or a
-// word a script can't name (decision 0049).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { orielNames } from "@oriel/bindings";

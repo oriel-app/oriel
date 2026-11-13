@@ -1,31 +1,15 @@
-// Where secrets are kept: the OS's own store, which the desktop app's shell
-// reaches for the server (decisions 0036, 0042). Since decision 0059 the
-// server keeps none there: a source is read through the person's own agent,
-// which holds its sign-in, and no AI runs on an API key, whose old secret,
-// `anthropic-key`, the shell deletes as its store opens. What
-// `pnpm dev` kept of them before is retired at start (`oldSecretFiles`). No
-// message here carries a value from one.
+// No message here carries a secret's value.
 import { lstatSync, readdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { isUlid } from "@oriel/core";
 
-// Secrets by name, kept wherever the OS keeps them, under the app's own
-// name, which the store's owner fixes.
 export type Secrets = {
   get(name: string): Promise<string | null>;
   set(name: string, secret: string): Promise<void>;
   delete(name: string): Promise<void>;
 };
 
-// The connection secrets `pnpm dev` kept before decision 0059, which
-// nothing reads any more, under the gitignored `secrets/` folder: each
-// connection's, `connection.<ULID>`, in the folder named for its database,
-// whichever database it is, a fresh one's too (`fresh/<name>/<database>`);
-// and Jira's saved connection from before connections, `jira.json`.
-// Retiring deletes every one there is, then each folder it emptied, so each
-// start after finds nothing to do; it says how many it deleted. Nothing
-// else there is touched, and the connections themselves, their options and
-// items stay.
+// Retiring deletes only those files, then each folder it emptied; nothing else there is touched.
 export type OldSecrets = { retire(): number };
 
 export function oldSecretFiles(root: string): OldSecrets {

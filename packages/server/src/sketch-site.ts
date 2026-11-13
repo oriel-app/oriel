@@ -1,19 +1,5 @@
-// The sketch origin (decision 0033): a second listener of Oriel's server, on
-// its own loopback port, that serves only `GET /sketches/<thread>/<sketch>`.
-// Its document is Oriel's, with no script: one sandboxed frame, with no
-// tokens, whose `srcdoc` holds Oriel's theme sheet and then the agent's
-// text, checked again as it is served, so a stored sketch meets today's
-// check. The document's policy, set by a header the agent can't touch, stops
-// every fetch, and a `srcdoc` document takes its parent's policy. Neither
-// frame gets a sandbox token.
-//
-// It answers only requests that name it in Host (guard.ts). In the desktop
-// app it also wants the launch secret every route but a review link's wants
-// (decision 0036): cookies are scoped by host, not port, and both loopback
-// ports are one site, so the window's cookie comes with the frame's request.
-// Nothing in either frame can read or send it on: no script runs, and the
-// inner frame has an opaque origin, so a request from it would be
-// cross-site, if the policy let one out at all.
+// Oriel's document, with no script: one sandboxed frame with no tokens, under a policy (a header the agent can't touch) that stops
+// every fetch. Cookies are scoped by host, not port, so the window's cookie comes along: nothing in either frame can read or send it on.
 import { checkSketch, isUlid, type Sketch, type Ulid } from "@oriel/core";
 import type { TextSize } from "@oriel/web/view";
 import { sketchSheet } from "@oriel/web/themes";
@@ -21,21 +7,15 @@ import { hasLaunchSecret, ownHosts, refusal } from "./guard.ts";
 import type { Reply, Request } from "./site.ts";
 
 export type SketchSite = {
-  // This listener's port, which Host must name.
   port: number;
-  // The window's port: only its pages may frame a sketch.
+  // Only the window's pages may frame a sketch.
   framedBy: number;
   sketch(thread: Ulid, sketch: Ulid): Sketch | null;
-  // Oriel's sheet for the frame, in the person's theme and text size.
   sheet(): string;
-  // In the desktop app, the launch secret and the cookie that carries it,
-  // which every request must hold, as the window's own do (decision 0036).
   launch?: { cookie: string; secret: string };
 };
 
-// The plain look a sketch that names no token still gets, in the theme's
-// neutral tokens: the body, headings, tables, buttons and inputs. Never the
-// accent, a state or any of Oriel's own component styles.
+// Never the accent, a state or any of Oriel's own component styles.
 const plainLook = `body {
   margin: 0;
   padding: var(--space-3);
@@ -73,15 +53,10 @@ button, input, select, textarea {
 }
 `;
 
-// The frame's sheet: `theme`'s neutral tokens and `textSize`'s root size,
-// built from window.css's own rules, then the plain look.
 export const sketchStyle = (css: string, theme: string, textSize: TextSize): string =>
   `${sketchSheet(css, theme, textSize)}${plainLook}`;
 
-// The outer document's policy (decision 0033): no fetch of any kind and no
-// navigation of the inner frame; inline styles, with no URL that can load;
-// images written inline; a second wall behind the check; only Oriel's window
-// frames it; and sandboxed even when opened on its own.
+// A second wall behind the check: no fetch of any kind, no navigation of the inner frame, and only Oriel's window frames it.
 export const sketchPolicy = (framedBy: number): string =>
   [
     "default-src 'none'",

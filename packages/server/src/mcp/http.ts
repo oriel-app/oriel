@@ -1,17 +1,5 @@
-// The MCP door's transport (decision 0024): Streamable HTTP, on loopback, on a
-// listener of its own, so the window's rule, that only its own page reaches
-// it, stays whole, and no cookie of the window's opens this door, nor any
-// token of a tool's the window. Every request:
-// - names this listener in Host, so a site that rebinds its domain to
-//   127.0.0.1 is refused (DNS rebinding);
-// - carries no Origin: an MCP client is a program, never a page, so any
-//   page's request is refused, whatever its origin;
-// - carries a connected tool's token as a bearer token: one revoked, or
-//   none, is refused;
-// - in the 2026-07-28 revision, says its version, method and name in headers
-//   that match its body.
-// Each request is a POST, answered with JSON, but for `subscriptions/listen`,
-// whose answer is an event stream that stays open.
+// A listener of its own, so no window cookie opens this door, nor a tool's token the window. Every request names this listener in
+// Host (DNS rebinding), carries no Origin (a client is a program, never a page) and a live tool's bearer token.
 import { ownHosts } from "../guard.ts";
 import type { Reply } from "../site.ts";
 import { channel } from "../stream.ts";
@@ -32,8 +20,6 @@ const header = (request: McpRequest, name: string): string | undefined => {
   return Array.isArray(value) ? value[0] : value;
 };
 
-// A header value as its client encoded it: plain, or Base64 between the
-// sentinels.
 const decoded = (value: string | undefined): string | undefined => {
   const base64 = value && /^=\?base64\?(.*)\?=$/.exec(value);
   return base64 ? Buffer.from(base64[1] ?? "", "base64").toString("utf8") : value;
@@ -47,7 +33,6 @@ const json = (status: number, value: unknown, headers: Record<string, string> = 
 const refused = (status: number, code: number, message: string, headers = {}): Reply =>
   json(status, { jsonrpc: "2.0", id: null, error: { code, message } }, headers);
 
-// Why the request is refused before its body is read, or the tool it is.
 export function door(
   request: McpRequest,
   port: number,
@@ -70,7 +55,6 @@ export function door(
   return tool;
 }
 
-// Whether a 2026-07-28 request's headers say what its body says.
 function mismatch(request: McpRequest, message: Message): string | null {
   if (header(request, "mcp-protocol-version") !== modern) return "MCP-Protocol-Version";
   if (header(request, "mcp-method") !== message.method) return "Mcp-Method";
@@ -90,10 +74,8 @@ export function mcpHandler(deps: {
   server: McpServer;
   tools: Pick<OutsideTools, "who" | "onRevoke">;
   port: number;
-  // Writes the stream's keep-alive, every so often, until it is stopped.
   keepAlive?: (beat: () => void) => () => void;
 }) {
-  // Each tool's open streams, which end as it is revoked.
   const streams = new Map<string, Set<() => void>>();
   deps.tools.onRevoke((id) => {
     for (const end of streams.get(id) ?? []) end();

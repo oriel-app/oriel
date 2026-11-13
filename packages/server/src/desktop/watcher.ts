@@ -1,15 +1,5 @@
-// The server's watcher (decision 0047, amended by OA-195): a Deno process of
-// its own, in its own session, that outlives the server. The server tells it
-// on stdin each process it starts and each that ends (utility.ts,
-// watchChildren); for each started one the watcher reads its start time
-// from `ps`, which with its PID names that process alone. When stdin ends,
-// the server is gone: after a crash, a kill from outside, or Electron ending
-// it because the shell died or was force-quit. Then the watcher kills what
-// the server started that still runs (processes.ts, leftOver), and exits.
-// When the server quit cleanly it had killed all that already, the watcher
-// with it.
-//
-// Deno runs it allowed to run `/bin/ps` and `/bin/kill` and nothing else.
+// A Deno process in its own session that outlives the server: when its stdin ends the server is gone, and it kills what the
+// server started that still runs (by PID and start time). Deno lets it run `/bin/ps` and `/bin/kill` and nothing else.
 import { leftOver, processTable, startTime, tableColumns, toldLine } from "./processes.ts";
 
 // As much of Deno's API as this uses. It runs on Deno, but tsc checks it
@@ -34,7 +24,6 @@ const ps = async (args: string[]) => {
   return new TextDecoder().decode(stdout);
 };
 
-// Into the server's log, while the shell still reads it.
 const note = (message: string, fields: Record<string, unknown> = {}) => {
   try {
     console.error(JSON.stringify({ message: `watcher: ${message}`, ...fields }));

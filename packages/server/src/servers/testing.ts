@@ -1,15 +1,9 @@
-// A source server Oriel knows, in tests and shots only (OA-275): the one
-// test-only entry, for Jira's kind, which the tiny stdio server in
-// tiny-server.ts answers to, and the person's agent as a fake that lists it.
-// Unit tests fake the agent's answer and start no process; the shots ask
-// the tiny server itself, as the person's agent would. Not shipped.
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { FoundServer, SourceServer } from "@oriel/core";
 import type { Discovery } from "../source-servers.ts";
 
-// The name the tiny server reports, unless it's given another.
 export const tinyServerName = "oriel-test-tracker";
 
 export const testServer: SourceServer = {
@@ -22,7 +16,6 @@ export const testServer: SourceServer = {
 
 export const testKnown = [{ kind: "jira", server: testServer }] as const;
 
-// The tiny server as the person's agent lists it, by its name there.
 export const foundTiny = (over: Partial<FoundServer> = {}): FoundServer => ({
   name: "work-tracker",
   status: "connected",
@@ -33,8 +26,6 @@ export const foundTiny = (over: Partial<FoundServer> = {}): FoundServer => ({
   ...over,
 });
 
-// The person's Claude Code, as a fake that lists `found` each time it's
-// asked, or fails as `problem` says; `asked` counts the looks.
 export function fakeAgent(found: () => readonly FoundServer[] | { problem: string }) {
   const agent = { id: "claude-code", name: "Claude Code" };
   const fake = {
@@ -48,9 +39,6 @@ export function fakeAgent(found: () => readonly FoundServer[] | { problem: strin
   return fake;
 }
 
-// The tiny server's own answer, through its stdio handshake, as an agent
-// asks it: `server/discover`, or `initialize` where that's refused, then
-// `tools/list`. For the shots, which run no CLI.
 export async function askTiny(name = "work-tracker"): Promise<FoundServer> {
   const path = join(import.meta.dirname, "tiny-server.ts");
   const child = spawn(process.execPath, [path, tinyServerName], {
@@ -88,8 +76,6 @@ export async function askTiny(name = "work-tracker"): Promise<FoundServer> {
   }
 }
 
-// What the shots give a server: the person's Claude Code as a fake that
-// asks the tiny server itself, and the test-only entry that knows it.
 export const tinyAgent = {
   discover: async (): Promise<Discovery> => ({
     agent: { id: "claude-code", name: "Claude Code" },

@@ -1,7 +1,4 @@
-// The server's end of the line protocol with the desktop shell (PROTOCOL.md):
-// the launch secret first, then requests out and answers in, matched by id.
-// The shell is the server's parent, so a line it sends that can't be read is
-// logged and dropped, not trusted and not fatal.
+// The shell is the server's parent, so a line it sends that can't be read is logged and dropped, not trusted and not fatal.
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import type { Log } from "@oriel/core";
@@ -21,7 +18,6 @@ export type Shell = {
 };
 
 export type Channel = {
-  // The first line; rejects if stdin ends first or the line isn't one.
   secret: Promise<string>;
   shell: Shell;
   // The first line out: the URL the shell loads. Requests asked before it
@@ -33,7 +29,6 @@ export type Channel = {
 
 export class ShellGone extends Error {}
 
-// `write` sends one line, with its newline, to the shell.
 export function channel(input: Readable, write: (line: string) => void, log: Log): Channel {
   const lines = createInterface({ input, crlfDelay: Infinity });
   const pending = new Map<number, { kind: RequestKind; settle(answer: Settled): void }>();

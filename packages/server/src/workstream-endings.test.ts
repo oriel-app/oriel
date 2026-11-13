@@ -1,5 +1,3 @@
-// Deleting a workstream (decision 0028): only the user's, never mid-turn or
-// mid-apply, and one threads use comes back whole with its Undo.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { type Actor, type ChangeSet, type ChangeSets, instant, ulid } from "@oriel/core";
@@ -19,7 +17,6 @@ import { json, type Script, testApp, unreached } from "./testing.ts";
 
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
-// Proposes 3 points for the first unestimated story in the region.
 const estimate: Script = async (bindings) => {
   const stories = (await bindings.read("jira.listItems", [])).value as {
     id: string;
@@ -37,7 +34,6 @@ const plans: Record<string, Step[]> = {
   "Wrap up": [{ run: "wrapUp" }, { text: "Marked." }],
 };
 
-// The checkout workstream with two threads on it, each answered.
 async function workstream(t: TestContext) {
   const app = await testApp(t, {
     scripts: { estimate, wrapUp },
@@ -76,7 +72,6 @@ async function workstream(t: TestContext) {
 
 test("deleting a workstream threads use hides it and them, and refuses its review link, until its Undo brings everything back", async (t) => {
   const app = await workstream(t);
-  // A change set with a review link out, in one of its threads.
   const proposed = await app.ask(app.first, "Estimate");
   const [set] = proposed.changeSets;
   assert.ok(set);
@@ -84,7 +79,6 @@ test("deleting a workstream threads use hides it and them, and refuses its revie
   const token = new URL(minted.url).pathname.split("/").at(-1);
   const delete_ = (body: unknown) => app.post(`/api/workstreams/${app.workstreamId}/delete`, body);
 
-  // Told one thread goes, when two would, and told none.
   assert.equal((await delete_({ threads: 1 })).status, 409);
   assert.equal((await delete_({})).status, 403);
 
@@ -116,8 +110,6 @@ test("the agent can't mark its workstream done while a change set in one of its 
   assert.equal(summary?.done, null);
 });
 
-// The dispatcher alone, over a workstream with one thread on it, and one no
-// thread uses.
 function world({ running = false, applying = false } = {}) {
   const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
   const id = (n: number) => ulid(n, new Uint8Array(10));
@@ -146,7 +138,6 @@ function world({ running = false, applying = false } = {}) {
     created: async () => [],
     turns: unreached("turns"),
     changeSets: unreached<ChangeSets>("changeSets", {
-      // One change set in each thread, applying or not.
       ofThread: async (thread) => [{ id: thread } as ChangeSet],
       applying: () => applying,
     }),
@@ -172,7 +163,6 @@ test("deleting and restoring a workstream are the user's, and not while a turn r
   for (const action of ["workstream.delete", "workstream.restore"] as const)
     for (const actor of [agent, { kind: "tool", name: "bot" } as const])
       assert.notEqual(refusal(action, actor), null);
-  // Marking done and reopening are open to them.
   assert.equal(refusal("workstream.done", agent), null);
   assert.equal(refusal("workstream.reopen", agent), null);
   const busy = world({ running: true });

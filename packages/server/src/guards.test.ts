@@ -1,5 +1,3 @@
-// What the server holds whatever agent is plugged in (SPEC §9), and what it
-// records for the pilot (SPEC §7).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { IndexRecord, WorkstreamMember } from "@oriel/core";
@@ -33,7 +31,6 @@ test("a thread that has asked its last question takes no more, and says why", as
   const after = await app.view();
   assert.equal(after.entries.at(-1)?.kind, "limit");
   assert.equal(after.entries.filter((e) => e.kind === "user").length, 2);
-  // Asking again doesn't repeat the notice.
   assert.equal((await app.say("Four")).status, 409);
   assert.equal((await app.view()).entries.length, after.entries.length);
 });
@@ -76,7 +73,7 @@ test("a member is found by identity, so a moved item is removed under its new ha
     { id: "jira:SYN-5", stableId: "10005" },
     { id: "jira:SYN-6", stableId: "10006" },
   ];
-  // SYN-5 moved to OA-1; SYN-6 was deleted, and its key reused by another item.
+  // SYN-5 moved to another project; SYN-6 was deleted, and its key reused by another item.
   const records = [record("jira:OA-1", "10005"), record("jira:SYN-6", "20006")];
   assert.equal(memberOf("jira:OA-1", held, records), held[0]);
   assert.equal(memberOf("jira:SYN-6", held, records), held[1]);

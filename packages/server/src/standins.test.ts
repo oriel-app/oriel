@@ -1,7 +1,5 @@
-// Dev stand-ins (OA-276–279): a stand-in whose name drifts from its real
-// server's leaves that real server in place, so a dev world meant to write
-// to a stand-in wrote to the maintainer's real Jira backlog (found by the
-// QA pass after #237, 2026-11-08). Every stand-in must replace its server.
+// A stand-in whose name drifts from its real server's leaves that server in place: a dev world meant to write to a stand-in
+// once wrote to the maintainer's real Jira backlog. Every stand-in must replace its server.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { devStandIns } from "./standins.ts";

@@ -1,10 +1,5 @@
-// Noticed (decision 0052): the overview's strip of what Oriel found
-// unasked. Oriel computes its signals on every look, as the overview's own
-// (no model). One pass of the person's model picks a few and says why, in
-// the background: it runs at a sync's end and after a curation, when the
-// signals on offer changed, and never from a look. A look shows the last
-// pass's cards whose signals still hold, with their figures as they are now.
-// Pins rerun their read on every look, with no model and no source call.
+// One pass of the person's model picks and says why, in the background, at a sync's end and after a curation: never from a look.
+// A look shows the last pass's cards whose signals still hold, with today's figures; pins rerun with no model and no source call.
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { type Evidence, type Provider, runNoticed } from "@oriel/agent";
@@ -36,7 +31,6 @@ import {
 import type { BlockView, Chips, NoticedCardView, NoticedView } from "@oriel/web/view";
 import { evidenceFacts, type SignalInput, signalBlock, signalsOf } from "./signals.ts";
 
-// The signals a pass is offered at most, heaviest first.
 export const offeredAtMost = 12;
 
 const kindNames: Record<SignalKind, string> = {
@@ -51,22 +45,19 @@ export type NoticedDeps = {
   db: DatabaseSync;
   workspaceId: Ulid;
   input: () => Promise<SignalInput>;
-  // Each item's title and text, read from its source now.
   read: (ids: readonly ItemId[]) => Promise<Evidence[]>;
-  // The model the pass runs on, chosen again for each pass.
   noticer: () => Promise<{ provider: Provider; model: string } | null>;
   block: (built: Block) => BlockView;
   chips: (ids: readonly string[]) => Promise<Chips>;
   now: () => Instant;
   log: Log;
-  // Telemetry: counts and times, never words.
+  // Counts and times, never words.
   emit: (event: TelemetryEvent) => void;
   clock?: () => number;
 };
 
 type Pass = { key: string; notices: Notice[]; at: Instant; model: string };
 
-// A Noticed event, before its time and workspace.
 type Counted =
   Extract<TelemetryEvent, { name: `noticed.${string}` }> extends infer E
     ? E extends TelemetryEvent
@@ -74,38 +65,29 @@ type Counted =
       : never
     : never;
 
-// How long Oriel waits before it looks for a model again, after it found
-// none for this set of signals.
 const noAiRetryMs = 10 * 60_000;
 
-// A stored pick: its signal's ID, and the line and quote Oriel checked.
 type Pick = { signal: string; why: string | null; quote: Notice["quote"] };
 
 export function noticedService(deps: NoticedDeps) {
   const clock = deps.clock ?? (() => performance.now());
   let running: { key: string } | null = null;
-  // Each look for a pass waits for the one before, so two passes never run
-  // at once; `queued`: one is waiting to start, which any more asked for
-  // join. `stop` ends the one under way, as the server closes.
+  // Each pass waits for the one before, so two never run at once; any more asked for join the one waiting.
   let looking: Promise<void> = Promise.resolve();
   let queued = false;
   const stop = new AbortController();
   const count = (event: Counted) =>
     deps.emit({ ...event, at: deps.now(), workspaceId: deps.workspaceId } as TelemetryEvent);
-  // The last pass's cards counted as shown, by their signals.
   let shown = new Set<string>();
   let failed: { key: string; problem: string } | null = null;
   let noAi: { key: string; at: number } | null = null;
-  // The last pass, kept in the database so a restart doesn't pay for it
-  // again. Its picks' signals are filled in from the signals on offer.
+  // Kept in the database, so a restart doesn't pay for it again.
   const stored = lastPass(deps.db, deps.workspaceId);
   let last: (Omit<Pass, "notices"> & { picks: Pick[] }) | null = stored && {
     ...stored,
     picks: Array.isArray(stored.picks) ? (stored.picks as Pick[]) : [],
   };
 
-  // What a pass is offered now: every signal not dismissed, weighed by
-  // what dismissals taught, heaviest first.
   const offer = async () => {
     const input = await deps.input();
     const gone = dismissals(deps.db, deps.workspaceId, deps.now());
@@ -142,7 +124,6 @@ export function noticedService(deps: NoticedDeps) {
       }
       noAi = null;
       const ids = [...new Set(offered.flatMap((s) => s.items))];
-      // Where each stands, from the index, beside its text from its source.
       const facts = new Map(
         evidenceFacts(input, ids).map(({ id, ...rest }) => [id as string, rest]),
       );
@@ -189,7 +170,6 @@ export function noticedService(deps: NoticedDeps) {
       .catch((error: unknown) => {
         failed = { key, problem: error instanceof Error ? error.message : String(error) };
         deps.log("noticed: pass failed", { problem: failed.problem });
-        // One that failed before its answer came, as on a read or the network.
         if (!counted && started !== null)
           count({
             name: "noticed.pass",
@@ -208,9 +188,6 @@ export function noticedService(deps: NoticedDeps) {
       });
   };
 
-  // At a sync's end and after a curation: runs a pass when the signals on
-  // offer changed since the last, unless the last failed for them, or found
-  // no model for them a moment ago. Never from a look.
   const refresh = (): Promise<void> => {
     if (queued || stop.signal.aborted) return looking;
     queued = true;
@@ -251,24 +228,19 @@ export function noticedService(deps: NoticedDeps) {
 
   return {
     refresh,
-    // Waits for the looks and the pass under way, if any: for tests and the
-    // screenshot script, never for a look.
+    // For tests and the screenshot script, never for a look.
     settled: () => looking,
-    // Ends the pass under way, and starts none after, as the server closes.
     async stop() {
       stop.abort();
       await looking;
     },
 
-    // What the strip shows now. It reads the last pass and never starts one,
-    // so opening the overview makes no model call.
+    // It reads the last pass and never starts one, so opening the overview makes no model call.
     async view(): Promise<NoticedView> {
       const { input, offered, taught } = await offer();
       const now = new Map(offered.map((signal) => [signal.id, signal]));
       const held = pins(deps.db, deps.workspaceId);
       const pinned = new Map(held.flatMap((pin) => (pin.signal ? [[pin.signal, pin.id]] : [])));
-      // The last pass's cards whose signal is still on offer, with its
-      // headline and figures as Oriel has them now.
       const cards = (last?.picks ?? []).flatMap((pick) => {
         const signal = now.get(pick.signal);
         return signal ? [card(input, { signal, why: pick.why, quote: pick.quote }, pinned)] : [];
@@ -287,7 +259,6 @@ export function noticedService(deps: NoticedDeps) {
           ]),
         ),
       ]);
-      // How the last pass went, whatever it was offered.
       const status: NoticedView["status"] = running
         ? "running"
         : !offered.length
@@ -312,8 +283,6 @@ export function noticedService(deps: NoticedDeps) {
       };
     },
 
-    // The person dismissed a card: it stays away until its figures move on.
-    // Its kind, or null when no card has that signal now.
     async dismiss(signalId: string): Promise<SignalKind | null> {
       const { offered } = await offer();
       const signal = offered.find((each) => each.id === signalId);
@@ -328,8 +297,6 @@ export function noticedService(deps: NoticedDeps) {
       return signal.kind;
     },
 
-    // Pins a card's block, as its saved read (decision 0030).
-    // Null when no card has that signal now.
     async pin(
       signalId: string,
     ): Promise<{ id: Ulid; kind: SignalKind } | { refused: string } | null> {

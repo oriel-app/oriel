@@ -35,12 +35,6 @@ export const groupings: Record<GroupingId, Grouping> = {
   linked: linkedGrouping,
 };
 
-// The items a filter keeps (decision 0027): every search term in the key,
-// title or text, as search() matches; the source; the status category; the
-// assignee; none an open workstream holds (`held`). A kept item is "title"
-// unless only its text matched, so a page shows title hits first. Null when
-// nothing is filtered. `matches` is what search() finds for a query: every
-// item it matches, by ID.
 export type Keep = (record: IndexRecord) => "title" | "text" | null;
 export function keepOf(
   filter: BrowseFilter,
@@ -49,7 +43,6 @@ export function keepOf(
 ): Keep | null {
   const { q, source, status, assignee, workstream } = filter;
   if (!q && !source && !status && !assignee && !workstream) return null;
-  // Only a filter that asks reads what the workstreams hold, or searches.
   const holds = workstream ? held() : () => false;
   // A query with no terms, such as "jira:" alone, finds nothing, as with
   // search().
@@ -65,8 +58,6 @@ export function keepOf(
   };
 }
 
-// What the filters can pick from: the sources the index has items from, in
-// their usual order, and the people assigned an item, by name.
 function choices(records: readonly IndexRecord[]): { sources: Choice[]; people: Choice[] } {
   const present = new Set<string | undefined>(
     records.map((record) => parseItemId(record.id)?.kind),
@@ -88,7 +79,6 @@ function choices(records: readonly IndexRecord[]): { sources: Choice[]; people: 
 
 const names = new Intl.Collator("en");
 
-// Where each of `rows` lives in its source, for an http(s) location only.
 function locations(rows: readonly ItemRow[], records: readonly IndexRecord[]) {
   const ids = new Set(rows.map((row) => row.id));
   return Object.fromEntries(
@@ -99,9 +89,6 @@ function locations(rows: readonly ItemRow[], records: readonly IndexRecord[]) {
   );
 }
 
-// The clusters as rows, each with its items as a cluster opened shows
-// them, or with none: Browse loads a cluster's items when it opens, a page
-// at a time (decision 0027).
 function clustersView(
   id: GroupingId,
   clusters: readonly Cluster[],
@@ -131,7 +118,6 @@ function clustersView(
   };
 }
 
-// The whole grouped list in one reply, every cluster with all its items.
 export function windowView(
   id: GroupingId,
   grouping: Grouping,
@@ -142,9 +128,6 @@ export function windowView(
   return clustersView(id, grouping.group(records, now, byItemId), records, now, fixture, true);
 }
 
-// Browse's first reply: the clusters as rows, with no items yet. Under a
-// filter, only the clusters with an item or an anchor it keeps, each saying
-// how many of its items it keeps; `items` counts those.
 export function browseView(
   id: GroupingId,
   grouping: Grouping,
@@ -185,9 +168,6 @@ export function browseView(
   };
 }
 
-// One page of a cluster's items, from the `from`th, as a cluster opened
-// shows them, only those a filter keeps; null when the grouping has no
-// cluster with that key now.
 export function clusterPage(
   id: GroupingId,
   grouping: Grouping,
@@ -200,7 +180,6 @@ export function clusterPage(
   const cluster = grouping.group(records, now, byItemId).find((each) => each.key === key);
   if (!cluster) return null;
   const known = new Map(records.map((record) => [record.id, record]));
-  // In the cluster's order, title hits first when a search filters it.
   const kept = cluster.itemIds.flatMap((item) => {
     const record = known.get(item);
     const matched = record === undefined ? null : keep ? keep(record) : "title";

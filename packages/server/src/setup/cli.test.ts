@@ -1,12 +1,7 @@
-// What the first run fetches before it runs anything: Anthropic's installer,
-// over HTTPS, from claude.ai's own hosts only, redirects included, and no
-// bigger than an installer is. The fetch is a stand-in; nothing reaches the
-// network.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fetchText, installerUrl } from "./cli.ts";
 
-// Answers each URL from a table: a body, or a redirect to another URL.
 function site(table: Record<string, { body?: string; location?: string; status?: number }>) {
   const asked: string[] = [];
   const send = (async (input: URL | Request | string, init?: RequestInit) => {

@@ -1,5 +1,3 @@
-// Settings: kept in one file in the data folder, read field by field, and
-// changed one setting at a time, each checked.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

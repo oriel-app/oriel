@@ -1,11 +1,9 @@
-// Browse's cluster rows count what Make workstream holds (OA-163, #123: a
-// row's count left out its epic, so the workstream held one more than it said).
+// Defect fixed in abdf6d4f: a row's count left out its epic, so the workstream held one more than it said.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { WindowView, WorkstreamSummary } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 
-// SYN, with 120 more stories in SYN-1, the checkout epic (cluster 10001).
 const bigger = (t: Parameters<typeof testApp>[0]) =>
   testApp(t, {
     memory: true,
@@ -34,10 +32,8 @@ test("a cluster made a workstream holds as many items as its row says, not the p
   const { clusters } = json<WindowView>(await app.get("/api/browse?grouping=epic"));
   const checkout = clusters.find(({ row }) => row.key === "10001");
   assert.ok(checkout && checkout.row.count > 50);
-  // Its items, and the epic itself.
   assert.equal(checkout.row.size, checkout.row.count + 1);
   assert.equal(await make("epic", "10001"), checkout.row.size);
-  // A cluster with no anchor holds its items.
   const stuck = json<WindowView>(await app.get("/api/browse?grouping=stuck")).clusters[0];
   assert.ok(stuck && stuck.row.anchor === null && stuck.row.count > 0);
   assert.equal(stuck.row.size, stuck.row.count);

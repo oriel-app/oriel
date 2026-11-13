@@ -1,9 +1,4 @@
-// The one read layer over Oriel's own data (decision 0024, OA-108): the
-// workspace's workstreams and threads, what each thread's change sets wrote
-// where, and the one search over them. The agent's `workstream` and `thread`
-// namespaces and the window's search route both call it, so both doors find
-// the same things. It reads no source: what a change set wrote is told from
-// its rows and the index (`ChangeSets.changes`).
+// The agent's namespaces and the window's search both call it, so both doors find the same things. It reads no source.
 import {
   type ChangeSetRead,
   type ChangeSets,
@@ -24,18 +19,12 @@ export type OrielReadDeps = {
   workstreams: WorkstreamStore;
   threads: ThreadStore;
   changeSets: Pick<ChangeSets, "ofThread" | "changes">;
-  // A thread's title as the window shows it, or null before it has one.
   title(threadId: Ulid): string | null;
-  // What a person calls an ID a change set names, such as a channel, and an
-  // item's title, from what Oriel has indexed.
   known(): Known;
   now(): Instant;
 };
 
-// What was said in a thread, as one text: the user's words and the agent's
-// replies, joined up as the agent's own history has them. A message held
-// from anyone else is in neither until the user sends it, as their own
-// (decision 0024).
+// A message held from anyone else is in neither until the user sends it, as their own.
 const said = (messages: readonly Message[]): string =>
   history(messages, () => "")
     .flatMap((m) => (m.role === "user" || m.role === "assistant" ? [m.text] : []))
@@ -44,7 +33,6 @@ const said = (messages: readonly Message[]): string =>
 export function orielReads(deps: OrielReadDeps): OrielReads {
   const { threads, workstreams } = deps;
 
-  // Most recently active first, as the sidebar lists them.
   const threadReads = (): ThreadRead[] =>
     threads
       .list(deps.workspaceId, deps.now())
@@ -60,7 +48,6 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
         activityAt,
       }));
 
-  // Each thread's change sets, newest first, read as a person reads them.
   const setsOf = async (ids: readonly Ulid[]): Promise<ChangeSetRead[]> => {
     const known = deps.known();
     const each = await Promise.all(
@@ -113,7 +100,6 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
 
     async changeSets(thread) {
       const ids = thread === null ? threadReads().map((t) => t.id) : [thread];
-      // A thread that isn't in the workspace, or was deleted, has none to show.
       const live = ids.filter(
         (id) => threads.get(id, deps.now())?.workspaceId === deps.workspaceId,
       );

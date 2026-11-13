@@ -1,7 +1,4 @@
-// What a line from the person's CLI or its installer may say in the log they
-// can copy to whoever helps them (decision 0038): never a password, a key, a
-// code, an email, or a link's query, where a sign-in link carries its state
-// and code. Oriel's own lines are written by Oriel and need none of this.
+// Never a password, a key, a code, an email, or a link's query, where a sign-in link carries its state and code.
 import { homeRelativeIn } from "@oriel/core";
 
 const maxLine = 300;

@@ -1,7 +1,3 @@
-// Asking to change the item you're looking at (decision 0062): a thread
-// adds it to its workstream, with Undo, and proposes the change in the same
-// turn; the window chat, which changes no item, offers Continue in…, whose
-// one button carries the request to a thread that can.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { ChatEntry, DiffView, ThreadView } from "@oriel/web/view";
@@ -9,7 +5,6 @@ import type { TurnInput } from "./agent.ts";
 import type { Step } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
-// A bug no workstream holds, unestimated, outside the checkout epic.
 const bug = "jira:SYN-17";
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 const looking = [{ id: bug, under: null }];
@@ -20,8 +15,6 @@ const scripts: Record<string, Script> = {
   offer: async () => ({ drafts: [["window.continue", [{ item: bug }]]] }),
 };
 
-// As the agent is told to: in the window chat, Continue in…; in a thread,
-// the item added first when it is outside the region, then the change.
 const plan = (input: TurnInput): Step[] => {
   const about = input.about?.[0];
   if (!about) return [{ text: "Hello." }];
@@ -48,7 +41,6 @@ test("a thread asked to change a looked-at item outside its region adds it, with
   const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
   const asked = view.entries.findLast((e) => e.kind === "user");
   assert.deepEqual(asked?.kind === "user" && asked.about, [{ id: bug, outside: true }]);
-  // It joined with its Undo and its marker, before the change set.
   const turn = view.entries.slice(view.entries.indexOf(asked as ChatEntry));
   const lines = turn.flatMap((e) => (e.kind === "actions" ? e.lines : []));
   assert.deepEqual(
@@ -71,7 +63,6 @@ test("the window chat asked to change an item offers one Continue, which lands i
   const { id: chat } = json<{ id: string }>(asked);
   await app.app.settled();
   const before = json<ThreadView>(await app.get(`/api/threads/${chat}`));
-  // One button, under a one-line reply: no workstream holds the bug yet.
   const offers = before.entries.filter((e) => e.kind === "continue");
   assert.equal(offers.length, 1);
   const [offer] = offers;
@@ -88,8 +79,6 @@ test("the window chat asked to change an item offers one Continue, which lands i
   const { thread } = json<{ thread: string }>(pressed);
   await app.app.settled();
   const there = json<ThreadView>(await app.get(`/api/threads/${thread}`));
-  // A workstream named for the bug, holding it, so the request is about an
-  // item in the region, sent as the user's, from the window chat.
   assert.equal(there.workstream.name, "Crew login times out during the morning shift change");
   assert.deepEqual(
     there.members.map((m) => m.ref.id),
@@ -107,8 +96,6 @@ test("the window chat asked to change an item offers one Continue, which lands i
   ]);
   assert.deepEqual(await proposed(app, there), [bug]);
 
-  // The window chat was left as New chat leaves it, and the button now
-  // links to where the request went on.
   assert.equal(json<{ thread: string | null }>(await app.get("/api/window-chat")).thread, null);
   const after = json<ThreadView>(await app.get(`/api/threads/${chat}`));
   assert.equal(after.state, "done");

@@ -34,8 +34,6 @@ test("a request the protocol doesn't allow is never sent", async () => {
   input.write(`${secret}\n`);
   lines.ready("http://127.0.0.1:4320/");
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "../Jira" }), Error);
-  // Only the name the server keeps: the API key. No connection keeps a
-  // secret since decision 0059, nor does Jira's from before connections.
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "slack" }), Error);
   for (const name of [
     "jira",

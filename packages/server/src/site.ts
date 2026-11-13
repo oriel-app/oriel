@@ -5,33 +5,18 @@ import { defaultTheme } from "@oriel/web/themes";
 import { settingsSections, type TextSize } from "@oriel/web/view";
 import { hasLaunchSecret, refusal } from "./guard.ts";
 
-// Everything the server serves. Paths are absolute.
 export type Site = {
   port: number;
-  // The web app's compiled modules, served under /app/, and its entry module.
   dist: string;
   entry: string;
-  // Static files, served under /assets/.
   assets: string;
-  // Bare specifier → ES module file, served at `vendorPath(specifier)` and
-  // named in the page's import map. Only these files are served.
+  // Only these files are served.
   vendor: ReadonlyMap<string, string>;
-  // The person's theme and text size, which the page's <html> carries, so
-  // its first paint is right with no script (decision 0034). The default
-  // ones when absent.
   look?: () => Look;
-  // The JSON routes under /api/, past the guard; null for a path it doesn't
-  // have, which then 404s.
   api?: (request: Request, url: URL) => Promise<Reply | null>;
-  // In the desktop app, the launch secret every request but a review link's
-  // must carry in this cookie (decision 0036). `pnpm dev` has none.
   launch?: { cookie: string; secret: string };
-  // Where the first run is (decision 0038): until it has finished, every
-  // page opens it; once finished, it never shows again. Absent under
-  // `pnpm dev`, which has no first run.
   firstRun?: () => "pending" | "finished";
-  // The sketch origin, which the window's pages may frame, and a review
-  // link's page may not (decision 0033).
+  // A review link's page may not frame it.
   sketches?: string;
 };
 
@@ -45,13 +30,9 @@ export type Request = {
     "content-type"?: string;
     "last-event-id"?: string | string[];
   };
-  // Reads the body, or null when it is longer than `limit` bytes. A route
-  // that takes no body never reads it.
   body?: (limit: number) => Promise<string | null>;
 };
 
-// A reply with a `stream` sends it after `body`, chunk by chunk, until it
-// ends or the client leaves, when its iterator's `return` is called.
 export type Reply = {
   status: number;
   headers: Record<string, string>;
@@ -78,10 +59,8 @@ export function htmlTag({ theme, textSize }: Look): string {
   return `<html lang="en"${themed}${sized}>`;
 }
 
-// Every reply carries these. A review link's page relies on two of them: no
-// referrer, so its token never leaves in a Referer header, and no caching.
-// `frames`: the one origin a page may frame, the sketch origin; a review
-// link's page frames nothing.
+// A review link's page relies on two of these: no referrer, so its token never leaves in a Referer header, and no caching.
+// `frames`: the one origin a page may frame, the sketch origin; a review link's page frames nothing.
 export function securityHeaders(
   importMapHash: string,
   frames: string | null = null,
@@ -106,30 +85,23 @@ export function securityHeaders(
   };
 }
 
-// The app's own pages: each is the same shell, which routes in the browser.
 const ulidPath = "[0-9A-HJKMNP-TV-Z]{26}";
 const pagePaths = [
   /^\/$/,
   /^\/browse$/,
   /^\/done$/,
-  // Providers, the first, is /settings itself.
   new RegExp(`^/settings(?:/(?:${settingsSections.slice(1).join("|")}))?$`),
   /^\/setup$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
-  // A thread not started yet: a draft in the browser until its first message.
   /^\/threads\/new$/,
 ];
-// A workstream's page was /groups/:id until OA-98; a link to it still leads
-// there.
+// A workstream's page was /groups/:id; a link to it still leads there.
 const oldWorkstreamPath = new RegExp(`^/groups/(${ulidPath})$`);
-// A review link: the shell only. Its GET opens and decides nothing, because
-// chat apps unfurl links with GETs; the page asks with an explicit POST.
+// Its GET opens and decides nothing, because chat apps unfurl links with GETs; the page asks with an explicit POST.
 const reviewPath = /^\/review\/[A-Za-z0-9_-]{1,64}$/;
 
-// What a review link's page needs, where the review token is the credential:
-// the only requests the desktop app answers without its launch secret. Making
-// or revoking a link isn't among them.
+// The only requests the desktop app answers without its launch secret; making or revoking a link isn't among them.
 function forReviewers(method: string, path: string): boolean {
   if (method === "POST") return /^\/api\/review\/(open|decide|dismiss)$/.test(path);
   if (method !== "GET" && method !== "HEAD") return false;
@@ -140,7 +112,7 @@ export function vendorPath(specifier: string): string {
   return `/vendor/${specifier}.js`;
 }
 
-// The file `rest` names inside `root`, or null if it would leave `root`.
+// Null if it would leave `root`.
 export function within(root: string, rest: string): string | null {
   let decoded: string;
   try {

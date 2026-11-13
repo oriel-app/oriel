@@ -1,8 +1,3 @@
-// Google Sheets through sheets-mcp in the person's agent (decisions 0050,
-// 0051 and 0059), against the Sheets fixture's stand-in for Google, which a
-// fake of the server's read tools reads: asking about a tab sends the agent
-// its ID, never the sheet's words, and a new row ID column's Undo brings
-// each row's item back.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { loadSheetsFixture } from "@oriel/sheets";
@@ -14,10 +9,6 @@ const idOf = (slug: string) => fixture.spreadsheets.find((s) => s.slug === slug)
 const tracker = idOf("tracker");
 const raid = idOf("raid");
 
-// Asked to change a tab of a connection that reads (OA-232): its options,
-// as preview() gives them, by letter, with the tracker's tab changed as
-// `fix` says, by default its key moved to its ID column, and every other
-// tab kept.
 const fix = (tab: { key: string }): object => ({ ...tab, key: "A" });
 const fixing: Script = async (bindings) => {
   const [reads] = (await bindings.read("source.preview", [])).value as {
@@ -50,8 +41,6 @@ async function sheetsApp(t: TestContext) {
   return { ...it, turns };
 }
 
-// Sheets turned on through sheets-mcp, and the tracker and the RAID log
-// picked there (decision 0059), as the person does in Settings.
 async function connected(it: Awaited<ReturnType<typeof sheetsApp>>): Promise<ConnectionView> {
   assert.equal((await it.turnOn("sheets")).status, 200);
   const kept = await it.connection("sheets");
@@ -72,7 +61,6 @@ test("Ask Oriel about a tab names it by its ID alone: no words of the sheet reac
   const { guess } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
   await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
   const at = `${tracker}/1100`;
-  // Only one of its own tables, by its place.
   assert.equal((await it.post(`/api/connections/${sheets.id}/draft`, { tab: "x/1" })).status, 400);
   assert.equal(
     (await it.post(`/api/connections/${sheets.id}/draft`, { tab: "Tracker" })).status,

@@ -1,7 +1,3 @@
-// Connections as the server keeps them (decision 0049): a database from
-// before them moves in with every item where it was, a disconnected
-// connection comes back under its ID, number and items' IDs, and what was
-// kept of their secrets before decision 0059 is retired.
 import assert from "node:assert/strict";
 import {
   existsSync,
@@ -56,8 +52,6 @@ const items = (path: string) =>
 
 test("a database from before connections moves in: a folder and Slack, with every item and sync state where it was", async (t) => {
   const { top, notes } = scratch(t);
-  // Today's items, as the adapters made them: synced into a database of
-  // this code's own, and copied into one at today's schema.
   const made = join(top, "made.db");
   const maker = await testApp(t, { db: made, memory: true, slack: { mode: "fixture" } });
   assert.equal((await maker.connect("folder", { path: notes })).status, 200);
@@ -77,7 +71,6 @@ test("a database from before connections moves in: a folder and Slack, with ever
   );
   ensureWorkspace(today, { id: workspaceId, name: "Oriel" }, instant(new Date(t0)));
   today.exec(`attach database '${made}' as made`);
-  // Only the columns items had then.
   const columns = today
     .prepare("select name from pragma_table_info('items')")
     .all()
@@ -91,7 +84,6 @@ test("a database from before connections moves in: a folder and Slack, with ever
     .prepare("insert into folders (id, workspace_id, path, connected_at) values (?, ?, ?, ?)")
     .run(folderConnection.id, workspaceId, notes, t0);
   today.exec("detach database made");
-  // A workstream that holds a file and a message.
   const held = [
     rows(path, "select item_id from items where source = 'folder'")[0]?.item_id,
     rows(path, "select item_id from items where source = 'slack'")[0]?.item_id,
@@ -104,8 +96,6 @@ test("a database from before connections moves in: a folder and Slack, with ever
   );
   assert.deepEqual([...new Set(before.map((row) => row.source))], ["folder", "jira", "slack"]);
 
-  // Jira, which turns on through its server since decision 0059, is off:
-  // its items stay, for when it's on.
   const app = await testApp(t, { db: path, jira: false, slack: { mode: "fixture" } });
   const { id: workstreamId } = json<{ id: string }>(
     await app.post("/api/workstreams", { kind: "picked", name: "Mixed", items: held }),
@@ -117,10 +107,7 @@ test("a database from before connections moves in: a folder and Slack, with ever
   );
   await app.app.close();
 
-  // Every item, and every source's sync state, as it was.
   assert.deepEqual(items(path), before);
-  // Every cursor starts over (migration 0025), and the next sync sets it:
-  // Jira's, which is off, once it's on.
   assert.deepEqual(
     rows(path, "select workspace_id, source, cursor, synced_at from sources order by source"),
     sourcesBefore.map((row) => (row.source === "jira" ? { ...row, cursor: null } : row)),
@@ -140,7 +127,6 @@ test("a database from before connections moves in: a folder and Slack, with ever
         { channels: ["C0FW1WEATHR"] },
         null,
       ],
-      // The stand-in tracker's, on as no tracker is (decision 0059).
       ["tracker", "tracker", "oriel", {}, null],
     ],
   );
@@ -169,7 +155,6 @@ test("a folder disconnected and connected again comes back under its ID and numb
   const ids = items(path).filter((row) => row.gone_at === null && row.source === "folder");
   await first.app.close();
 
-  // Disconnected: its options and items go, and a tombstone stays.
   const db = open(path);
   let n = 0;
   const connections = connectionsOf({
@@ -182,7 +167,6 @@ test("a folder disconnected and connected again comes back under its ID and numb
   });
   const connection = connections.first("folder");
   assert.ok(connection);
-  // A second connection to the same folder is refused, with the one there is.
   assert.deepEqual(connections.connect({ kind: "folder", identity: notes, options: {} }), {
     taken: connection,
   });
@@ -249,7 +233,6 @@ test("retiring deletes every database's connection secrets, a fresh one's too, a
   assert.deepEqual(readdirSync(root).toSorted(), ["fresh", "keep.txt", "window"]);
   assert.deepEqual(readdirSync(window), ["connection.x"]);
   assert.deepEqual(readdirSync(join(root, "fresh")), [], "an emptied database folder goes");
-  // Nothing left: nothing to do.
   assert.equal(retire.retire(), 0);
 });
 

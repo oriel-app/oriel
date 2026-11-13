@@ -1,5 +1,3 @@
-// Asking Claude Code for the plan's windows (decision 0046) runs the CLI, so
-// it runs only one the trust check passes.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ClaudeCode } from "@oriel/agent";

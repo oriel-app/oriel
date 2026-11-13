@@ -1,6 +1,3 @@
-// A comment on a Jira issue through a change set: approving posts it and
-// leaves the description alone, and a revert deletes it, or stops when a
-// teammate edited it since. Jira is SYN in memory.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { ChangeSetView, DiffView, ThreadView } from "@oriel/web/view";
@@ -46,7 +43,6 @@ async function proposed(t: TestContext) {
 test("an approved comment is posted on the issue, the description untouched, and a revert deletes it", async (t) => {
   const app = await proposed(t);
   const description = app.site.issue("SYN-45")?.description;
-  // Nothing reaches Jira before the approval.
   assert.equal(app.site.issue("SYN-45")?.comments.length, 0);
   assert.equal((await app.approve()).changeSet.status, "applied");
   assert.deepEqual(

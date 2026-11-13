@@ -1,5 +1,3 @@
-// @oriel/agent's loop, wired as main.ts wires it, over a provider that
-// answers from a script instead of a model: one run, then a reply.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { agent, type ModelEvent, type Provider, runToolName, type Usage } from "@oriel/agent";
@@ -8,7 +6,6 @@ import { json, type Script, testApp } from "./testing.ts";
 
 const usage: Usage = { inputTokens: 40, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
-// The first response asks for a run of `script`; the next one answers.
 function provider(script: string): Provider {
   return {
     converse() {
@@ -36,7 +33,6 @@ const spend = (inputTokens: number, outputTokens: number): Usage => ({
   cacheWriteTokens: 0,
 });
 
-// Answers each response with `responses`, in order, the same each turn.
 function answering(responses: ModelEvent[][]): Provider {
   return {
     converse() {
@@ -63,9 +59,7 @@ const thread = async (app: Awaited<ReturnType<typeof testApp>>) => {
 };
 
 test("a thread whose spend leaves less than a useful response: the agent stops the next turn, then the server holds it", async (t) => {
-  // 10,000 tokens a thread; the first turn spends 6,000, which leaves the
-  // agent too little for a useful response. The server doesn't work that out:
-  // the agent does, and ends the next turn on its cap.
+  // The server doesn't work out that too little is left: the agent does, and ends the next turn on its cap.
   const reply: ModelEvent[] = [
     { kind: "text", text: "Done." },
     { kind: "end", stop: "done", detail: null, model: "m", usage: spend(3000, 3000) },
@@ -87,7 +81,6 @@ test("a thread whose spend leaves less than a useful response: the agent stops t
   const after = json<ThreadView>(await app.get(`/api/threads/${id}`));
   assert.equal(after.entries.at(-1)?.kind, "limit");
   assert.equal(after.entries.filter((e) => e.kind === "user").length, 2);
-  // Once is enough.
   assert.equal((await app.post(`/api/threads/${id}/messages`, { text: "Four" })).status, 409);
   assert.equal(
     json<ThreadView>(await app.get(`/api/threads/${id}`)).entries.length,

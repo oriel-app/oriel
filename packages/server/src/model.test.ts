@@ -1,6 +1,3 @@
-// Which model the server runs the agent on, where a secret or an untrusted
-// CLI could leak or run: the key never shows, a CLI the trust check refuses
-// never runs, and a local server starts only by its own entry's command.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,10 +8,8 @@ import { defaultSettings, settingsFile } from "./settings.ts";
 
 const cli = { path: "/usr/local/bin/claude", version: "2.1.314" };
 const found = async () => ({ ok: true as const, cli });
-// No codex on this PATH.
 const env = { PATH: "" };
 
-// What each title ran on, by instance and model.
 const titled = (options: Omit<ModelsOptions, "env" | "titler">) =>
   models({ env, ...options, titler: (r) => async () => `${r.provider.id} ${r.model}` });
 
@@ -31,8 +26,6 @@ test("the providers' rows and the model's description never carry the key", asyn
   assert.doesNotMatch(chooser.describe(defaultSettings), /sk-ant-secret-value/);
 });
 
-// QA, 2026-11-08 (after #237): with `.env`'s key and an older settings file
-// listing the key first, the key ran threads, and it has no MCP servers.
 test("with no key asked for, an older file's API key runs nothing, and Claude Code runs", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "oriel-order-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

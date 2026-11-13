@@ -1,10 +1,4 @@
-// The host's list under the agent's reply, as the window shows it (decision
-// 0024): a plain sentence for each call it applied, and for each it refused,
-// with why, naming the workstream or thread it touched. Every action has its
-// words here, so one the registry gains can't show without them. An applied
-// one offers its Undo, through the one path every Undo takes; once the user
-// undid it, it says so and offers the call that does it again, if any. What
-// no Undo gives back says why.
+// Every action has its words here, so one the registry gains can't show without them.
 import { type ActionLine, type ActionName, parseItemId, type Ulid } from "@oriel/core";
 import { declarationOf } from "@oriel/sources";
 import type { ActionLineView } from "@oriel/web/view";
@@ -13,9 +7,7 @@ const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 const kindName = (kind: unknown) => declarationOf(String(kind))?.name ?? String(kind);
 const shown = 6;
 
-// "SYN-3", "SYN-3 and SYN-7", "SYN-1, SYN-2 and SYN-3", or, for what wasn't
-// done, the first few and how many more. What was done names every item: the
-// thread's marker for it folds into this line, which is then its record.
+// What was done names every item: the thread's marker for it folds into this line, which is then its record.
 function listed(value: unknown, every = false): string {
   const keys = [...new Set(Array.isArray(value) ? value : [])].map((id) => keyOf(String(id)));
   if (keys.length > shown && !every)
@@ -24,13 +16,8 @@ function listed(value: unknown, every = false): string {
   return `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
 }
 
-// As the workstream has it: a name is trimmed when it is given.
 const quoted = (name: unknown) => `“${String(name).trim()}”`;
 
-// What each action did, then what it would have done, given its input, the
-// place it touched, and what its undo gives back: the items an add added,
-// none of those it already had, and a rename's name before, none when the
-// name was already that.
 type Words = (
   input: Record<string, unknown>,
   place: string,
@@ -58,7 +45,6 @@ const words: { [N in ActionName]: Words } = {
       : `Renamed ${quoted(undo["name"])} to ${quoted(input["name"])}`,
     `rename ${place} to ${quoted(input["name"])}`,
   ],
-  // Done already, it keeps who marked it, and there is nothing to undo.
   "workstream.done": (_, place, undo) => [
     undo === null ? `Left ${place} marked done, as it already was` : `Marked ${place} done`,
     `mark ${place} done`,
@@ -66,7 +52,6 @@ const words: { [N in ActionName]: Words } = {
   "workstream.reopen": (_, place) => [`Reopened ${place}`, `reopen ${place}`],
   "workstream.delete": (_, place) => [`Deleted ${place}`, `delete ${place}`],
   "workstream.restore": (_, place) => [`Brought back ${place}`, `bring back ${place}`],
-  // Marked done already, it keeps who marked it, and there is nothing to undo.
   "thread.done": (_, place, undo) => [
     undo === null ? `Left ${place} marked done, as it already was` : `Marked ${place} done`,
     `mark ${place} done`,
@@ -128,7 +113,6 @@ const words: { [N in ActionName]: Words } = {
     "set how a connection reads its source",
   ],
   "source.sync": () => ["Synced a connection", "sync a connection"],
-  // A kind by its name as a person knows it, such as Slack.
   "source.off": (input) => [
     `Turned ${kindName(input["kind"])} off: its items don't show until you turn it on in Settings`,
     `turn ${kindName(input["kind"])} off`,
@@ -148,9 +132,6 @@ const words: { [N in ActionName]: Words } = {
   "noticed.unpin": () => ["Removed a pin", "remove a pin"],
 };
 
-// Why what a removal took out can't come back, by source, as its
-// declaration names it: "It's deleted in Jira, so it can't be added back."
-// The items are named only when some of what it took out can come back.
 function lost(gone: readonly string[], all: boolean): string {
   const bySource = Map.groupBy(gone, (id) => parseItemId(id)?.kind ?? "");
   const where = [...bySource].map(([kind, ids]) => {
@@ -163,7 +144,6 @@ function lost(gone: readonly string[], all: boolean): string {
   return ` ${where.join(", and ")}, so ${them} can't be added back.`;
 }
 
-// One line as the window shows it, in the thread `own` whose agent asked.
 export function actionLineView(
   line: ActionLine,
   own: { thread: Ulid; workstream: Ulid },
@@ -187,7 +167,6 @@ export function actionLineView(
     applied: line.applied,
     ...(undone ? { undone: true as const } : {}),
     why: line.applied ? null : line.why,
-    // Nothing links to the thread the list is in.
     touched:
       touched.id === null || (mine && touched.kind === "thread")
         ? null

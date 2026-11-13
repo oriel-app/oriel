@@ -1,5 +1,3 @@
-// The server's desktop mode end to end, in this process: a fake shell on
-// its stdin and stdout, and the server on a loopback port the OS picks.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -29,8 +27,6 @@ function folder(t: { after(fn: () => void): void }): string {
   return data;
 }
 
-// A shell that keeps secrets in memory and answers every request at once.
-// `model` stands in for main.ts's, in place of the scripted agent.
 function start(
   data: string,
   firstPort = 0,
@@ -39,7 +35,6 @@ function start(
   const input = new PassThrough();
   const out: ServerLine[] = [];
   const logged: { message: string; fields: Record<string, unknown> }[] = [];
-  // Jira, as SYN on a site in memory.
   const site = memorySite(loadJiraFixture(), instant(new Date(t0)));
   const secrets = given?.secrets ?? new Map<string, string>();
   const signals = new EventEmitter();
@@ -93,13 +88,11 @@ test("desktop mode answers only with the launch cookie, a review link without it
   const url = await reviewLink(serving);
   assert.equal(new URL(url).origin, new URL(serving.url).origin);
   const token = new URL(url).pathname.split("/").at(-1);
-  // As a reviewer, with no cookie.
   assert.equal((await send(serving.url, new URL(url).pathname, undefined, false)).status, 200);
   assert.equal((await send(serving.url, "/api/review/open", { token }, false)).status, 200);
 
   shell.input.end();
   assert.equal(await exited, 0);
-  // Closed, so the database opens again, and the link died at quit.
   open(join(data, "oriel.db"), { exclusive: true }).close();
   const after = await testApp(t, { db: join(data, "oriel.db") });
   assert.equal((await after.post("/api/review/open", { token })).status, 404);
@@ -180,7 +173,6 @@ test("review links a killed launch left live are revoked at the next launch", as
   assert.equal(await again.exited, 0);
 });
 
-// A request to the server, with the launch cookie unless `asApp` is false.
 function send(base: string, path: string, body?: unknown, asApp = true): Promise<Response> {
   return fetch(new URL(path, base), {
     method: body === undefined ? "GET" : "POST",
@@ -193,7 +185,6 @@ function send(base: string, path: string, body?: unknown, asApp = true): Promise
   });
 }
 
-// Makes a change set in a new workstream's thread, and a review link to it.
 async function reviewLink(serving: Serving): Promise<string> {
   const call = async <T>(path: string, body?: unknown): Promise<T> => {
     const reply = await send(serving.url, path, body);

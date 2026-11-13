@@ -373,6 +373,7 @@ export const commentsCleaned = [
   "packages/tracker/",
   "packages/standin-mcp/",
   "packages/web/",
+  "packages/server/",
 ];
 export const commentsCleanedLater = [
   "packages/core/src/telemetry.ts",
@@ -393,6 +394,10 @@ export const commentsCleanedLater = [
   "packages/web/src/undo-stack.tsx",
   "packages/web/src/window-chat.ts",
   "packages/web/src/workstream-page.tsx",
+  "packages/server/src/app.ts",
+  "packages/server/src/api.ts",
+  "packages/server/src/actions.ts",
+  "packages/server/src/turns.ts",
 ];
 
 export function matches(name: string, entry: string): boolean {

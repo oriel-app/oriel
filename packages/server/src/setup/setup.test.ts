@@ -1,10 +1,3 @@
-// The first run's commands against stand-ins: an installer script that
-// prints Anthropic's installer's lines and leaves a stub `claude` where it
-// does, stub CLIs that answer `auth login`, `auth status` and `update` as
-// Claude Code does, and a stub `codex` that answers `login` as Codex does.
-// Each runs as a real child in a throwaway home, by
-// /bin/bash, never from the network; the signature check, the test turn and
-// the window's shell are stand-ins too.
 import assert from "node:assert/strict";
 import {
   existsSync,
@@ -28,8 +21,6 @@ import { startChild, type Start } from "./cli.ts";
 import { type SetupOptions, type TestTurn } from "./setup.ts";
 import { memorySetup } from "./state.ts";
 
-// A stub `claude`, as a shell script. `login`: what `auth login` does, after
-// printing the CLI's lines: sign in, or fail. `version`: what it says it is.
 function stubCli(options: { version?: string; login?: "signs-in" | "fails" } = {}): string {
   const version = options.version ?? "2.1.317";
   return [
@@ -55,7 +46,6 @@ function stubCli(options: { version?: string; login?: "signs-in" | "fails" } = {
   ].join("\n");
 }
 
-// A stub `codex`: `login` prints Codex's lines, then signs in or fails.
 function stubCodex(login: "signs-in" | "fails"): string {
   return [
     "#!/bin/bash",
@@ -72,9 +62,6 @@ function stubCodex(login: "signs-in" | "fails"): string {
   ].join("\n");
 }
 
-// The installer as Anthropic's prints: nothing while it downloads, then
-// "Setting up Claude Code...", then the binary sets itself up. This one
-// notes what it was given, then leaves a stub CLI in the installer's places.
 function stubInstaller(options: { fails?: "downloading" | "setting-up" } = {}): string {
   return [
     "#!/bin/bash",
@@ -105,33 +92,24 @@ function stubInstaller(options: { fails?: "downloading" | "setting-up" } = {}): 
 
 type World = {
   home: string;
-  // Who brought the window to the front, and what the trust check saw.
   fronted: number;
   trusted: string[];
-  // Each test turn, by CLI and model.
   tested: string[];
 };
 
-// A home with Claude Code installed or not, signed in or not, and the app
-// over it with the first run, as the desktop app has it.
 async function firstRun(
   t: Parameters<typeof testApp>[0] & { after(fn: () => void | Promise<void>): void },
   options: {
-    // `brew`: where Homebrew's cask keeps it, linked from its bin.
     installed?: { version?: string; login?: "signs-in" | "fails"; brew?: true };
     signedIn?: boolean;
     installer?: string;
-    // The installer's script arrives only when this resolves.
     script?: Promise<string>;
     latest?: string;
     trust?: (path: string) => string | null;
     testTurn?: TestTurn;
     start?: Start;
-    // A stub Codex on the PATH, signed in or not, and how its sign-in ends.
     codex?: { signedIn?: boolean; login?: "signs-in" | "fails" };
-    // Its update brings it up to date, and each check after it waits here.
     updates?: { held: (release: () => void) => void };
-    // As under `pnpm desktop:try`.
     placeholder?: boolean;
   } = {},
 ) {
@@ -167,8 +145,6 @@ async function firstRun(
     world.trusted.push(path);
     return options.trust?.(path) ?? null;
   };
-  // The harness's check, as far as a stub answers it: found on the PATH, the
-  // version it says, and signed in once its sign-in left its mark.
   const check = async ({ env: given, path }: CheckOptions) => {
     const cli = locateClaudeCode(given ?? {}, path);
     if (!cli)
@@ -185,8 +161,6 @@ async function firstRun(
       ? { ok: true as const, cli: { path: cli, version } }
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };
-  // Codex's check, as far as its stub answers: found, and signed in once its
-  // sign-in left its mark. The real check, which starts Codex, never runs.
   const checkCodex = async ({ env: given, path }: CheckOptions) => {
     const cli = locateCodex(given ?? {}, path);
     if (!cli)
@@ -249,7 +223,6 @@ test("a binary whose signature isn't Anthropic's is never run, and its row says 
   assert.equal(cli?.state, "untrusted");
   assert.equal(cli?.failed?.why, "untrusted");
   assert.equal(providers.find((p) => p.kind === "claude-code")?.status, "untrusted");
-  // Nor does a sign-in run it.
   await run.send("/api/setup/cli", { command: "sign-in" });
   await run.app.settled();
   assert.equal(existsSync(join(run.world.home, "login-args")), false);
@@ -300,7 +273,6 @@ test("a sign-in that doesn't finish says so, and its log holds no email, key, co
 });
 
 test("an update that worked says so, even when another look starts during the step's (OA-208)", async (t) => {
-  // Each check after the update waits until the test lets it answer.
   const held: (() => void)[] = [];
   let waiting = Promise.withResolvers<void>();
   const run = await firstRun(t, {
@@ -315,11 +287,9 @@ test("an update that worked says so, even when another look starts during the st
   });
   await run.send("/api/setup/cli", { command: "update" });
   await waiting.promise;
-  // The step's look is checking; the page opening starts a second.
   waiting = Promise.withResolvers<void>();
   const opened = run.send("/api/setup/progress", { did: "opened" });
   await waiting.promise;
-  // The step's look answers first, and the page's after it.
   held[0]?.();
   await new Promise((resolve) => setImmediate(resolve));
   held[1]?.();

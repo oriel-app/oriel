@@ -1,22 +1,11 @@
-// A scripted stand-in for the agent, for tests and for `pnpm dev` until
-// @oriel/agent is wired in. It speaks the same contract and uses the same
-// deps. A turn follows a plan instead of a model, but its runs are real: the
-// sandbox runs each script against the region's bindings, and the run is
-// recorded. What the last run to capture writes captured becomes the change
-// set, and the last run's intents apply, as for any agent (`proposal`); the
-// blocks and sketches its runs ask for show under its reply, as for any
-// agent (`turnShown`).
 import { createHash } from "node:crypto";
 import { proposal, turnShown } from "@oriel/agent";
 import { type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
 import { type Agent, type ServerAgentDeps, type AgentEvent, type TurnInput } from "./agent.ts";
 
-// Text to say, a script to run, a search, which is a run whose result
-// renders as its own block, or a look through Oriel's own threads, which
-// answers with a link to the best match.
 export type Step = { text: string } | { run: string } | { search: string } | { threads: string };
 
-// Its system prompt is a constant, like the real agent's: no source content.
+// A constant, like the real agent's: no source content.
 const systemPrompt = "oriel scripted agent v1";
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -25,7 +14,6 @@ function returned(result: RunResult): unknown {
   return entry?.kind === "return" ? entry.value : undefined;
 }
 
-// As the contract asks, a turn ends with exactly one `done`, stopped or not.
 export function scriptedAgent(deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]): Agent {
   return {
     async *turn(input, options): AsyncGenerator<AgentEvent> {
@@ -50,12 +38,9 @@ async function* steps(
   { signal, log }: Parameters<Agent["turn"]>[1],
 ): AsyncGenerator<AgentEvent> {
   const { thread } = input;
-  // As for any agent, a run's additions to the thread's own workstream move
-  // the runs after it to the version they made (OA-312).
   let { region } = input;
   const proposed = proposal();
   const turnShows = turnShown(deps.newId);
-  // A run may capture no more than a change set may hold.
   const limits = {
     ...deps.limits.run,
     maxMutations: Math.min(deps.limits.run.maxMutations, deps.limits.maxMutationsPerChangeSet),
@@ -92,8 +77,6 @@ async function* steps(
       outputTokens: 0,
       startedAt,
     };
-    // Every line the run logs, each proxied read included, names the run as
-    // well as the thread (SPEC §9).
     const runLog: Log = (message, fields) => log(message, { ...fields, run_id: runId });
     let result: RunResult;
     try {
@@ -118,9 +101,7 @@ async function* steps(
     );
     yield { kind: "run.finished", runId, result };
     yield* shown.ran(result);
-    // A model reads a failed run and answers from it; the rest of the plan
-    // assumed the run worked, so the turn ends here, saying why, with what
-    // earlier runs proposed.
+    // A model reads a failed run and answers from it; the rest of the plan assumed the run worked, so the turn ends here.
     const failed = result.transcript.findLast((e) => e.kind === "error");
     if (result.outcome !== "ok" && failed?.kind === "error") {
       yield { kind: "text", text: `Nothing to propose: ${failed.error.message}.` };
@@ -147,8 +128,6 @@ const unestimated = stories.flatMap((story) =>
 for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, 3);
 return unestimated.slice(0, 3);`;
 
-// Revises the change set this thread's agent proposed and nobody has
-// decided on to `points` each (OA-309): Oriel takes only its own thread's.
 const reviseScript = (
   points: number,
 ) => `const waiting = (await thread.changeSets()).filter((set) => set.state === "pending");
@@ -160,14 +139,11 @@ const unestimated = stories.flatMap((story) =>
 for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, ${points});
 return unestimated.slice(0, 3);`;
 
-// Takes out of the workstream what Jira no longer has.
 const prune = `const stories = await jira.listItems();
 const gone = stories.flatMap((story) => (story.gone ? [story.id] : []));
 if (gone.length) workstream.remove({ items: gone });
 return gone;`;
 
-// Takes the finished stories out of the workstream, and closes the thread
-// when asked to: Oriel's own actions, applied as the turn ends.
 const tidyScript = (close: boolean) => `const stories = await jira.listItems();
 const finished = stories.flatMap((story) =>
   story.gone || story.issueType === "Epic" || story.status.category !== "done" ? [] : [story.id],
@@ -175,8 +151,6 @@ const finished = stories.flatMap((story) =>
 if (finished.length) workstream.remove({ items: finished });
 ${close ? "thread.done();\n" : ""}return finished;`;
 
-// Posts `text` beside the workstream's first Slack conversation, in its channel,
-// or replies in that conversation (OA-28).
 const slackScript = (fn: "postMessage" | "reply", text: string) => `const ids = (await items.list())
   .map((item) => item.id)
   .filter((id): id is SlackId => id.startsWith("slack:"));
@@ -192,12 +166,9 @@ return first ?? null;`;
 const commentAsk = /^\s*comment\b[:\s]*([\s\S]*)$/i;
 
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
-// A request to change what the message is about.
 const changeAsk = /\b(?:change|close|set|reassign|assign|estimate|update|edit|rename)\b/i;
 const threadsAsk = /^\s*where\b/i;
 
-// A reply naming the first thing thread.find() returned as a chip, as the
-// agent's would (decision 0032).
 function chipTo(found: unknown): string {
   const [first] = Array.isArray(found) ? found : [];
   const hit = typeof first === "object" && first !== null ? (first as Partial<ThreadFound>) : {};
@@ -230,17 +201,7 @@ const filler = new Set([
   "with",
 ]);
 
-// What `pnpm dev` answers with: a link to a thread when asked where
-// something happened, a search when asked to find something, an estimate
-// change when asked about estimates, the finished stories taken out of the
-// workstream when asked to (and the thread closed, if asked), a Slack post
-// or reply when asked to "post: …" or "reply: …", a Jira comment when asked
-// to "comment: …", and otherwise a read of every item in the region.
 export function devPlan(input: TurnInput): Step[] {
-  // A message about an item open beside the composer (decision 0062): it
-  // reads the item by its ID. Asked to change a Jira story, it proposes 3
-  // points: in the window chat, through Continue in…; outside the region,
-  // once it has added the story to the workstream.
   const looked = input.about?.[0];
   if (looked) {
     const id = JSON.stringify(looked.id);

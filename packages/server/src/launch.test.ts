@@ -1,6 +1,4 @@
-// The desktop app's launch secret (decision 0036): every request needs its
-// cookie, except what a review link's page needs, where the review token is
-// the credential.
+// Every request needs the launch cookie, except what a review link's page needs, where the review token is the credential.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -156,19 +154,16 @@ test("a review link's page, opening and deciding need no cookie; making or revok
   const url = new URL(json<{ url: string }>(minted).url);
   const token = url.pathname.split("/").at(-1);
 
-  // As the reviewer, who has no cookie.
   const page = await handle(get(url.pathname));
   assert.equal(page.status, 200);
   assert.match(String(page.body), /<div id="app">/);
   assert.equal(page.headers["referrer-policy"], "no-referrer");
   assert.equal(page.headers["x-robots-tag"], "noindex");
-  // The same page with the cookie, as the person sees it in the app.
   assert.deepEqual(await handle(get(url.pathname, { cookie })), page);
   const opened = await post("/api/review/open", { token });
   assert.equal(opened.status, 200);
   const review = json<ReviewView>(opened);
   assert.equal(review.changeSet.id, set.id);
-  // A reviewer can't revoke it, or reach anything else.
   assert.equal((await post(`${link}/revoke`, {})).status, 403);
   assert.equal((await handle(get(`/api/threads/${threadId}`))).status, 403);
   const decided = await post("/api/review/decide", {

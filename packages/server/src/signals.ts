@@ -1,9 +1,4 @@
-// Noticed's signals (decision 0052): what Oriel finds in
-// the window by its own rules, computed from the index, the change log and
-// the workstreams, as the overview is, never by a model. Each kind has a
-// read that needs no region, declared as a block's read is (decision 0030),
-// so a card's block is built by Oriel and pinned as a saved read that reruns
-// with no model.
+// Computed by Oriel's own rules, never by a model.
 import {
   buildBlock,
   type ChangeLogEntry,
@@ -26,19 +21,13 @@ import { declarationOf } from "@oriel/sources";
 
 export type SignalInput = {
   records: readonly IndexRecord[];
-  // Every change log entry kept, in the order they committed.
   changes: readonly ChangeLogEntry[];
-  // The open workstreams, with their members now.
   workstreams: readonly { id: string; name: string; members: readonly WorkstreamMember[] }[];
-  // When each workstream's threads were last active.
   threadActivity: ReadonlyMap<string, Instant>;
-  // The declared facet whose values each source's items add up, if any.
   estimateKey: (source: string) => { key: string; label: string } | null;
   now: Instant;
 };
 
-// The declared facet whose values a source's items add up, such as Jira's
-// estimate, by its connection's prefix, with its label; null for none.
 export const estimateKey = (source: string): { key: string; label: string } | null => {
   const kind = parseItemId(`${source}:x`)?.kind;
   const facets = (kind && declarationOf(kind)?.facets) || {};
@@ -50,17 +39,12 @@ const identity = (source: string, stableId: string) => `${source}\u0000${stableI
 const identityOf = (item: { id: string; stableId: string }) =>
   identity(parseItemId(item.id)?.prefix ?? "", item.stableId);
 
-// What the signals and their reads share: lookups made once.
 type Lookups = {
   byIdentity: ReadonlyMap<string, IndexRecord>;
   byId: ReadonlyMap<string, IndexRecord>;
   members: (workstream: SignalInput["workstreams"][number]) => IndexRecord[];
   doneAt: ReadonlyMap<string, Instant>;
-  // Chat messages by the stable ID of each item they name.
   named: ReadonlyMap<string, readonly IndexRecord[]>;
-  // Change log entries by item, and those that moved an item into a
-  // container by the container's stable ID, each in the order they
-  // committed, so no signal scans the whole log.
   changesOf: ReadonlyMap<string, readonly ChangeLogEntry[]>;
   joinedTo: ReadonlyMap<string, readonly ChangeLogEntry[]>;
 };
@@ -106,8 +90,7 @@ const latest = (instants: readonly string[]) =>
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// How long ago, in steps that double, so a dismissal holds while a stall
-// grows a little and lets go when it has doubled.
+// In steps that double, so a dismissal holds while a stall grows a little and lets go once it has doubled.
 const doubling = (n: number, from: number) => {
   let step = from;
   while (step * 2 <= n) step *= 2;
@@ -116,20 +99,16 @@ const doubling = (n: number, from: number) => {
 
 const keyOf = (record: IndexRecord) => parseItemId(record.id)?.key ?? record.id;
 
-// The reads a card's block names. Each declares its result's fields, as
-// search() does, so `buildBlock` refuses anything else, and takes only IDs
-// and whole numbers, checked again on every rerun.
+// Each declares its result's fields, as search() does, so `buildBlock` refuses anything else; it takes only IDs and whole
+// numbers, checked again on every rerun.
 type SignalRead = {
   fields: ResultFields;
-  // Its result, or null when its arguments name nothing there is.
   run: (input: SignalInput, args: readonly unknown[], at: Lookups) => unknown[] | null;
 };
 
 const days = (value: unknown) =>
   typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 90 ? value : null;
 
-// The estimate changes the change log has for these items within `within`
-// days, each item's first before and last after.
 function estimateChanges(
   input: SignalInput,
   records: readonly IndexRecord[],
@@ -155,8 +134,6 @@ function estimateChanges(
   );
 }
 
-// What a workstream's summed facet is called, by the source of its first
-// changed item, lower-cased in a sentence: "estimate".
 const labelOf =
   (input: SignalInput) =>
   (changes: readonly { record: IndexRecord }[]): string =>
@@ -164,7 +141,6 @@ const labelOf =
       input.estimateKey(parseItemId(changes[0]?.record.id ?? "")?.prefix ?? "")?.label ?? "Total"
     ).toLowerCase();
 
-// Items whose container became `container` within `within` days.
 function joined(
   input: SignalInput,
   container: IndexRecord,
@@ -182,7 +158,6 @@ function joined(
   return [...found.values()];
 }
 
-// Chat messages that name `item` after it was done.
 function namedAfterDone(input: SignalInput, item: IndexRecord, at: Lookups): IndexRecord[] {
   if (item.facets.state !== "done") return [];
   const since = at.doneAt.get(identityOf(item)) ?? item.updatedAt;
@@ -211,7 +186,6 @@ const workstreamNamed = (input: SignalInput, id: unknown) =>
   typeof id === "string" ? input.workstreams.find((each) => each.id === id) : undefined;
 
 export const signalReads: Readonly<Record<string, SignalRead>> = {
-  // A workstream's members not done, longest quiet first.
   "signals.open": {
     fields: {
       source: "the index: a workstream's items not done, quiet longest first",
@@ -231,8 +205,6 @@ export const signalReads: Readonly<Record<string, SignalRead>> = {
         .toSorted((a, b) => b.idleDays - a.idleDays || a.id.localeCompare(b.id));
     },
   },
-  // A workstream's estimate changes in the last `days` days, the largest
-  // rise first.
   "signals.estimates": {
     fields: {
       source: "the change log: estimate changes",
@@ -255,7 +227,6 @@ export const signalReads: Readonly<Record<string, SignalRead>> = {
         .toSorted((a, b) => b.after - b.before - (a.after - a.before) || a.id.localeCompare(b.id));
     },
   },
-  // Items in progress by person, most first.
   "signals.load": {
     fields: {
       source: "the index: items in progress, by person",
@@ -266,7 +237,6 @@ export const signalReads: Readonly<Record<string, SignalRead>> = {
         .map((person) => ({ name: person.name, inProgress: person.records.length }))
         .toSorted((a, b) => b.inProgress - a.inProgress || a.name.localeCompare(b.name)),
   },
-  // The chat messages naming an item since it was done.
   "signals.after-done": {
     fields: {
       source: "the index: chat messages naming an item after it was done",
@@ -280,7 +250,6 @@ export const signalReads: Readonly<Record<string, SignalRead>> = {
         .map((record) => ({ id: record.id }));
     },
   },
-  // The items that joined a container in the last `days` days.
   "signals.joined": {
     fields: {
       source: "the change log: items that joined it",
@@ -297,8 +266,6 @@ export const signalReads: Readonly<Record<string, SignalRead>> = {
   },
 };
 
-// Runs a signal read for a block, as a pin's rerun does: its result, or
-// null when the read is unknown or names nothing there now.
 export function runSignalRead(
   input: SignalInput,
   read: string,
@@ -310,7 +277,6 @@ export function runSignalRead(
   return value ? { value, fields: declared.fields } : null;
 }
 
-// The rules, each the same for every signal of its kind.
 export const signalRules: Record<SignalKind, string> = {
   stalled: `An open workstream with items not done, and no member update or thread activity in ${stuckDays} days`,
   drift:
@@ -321,7 +287,6 @@ export const signalRules: Record<SignalKind, string> = {
     "An epic that gained 3 items or more, and a quarter or more of its size, in 7 days. Only items that moved in count: Oriel doesn't log new items yet",
 };
 
-// Every signal that holds now, heaviest first.
 export function signalsOf(input: SignalInput): Signal[] {
   const at = lookups(input);
   const label = labelOf(input);
@@ -332,8 +297,6 @@ export function signalsOf(input: SignalInput): Signal[] {
     const open = members.filter(
       (record) => record.facets.state !== "done" && record.facets.kind !== "epic",
     );
-    // The workstream's epics, at most one, as the items behind a stall or a
-    // drift: the place its reason is often written.
     const epics = members
       .filter((record) => record.facets.kind === "epic")
       .slice(0, 1)
@@ -353,7 +316,6 @@ export function signalsOf(input: SignalInput): Signal[] {
         weight: weights.stalled * Math.min(open.length, 4),
         // The stall's start, so a new stall later is a new card.
         fingerprint: `since ${lastActivity?.slice(0, 10)}, idle≥${doubling(idle, stuckDays)}`,
-        // Its epic first, where a stall's reason is often written down.
         items: [
           ...epics,
           ...open.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((r) => r.id),
@@ -495,8 +457,6 @@ export function signalsOf(input: SignalInput): Signal[] {
   return found.toSorted((a, b) => b.weight - a.weight || a.id.localeCompare(b.id));
 }
 
-// A signal's block, built by Oriel from its read now, as a pin's rerun
-// builds it; null when its read names nothing there now.
 export function signalBlock(input: SignalInput, spec: Signal["block"]) {
   const read = runSignalRead(input, spec.read, spec.args ?? []);
   if (!read) return null;
@@ -504,8 +464,6 @@ export function signalBlock(input: SignalInput, spec: Signal["block"]) {
   return built.ok ? built.block : null;
 }
 
-// The items a signal names, for the model: what each is and where it
-// stands, from the index; its text is the run's to read.
 export function evidenceFacts(input: SignalInput, ids: readonly ItemId[]) {
   const byId = new Map(input.records.map((record) => [record.id as string, record]));
   return ids.flatMap((id) => {

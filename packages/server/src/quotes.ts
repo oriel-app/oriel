@@ -1,8 +1,4 @@
-// Quotes from an item (decision 0032): a `>` quote in an agent's answer whose
-// first line is the item's chip, checked as the turn ends against the item's
-// title and text as Oriel reads them, the same read `items.read()` gives the
-// agent. The index keeps no item's text (SPEC §7), so the check reads it, for
-// items in the index only.
+// The index keeps no item's text, so the check reads it, for items in the index only.
 // Oriel captions each quote from its check, never from the answer's words.
 import {
   type ItemId,
@@ -15,9 +11,6 @@ import {
 } from "@oriel/core";
 import { type QuoteFrom, quoteKey, quotesFrom } from "@oriel/web/markdown";
 
-// Each quote from an item in `answers`, as many as a note holds, and whether
-// its item holds it word for word. A quote from anything but an item, or from an item
-// Oriel can't read now, isn't found there.
 export async function checkQuotes(
   answers: readonly string[],
   read: Reader["read"],

@@ -1,6 +1,3 @@
-// The dispatcher of Oriel's own actions (decision 0024): it refuses an actor
-// its class or doors rule out, and a direct action gives back the call that
-// undoes what it actually changed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -28,9 +25,6 @@ const id = (n: number) => ulid(n, new Uint8Array(10));
 const m = (key: string, stableId: string): WorkstreamMember => ({ id: `jira:${key}`, stableId });
 const user: Actor = { kind: "user" };
 
-// A workspace with a workstream holding SYN-1 and SYN-2, a working thread on it,
-// and SYN-3 in the index besides. A change set (id 50) created SYN-9, which
-// the index doesn't have yet.
 function world() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -47,7 +41,6 @@ function world() {
     t0,
   );
   threads.open({ id: threadId, workspaceId, workstreamId }, t0);
-  // Only what workstream membership reads of a record.
   const records = [m("SYN-1", "10001"), m("SYN-2", "10002"), m("SYN-3", "10003")].map(
     (member) => member as unknown as IndexRecord,
   );
@@ -60,8 +53,6 @@ function world() {
     records: () => records,
     clusters: () => [],
     created: async (set) => (set === changeSetId ? [m("SYN-9", "10009")] : []),
-    // Nothing is held here; held.test.ts sends and discards held messages.
-    // No turn, change set or source answers here either.
     turns: unreached("turns"),
     changeSets: unreached("changeSets"),
     applied: () => assert.fail("nothing applies here"),
@@ -69,8 +60,6 @@ function world() {
     sources: unreached("sources"),
     kinds: unreached("kinds"),
     markSeen: () => assert.fail("the overview isn't left here"),
-    // No turn runs and no change set waits here; agent-actions.test.ts
-    // holds the agent to both.
     drafted: () => null,
     running: () => false,
     unsettled: async () => [],
@@ -114,9 +103,7 @@ test("adding what's already there undoes as removing only what was new", async (
   assert.ok(added.undo);
   const undone = await w.dispatch(added.undo.action, added.undo.input, user);
   assert.deepEqual(w.held(), ["jira:SYN-1", "jira:SYN-2"]);
-  // And the undo's own undo adds it back: Undo and Redo are one thing.
   assert.deepEqual(undone.undo, added.undo && { ...added.undo, action: "workstream.add" });
-  // Nothing new to add changes nothing, so nothing undoes it.
   const again = await w.dispatch(
     "workstream.add",
     { workstream: w.workstreamId, items: ["jira:SYN-1"] },
@@ -197,7 +184,6 @@ test("only the person undoes a rejection, or dismisses a second look, whatever t
   for (const actor of [agent, tool])
     assert.notEqual(refusal("changeset.dismiss-look", actor), null);
   assert.equal(refusal("changeset.unreject", { kind: "user" }), null);
-  // It is an Undo, so the one path every Undo takes may call it.
   assert.ok(isInverse("changeset.unreject"));
 });
 
@@ -227,7 +213,6 @@ test("making a workstream undoes as deleting it, which only the user may, while 
     action: "workstream.delete",
     input: { workstream: made.workstream },
   });
-  // A workstream made for a thread from nothing is that thread's.
   assert.equal((await w.dispatch("workstream.create", { kind: "thread" }, user)).undo, null);
   const agent: Actor = { kind: "agent", threadId: w.threadId };
   await assert.rejects(

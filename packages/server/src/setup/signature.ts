@@ -1,10 +1,5 @@
-// Whether a Claude Code binary is Anthropic's (decision 0038). Anthropic's
-// installer checks its own download; Oriel's check comes before Oriel first
-// runs the file, and again whenever the file changes: `/usr/bin/codesign`
-// verifies it against a requirement that names Apple's Developer ID and
-// Anthropic PBC's Team ID, and `/usr/sbin/spctl` says it is notarized. Both
-// by absolute path, with a fixed PATH, so nothing on the person's PATH can
-// answer for them. Oriel never runs a file that fails.
+// Before Oriel first runs the file, and whenever it changes: codesign against Apple's Developer ID and Anthropic's Team ID,
+// and spctl for notarization, both by absolute path with a fixed PATH, so nothing on the person's PATH can answer for them.
 import { execFile } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
@@ -17,7 +12,6 @@ export const requirement = `=anchor apple generic and certificate 1[field.1.2.84
 
 export const systemPath = "/usr/bin:/bin:/usr/sbin:/sbin";
 
-// Runs a tool and says its exit code and everything it printed.
 export type RunTool = (file: string, args: readonly string[]) => Promise<ToolRun>;
 export type ToolRun = { code: number | null; output: string };
 
@@ -34,8 +28,6 @@ export const runTool: RunTool = (file, args) =>
     );
   });
 
-// Null when the file at `path` is Anthropic's, signed and notarized; else
-// the sentence its row says, and the lines for the log.
 export async function anthropicSigned(
   path: string,
   run: RunTool = runTool,
@@ -65,27 +57,20 @@ export async function anthropicSigned(
 
 const firstLine = (text: string) => text.trim().split("\n")[0]?.slice(0, 200) ?? "";
 
-// The PATH with the folder Anthropic's installer puts `claude` in, last, so
-// the CLI it installed is found even when the person's PATH lacks it.
+// The installer's folder last, so the CLI it installed is found even when the person's PATH lacks it.
 export function withLocalBin(path: string, home: string): string {
   const bin = join(home, ".local", "bin");
   const dirs = path.split(":").filter(Boolean);
   return dirs.includes(bin) ? dirs.join(":") : [...dirs, bin].join(":");
 }
 
-// Where Anthropic's installer keeps the versions it installs; its launcher in
-// ~/.local/bin points into it.
 export const installedVersions = (home: string): string => join(home, ".local/share/claude");
 
-// The check the model chooser asks before it runs a CLI (decision 0038): a
-// CLI that resolves inside the installer's folder runs only once its
-// signature passed, for the file as it is now, by its path, size, time and
-// inode. Any other CLI is the person's own, run as decision 0037 says.
+// For the file as it is now, by its path, size, time and inode. Any other CLI is the person's own.
 export function installerTrust(options: {
   home: string;
   verify: (path: string) => Promise<{ problem: string } | null>;
 }): (path: string) => Promise<string | null> {
-  // The folder as the files in it resolve, once it exists.
   const folder = () => {
     const at = installedVersions(options.home);
     try {
@@ -94,7 +79,6 @@ export function installerTrust(options: {
       return at + sep;
     }
   };
-  // The files that passed, and checks in flight, by fingerprint.
   const passed = new Set<string>();
   const checking = new Map<string, Promise<string | null>>();
   return async (path) => {
@@ -105,7 +89,6 @@ export function installerTrust(options: {
       const stat = statSync(real);
       print = `${real}\u0000${stat.size}\u0000${stat.mtimeMs}\u0000${stat.ino}`;
     } catch {
-      // Not there now: the look says so.
       return null;
     }
     if (!real.startsWith(folder()) || passed.has(print)) return null;

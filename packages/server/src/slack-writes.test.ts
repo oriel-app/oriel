@@ -1,8 +1,3 @@
-// Posting in Slack through a change set (OA-28), end to end through the
-// routes: nothing is sent before the approval, one revert undoes a post and
-// a move, and a revert stops before it could delete others' words. Jira is SYN in
-// memory; Slack is the fixture's workspace in memory, which the test also
-// acts in as others do.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { fixtureApi, type FixtureWorkspace, loadSlackFixture } from "@oriel/slack";
@@ -10,8 +5,6 @@ import type { ChangeSetView, DiffView, ThreadView } from "@oriel/web/view";
 import { weather } from "../../../scripts/fixtures/slack.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
-// Chen Yuting's message that the SMS copy for SYN-61 is ready for review,
-// with its two replies.
 const sms = `slack:${weather}-1788782400.000100`;
 const ready = "SYN-61 is ready to pick up: the SMS copy is signed off.";
 

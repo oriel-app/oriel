@@ -1,9 +1,3 @@
-// The stand-in tracker (decision 0059, OA-274): on while no tracker is
-// connected, its issues in Oriel's own database. The window chat drafts a
-// plan into it as a change set, which lands in the index at once when
-// approved; a person edits its issues in their panel, at once, with Undo;
-// with Jira connected, nothing of it shows, and its issues stay for when
-// it's on again.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,7 +6,6 @@ import { type TestContext, test } from "node:test";
 import type { DiffView, OverviewView, ThreadView, WindowView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
-// What the window chat's agent drafts for "plan a small launch".
 const plan: Script = async () => ({
   value: null,
   writes: [
@@ -22,8 +15,6 @@ const plan: Script = async () => ({
   ],
 });
 
-// The thread in which Oriel offers to move the stand-in's issues, its note
-// and its change set.
 async function moving(it: Awaited<ReturnType<typeof testApp>>) {
   const threads = json<{ threads: { id: string; title: string }[] }>(await it.get("/api/threads"));
   const thread = threads.threads.find((each) => each.title === "Into Jira");
@@ -36,8 +27,6 @@ async function moving(it: Awaited<ReturnType<typeof testApp>>) {
   return { note: note.note, changeSetId: set.changeSetId, threadId: thread.id };
 }
 
-// A window with Jira not on yet, as the desktop app's first run is, and
-// Atlassian's server in the person's agent to turn it on through.
 async function fresh(t: TestContext, db?: string) {
   const it = await testApp(t, {
     ...(db ? { db } : {}),
@@ -83,7 +72,6 @@ test("a person's edit of a stand-in issue applies at once, and its Undo puts bac
   });
   const people = json<WindowView>(await it.get("/api/browse?grouping=assignee")).clusters;
   assert.ok(people.some((cluster) => cluster.row.label === "Ada Quill" && cluster.row.size === 1));
-  // Undone through the one door every Undo takes.
   assert.ok(undo);
   const undone = await it.post(`/api/actions/${undo.action}`, undo.input);
   assert.equal(undone.status, 200);
@@ -111,8 +99,6 @@ test("a tracker turning on is offered the stand-in's issues; approved, the stand
       (each) => each.kind,
     );
 
-  // Jira on: Oriel offers to make the stand-in's issues again in
-  // Jira (decision 0059), and both stay until it applies.
   assert.equal((await it.turnOn("jira")).status, 200);
   assert.deepEqual(await kinds(), ["jira", "tracker"]);
   const offer = await moving(it);
@@ -123,7 +109,6 @@ test("a tracker turning on is offered the stand-in's issues; approved, the stand
   );
   assert.deepEqual(await kinds(), ["jira"]);
 
-  // Jira turned off: it's on again, with its issues as they were.
   assert.equal((await it.post("/api/actions/source.off", { kind: "jira" })).status, 200);
   await it.app.settled();
   assert.deepEqual(await it.browse(), [["Spring launch", 3]]);

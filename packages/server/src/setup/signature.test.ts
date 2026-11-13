@@ -1,6 +1,3 @@
-// The signature check by its tools' answers, and the trust check the model
-// chooser asks before it runs a CLI: only one in Anthropic's installer's
-// folder is checked, once per file as it is, and again when it changes.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -61,18 +58,14 @@ test("only a CLI in the installer's folder is checked, once per file as it is", 
   const launcher = join(home, ".local", "bin", "claude");
   assert.equal(await trust(launcher), null);
   assert.equal(await trust(launcher), null);
-  // The file itself, through the launcher's link, checked once.
   assert.equal(checked.length, 1);
   assert.match(checked[0] ?? "", /versions\/2\.1\.317$/);
-  // A person's own CLI elsewhere is theirs, run as decision 0037 says.
   assert.equal(await trust(join(home, "elsewhere", "claude")), null);
   assert.equal(checked.length, 1);
-  // A changed file is checked again, and refused if it fails.
   writeFileSync(join(versions, "2.1.317"), "changed, and longer", { mode: 0o755 });
   refuse = true;
   assert.equal(await trust(launcher), "It isn't signed by Anthropic.");
   assert.equal(checked.length, 2);
-  // Nothing there now: the look says so, not the check.
   assert.equal(await trust(join(home, "nowhere")), null);
 });
 
@@ -96,7 +89,6 @@ test("the log a person copies holds no password, key, code, email or link query"
     ["session 7f3a9c1e5b2d4f6a8c0e1a3b5d7f9a1c", "session [hidden]"],
     ["Installed to /Users/maya/.local/bin/claude", "Installed to ~/.local/bin/claude"],
     ["\u001b[31mDownload failed\u001b[0m", "Download failed"],
-    // Plain words stay plain.
     ["Setting up Claude Code...", "Setting up Claude Code..."],
     ["Claude Code is installed, with code signing", "Claude Code is installed, with code signing"],
   ];

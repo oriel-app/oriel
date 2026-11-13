@@ -1,10 +1,3 @@
-// The desktop app's first run, and the commands Settings shares with it
-// (decision 0038). For the person's Claude Code: check, install, sign in,
-// update and cancel; for their Codex, a preview (decision 0048): check, sign
-// in and cancel. Each is a fixed command run as a child of the server, with
-// what it's doing and, when it fails, one sentence and a log they can copy.
-// Then the test turn that proves the plan answers, the AI chosen as a
-// setting, and the first run's own steps, each done or skipped.
 import { existsSync, realpathSync } from "node:fs";
 import { arch, release, type } from "node:os";
 import { join, sep } from "node:path";
@@ -55,36 +48,23 @@ import {
 import { redacted } from "./redact.ts";
 import { nextStep, type SetupState, type SetupStore } from "./state.ts";
 
-// A test turn's outcome: the CLI's answer, or what it said instead, with the
-// tokens it reported either way.
 export type TestTurn = { said: string | null; inputTokens: number; outputTokens: number };
 
-// The CLIs the setup runs commands for.
 export type Cli = "claude-code" | "codex";
 
 const cliNames: Record<Cli, string> = { "claude-code": "Claude Code", codex: "Codex" };
 
-// The desktop app's side of the setup. Tests and `pnpm shots` stand in for
-// the installer, the signature check, the test turn and the window.
 export type SetupOptions = {
   state: SetupStore;
-  // The data folder had nothing in it when the server started.
   fresh: boolean;
   home: string;
-  // The environment the person's CLI is found in and started with.
   env: Readonly<Record<string, string | undefined>>;
-  // Whether Oriel may run the CLI at a path: the model chooser's own check,
-  // that a CLI from Anthropic's installer is signed by Anthropic.
   trust: (path: string) => Promise<string | null>;
   start?: Start;
   installer?: { script(): Promise<string>; latest(): Promise<string | null> };
-  // On the CLI's smallest model for Claude Code, its default for Codex.
   testTurn?: (cli: ClaudeCode, kind: Cli, model: string) => Promise<TestTurn>;
-  // Brings the window to the front, through the shell.
   front?: () => Promise<void>;
-  // Every account shows as `placeholderAccount` instead of its own email
-  // and plan: the desktop app started by a script (`pnpm desktop:try`),
-  // whose screenshots may be published (OA-308).
+  // A script started the app, and its screenshots may be published.
   placeholder?: boolean;
 };
 
@@ -94,7 +74,6 @@ export const placeholderAccount = { email: "you@example.com", plan: "Placeholder
 
 export class SetupRefused extends Error {}
 
-// An event as the setup gives it, before its time and workspace.
 type Unstamped = TelemetryEvent extends infer E
   ? E extends TelemetryEvent
     ? Omit<E, "at" | "workspaceId">
@@ -102,31 +81,19 @@ type Unstamped = TelemetryEvent extends infer E
   : never;
 
 export type Setup = {
-  // The plan and the account's email are read when the CLI is ready, once
-  // for each CLI file, while the setup or Settings asks: shown, never kept
-  // past the server, logged or sent.
+  // The plan and email are shown, never kept past the server, logged or sent.
   view(): Promise<SetupView>;
-  // Whether every page opens the first run: until it has finished. Under
-  // `pnpm dev` there's none.
   firstRun(): "pending" | "finished";
-  // Starts a command for a CLI, Claude Code unless named, which runs on
-  // after this returns, or checks again.
   command(command: CliCommand | "check" | "cancel", cli?: Cli): Promise<SetupView>;
-  // The AI the person continues with: a CLI once a test turn answers (or,
-  // `anyway`, past a usage limit).
   choose(ai: Cli, anyway: boolean): Promise<SetupView>;
   progress(did: Progress): Promise<SetupView>;
-  // Resolves once no command is running.
   idle(): Promise<void>;
-  // Stops whatever runs, as the server quits.
   close(): void;
 };
 
 export type Progress = "opened" | "skipped-ai" | "work" | "skipped-work" | "finished" | "dismissed";
 
-// The largest log a command keeps: its last lines.
 const maxLog = 200;
-// A sign-in nobody finishes in the browser ends after this long.
 const signInMs = 15 * 60 * 1000;
 
 const commandStates: Record<CliCommand, CliState> = {
@@ -140,7 +107,6 @@ export function setupService(deps: {
   models: Models | null;
   settings: SettingsService;
   store: SettingsStore;
-  // Whether the person has a workstream of their own yet.
   made(): boolean;
   workspaceId: Ulid;
   emit(event: TelemetryEvent): void;
@@ -161,13 +127,10 @@ export function setupService(deps: {
     cancelled: boolean;
   };
   let running: Running | null = null;
-  // The command running now, to its end.
   let runs: Promise<void> = Promise.resolve();
   let log: string[] = [];
-  // The last failure of each CLI's commands or test turn.
   const failed: Record<Cli, CliView["failed"]> = { "claude-code": null, codex: null };
   let account: Account | null = null;
-  // The test turn found a plan without Claude Code, until the next sign-in.
   let noPlan = false;
 
   const setting = (kind: Cli) => store.get().providers.find((p) => p.kind === kind) ?? null;
@@ -175,7 +138,6 @@ export function setupService(deps: {
     const instance = setting(kind);
     return instance && models ? models.found(instance.id) : { status: "checking" };
   };
-  // The CLI's file, wherever it is, ready or not.
   const located = (kind: Cli = "claude-code") => {
     if (!options) return null;
     const path = setting(kind)?.path;
@@ -196,8 +158,6 @@ export function setupService(deps: {
     await readAccount();
   }
 
-  // `claude auth status` for the CLI found ready, once per file, after the
-  // trust check, one read at a time.
   let accountOf: string | null = null;
   let accountRead: Promise<void> | null = null;
   const readAccount = (): Promise<void> => {
@@ -214,9 +174,6 @@ export function setupService(deps: {
     return accountRead;
   };
 
-  // How a version too old updates (decision 0038): Claude Code's own update,
-  // unless Homebrew or npm installed it, whose command Oriel names instead.
-  // Codex is always the person's own to update (decision 0048).
   function updateBy(kind: Cli): CliView["update"] {
     const path = located(kind);
     let real = "";
@@ -307,9 +264,6 @@ export function setupService(deps: {
       steps: { ai: state.steps.ai ?? null, work: state.steps.work ?? null },
       firstRun,
       line: firstRun && !state.dismissed,
-      // Nothing the window connects reports a first sync's progress since
-      // decision 0059: a source server's first sync reads before the page
-      // shows it.
       reading: null,
     };
   }
@@ -319,8 +273,6 @@ export function setupService(deps: {
     return viewNow();
   };
   const viewNow = (): SetupView => {
-    // Claude Code's row, and Codex's once it's installed (decision 0048).
-    // A CLI's path from `~`, as Settings shows it (OA-315).
     const providers = options
       ? (models?.providers(store.get()) ?? [])
           .filter((p) => p.kind === "claude-code" || p.kind === "codex")
@@ -339,8 +291,6 @@ export function setupService(deps: {
     options.state.set({ ...options.state.get(), ...change });
   };
 
-  // Runs one command to its end, with the row's phase and log as it goes;
-  // the page asks for the view while it runs.
   async function run(command: CliCommand, cli: Cli): Promise<void> {
     if (!options) return;
     const began = Date.parse(now());
@@ -459,7 +409,6 @@ export function setupService(deps: {
     if (refused) {
       note(`Oriel's check: ${refused}`);
       fail("untrusted", `Oriel didn't run the Claude Code that was installed. ${refused}`);
-      // Its row says so too, from the look's own check.
       await look();
       return "failed";
     }
@@ -520,8 +469,7 @@ export function setupService(deps: {
     return "failed";
   }
 
-  // The one test turn, through the harness's title path on its smallest
-  // model: the only check that proves the plan answers.
+  // The only check that proves the plan answers.
   const testTurn =
     options?.testTurn ??
     (async (cli: ClaudeCode, kind: Cli, model: string): Promise<TestTurn> => {
@@ -544,8 +492,6 @@ export function setupService(deps: {
       }
     });
 
-  // The model a CLI's turns run on once chosen: Claude's largest, or Codex's
-  // own default.
   const modelFor = (ai: Cli): string =>
     ai === "codex" ? codexDefault(found("codex")) : defaultModel;
 
@@ -574,7 +520,6 @@ export function setupService(deps: {
         }
         return view();
       }
-      // Start again: the sign-in running stops, and a fresh one starts.
       if (
         running &&
         command === "sign-in" &&
@@ -592,7 +537,6 @@ export function setupService(deps: {
         await look();
         return view();
       }
-      // Runs on: the page asks for the view as it goes.
       runs = run(command, cli);
       return view();
     },
@@ -697,9 +641,6 @@ export function setupService(deps: {
   };
 }
 
-// What a test turn's failure says, from the CLI's own words (decision 0038):
-// a usage limit, with when it resets; no connection; a plan without access;
-// a configuration the harness refuses; or the CLI's own sentence.
 export function testFailure(
   said: string,
   cli: Cli = "claude-code",

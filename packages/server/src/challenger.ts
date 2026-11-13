@@ -1,16 +1,5 @@
-// A second look at a change set (decision 0054). Only when the person asks,
-// Oriel starts a run of its own: the agent, with no history, reads the diff
-// Oriel computed and whatever items it chooses, and hands Oriel findings.
-// Its module holds the region's reads and writes, `challenge` and search(),
-// and nothing of Oriel's own; its turn captures no change set, applies no
-// action and holds no draft, and its reply is never shown. Nothing here runs
-// by itself: not on a capture, a sync or a page view.
-//
-// Oriel keeps a finding only when every line it names is in the diff, every
-// quote is in its item word for word, and it doesn't grade the change; and
-// it says what the look read, from the runs' own records. A companion's
-// changes are what the same run wrote, kept as suggestions; only the person
-// adds one to the change set, which they then review again.
+// Only when the person asks; nothing here runs by itself. Its turn captures no change set, applies no action, holds no draft,
+// and its reply is never shown. A finding is kept only when its lines are in the diff and its quotes in their items word for word.
 import type { ChallengeStore, ThreadStore, WorkstreamStore } from "@oriel/db";
 import {
   type Basis,
@@ -48,22 +37,13 @@ export type ChallengerDeps = {
   threads: Pick<ThreadStore, "get">;
   workstreams: Pick<WorkstreamStore, "region">;
   agent: Agent;
-  // Items as `items.read()` reads them, for the quotes.
   read: Reader["read"];
-  // Each item's update time as the index has it at the call; null for one
-  // it hasn't.
   asOf: () => (id: ItemId) => Instant | null;
-  // The model a run ran on, from its record (SPEC §7); null for none.
   modelOf: (runId: Ulid) => string | null;
   known: () => Known;
   snapshot: () => number;
-  // What the thread has spent, its looks included, which a look's turn
-  // counts from, under the thread's cap (SPEC §9).
   spent: (threadId: Ulid) => { inputTokens: number; outputTokens: number };
-  // The most changes a change set may hold, which adding a suggestion keeps.
   maxMutations: number;
-  // The thread's pages hear that its change set's second look changed, and
-  // nothing else of it: its diff stands.
   changed: (threadId: Ulid, changeSetId: Ulid) => void;
   emit: (event: TelemetryEvent) => void;
   now: () => Instant;
@@ -71,8 +51,6 @@ export type ChallengerDeps = {
   log: Log;
 };
 
-// A diff line as the agent's module gives it: Oriel's sentence, its item and
-// each field before and after.
 type ChangeLine = {
   n: number;
   change: string;
@@ -88,14 +66,11 @@ const linesOf = (diff: Diff): ChangeLine[] =>
     fields: line.fields.map(({ name, before, after }) => ({ name, before, after })),
   }));
 
-// What a diff line would write, as text a quote is checked against: each
-// field's value after, as its text, or as JSON.
 export const written = (line: { fields: readonly { after: unknown }[] }): string =>
   line.fields
     .map(({ after }) => (typeof after === "string" ? after : (JSON.stringify(after) ?? "")))
     .join("\n");
 
-// Every string in a read's arguments that names an item, nested or not.
 const idsIn = (value: unknown): string[] =>
   typeof value === "string"
     ? isItemId(value)
@@ -107,16 +82,12 @@ const idsIn = (value: unknown): string[] =>
         ? Object.values(value).flatMap(idsIn)
         : [];
 
-// The region's items a read takes whole, naming none: `items.list()`, every
-// one; a namespace's `listItems()`, those of its kind.
 const listed = (fn: string, region: readonly ItemId[]): readonly ItemId[] => {
   if (fn === "items.list") return region;
   const [space, name] = fn.split(".");
   return name === "listItems" ? region.filter((id) => parseItemId(id)?.kind === space) : [];
 };
 
-// What the look's runs read, from their own records: the workstream's items
-// any read named or listed, and how many times it searched.
 export function coverageOf(results: readonly RunResult[], region: readonly ItemId[]): Coverage {
   const members = new Set<string>(region);
   const read = new Set<ItemId>();
@@ -132,8 +103,6 @@ export function coverageOf(results: readonly RunResult[], region: readonly ItemI
   return { read: [...read].sort(), of: region.length, searches };
 }
 
-// Why a recorded finding can't be kept, or null: its lines, its words, its
-// companion's changes. Quotes are checked apart, since they read items.
 function shapeProblem(finding: FindingAsk, i: number, lines: number): string | null {
   const where = `finding ${i + 1}`;
   const outside = finding.lines.find((n) => n > lines);
@@ -148,14 +117,9 @@ function shapeProblem(finding: FindingAsk, i: number, lines: number): string | n
   return null;
 }
 
-// What a second look's `record()` gets back, and the findings Oriel keeps
-// from it, if any: kept only when every finding's lines are in the diff, it
-// grades nothing, a companion names its changes, and every quote is in its
-// item word for word. `members`: the region's items; any other is outside.
 export async function checkRecord(
   input: unknown,
   context: {
-    // What each line of the diff would write, as text, by line from 1.
     lines: readonly string[];
     members: ReadonlySet<string>;
     read: Reader["read"];
@@ -219,10 +183,6 @@ export async function checkRecord(
   };
 }
 
-// What a second look's turn keeps: the findings of the last run that
-// finished well and recorded any, or null. That run's writes are its
-// companions' changes; any a kept finding doesn't name are dropped, and so
-// is a companion whose changes the run didn't write.
 export function keep(
   results: ReadonlyMap<Ulid, RunResult>,
   recorded: ReadonlyMap<Ulid, Finding[]>,
@@ -247,14 +207,12 @@ export type ChallengeView = {
   id: Ulid;
   state: Challenge["state"];
   findings: Finding[];
-  // Each suggested change, in Oriel's words, and whether the person added it.
   companions: { place: number; sentence: string; added: boolean }[];
   coverage: Challenge["coverage"];
   stale: Staleness;
   error: string | null;
   startedAt: Instant;
   finishedAt: Instant | null;
-  // The person dismissed it (OA-257): the window shows it no more.
   dismissed: boolean;
 };
 
@@ -264,7 +222,6 @@ export function challenger(deps: ChallengerDeps) {
   const { challenges } = deps;
   const running = new Set<Promise<void>>();
   const closing = new AbortController();
-  // Each running look's own stop, by look, for a Dismiss.
   const stops = new Map<Ulid, AbortController>();
   // Suggestions being added, by look and place, so two clicks add one.
   const adding = new Set<string>();
@@ -274,15 +231,12 @@ export function challenger(deps: ChallengerDeps) {
     const log: Log = (message, fields) =>
       deps.log(message, { ...fields, thread_id: set.threadId, change_set_id: set.id });
     const started = Date.parse(deps.now());
-    // Items' update times as the look starts, before it reads any: one
-    // that changes while it runs is one it may not have read as it is.
+    // Update times as the look starts, before it reads any: an item that changes while it runs may not have been read as it is.
     const before = deps.asOf();
     const usage = { inputTokens: 0, outputTokens: 0 };
-    // What each run recorded, kept or not, by run: the last kept wins.
     const recorded = new Map<Ulid, Finding[]>();
     const results = new Map<Ulid, RunResult>();
-    // The model is on each run's record (SPEC §7), not on the turn's events:
-    // the last run's is the look's.
+    // The model is on each run's record, not on the turn's events: the last run's is the look's.
     const model = (): string | null => {
       const last = [...results.keys()].at(-1);
       return last === undefined ? null : deps.modelOf(last);
@@ -399,8 +353,7 @@ export function challenger(deps: ChallengerDeps) {
     return work;
   };
 
-  // Whether a suggestion the person added is in the change set still: an
-  // edit, or the agent's revision (OA-309), may have taken it out since.
+  // An edit, or the agent's revision, may have taken out a suggestion the person added since.
   const holds = (set: ChangeSet, m: CapturedMutation): boolean =>
     set.mutations.some(
       (row) =>
@@ -420,7 +373,6 @@ export function challenger(deps: ChallengerDeps) {
     const latest = challenges.latest(changeSetId);
     const shown = latest?.dismissedAt === null;
     if (latest?.state === "running" && shown) return latest.id;
-    // Dismissed while still current, it shows again, with no model call.
     if (latest?.state === "ready" && !stale(latest, set)) {
       if (!shown) {
         challenges.dismissed(latest.id, null);
@@ -443,17 +395,12 @@ export function challenger(deps: ChallengerDeps) {
   };
 
   return {
-    // Takes a second look at the change set, as the person asked: the
-    // first, or another once the last went stale or failed. One running, or
-    // ready and still current, is the answer as it is.
     take(changeSetId: Ulid): Promise<Ulid | null> {
       return track(begin(changeSetId));
     },
 
     stale,
 
-    // The change set's latest second look as the window shows it, or null:
-    // computed from what was stored and the index now, with no model call.
     async view(set: ChangeSet): Promise<ChallengeView | null> {
       const latest = challenges.latest(set.id);
       if (!latest) return null;
@@ -499,8 +446,6 @@ export function challenger(deps: ChallengerDeps) {
       };
     },
 
-    // The person dismissed the look: it shows no more, and stops if it
-    // still runs, since nobody will read what it finds.
     dismiss(changeSetId: Ulid, challengeId: Ulid): void {
       const look = challenges.get(challengeId);
       if (!look || look.changeSetId !== changeSetId)
@@ -511,9 +456,6 @@ export function challenger(deps: ChallengerDeps) {
       deps.changed(look.threadId, changeSetId);
     },
 
-    // The person adds the second look's suggested changes at `places` to
-    // the change set, in one edit: the engine checks them as it checks a
-    // capture.
     async add(changeSetId: Ulid, challengeId: Ulid, places: readonly number[]): Promise<ChangeSet> {
       const look = challenges.get(challengeId);
       if (!look || look.changeSetId !== changeSetId || look.state !== "ready")
@@ -553,12 +495,10 @@ export function challenger(deps: ChallengerDeps) {
       return set;
     },
 
-    // Stops every look, for shutdown; each ends failed.
     stop(): void {
       closing.abort(new Error("Closing."));
     },
 
-    // Resolves once no look is running: for shutdown, and for tests.
     async settled(): Promise<void> {
       while (running.size) await Promise.all(running);
     },

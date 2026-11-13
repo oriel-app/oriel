@@ -1,5 +1,4 @@
-// Defect fixed in #281: a client that left early kept its stream's watchers,
-// or hung `send` waiting for drain.
+// Defect fixed in 7ed2ad33: a client that left early kept its stream's watchers, or hung `send` waiting for drain.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, request, type ServerResponse } from "node:http";

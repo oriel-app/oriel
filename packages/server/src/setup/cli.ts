@@ -1,9 +1,5 @@
-// What the first run runs for the person's Claude Code (decision 0038), and
-// Codex's sign-in (decision 0048), and how: a fixed list, every argument in
-// code, never a string from the page.
-// Each child runs in its own process group with stdin closed, so Cancel,
-// Start again and quitting stop all of it, and nothing waits on a terminal.
-// Its output becomes the log a person can copy, line by line, redacted.
+// A fixed list of commands, every argument in code, never a string from the page. Each child runs in its own process group
+// with stdin closed, so Cancel and quitting stop all of it and nothing waits on a terminal; its output is redacted.
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -14,8 +10,6 @@ import { homeRelativeIn } from "@oriel/core";
 import { redacted } from "./redact.ts";
 import { systemPath } from "./signature.ts";
 
-// Anthropic's installer, at the one URL Oriel fetches it from, and where it
-// says which version is newest.
 export const installerUrl = "https://claude.ai/install.sh";
 export const latestUrl = "https://downloads.claude.ai/claude-code-releases/latest";
 
@@ -26,11 +20,8 @@ const maxScript = 1024 * 1024;
 const settingUp = /^Setting up Claude Code/;
 
 export type CliCommand = "install" | "sign-in" | "update";
-// What a running command is doing, as its row says.
 export type Phase = "downloading" | "setting-up" | "checking" | "waiting" | "updating";
 
-// A child in its own process group. `stop` ends the group; `exited` is its
-// exit code, or null when a signal ended it.
 export type Child = { exited: Promise<number | null>; stop(): void };
 export type Start = (
   file: string,
@@ -38,8 +29,7 @@ export type Start = (
   options: { env: Record<string, string>; cwd: string; line(text: string): void },
 ) => Child;
 
-// Every group still running. Being in their own groups, they'd outlive a
-// server that exits without stopping them, so its exit ends them too.
+// In their own groups, they'd outlive a server that exits without stopping them, so its exit ends them too.
 const live = new Set<number>();
 let ending = false;
 const endAll = () => {
@@ -100,8 +90,7 @@ export const startChild: Start = (file, args, { env, cwd, line }) => {
   };
 };
 
-// Fetches a text over HTTPS, following redirects only to HTTPS addresses on
-// claude.ai's own hosts.
+// Following redirects only to HTTPS addresses on claude.ai's own hosts.
 export async function fetchText(url: string, send: typeof fetch = fetch): Promise<string> {
   let at = new URL(url);
   for (let hops = 0; hops < 4; hops++) {
@@ -127,21 +116,15 @@ export async function fetchText(url: string, send: typeof fetch = fetch): Promis
   throw new Error("too many redirects");
 }
 
-// What each command is given, as it starts.
 export type RunOptions = {
-  // The person's environment from the harness's allowlist (decision 0037).
   env: Record<string, string>;
   start: Start;
   home: string;
-  // Each line for the log, already redacted.
   log(line: string): void;
   phase(phase: Phase): void;
-  // Stops the run's child when asked, until it ends.
   stopping(stop: () => void): void;
 };
 
-// How a command's child ended: its exit code, null for a signal, and the
-// phase it was in.
 export type Ended = { code: number | null; phase: Phase };
 
 function run(
@@ -151,7 +134,6 @@ function run(
   cwd: string,
   options: RunOptions,
   onLine?: (line: string) => void,
-  // What the log calls the command, when its own path says nothing useful.
   named?: string,
 ): Promise<number | null> {
   options.log(`Running ${named ?? [file, ...args].map(shown(options.home)).join(" ")}`);
@@ -170,9 +152,7 @@ function run(
 
 const shown = (home: string) => (part: string) => homeRelativeIn(part, home);
 
-// Anthropic's installer, run unmodified by /bin/bash from a folder only the
-// person can open, with the system PATH in place of theirs, never with sudo.
-// `version`: the one it installs, when its newest is one Oriel can't drive.
+// Run unmodified by /bin/bash from a folder only the person can open, with the system PATH in place of theirs, never with sudo.
 export async function install(
   options: RunOptions & { script: string; version: string | null },
 ): Promise<Ended> {
@@ -206,9 +186,7 @@ export async function install(
   }
 }
 
-// The CLI's own sign-in, in the person's browser, which it opens itself and
-// which hands the sign-in back to the CLI. Stdin is closed: Oriel never
-// writes to it, and never takes a code.
+// Stdin is closed: Oriel never writes to it, and never takes a code.
 export async function signIn(options: RunOptions & { cli: string }): Promise<Ended> {
   options.phase("waiting");
   const code = await run(
@@ -221,27 +199,20 @@ export async function signIn(options: RunOptions & { cli: string }): Promise<End
   return { code, phase: "waiting" };
 }
 
-// Codex's own sign-in, `codex login` (decision 0048), started the same way:
-// it opens the person's browser itself, on OpenAI's page, which hands the
-// sign-in back to Codex's own listener on localhost. It reads nothing from
-// stdin, so there is nothing to paste through Oriel.
+// It reads nothing from stdin, so there is nothing to paste through Oriel.
 export async function codexSignIn(options: RunOptions & { cli: string }): Promise<Ended> {
   options.phase("waiting");
   const code = await run(options.cli, ["login"], options.env, tmpdir(), options);
   return { code, phase: "waiting" };
 }
 
-// The CLI's own update, for a version too old.
 export async function update(options: RunOptions & { cli: string }): Promise<Ended> {
   options.phase("updating");
   const code = await run(options.cli, ["update"], options.env, tmpdir(), options);
   return { code, phase: "updating" };
 }
 
-// The plan and the account's email, as `claude auth status --json` says
-// them, read only to show in the row. Null when it doesn't say. `personal`:
-// signed in with a subscription that isn't a Team or Enterprise plan, which
-// Anthropic may train on if the person allowed it; never for an API key.
+// `personal`: a subscription that isn't a Team or Enterprise plan, which Anthropic may train on if the person allowed it.
 export type Account = { plan: string | null; email: string | null; personal: boolean };
 
 // Plans under Anthropic's commercial terms, which it doesn't train on.
@@ -267,13 +238,11 @@ export function accountOf(output: string): Account | null {
   return { plan: plan && planName(plan), email: text("email"), personal };
 }
 
-// "max" → "Claude Max".
 const planName = (plan: string) =>
   /^[a-z_]{1,20}$/.test(plan)
     ? `Claude ${plan.charAt(0).toUpperCase()}${plan.slice(1).replace(/_/g, " ")}`
     : null;
 
-// `claude auth status --json`, which answers from the CLI's own files.
 export function status(
   cli: string,
   env: Record<string, string>,

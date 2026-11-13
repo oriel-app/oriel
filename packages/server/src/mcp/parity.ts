@@ -1,15 +1,4 @@
-// Parity (decision 0058): whatever the window can do, a program connected to Oriel
-// can do too, short of what is the person's alone, and it sees whatever the
-// window shows. The window reaches the server only through its routes
-// (api.ts), so its routes are the measure. Each is covered one of three ways:
-// - a read: one of the window's reads in reads.ts serves it as a resource;
-// - one action: a POST that dispatches a single action is covered by the
-//   registry, which makes it a tool or says why tools may not call it
-//   (decision 0024);
-// - here: its program's way in, as tools, resources or a method of the
-//   door's, or why a program has none.
-// scripts/check-repo.ts fails on a route none covers, and on an entry here
-// no route declares; mcp.test.ts checks every way named here exists.
+// scripts/check-repo.ts fails on a route none covers and on an entry here no route declares; mcp.test.ts checks every way named here exists.
 
 export type ProgramWay =
   // The door's tools, `oriel://` templates or methods that do what it does,
@@ -20,7 +9,6 @@ export type ProgramWay =
 
 const settings = "The person's own settings, which no program may read or change (decision 0041).";
 const setup = "The person's own first run, on their machine (decision 0038).";
-// What later stories open to programs (decision 0058).
 const undoLater =
   "The person undoes a tool's call in the window; a tool taking back its own comes with the call log (decision 0058).";
 const threadsLater = "A tool opens a thread and says what it asks with OA-73 (decision 0058).";
@@ -28,7 +16,6 @@ const toolsOwn = "Which programs reach Oriel, and how, is the person's call alon
 const connecting =
   "Connecting a source is the person's: it holds credentials and decides what Oriel reads (decision 0049).";
 
-// By `METHOD /path`, as api.ts declares each route.
 export const windowRoutes: Record<string, ProgramWay> = {
   "GET /settings": { not: settings },
   "POST /settings": { not: settings },

@@ -1,5 +1,3 @@
-// A second look at a change set (decision 0054) never makes a change set of
-// its own, and a review link never shows it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Bindings } from "@oriel/core";
@@ -7,12 +5,10 @@ import type { ThreadView } from "@oriel/web/view";
 import { scriptedAgent } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
-// The fare decision in Slack, with its later amendment as a reply.
 const decision = "slack:C0FW1WEATHR-1788444000.000100";
 const amendment = "ops agreed that next-day sailings now follow the same rule";
 const sameDay = "Fares are kept on later sailings the same day only.";
 
-// The thread's agent narrows SYN-45 to same-day sailings, and retitles it.
 const propose: Script = async () => ({
   writes: [
     ["jira.setDescription", ["jira:SYN-45", sameDay]],
@@ -67,7 +63,6 @@ const setUp = async (
   );
   await app.app.settled();
   const view = async () => json<ThreadView>(await app.get(`/api/threads/${threadId}`));
-  // The person presses Second look, and the look runs to its end.
   const ask = async () => {
     const setId = (await view()).changeSets[0]?.id;
     assert.ok(setId);
@@ -110,7 +105,6 @@ test("what a thread's second looks spend counts toward the thread's token cap", 
     scripts: { propose },
     plan: () => [{ run: "propose" }],
     limits: { maxTokensPerThread: 50_000 },
-    // A look that spends the thread's budget and records nothing.
     challenger: () => ({
       async *turn() {
         yield { kind: "done", usage: { inputTokens: 40_000, outputTokens: 10_000 } };

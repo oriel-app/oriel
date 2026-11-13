@@ -1,5 +1,3 @@
-// What Oriel names a workstream, and when it names one again. A name the user gave
-// a workstream is never changed (the workstream store's `rename` keeps it).
 import {
   type IndexRecord,
   maxNameChars,
@@ -9,15 +7,9 @@ import {
 } from "@oriel/core";
 import type { WorkstreamStore } from "@oriel/db";
 
-// A title as a workstream's name: trimmed, and cut to the longest name allowed.
 export const nameOf = (title: string): string => [...title.trim()].slice(0, maxNameChars).join("");
 
-// A workstream copied from a cluster takes its anchor's title as the index has it,
-// so a workstream copied from an epic's cluster follows the epic when it's renamed
-// in its source. Only while the workstream still holds the anchor, and only until
-// the user names the workstream. Renaming takes no version, so what the workstream
-// holds stays as it was. `rename` is the anchor's source's sync renaming it,
-// through the dispatcher, so only a name that changes is renamed.
+// Only while the workstream still holds the anchor, and only until the user names the workstream.
 export async function followAnchors(
   workstreams: WorkstreamStore,
   workspaceId: Ulid,

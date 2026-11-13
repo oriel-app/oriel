@@ -1,5 +1,3 @@
-// After an apply against a live site: what the change set wrote shows at
-// once, though Jira's search catches up with writes only a while later.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChangeSetView, DiffView, WorkstreamView, ThreadView } from "@oriel/web/view";
@@ -56,7 +54,6 @@ test("what a change set creates shows with its title at once, and goes when a re
     ["Kiosk wallets", [["SYN-901", "Tap to pay"]]],
   );
 
-  // Now it finds them, and won't stop when the revert deletes them.
   site.searchCatchesUp();
   site.searchLags();
   const { revert } = json<Acted>(
@@ -94,7 +91,6 @@ test("what a change set creates shows with its title at once, and goes when a re
     ["SYN-901", null],
   ]);
   absent();
-  // Once the search has caught up, it no longer lists them.
   site.searchCatchesUp();
   app.advance(10 * 60 * 1000);
   assert.equal((await drop()).status, 200);
