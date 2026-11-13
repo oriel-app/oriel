@@ -1,0 +1,43 @@
+[
+  {
+    "scene": "thread-to-review",
+    "pixels": 2000,
+    "reason": "The sidebar text rasters 1 device pixel apart between runs."
+  },
+  {
+    "scene": "looking-",
+    "pixels": 2000,
+    "reason": "The chip text rasters differently between runs."
+  },
+  {
+    "scene": "looking-second",
+    "pixels": 6000,
+    "reason": "About one run in three draws a different frame."
+  },
+  {
+    "scene": "ask-panel-",
+    "pixels": 2000,
+    "reason": "The chip text rasters differently between runs."
+  },
+  {
+    "scene": "ask-panel-first-dark-390",
+    "pixels": 13000,
+    "reason": "Its chip text and panel shift about 12k pixels between runs."
+  },
+  {
+    "scene": "bead-applied-light-390",
+    "pixels": 12500,
+    "reason": "The bead lands about 11.6k pixels apart between runs."
+  },
+  { "scene": "continue-thread", "pixels": 1500, "reason": "About 1k pixels differ between runs." },
+  {
+    "scene": "first-run-standin-plan",
+    "pixels": 1500,
+    "reason": "About 1k pixels differ between runs."
+  },
+  {
+    "scene": "thread-swipe",
+    "pixels": 6000,
+    "reason": "Under heavy load the swipe is caught mid-way."
+  }
+]
