@@ -1,18 +1,12 @@
-// OA-272, fixed in 16849c9b (#223): the to-review pill pointed the wrong way
-// for a change set taller than the room above the composer, and after a jump
-// that crossed no observer threshold.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Box, placed, watching } from "../src/change-set.ts";
 
-// A phone on its side: a window 390 tall, a 210px dock, so the room is 180.
 const room = 180;
 const at = (top: number, height: number): Box => ({ top, bottom: top + height });
 
 test("a change set taller than the room, at the latest, reads as shown", () => {
-  // 600 tall, its decision just over the composer: it fills the room.
   assert.equal(placed(at(room - 600, 600), room), "shown");
-  // Filling the room from top to bottom, taller than twice it.
   assert.equal(placed(at(-400, 1600), room), "shown");
 });
 
@@ -25,8 +19,6 @@ const index = (set: Box, from: number, thresholds: readonly number[]) => {
   return shows > 0 ? reached : -1;
 };
 
-// Frames of one change set's place, each as a box. What its observers
-// last said, as `placed` reads the frame they last called back in.
 function heard(frames: readonly Box[]): ReturnType<typeof placed> | undefined {
   const first = frames[0];
   if (!first) return undefined;

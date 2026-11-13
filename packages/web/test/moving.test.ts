@@ -1,6 +1,3 @@
-// A move's Undo (moving.ts) sends back two calls. Keep class 2, an Undo
-// a person relies on: an answer to one Undo can't take another move's Undo
-// away, and an Undo tried again after one call failed sends only that one.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
@@ -29,7 +26,6 @@ const requests = (effects: readonly Effect[]) =>
 const out = { action: "workstream.remove", input: { workstream: b.id, items: [item.id] } };
 const back = { action: "workstream.add", input: { workstream: a.id, items: [item.id] } };
 
-// SYN-23 moved from Checkout to Gift cards.
 function moved(): MovingModel {
   const [joining] = updateMoving(initMoving(), { type: "dropped", item, to: b });
   const [leaving] = movingReplied(joining, replied({ kind: "moveJoined" }, { undo: out }));

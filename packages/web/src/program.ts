@@ -1,6 +1,4 @@
-// A small architecture of our own: a model, messages, a pure `update`, and
-// effects returned as data for `perform` to carry out. Only `perform` touches
-// the world, so `update` is tested without a DOM.
+// Only `perform` touches the world, so `update` is tested without a DOM.
 
 export type Program<Model, Msg, Effect> = {
   init: readonly [Model, readonly Effect[]];
@@ -10,8 +8,6 @@ export type Program<Model, Msg, Effect> = {
 
 export type Running<Msg> = { dispatch(msg: Msg): void; stop(): void };
 
-// Runs `program`, calling `render` with each new model. A message that leaves
-// the model as it was renders nothing. After `stop`, messages are dropped.
 export function start<Model, Msg, Effect>(
   program: Program<Model, Msg, Effect>,
   render: (model: Model) => void,

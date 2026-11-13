@@ -1,5 +1,3 @@
-// Rejecting in a thread can be undone from the bead (OA-258), through the
-// one path every Undo takes.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
@@ -22,7 +20,6 @@ const after = (model: Model, msg: Msg): Model => update(model, msg)[0];
 const sent = (effects: Effect[]) =>
   effects.flatMap((e) => (e.type === "http" ? [[e.method, e.url, e.body] as const] : []));
 
-// On the thread's page, its change set diffed.
 function onPage(): Model {
   let model = init({ page: "thread", id })[0];
   const view = threadView({
@@ -49,7 +46,6 @@ test("a rejection's Undo asks the server to unreject it, once", () => {
   assert.ok(notes(model).notes[0]?.onUndo, "it can be undone");
   const [undoing, asked] = update(model, { type: "rejected", msg: { type: "undoClicked" } });
   assert.deepEqual(sent(asked), [["POST", "/api/actions/changeset.unreject", undo.input]]);
-  // Twice is once.
   assert.deepEqual(
     sent(update(undoing, { type: "rejected", msg: { type: "undoClicked" } })[1]),
     [],

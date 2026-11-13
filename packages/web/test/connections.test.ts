@@ -1,5 +1,3 @@
-// A sync reloads the workstream on screen; an Ask still on its way, and its
-// draft, survive that reload.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Replied } from "../src/http.ts";

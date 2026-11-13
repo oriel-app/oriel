@@ -7,8 +7,6 @@ import { threadSummary } from "../testing.ts";
 
 const workstreamA = "01JBZ0000000000000000000G1";
 
-// OA-82, fixed in bfcb68c8 (#117): an apply stalled on its source counted as
-// still applying, so its thread dropped out of Needs you.
 test("a thread whose apply stalled is in Needs you", () => {
   const applying = { status: "applying" as const, nextSteps: [] };
   const state = (stalled: boolean) =>
@@ -49,7 +47,6 @@ test("a first message that fails says why and keeps the draft", () => {
   assert.equal(failed.newThread?.draft, "Plan kiosk wallets");
   assert.equal(failed.newThread?.sending, false);
   assert.ok(failed.newThread?.notice);
-  // It can be sent again.
   assert.equal(
     update(failed, { type: "newThread", msg: { type: "sendClicked", workstream: null } })[1].length,
     1,

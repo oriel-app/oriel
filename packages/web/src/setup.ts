@@ -1,51 +1,26 @@
-// The desktop app's first run (decisions 0038 and 0059): two steps, Your AI
-// and then Your work, which sees what Oriel found in the person's agent and
-// what it reads, then the overview. What the server knows, the Claude Code
-// and Codex rows and the first run's progress, comes from one view, which
-// Settings' CLI rows share. While a command runs, the page asks for it again
-// each second. Which screen shows is the page's own.
 import { type Effect, errorOf, get, post, report, type Replied } from "./http.ts";
 import { lookForServers } from "./connections.ts";
 import type { CliCommand, SetupView } from "./view.ts";
 
-export type SetupScreen =
-  // Your AI; Claude Code's own way, in Terminal.
-  | "ai"
-  | "other-ways"
-  // Your work: what Oriel found in the person's agent (decision 0059); then
-  // what it reads.
-  | "found"
-  | "work";
+export type SetupScreen = "ai" | "other-ways" | "found" | "work";
 
 export type SetupModel = {
   view: SetupView | null;
   screen: SetupScreen;
-  // The setup opened at its second step, as when it was reopened halfway.
   resumed: boolean;
-  // A command or the AI's choice sent and not yet answered.
   sending: boolean;
-  // The test turn is running.
   testing: boolean;
-  // Show details is open on the row's failure.
   details: boolean;
-  // Use another account: the warning before it signs in again.
   another: boolean;
-  // Why the last request didn't work, for the page.
   problem: string | null;
-  // A request for the view again is due.
   waiting: boolean;
-  // The first run's end was asked for.
   finishing: boolean;
 };
 
-// A command's details, by what it was.
 export type DetailsOf = string;
 
 export type SetupMsg =
-  // A command for Claude Code, or for Codex (decision 0048).
   | { type: "commandClicked"; command: CliCommand | "check" | "cancel"; cli?: "codex" }
-  // Continue with Claude Code, or Codex, which runs the test turn first;
-  // `anyway`, past a usage limit.
   | { type: "continueClicked"; anyway?: true; ai?: "codex" }
   | { type: "screenShown"; screen: SetupScreen }
   | { type: "skipClicked"; step: "ai" | "work" }
@@ -54,11 +29,8 @@ export type SetupMsg =
   | { type: "detailsToggled" }
   | { type: "detailsCopied"; text: string; what: DetailsOf }
   | { type: "anotherClicked"; open: boolean }
-  // A line to type in Terminal, copied.
   | { type: "lineCopied"; text: string }
-  // The overview's one-time line, dismissed.
   | { type: "lineDismissed" }
-  // Time to ask for the view again, while something runs.
   | { type: "polled" };
 
 export const loadSetup: Effect = get("/api/setup", { kind: "setup" });
@@ -66,8 +38,6 @@ export const loadSetup: Effect = get("/api/setup", { kind: "setup" });
 const progress = (did: string): Effect =>
   post("/api/setup/progress", { did }, { kind: "setupProgress", did });
 
-// Entering the first run: its clock starts, once, and Claude Code is looked
-// for again.
 export const openSetup: Effect = progress("opened");
 
 export function initSetup(): SetupModel {
@@ -85,11 +55,9 @@ export function initSetup(): SetupModel {
   };
 }
 
-// Whether something runs that the page shows as it goes.
 const busy = (model: SetupModel) =>
   model.view?.cli?.running != null || model.view?.codex?.running != null;
 
-// Asks for the view again in a second, while something runs, once at a time.
 function polling(model: SetupModel, effects: Effect[] = []): [SetupModel, Effect[]] {
   if (!busy(model) || model.waiting) return [model, effects];
   return [
@@ -128,8 +96,6 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
       return [{ ...model, screen: msg.screen, details: false, problem: null }, []];
     case "skipClicked":
       return [model, [progress(msg.step === "ai" ? "skipped-ai" : "skipped-work")]];
-    // What Oriel reads is read by now: a source server's first sync reads as
-    // its kind turns on, and one on this Mac as it's picked.
     case "workDone":
       if (model.finishing) return [model, []];
       return [{ ...model, finishing: true }, [progress("work")]];
@@ -157,8 +123,6 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
   }
 }
 
-// A reply about the first run. Its view is the whole state, so each one
-// that brings it replaces it, and asks again while something runs.
 export function setupReplied(model: SetupModel, msg: Replied): [SetupModel, Effect[]] {
   const { tag } = msg;
   switch (tag.kind) {
@@ -169,7 +133,6 @@ export function setupReplied(model: SetupModel, msg: Replied): [SetupModel, Effe
       if (!msg.ok) return [{ ...model, ...done, problem: errorOf(msg.body) }, []];
       const view = msg.body as SetupView;
       const chosen = tag.kind === "setupAi" && view.firstRun?.steps.ai === "done";
-      // With the AI set up, Oriel looks in it for the person's servers.
       const [next, effects] = polling({
         ...model,
         ...done,
@@ -181,7 +144,6 @@ export function setupReplied(model: SetupModel, msg: Replied): [SetupModel, Effe
     case "setupProgress": {
       if (!msg.ok) return [{ ...model, finishing: false, problem: errorOf(msg.body) }, []];
       const view = msg.body as SetupView;
-      // Opened: at the first step neither done nor skipped.
       if (tag.did === "opened") {
         const resumed = view.firstRun?.step === "work";
         return polling({
@@ -194,7 +156,6 @@ export function setupReplied(model: SetupModel, msg: Replied): [SetupModel, Effe
       if (tag.did === "skipped-ai") return [{ ...model, view, screen: "work" }, []];
       if (tag.did === "skipped-work" || tag.did === "work")
         return [{ ...model, view }, [progress("finished")]];
-      // The first run is over: the overview, which it never comes back to.
       if (tag.did === "finished")
         return [
           { ...model, view },

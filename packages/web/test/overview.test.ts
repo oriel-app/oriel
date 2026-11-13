@@ -1,5 +1,4 @@
-// Ask about this on the overview (decision 0052): a card's subject may be
-// synced text, so what the question sends is fixed words and Oriel's IDs.
+// A card's subject may be synced text, so the question sends fixed words and Oriel's IDs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ItemId } from "@oriel/core";

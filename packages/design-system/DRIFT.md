@@ -391,7 +391,7 @@ Markup stays `li.provider-row > .provider-icon + .provider-main + .provider-side
 
 **Size.** 5 TSX files, ~25 CSS lines and ~40 TSX lines removed.
 
-**Watch for.** The first run's shots wait on `.provider-status[data-connected]` (`scripts/shots-first-run.ts:503`): keep it as an alias or update the script. `scripts/check-repo.ts` fails any web file that names a source kind, so the row takes every name from the connector. Syncing in green, not red, is a visible change: say so in the PR.
+**Watch for.** The first run's tests wait on `.provider-status[data-connected]` (`scripts/shots.ts:5061`): keep it as an alias or update the script. `scripts/check-repo.ts` fails any web file that names a source kind, so the row takes every name from the connector. Syncing in green, not red, is a visible change: say so in the PR.
 
 ---
 

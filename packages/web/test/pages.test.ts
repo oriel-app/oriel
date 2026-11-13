@@ -73,7 +73,6 @@ test("approving sends the hash of the diff on screen; a refusal shows on the cha
   const [loaded] = loadedThread(
     thread([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
   );
-  // No diff yet: nothing to approve.
   assert.deepEqual(
     updateThread(loaded, { type: "changeSetClicked", changeSetId: setId, step: "approve" })[1],
     [],
@@ -164,7 +163,6 @@ test("a partly applied change set's review link offers only what a link can do",
     ok({ kind: "reviewOpened" }, { changeSet: partial, diff }),
   );
   assert.ok(shown.view);
-  // No remove, no revert, and no reject.
   assert.deepEqual(reviewSteps(shown.view), ["approve-rest", "dismiss"]);
   const named = updateReview(shown, { type: "nameChanged", name: "Ana" })[0];
   assert.deepEqual(updateReview(named, { type: "decideClicked", kind: "rejected" })[1], []);

@@ -1,10 +1,3 @@
-// Ending a workstream (decision 0028), from wherever the window offers it:
-// its page's header, or a menu or a swipe on it in the sidebar or the Done
-// page. Marking it done or reopening it goes at once; deleting asks first,
-// saying how many threads go with it, and sends that count, which the server
-// checks. What it did then shows, with Undo through the one path every Undo
-// takes, in the one stack of Undo notes, running out as the others do. What
-// else must reload once one ends is the app's to say (root.ts).
 import { type Effect, errorOf, post, type Replied, undoing } from "./http.ts";
 import type { Msg } from "./root.ts";
 import { expiry, type Held, type Hold, hold, notHeld, restart, runsOut } from "./undos.ts";
@@ -16,9 +9,6 @@ import type {
   WorkstreamSummary,
 } from "./view.ts";
 
-// What was last done to a workstream: marked done or reopened, with how many
-// threads came along, or deleted, with how many went; its name then, and the
-// call that undoes it, or null when it can't be.
 export type Ending = {
   kind: "done" | "reopened" | "deleted";
   workstreamId: string;
@@ -28,23 +18,15 @@ export type Ending = {
 };
 
 export type EndingModel = {
-  // The workstream the person asked to delete, until they confirm or cancel,
-  // and how many threads they're told go with it.
   asking: { workstreamId: string; name: string; threads: number } | null;
-  // The workstream with a request in flight, and whether it is a delete.
   pending: { workstreamId: string; deleting: boolean } | null;
   ended: Ending | null;
-  // Whether what was done still shows, with its Undo: it runs out as every
-  // Undo note does, though a deleted workstream's page still says it went.
   shown: boolean;
-  // The times its countdown started; only the latest one's end hides it.
   countdown: number;
   held: Held;
-  // What the last request said, when it failed.
   problem: string | null;
 };
 
-// The workstream as a list shows it: enough to name it and count its threads.
 export type Ended = Pick<WorkstreamSummary, "id" | "name" | "threads">;
 
 export type EndingMsg =
@@ -68,7 +50,6 @@ export const initEnding = (): EndingModel => ({
   problem: null,
 });
 
-// How many threads a workstream has, in any state.
 export const threadCount = (workstream: Ended): number =>
   Object.values(workstream.threads).reduce((a, b) => a + b, 0);
 
@@ -113,7 +94,6 @@ export function updateEnding(model: EndingModel, msg: EndingMsg): [EndingModel, 
     case "undoClicked": {
       const { ended } = model;
       if (!ended?.undo || !model.shown || model.pending) return [model, []];
-      // As a removal's Undo does, it lets go of the keyboard's hold.
       const [released, restarts] = hold(model, "focus", false, again);
       return [
         {
@@ -140,20 +120,15 @@ const expired = (countdown: number): Msg => ({
   msg: { type: "undoExpired", countdown },
 });
 
-// Once neither pointer nor keyboard holds it, what was done gets its full
-// time again.
 const again = (model: EndingModel): [EndingModel, Effect[]] =>
   model.shown ? restart(model, expired) : [model, []];
 
-// The server's answer, and what was done starting to run out once it shows.
 export function endingAnswered(model: EndingModel, msg: Replied): [EndingModel, Effect[]] {
   const next = endingReplied(model, msg);
   if (next.countdown === model.countdown) return [next, []];
   return [next, [expiry(expired(next.countdown))]];
 }
 
-// The server's answer: what it did shows, with its Undo, and its countdown
-// starts; an Undo that landed clears it; a refusal says why.
 export function endingReplied(model: EndingModel, msg: Replied): EndingModel {
   const { tag } = msg;
   if (tag.kind !== "ended") return model;
@@ -176,8 +151,6 @@ export function endingReplied(model: EndingModel, msg: Replied): EndingModel {
   };
 }
 
-// Leaving a page: what was done, and what failed, stop showing, as a
-// removal's Undo does; a request in flight still answers.
 export const leftPage = (model: EndingModel): EndingModel => ({
   ...model,
   ended: null,
@@ -186,16 +159,12 @@ export const leftPage = (model: EndingModel): EndingModel => ({
   problem: null,
 });
 
-// Whether the workstream is gone from where the window shows it: deleted, or
-// being deleted, until its Undo brings it back.
 export const deleted = (model: EndingModel, workstreamId: string): boolean =>
   (model.pending?.deleting === true && model.pending.workstreamId === workstreamId) ||
   (model.ended?.kind === "deleted" && model.ended.workstreamId === workstreamId);
 
-// "2 of its threads", or "its thread", as what came along with the workstream.
 const its = (threads: number) => (threads === 1 ? "its thread" : `${threads} of its threads`);
 
-// What was last done to a workstream, in a sentence.
 export function endedText(ended: Pick<Ending, "kind" | "name" | "threads">): string {
   const { kind, name, threads } = ended;
   if (kind === "deleted")
@@ -206,8 +175,6 @@ export function endedText(ended: Pick<Ending, "kind" | "name" | "threads">): str
   return threads === 0 ? `${did}.` : `${did}, with ${its(threads)}.`;
 }
 
-// What the person is told before deleting: how many threads go with it, and
-// that its items stay where they are.
 export function deleteWarning(threads: number): string {
   const after = " Its items stay in their sources. You can undo this right after.";
   if (threads === 0) return "It has no threads. Its items stay in their sources.";

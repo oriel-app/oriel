@@ -1,5 +1,3 @@
-// OA-123, fixed in c27653bc (#91): clicking a link to the thread already
-// open reloaded it, losing the draft typed in it and the panel beside it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
@@ -18,7 +16,6 @@ function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
 
 const clicked = (route: Route): Msg => ({ type: "linkClicked", route });
 
-// A thread's page, loaded, with a draft typed and an item open in the panel.
 function onThread(): Model {
   const [model] = run(
     init({ page: "thread", id: threadId, item: "jira:SYN-1" })[0],

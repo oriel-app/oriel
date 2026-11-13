@@ -1,6 +1,3 @@
-// OA-102, fixed in c27653bc (#91): a thread's page that said Oriel can't be
-// reached stayed so after Oriel came back, hiding whether an Approve sent as
-// it restarted had applied. Once its stream reconnects it loads again.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Effect, type Tag, unreachable } from "../src/http.ts";
@@ -30,7 +27,6 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
     replied({ kind: "thread", id: threadId }, view),
     replied({ kind: "diff", changeSetId: setId }, diff),
   );
-  // Approve goes out as Oriel restarts: it may have landed, but no answer came.
   const [down] = run(
     shown,
     { type: "thread", msg: { type: "changeSetClicked", changeSetId: setId, step: "approve" } },
@@ -40,13 +36,11 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
   );
   assert.equal(down.thread?.notice, unreachable);
   assert.equal(down.thread?.problems[setId], unreachable);
-  // The stream reconnects: the thread and its change set load again.
   const [back, effects] = run(down, { type: "streamReopened", stream: "thread" });
   const loads = requests(effects);
   const load = loads.find((r) => r.tag.kind === "thread");
   const diffed = loads.find((r) => r.tag.kind === "diff");
   assert.ok(load && diffed);
-  // They show what happened: it applied.
   const applied = changeSetView({ id: setId, status: "applied", nextSteps: [{ kind: "revert" }] });
   const [after] = run(
     back,
@@ -58,8 +52,6 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
   assert.equal(after.thread?.view?.changeSets[0]?.status, "applied");
 });
 
-// Defect fixed in #281: the overview and the Done page kept saying Oriel
-// can't be reached after it came back.
 test("every other page, once the threads stream is back, loads again and stops saying Oriel can't be reached", () => {
   const back: Msg = { type: "streamReopened", stream: "threads" };
   const [overview] = run(init({ page: "overview" })[0], replied({ kind: "overview" }, away, false));

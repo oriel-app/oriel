@@ -1,5 +1,4 @@
-// A sketch (agent HTML in a frame, decision 0033) gets a theme sheet of the
-// person's theme's neutral tokens only, so it can't draw a copy of Approve.
+// A sketch's theme sheet holds neutral tokens only, so it can't draw a copy of Approve.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";

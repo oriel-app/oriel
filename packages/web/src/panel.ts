@@ -1,37 +1,22 @@
-// The panel beside the page: one item, read live when it opens, in its
-// source's own view. Which item is open lives in the route (`item`), so an
-// address can open it; this keeps the read, and when the index last saw the
-// item change, which says when the read has fallen behind its source. From
-// it, the item can be added to the workstream the page is about (panel-adds.ts).
 import { type Effect, errorOf, get, type Replied, report } from "./http.ts";
 import type { ItemPanelView, ItemStampView, PanelInline } from "./view.ts";
 
 export type PanelModel = {
   id: string;
   status: "loading" | "ready" | "failed";
-  // What the page it opened from knew of the item, from the index, shown
-  // until the first read arrives, so the panel opens at once.
   glimpse: Glimpse | null;
-  // The last read, kept on screen while the item is read again.
   view: ItemPanelView | null;
-  // When the index last saw the item change, as asked since the read; null
-  // until asked.
   changedAt: string | null;
   problem: string | null;
 };
 
 export type Glimpse = { key: string; title: string; status: string | null };
 
-// The open item as the window names it: its key, and its title once known,
-// from the read or else from what the page knew of it.
 export const panelName = (model: PanelModel): { key: string; title: string | null } => ({
   key: model.view?.key ?? model.glimpse?.key ?? model.id.slice(model.id.indexOf(":") + 1),
   title: model.view?.title ?? model.glimpse?.title ?? null,
 });
 
-// The workstream the page is about, which the panel's item can be added to:
-// the workstream's page, a thread's, or the window adding to one. `members`,
-// when the page knows them.
 export type CurrentWorkstream = { id: string; name: string; members: ReadonlySet<string> | null };
 
 export type PanelMsg = { type: "readAgainClicked" };
@@ -39,7 +24,6 @@ export type PanelMsg = { type: "readAgainClicked" };
 const path = (id: string) => `/api/items/${encodeURIComponent(id)}`;
 const read = (id: string): Effect => get(path(id), { kind: "item", id });
 
-// Opens `id`'s panel, reading it, and says it was opened.
 export function openPanel(id: string, glimpse: Glimpse | null = null): [PanelModel, Effect[]] {
   return [
     { id, status: "loading", glimpse, view: null, changedAt: null, problem: null },
@@ -55,7 +39,6 @@ export function updatePanel(model: PanelModel, msg: PanelMsg): [PanelModel, Effe
   }
 }
 
-// A reply for this panel's item; one for an item no longer open is dropped.
 export function panelReplied(model: PanelModel, msg: Replied): [PanelModel, Effect[]] {
   const { tag } = msg;
   if ((tag.kind !== "item" && tag.kind !== "itemStamp") || tag.id !== model.id) return [model, []];
@@ -67,24 +50,18 @@ export function panelReplied(model: PanelModel, msg: Replied): [PanelModel, Effe
   return [{ ...model, status: "ready", view: msg.body as ItemPanelView, changedAt: null }, []];
 }
 
-// Asks the index when the item last changed, without reading its source.
 export function checkPanel(model: PanelModel): Effect[] {
   return model.view ? [get(`${path(model.id)}/stamp`, { kind: "itemStamp", id: model.id })] : [];
 }
 
-// Whether the item changed in its source after it was read: the index saw a
-// change later than both the read and what it knew at the read. Either alone
-// could mislead: the source's clock isn't Oriel's, and an index that lagged
-// the read catches up to it without any change since.
+// Either alone could mislead: the source's clock isn't Oriel's, and an index that lagged the
+// read catches up to it without any change since.
 export function behind(model: PanelModel): boolean {
   const { view, changedAt } = model;
   if (view === null || changedAt === null) return false;
   return changedAt > view.readAt && changedAt > (view.updatedAt ?? "");
 }
 
-// Text as written, in paragraphs: a blank line parts them, and each other
-// line break stays a break. A span that isn't text, such as a mention, sits
-// in its line.
 export function paragraphsOf(spans: readonly PanelInline[]): PanelInline[][] {
   const paragraphs: PanelInline[][] = [];
   let paragraph: PanelInline[] = [];
@@ -119,9 +96,6 @@ export function paragraphsOf(spans: readonly PanelInline[]): PanelInline[][] {
 
 const day = 24 * 60 * 60_000;
 
-// Where a conversation's day changes, which gets a header, and how many whole
-// days passed since the message before, for one picked up later. `before`:
-// when the message above these was, in a block above.
 export function daysOf(
   messages: readonly { at: string }[],
   before: string | null,
@@ -135,12 +109,9 @@ export function daysOf(
   });
 }
 
-// An instant's day in the reader's zone, and when that day began.
 export const dayOf = (instant: string): string => new Date(instant).toDateString();
 const dayStart = (instant: string): number => new Date(instant).setHours(0, 0, 0, 0);
 
-// Where the open item is in the list it was opened from, if it was opened
-// from one that still holds it.
 export function placeIn(
   list: readonly string[] | null,
   id: string,
@@ -149,9 +120,6 @@ export function placeIn(
   return list && index >= 0 ? { index, count: list.length } : null;
 }
 
-// The item before or after the open one in its list; none past either end.
-// The list is the rows that were on the page when the item opened: a list
-// that loads in pages steps through what had loaded, and stops at its end.
 export function stepped(list: readonly string[] | null, id: string, by: 1 | -1): string | null {
   const place = placeIn(list, id);
   return place && list ? (list[place.index + by] ?? null) : null;

@@ -12,18 +12,11 @@ import {
   type WindowView,
 } from "./view.ts";
 
-// Where a chat last scrolled itself to its latest entry, until the scroll
-// event that says so.
 let shownAt: number | null = null;
-// A chat is gliding to its latest entry, as the New message pill asks.
 let gliding = false;
-// The thread being watched, one at a time.
 let events: EventSource | null = null;
-// Every thread, watched for a move, on a page with no thread stream to say.
 let threadsMoved: EventSource | null = null;
 
-// The only code that touches the network, the address bar, the clipboard,
-// the clock or where the page is scrolled.
 export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
   switch (effect.type) {
     case "loadWindow": {
@@ -86,8 +79,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       return;
     }
     case "showLatest": {
-      // A glide to the latest goes on as what arrives renders: a jump would
-      // cut it short. Once it ends, the chat is asked again.
+      // A jump would cut a glide to the latest short; once the glide ends, the chat is asked again.
       if (gliding && !effect.smooth) return;
       const chat = scroller();
       const below = belowLatest(chat);
@@ -110,8 +102,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       return;
     }
     case "showChangeSet":
-      // After the page renders, as `focusHeading` waits: a folded change set
-      // the link opened, or one inside it, is only there then.
+      // After the page renders: a folded change set the link opened is only there then.
       requestAnimationFrame(() => {
         const set = document.getElementById(changeSetAnchor(effect.changeSetId));
         if (!set) return;
@@ -120,7 +111,6 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
           block: "start",
           behavior: effect.smooth && !still ? "smooth" : "auto",
         });
-        // Readers start there too, at its heading.
         (set.querySelector<HTMLElement>(".change-set-head h2") ?? set).focus({
           preventScroll: true,
         });
@@ -130,7 +120,6 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       focusComposer(10);
       return;
     case "focusFolded":
-      // Once the page shows it folded, as `focusHeading` waits.
       requestAnimationFrame(() => {
         const set = document.getElementById(changeSetAnchor(effect.changeSetId));
         const active = document.activeElement;
@@ -141,8 +130,6 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       });
       return;
     case "focusHeading":
-      // The page renders in a microtask, as `rendered` says. Where it's
-      // scrolled stays.
       requestAnimationFrame(() =>
         document.querySelector<HTMLElement>(".thread-title")?.focus({ preventScroll: true }),
       );
@@ -153,7 +140,6 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       // the server resumes after it.
       events = new EventSource(`/api/threads/${effect.threadId}/events?after=${effect.after}`);
       events.onmessage = (message: MessageEvent<string>) => {
-        // Our own server's events, in the shape view.ts declares.
         dispatch({ type: "streamed", event: JSON.parse(message.data) as StreamEvent });
       };
       // EventSource errs before every reconnect, and when its first try fails.
@@ -168,7 +154,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       return;
     }
     case "watchThreads": {
-      // One the browser gave up on, after an error answer, opens again.
+      // The browser gives up on a stream after an error answer; that one opens again.
       if (threadsMoved && threadsMoved.readyState !== EventSource.CLOSED) return;
       threadsMoved = new EventSource("/api/threads/events");
       threadsMoved.onmessage = () => dispatch({ type: "threadsMoved" });
@@ -203,7 +189,6 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       requestAnimationFrame(() => dispatch(effect.msg));
       return;
     case "showLook": {
-      // The default theme is `:root` itself, so naming it changes nothing.
       const html = document.documentElement;
       html.dataset.theme = effect.theme;
       if (effect.textSize === "default") delete html.dataset.textSize;
@@ -213,29 +198,19 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
   }
 }
 
-// The window chat's entries scroll by themselves; a thread's page scrolls
-// the window (null).
 const scroller = (): HTMLElement | null =>
   document.querySelector<HTMLElement>(".window-chat-entries");
 
 const scrolledTo = (chat: HTMLElement | null): number => (chat ? chat.scrollTop : scrollY);
 
-// How far below what shows a chat ends, with the composer under its latest
-// entry; null with no chat on screen. On a thread's page the window
-// scrolls, and on a narrow screen the rail waits below the chat, so the
-// page's own end is not the chat's.
 function belowLatest(chat: HTMLElement | null): number | null {
   if (chat) return chat.scrollHeight - chat.clientHeight - chat.scrollTop;
   const thread = document.querySelector("main.thread");
   return thread ? thread.getBoundingClientRect().bottom - innerHeight : null;
 }
 
-// Says where a chat is as the user scrolls it, or opens a run's output in
-// it, and whether they moved up, until the returned function stops it: a
-// thread's page, or with `chat`, the window chat's entries. The scroll
-// event for the chat's own scroll to the latest entry isn't the user's: a
-// block rendering between that scroll and its event would read as them
-// leaving.
+// The scroll event for the chat's own scroll to the latest entry isn't the user's: a block
+// rendering between that scroll and its event would read as them leaving.
 export function watchLatest(
   send: (msg: ThreadMsg) => void,
   chat: HTMLElement | null = null,
@@ -269,12 +244,10 @@ export function watchLatest(
   };
 }
 
-// Browse's clusters, with no items: they load as each opens.
 async function loadWindow(grouping: GroupingId, filter: BrowseFilter): Promise<WindowView> {
   const query = new URLSearchParams([["grouping", grouping], ...filterParams(filter)]);
   const response = await fetch(`/api/browse?${query}`);
   if (!response.ok) throw new Error(`GET /api/browse: ${response.status}`);
-  // Our own server's reply, in the shape view.ts declares for both sides.
   return (await response.json()) as WindowView;
 }
 
@@ -295,11 +268,6 @@ async function loadItems(
   return (await response.json()) as ClusterPageView;
 }
 
-// Puts the cursor in the composer: at once, as after Reject, or once the
-// page shows it, which may take a few frames, as when "Ask about this"
-// opens the chat. Under an open item, the composer is the one its dock
-// carries; a dock out of use (inert) is skipped, as the overview's is while
-// the window chat is open.
 function focusComposer(frames: number): void {
   const field =
     document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??

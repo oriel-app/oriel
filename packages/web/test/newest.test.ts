@@ -1,6 +1,3 @@
-// OA-100, fixed in c27653bc (#91): a thread's reply asked for before its
-// stream's latest status undid that status, showing a running thread idle;
-// and a workstream page's reload that worked kept the notice a failed one left.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Tag } from "../src/http.ts";
@@ -22,7 +19,6 @@ const streamed = (event: StreamEvent): Msg => ({ type: "streamed", event });
 const status = (running: boolean): Msg =>
   streamed({ type: "status", running, state: "working", regionVersion: 1 });
 
-// The thread loads asked for by `effects`, by their tags.
 const loads = (effects: readonly Effect[]): Tag[] =>
   effects.flatMap((e) => (e.type === "http" && e.tag.kind === "thread" ? [e.tag] : []));
 
@@ -36,18 +32,14 @@ function opened(): Model {
 }
 
 test("a thread's reply asked for before the stream said it's running doesn't show it idle", () => {
-  // Its workstream changed: the page asks for the thread again.
   const [asked, effects] = run(opened(), streamed({ type: "workstream" }));
   const [tag] = loads(effects);
   assert.ok(tag);
-  // Before the answer, the stream says a turn started.
   const [running] = run(asked, status(true));
   assert.equal(running.thread?.view?.running, true);
-  // The answer, built before the turn started, still says idle.
   const older: ThreadView = { ...idle, workstream: { ...idle.workstream, name: "Renamed" } };
   const [after] = run(running, replied(tag, older));
   assert.equal(after.thread?.view?.running, true);
-  // The rest of it is new to the page, and shows.
   assert.equal(after.thread?.view?.workstream.name, "Renamed");
 });
 

@@ -3,7 +3,6 @@ import type { StartQuestion } from "@oriel/core/window-chat";
 
 export const planQuestion = "Draft a small launch plan: one epic and a few stories I can edit";
 
-// `short` sits beside its headline, so it names nothing the headline names.
 const words: Record<StartQuestion, { label: (name: string) => string; short: string } | null> = {
   "chart-moved": {
     label: () => "Chart what moved since I looked, by workstream",

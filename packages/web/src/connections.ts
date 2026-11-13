@@ -1,14 +1,3 @@
-// Every connection in the window (decision 0049), as the server lists them,
-// read once and shared by the sidebar, the first run, the overview and
-// Settings: syncing any of them, or all, on demand; making one through its
-// connector's steps, which the page draws from its declaration, the same way
-// for every connector, which since decision 0059 only one on this Mac declares;
-// and, in Settings, setting one's options and disconnecting it. A
-// connection's review step, its mapping, shows in Settings: the person edits
-// it there, and it applies as their own action (OA-232). A sync that fails
-// keeps what the window had, and says why on its connection until its next
-// sync works. Nothing typed into a connector's steps stays in the page once
-// its connection is made.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type { Connectors } from "./connectors.ts";
 import type {
@@ -24,11 +13,6 @@ import type {
   ReviewRedrawn,
 } from "./view.ts";
 
-// One connector's steps as the person goes through them: the step showing,
-// by its place; what they typed; what's being asked of the server: the
-// folder picker, or the connection; what the last connect tried; and why the
-// last step didn't work. `open`: shown in Settings' Add a connection, until
-// it's made or cancelled.
 export type ConnectForm = {
   open: boolean;
   step: number;
@@ -38,12 +22,6 @@ export type ConnectForm = {
   problem: string | null;
 };
 
-// One connection in Settings: its name as typed and not yet set; the list
-// one of its picks lists, once asked for, and whether one is being asked
-// for, which takes a while, as the server asks the person's agent; whether a change is on its way, and what the
-// last one changed, by the option it changed, with its Undo; why it didn't
-// work, or why the options it set don't fit the source; why its review step
-// couldn't read the source; and Disconnect, asked and then answered.
 export type ConnectionSetting = {
   name: string | null;
   choices: PickChoiceView[] | null;
@@ -57,11 +35,6 @@ export type ConnectionSetting = {
   disconnect: "asked" | "disconnecting" | null;
 };
 
-// A review step's draft as the person edits it: the agent's held draft it
-// began as, by where it's held, or null for Oriel's guess or the options the
-// connection has; then as the server last drew it with their edits; and
-// whether an edit is on its way. `only`: the one table edited by hand in
-// Settings, by its place (OA-232).
 export type ReviewEditing = {
   held: { thread: string; seq: number } | null;
   only: string | null;
@@ -70,91 +43,57 @@ export type ReviewEditing = {
 };
 
 export type ConnectionsModel = {
-  // As the server has them; null before they load.
   view: ConnectionsView | null;
-  // The connections syncing now, by ID.
   syncing: readonly string[];
-  // Why a connection's last sync asked for didn't work, by ID, until one does.
   problems: Readonly<Record<string, string>>;
-  // Each connector's steps, by its kind, once the person starts them.
   forms: Readonly<Record<string, ConnectForm>>;
-  // Settings' connections, by ID, once the person changes one.
   settings: Readonly<Record<string, ConnectionSetting>>;
-  // Each waiting connection's review step, by its ID, as the server last
-  // drew it (decision 0051).
   reviews: Readonly<Record<string, OptionsReviewView>>;
-  // Each review step the person is editing, by its connection's ID.
   edits: Readonly<Record<string, ReviewEditing>>;
-  // Kinds being turned on or off (decision 0059), by kind, shown as the
-  // person last asked at once; and why a kind's last turning didn't work.
   switches: Readonly<Record<string, KindSwitch>>;
   switchProblems: Readonly<Record<string, string>>;
 };
 
-// A kind turned on or off, before the window shows it so: `on`, as the
-// person last asked, which its switch shows; `sent`, what's on its way to
-// the server, one turning a kind at a time, so a later click waits for it
-// and goes next; the server Oriel found for it, to turn it on through; and, once the server has
-// it, how many loads of the list have come since. The list says it within
-// two, so the switch goes then, and the list shows what's on.
+// One turning a kind at a time: a later click waits for it and goes next.
 export type KindSwitch = { on: boolean; sent: boolean; server?: string; loads: number | null };
 
 export type ConnectionsMsg =
   | { type: "syncClicked"; connection: string }
   | { type: "syncAllClicked" }
-  // A connector's steps, by its kind.
   | { type: "fieldChanged"; kind: string; field: string; value: string }
-  // A folder step: its path typed, which connects; or the folder picker.
   | { type: "nextClicked"; kind: string; steps: readonly ConnectStep[] }
   | { type: "chooseClicked"; kind: string }
-  // A review step's draft, read again while the agent drafts; and applied:
-  // the agent's, held in its thread, or Oriel's guess.
   | { type: "reviewAsked"; kind: string; connection: string; fresh?: true }
-  // In Settings, one of a connection's tables: edited by hand, or asked of
-  // Oriel in the window chat, by its place (OA-232).
   | { type: "handEditClicked"; kind: string; connection: string; tab: string }
   | { type: "askOrielClicked"; connection: string; tab: string }
-  // `beside` names the option it sets, where its Undo shows.
   | { type: "reviewApplied"; kind: string; connection: string; beside?: string }
-  // A review step edited: begun from what it shows, one change made, which
-  // the server draws again, or left as it was.
   | { type: "reviewEditClicked"; connection: string }
   | { type: "reviewEdited"; connection: string; edit: ReviewEdit }
   | { type: "reviewEditCancelled"; connection: string }
-  // Into a connector's steps in Settings, or out of them.
   | { type: "opened"; kind: string }
   | { type: "closed"; kind: string }
-  // Settings, by a connection's ID.
   | { type: "nameTyped"; connection: string; name: string }
   | {
       type: "configured";
       connection: string;
       options: Record<string, unknown>;
-      // What changed, in words, and the option the person changed.
       what: string;
       field: string;
     }
-  // `opened`: a pick's list opened afresh, so another's list doesn't show.
   | { type: "choicesAsked"; connection: string; query: string; field?: string; opened?: true }
   | { type: "undoClicked"; connection: string }
   | { type: "disconnectClicked"; connection: string }
   | { type: "disconnectAnswered"; connection: string; yes: boolean }
-  // Source servers (decision 0059): a kind turned on, through the server
-  // Oriel found for it, or off; the overview's card dismissed; Oriel's look
-  // at the agent's servers asked for again; and how often sync runs.
   | { type: "kindSwitched"; kind: string; on: boolean; server?: string }
   | { type: "foundDismissed" }
   | { type: "serversLookAsked" }
   | { type: "serversSyncPicked"; every: number | null };
 
-// The folder step's kind (decision 0049), which names the step, not a
-// source.
 export const folderStep = "folder" as const;
 export type FolderKind = typeof folderStep;
 
 export const loadConnections: Effect = get("/api/connections", { kind: "connections" });
 
-// Oriel's look at the person's servers, again, as Sync asks (decision 0059).
 export const lookForServers: Effect = post("/api/servers/look", {}, { kind: "connections" });
 
 export function initConnections(): ConnectionsModel {
@@ -193,8 +132,6 @@ const blankSetting: ConnectionSetting = {
   disconnect: null,
 };
 
-// What a connection's review step shows, as its draft in its connector's
-// form: the agent's, else Oriel's guess, else the options it reads with now.
 export const reviewShown = (
   review: OptionsReviewView,
 ): { held: { thread: string; seq: number } | null; given: Record<string, unknown> } | null =>
@@ -206,9 +143,6 @@ export const reviewShown = (
         ? { held: null, given: review.current.given }
         : null;
 
-// Whether an edited review step may apply now: the agent's draft once it
-// settles; anything else once it settles into options, which it doesn't
-// before a change.
 export const appliesEdited = (editing: ReviewEditing): boolean =>
   !editing.pending &&
   editing.redrawn.problem === null &&
@@ -223,11 +157,9 @@ const withEditing = (
   return { ...model, edits: editing ? { ...edits, [id]: editing } : edits };
 };
 
-// The open connections, as the sidebar lists them.
 export const openConnections = (model: ConnectionsModel): ConnectionView[] =>
   (model.view?.connections ?? []).filter((connection) => connection.state === "open");
 
-// A kind's open connection, its first.
 export const openOf = (model: ConnectionsModel, kind: string): ConnectionView | null =>
   openConnections(model).find((connection) => connection.kind === kind) ?? null;
 
@@ -237,17 +169,9 @@ export const formOf = (model: ConnectionsModel, kind: string): ConnectForm =>
 export const settingOf = (model: ConnectionsModel, id: string): ConnectionSetting =>
   model.settings[id] ?? blankSetting;
 
-// The step a connector's form is on.
 export const stepOf = (steps: readonly ConnectStep[], form: ConnectForm): ConnectStep | null =>
   steps[Math.min(form.step, steps.length - 1)] ?? null;
 
-// What Settings sets on a connection: none on a stand-in's, one a flag
-// makes, or one not open or waiting; on one through a source server, what
-// the person picks through it and, if its connector reads one, its mapping,
-// as a spreadsheet's server's may (decision 0059); on any other, its
-// connector's options. `mappings` are the mapping options drawn beside a
-// source server's picks, once each pick has something picked: before then
-// there's nothing to map.
 export function settableOf(
   connection: ConnectionView,
   connector: ConnectorView | undefined,
@@ -265,11 +189,6 @@ export function settableOf(
   return { settable, mappings: settable && through && picked ? mappings : [] };
 }
 
-// What a pick through a source server says it picks now, from the values
-// its server reads in the connection's options, never the options
-// themselves, which may hold more, as a spreadsheet's hold its tabs:
-// the one picked, or how many; and with none, what the connection reads
-// instead.
 export function pickSaid(pick: ConnectionPick): { current: string; none: boolean; said: string } {
   const current = pick.many ? "" : (pick.picked[0] ?? "");
   const none = pick.picked.length === 0;
@@ -285,11 +204,6 @@ export function pickSaid(pick: ConnectionPick): { current: string; none: boolean
   };
 }
 
-// The kinds the window doesn't offer to connect, as another does their
-// work (decision 0059): those a stand-in on now stands in for, and, while
-// one of a stand-in's kinds is open, as through its source server, the
-// others it stands in for: one of them is the person's already. One that's
-// open itself is never among them, so its row still shows it connected.
 export const replacedKinds = (connectors: Connectors, model: ConnectionsModel): Set<string> =>
   new Set(
     [
@@ -300,9 +214,6 @@ export const replacedKinds = (connectors: Connectors, model: ConnectionsModel): 
     ].filter((kind) => !openOf(model, kind)),
   );
 
-// The connectors the first run offers, in their declared order: none
-// another does the work of (`replacedKinds`), unless a server found for it
-// can turn it on, which a stand-in on now never hides.
 export const offered = (connectors: Connectors, model: ConnectionsModel): ConnectorView[] => {
   const replaced = replacedKinds(connectors, model);
   const off = turnedOff(model);
@@ -319,12 +230,9 @@ export const offered = (connectors: Connectors, model: ConnectionsModel): Connec
     .toSorted((a, b) => (a.offer?.firstRun ?? 0) - (b.offer?.firstRun ?? 0));
 };
 
-// The kinds a person or the agent turned off (decision 0059): nothing of
-// them shows, not even greyed out.
 export const turnedOff = (model: ConnectionsModel): string[] =>
   (model.view?.servers.kinds ?? []).flatMap((each) => (each.offBy === null ? [] : [each.kind]));
 
-// The stand-ins on now, each with what it stands in for and its offer.
 export const standingIn = (
   connectors: Connectors,
   model: ConnectionsModel,
@@ -334,8 +242,6 @@ export const standingIn = (
     return connector?.standIn ? [{ ...connector, standIn: connector.standIn }] : [];
   });
 
-// What a connector's first run row is doing: read, reading, failed, or
-// nothing yet.
 export function connectState(
   model: ConnectionsModel,
   kind: string,
@@ -363,7 +269,6 @@ const withSetting = (
   effects,
 ];
 
-// How often a review step asks again while the agent drafts.
 export const reviewEveryMs = 1500;
 
 const reviewing = (kind: string, connection: string, fresh = false): Effect =>
@@ -373,17 +278,11 @@ const reviewing = (kind: string, connection: string, fresh = false): Effect =>
     connection,
   });
 
-// What Settings' Ask Oriel tells a person who has no AI to ask.
 export const noAiToAsk = "Set up your AI to ask Oriel, or edit by hand.";
 
-// A connection waiting for options, as one through a spreadsheet's server
-// does once what it reads is picked: its onboarding turn, which drafts them
-// in the window chat (decision 0051). The server starts one at most, and none when
-// the agent can't draft.
 const onboarding = (kind: string, connection: string): Effect =>
   post(`/api/connections/${connection}/draft`, {}, { kind: "onboarded", of: kind, connection });
 
-// A kind turned on or off, through the server Oriel found for it.
 const turning = (kind: string, wanted: KindSwitch): Effect =>
   post(
     `/api/actions/source.${wanted.on ? "on" : "off"}`,
@@ -391,13 +290,11 @@ const turning = (kind: string, wanted: KindSwitch): Effect =>
     { kind: "kindSwitched", of: kind },
   );
 
-// Whether a kind is on, as the list says.
 export const kindOn = (view: ConnectionsView | null, kind: string): boolean =>
   view?.servers.kinds.find((each) => each.kind === kind)?.on ?? false;
 
-// The switches the server has answered, less those the list now shows: it
-// says the same, or it's the second load since, as one asked before the
-// answer may have come after it.
+// A switch settles on the second load after its answer, as a load asked before the answer
+// may have come after it.
 function settled(
   switches: ConnectionsModel["switches"],
   view: ConnectionsView,
@@ -413,7 +310,6 @@ function settled(
   );
 }
 
-// Whether a kind shows on: as the person last asked, until the list says.
 export const switchedOn = (model: ConnectionsModel, kind: string, listed: boolean): boolean =>
   model.switches[kind]?.on ?? listed;
 
@@ -422,7 +318,6 @@ export function updateConnections(
   msg: ConnectionsMsg,
 ): [ConnectionsModel, Effect[]] {
   switch (msg.type) {
-    // A Sync looks for the person's servers again too (decision 0059).
     case "syncClicked":
     case "syncAllClicked": {
       const [next, effects] = syncing(model, msg);
@@ -451,7 +346,6 @@ export function updateConnections(
         switches: { ...model.switches, [msg.kind]: wanted },
         switchProblems,
       };
-      // One on its way: this one goes once it's answered.
       if (now && now.loads === null) return [switched, []];
       return [
         {
@@ -506,8 +400,8 @@ export function updateConnections(
         connection: msg.connection,
         ...(msg.beside ? { beside: msg.beside } : {}),
       };
-      // Only the option it sets, merged over the rest as they
-      // are then, so a switch changed meanwhile stays as it was set.
+      // Only the option it sets, merged over the rest as they are then, so a switch changed
+      // meanwhile stays as it was set.
       const options = (options: Record<string, unknown> | null) =>
         post(
           `/api/connections/${msg.connection}/options`,
@@ -520,8 +414,6 @@ export function updateConnections(
           edited ? { edit: { options: edited } } : {},
           tag,
         );
-      // Edited, the agent's draft applies as edited, in its own form;
-      // anything else, as the options it settles into.
       const applying = editing
         ? appliesEdited(editing)
           ? editing.held
@@ -573,8 +465,6 @@ export function updateConnections(
       const redrawn: ReviewRedrawn = {
         given: shown.given,
         tables: begun?.tables ?? [],
-        // Nothing to apply until something changes, but a draft or a guess
-        // applies as it is.
         options: review.guess && !shown.held ? review.guess.options : null,
         said: review.draft?.said ?? review.guess?.said ?? [],
         problem: null,
@@ -682,7 +572,6 @@ function syncing(
   model: ConnectionsModel,
   msg: Extract<ConnectionsMsg, { type: "syncClicked" | "syncAllClicked" }>,
 ): [ConnectionsModel, Effect[]] {
-  // A stand-in's items are Oriel's own: nothing syncs them.
   const open = openConnections(model).filter((connection) => !connection.own);
   const ids =
     msg.type === "syncAllClicked"
@@ -703,16 +592,12 @@ function syncing(
   ];
 }
 
-// A reply about connections. `synced` says the index changed, so what's on
-// screen, and the list itself, should load again; `connected`, the kind a
-// connect just made.
 export function connectionsReplied(
   model: ConnectionsModel,
   msg: Replied,
 ): { model: ConnectionsModel; synced: boolean; effects?: Effect[] } {
   const { tag } = msg;
   switch (tag.kind) {
-    // Its onboarding turn started, or none could: its review asks either way.
     case "onboarded":
       return { model, synced: false, effects: [reviewing(tag.of, tag.connection)] };
     case "reviewed": {
@@ -726,7 +611,6 @@ export function connectionsReplied(
         };
       const review = msg.body as OptionsReviewView;
       const reviews = { ...model.reviews, [tag.connection]: review };
-      // Asked to edit one table by hand: its editor opens on it, as it reads.
       const hand: ReviewEditing | null =
         "tab" in tag && tag.tab !== undefined && review.current
           ? {
@@ -750,8 +634,7 @@ export function connectionsReplied(
               ...model.settings,
               [tag.connection]: { ...settingOf(model, tag.connection), unread: null },
             };
-      // Its options applied elsewhere, as in the window chat, while it
-      // waited: the window reads what it reads now.
+      // Its options were applied elsewhere, as in the window chat, while it waited.
       const done = !review.waits && model.reviews[tag.connection]?.waits === true;
       const next = {
         ...(hand ? withEditing(model, tag.connection, hand) : model),
@@ -761,8 +644,6 @@ export function connectionsReplied(
       return {
         model: next,
         synced: done,
-        // Asked again while the agent drafts one that waits, so its draft
-        // shows once it holds one.
         effects:
           review.waits && review.drafting
             ? [
@@ -778,8 +659,6 @@ export function connectionsReplied(
             : [],
       };
     }
-    // It says what it set beside the option, with its Undo, or what went
-    // wrong.
     case "reviewApplied": {
       const body = (msg.body ?? {}) as {
         connection?: ConnectionView;
@@ -798,7 +677,6 @@ export function connectionsReplied(
         })[0];
       };
       if (!msg.ok) return { model: said(errorOf(msg.body)), synced: false };
-      // Applied, but its first sync says what didn't fit: still to review.
       const applied = withEditing(said(body.problem ?? null), tag.connection, null);
       if (body.problem)
         return { model: applied, synced: true, effects: [reviewing(tag.of, tag.connection)] };
@@ -809,8 +687,6 @@ export function connectionsReplied(
         synced: true,
       };
     }
-    // Asked in the window chat: the overview opens on it. With no AI to ask,
-    // the person is told to edit it by hand.
     case "orielAsked": {
       const setting = settingOf(model, tag.connection);
       const thread = msg.ok ? (msg.body as { thread: string | null }).thread : null;
@@ -834,7 +710,6 @@ export function connectionsReplied(
     case "reviewRedrawn": {
       const editing = model.edits[tag.connection];
       if (!editing) return { model, synced: false };
-      // A change refused keeps the draft as it was, and says why.
       const redrawn = msg.ok
         ? (msg.body as ReviewRedrawn)
         : { ...editing.redrawn, problem: errorOf(msg.body) };
@@ -848,9 +723,6 @@ export function connectionsReplied(
       const view = msg.body as ConnectionsView;
       return { model: { ...model, view, switches: settled(model.switches, view) }, synced: false };
     }
-    // What's on changed, so what the window shows did, and the list. A
-    // click since, the other way, goes now. One refused flips back, and
-    // says why in its row.
     case "kindSwitched": {
       const now = model.switches[tag.of];
       const { [tag.of]: _done, ...others } = model.switches;
@@ -898,13 +770,9 @@ export function connectionsReplied(
           model: withForm(model, tag.of, { ...form, pending: null, problem: errorOf(msg.body) })[0],
           synced: false,
         };
-      // Cancelled in the system's picker: nothing changed.
       if (!("connection" in (msg.body as object)))
         return { model: withForm(model, tag.of, { ...form, pending: null })[0], synced: false };
-      // Once connected, nothing typed is kept, and the connection shows at
-      // once, until the list loads again.
       const { connection } = msg.body as { connection: ConnectionView };
-      // What a sync asked for before said is past: this connect read it.
       const { [connection.id]: _past, ...problems } = model.problems;
       const formed = withForm({ ...model, problems }, tag.of, blankForm)[0];
       return {
@@ -930,8 +798,6 @@ export function connectionsReplied(
           })[0],
           synced: false,
         };
-      // Its Undo stays beside it, the more so when the options set don't
-      // fit the source, so one click puts the old ones back.
       const said =
         tag.kind === "configured" && setting.said && body.undo
           ? { ...setting.said, undo: body.undo }
@@ -945,8 +811,6 @@ export function connectionsReplied(
           problem: body.problem ?? null,
         })[0],
         synced: true,
-        // Picked through its source server, one that now waits for options
-        // that fit has them drafted.
         effects:
           tag.kind === "configured" &&
           body.connection?.state === "waiting" &&
@@ -999,8 +863,6 @@ export function connectionsReplied(
   }
 }
 
-// The list with a connection the server just gave, in place of the one with
-// its ID or another of its kind it took the place of.
 function withConnection(
   view: ConnectionsView | null,
   connection: ConnectionView,
@@ -1013,9 +875,6 @@ function withConnection(
   return { ...view, connections: [...others, connection] };
 }
 
-// What a source's last sync changed, as its row says it: only the counts
-// that aren't zero, such as "3 new · 1 changed". Null when it changed
-// nothing.
 export function syncChanges(counts: ConnectionView["lastSync"]): string | null {
   const said = [
     counts.new && `${counts.new} new`,
@@ -1025,8 +884,6 @@ export function syncChanges(counts: ConnectionView["lastSync"]): string | null {
   return said.length ? said.join(" · ") : null;
 }
 
-// The sources folded to one line: how many, when the longest ago of them
-// last synced, and whether any is syncing or has a problem.
 export function sourcesLine(model: ConnectionsModel): {
   count: number;
   syncable: number;
@@ -1035,22 +892,17 @@ export function sourcesLine(model: ConnectionsModel): {
   problem: boolean;
 } {
   const view = openConnections(model);
-  // A stand-in's items are Oriel's own, so it never syncs (decision 0059).
   const syncable = view.filter((connection) => !connection.own);
   const times = syncable.map((connection) => connection.syncedAt);
   return {
     count: view.length,
     syncable: syncable.length,
-    // A source never synced makes the whole line "not synced yet".
     syncedAt: times.some((at) => at === null) ? null : (times.toSorted()[0] ?? null),
     syncing: model.syncing.length > 0,
     problem: view.some((connection) => model.problems[connection.id] !== undefined),
   };
 }
 
-// A connection that read nothing, which the window says, so an empty window
-// doesn't look as if it isn't connected: only once a sync has read it, as
-// before that, Oriel doesn't know it's empty.
 export const emptyConnections = (model: ConnectionsModel): ConnectionView[] =>
   openConnections(model).filter(
     (connection) => connection.items === 0 && connection.syncedAt !== null,

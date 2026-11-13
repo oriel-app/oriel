@@ -1,17 +1,11 @@
-// A chart's values as words (OA-262): what charts.tsx draws for the series,
-// the timeline and the spread, as the rows of a table a screen reader can
-// walk, and the tooltips on its marks, from the one place. The pivot
-// renders as HTML and needs none.
 import type { ChartBlock, Lane } from "@oriel/core/block-charts";
 
 type Of<F extends ChartBlock["form"]> = Extract<ChartBlock, { form: F }> & {
   names?: Readonly<Record<string, string>>;
 };
 
-// A label as every block shows it: an item's name when it is an item's ID.
 export const named = (block: { names?: Readonly<Record<string, string>> }, label: string) =>
   (block.names && Object.hasOwn(block.names, label) ? block.names[label] : undefined) ?? label;
-// The mark every block puts before a figure that is only a lower bound.
 export const atLeast = (bound: unknown) => (bound ? "≥ " : "");
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -22,12 +16,8 @@ export const dateLabel = (at: number) => {
 export const number = (value: number) =>
   (Math.round(value * 10) / 10).toLocaleString("en-US", { maximumFractionDigits: 1 });
 
-// A table of a chart's values: each row starts with what it is, a header
-// for its row, then its figures under `head`'s columns.
 export type ValueTable = { caption: string | null; head: string[]; rows: string[][] };
 
-// A series: a row per week or day as drawn, then the whole, the fitted line
-// and the forecast, as the drawing shows them.
 export function seriesValues(chart: Of<"series">): ValueTable {
   const { series, step, running } = chart;
   const when = (at: number) => (step === "day" ? dateLabel(at) : `Week of ${dateLabel(at)}`);
@@ -50,8 +40,6 @@ export function seriesValues(chart: Of<"series">): ValueTable {
   };
 }
 
-// The fitted line as drawn: from where it rises above zero, if it starts
-// below.
 export function fitLine(series: Of<"series">["series"]) {
   if (!series.fit) return null;
   const { from, to } = series.fit.line;
@@ -69,8 +57,6 @@ export function fitLine(series: Of<"series">["series"]) {
 export const forecastRange = (forecast: { early: string; late: string | null }) =>
   `80% range: ${dateLabel(Date.parse(forecast.early))} to ${forecast.late ? dateLabel(Date.parse(forecast.late)) : "later than six months"}`;
 
-// A timeline's bar, in words: when it started and ended, when it was due,
-// how late, and for a group how many of its rows ended.
 export function laneValues(lane: Lane) {
   const start = Date.parse(lane.start);
   return {
@@ -82,7 +68,6 @@ export function laneValues(lane: Lane) {
   };
 }
 
-// The tooltip on a timeline's bar.
 export const laneText = (v: ReturnType<typeof laneValues>) =>
   [
     `started ${v.started}`,
@@ -94,7 +79,6 @@ export const laneText = (v: ReturnType<typeof laneValues>) =>
     .filter(Boolean)
     .join(", ");
 
-// A timeline: a row per lane drawn, with only the columns some lane has.
 export function timelineValues(chart: Of<"timeline">, lanes: readonly Lane[]): ValueTable {
   type Values = ReturnType<typeof laneValues>;
   const all: [string, (v: Values) => string][] = [
@@ -113,7 +97,6 @@ export function timelineValues(chart: Of<"timeline">, lanes: readonly Lane[]): V
   };
 }
 
-// A spread: a row per bin, then the median and the 90th percentile.
 export function spreadValues(chart: Of<"spread">): ValueTable {
   const { spread } = chart;
   const bound = atLeast(spread.atLeast);

@@ -1,6 +1,3 @@
-// How the window writes a time, as Settings › General picks (decision 0046):
-// relative, "3 min ago" or "in 2 h", or absolute, as each place writes a
-// date. A review link's page always has the default.
 import type { TimeFormat } from "./view.ts";
 
 export const defaultTimeFormat: TimeFormat = "relative";
@@ -9,8 +6,6 @@ const minute = 60_000;
 const hour = 60 * minute;
 const day = 24 * hour;
 
-// An instant an hour, a day or a month from `now`, in words. Past a month,
-// the date.
 export function relative(instant: string, now: number): string {
   const at = Date.parse(instant);
   if (Number.isNaN(at)) return instant;
@@ -28,7 +23,6 @@ export function relative(instant: string, now: number): string {
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-// An instant as a short date and time, in the reader's zone.
 export function when(instant: string): string {
   return new Date(instant).toLocaleString(undefined, {
     month: "short",
@@ -38,9 +32,8 @@ export function when(instant: string): string {
   });
 }
 
-// An instant in `format`: relative, or as `absolute` writes it. A time
-// that has happened is never written as one to come, as a clock behind the
-// server's would; only one `ahead`, such as when a limit resets, is.
+// A past time is never written as one to come, as a clock behind the server's would make it;
+// only one `ahead`, such as when a limit resets, is.
 export function stamp(
   instant: string,
   format: TimeFormat,
