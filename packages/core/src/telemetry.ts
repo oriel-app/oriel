@@ -9,43 +9,15 @@ import type { SketchHeight, SketchRefusal } from "./sketch.ts";
 import type { OverviewSection } from "./overview.ts";
 import type { SignalKind } from "./noticed.ts";
 
-// Pilot telemetry, stored locally. Only raw events are stored; these are
-// derived from them, never stored:
-// - first question asked: the earliest `question.asked`
-// - first change set approved, and the time since the first run opened (the
-//   onboarding budget, decision 0038): the earliest approving
-//   `changeset.decided` minus `first-run.opened`, or on localhost, where
-//   there is no first run, minus `source.connected`
-// - each phase of the first run: the time between its events; for a
-//   connection that waits for its options (decision 0051), the draft's turn
-//   from its onboarding `question.asked` to `draft.made`, and the review
-//   from there to `draft.applied`, or to `source.configured` for Oriel's
-//   guess
-// - time to done: from `thread.opened` to the thread's first
-//   `changeset.applied` or `thread.marked-done`, whichever came first
-// Where the user closed a thread from: its page, or a menu on a list, or a
-// swipe on one.
-// Or New chat, or Continue in… (in the window chat, or a thread dragged onto
-// another workstream), which marks the old thread done.
 export type CloseVia = "page" | "menu" | "swipe" | "new-chat" | "continue";
 
-// Events that can come from an Oriel action say who acted in `by`, which only
-// an actor other than the user fills in; or, by their `cause`, who changed a
-// workstream (decision 0024). An Undo's events name, in `undoes`, whose
-// action it undid, unless it was the user's own: the agent's, say, from the
-// list under its reply. A source connected says whether it was a `later`
-// connection of its kind than the first (decision 0049).
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind; later: boolean }
-  // A connection's options changed, by name, never their values; or
-  // disconnected (decision 0049).
+  // Option names only, never their values.
   | { name: "source.configured"; source: SourceKind; later: boolean; options: string[] }
   | { name: "source.disconnected"; source: SourceKind; later: boolean }
-  // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
-  // A sync through a kind's source server (decision 0059), whoever asked:
-  // how many items it listed, how long it took, and which agent ran it,
-  // whether it worked. Never a title, the server's name or its address.
+  // Never a title, the server's name or its address.
   | {
       name: "source.server-synced";
       source: SourceKind;
@@ -54,9 +26,7 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       ms: number;
       ok: boolean;
     }
-  // A kind turned on or off (decision 0059), by the person or the agent,
-  // and, on an Undo, whose turning it undid: the kind only, never the
-  // source server's name or address.
+  // The kind only, never the source server's name or address.
   | {
       name: "source.turned";
       source: SourceKind;
@@ -64,7 +34,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       by: "person" | "agent";
       undoes?: Actor;
     }
-  // `size` is how many items it started with.
   | {
       name: "workstream.created";
       workstreamId: Ulid;
@@ -72,8 +41,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       size: number;
       by?: Actor;
     }
-  // One per item, by whoever added it, as the workstream's log has it: the user,
-  // say, or a change set a thread on the workstream applied.
   | {
       name: "workstream.item-added";
       workstreamId: Ulid;
@@ -81,8 +48,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       cause: WorkstreamChange["cause"]["kind"];
       undoes?: Actor;
     }
-  // The workstream was marked done, by the user unless `by` says otherwise,
-  // with `threads`, how many of its threads that marked done (decision 0028).
   | {
       name: "workstream.marked-done";
       workstreamId: Ulid;
@@ -90,8 +55,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       by?: Actor;
       undoes?: Actor;
     }
-  // The user deleted the workstream, with `threads`, how many went with it.
-  // `kept`: threads used it, so its rows stay, out of sight, for its Undo.
   | {
       name: "workstream.deleted";
       workstreamId: Ulid;
@@ -100,9 +63,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       undoes?: Actor;
     }
   | { name: "thread.opened"; threadId: Ulid; workstreamId: Ulid; regionSize: number }
-  // `rejected`: the message was the reason given for rejecting that change set.
-  // `held`: it was a message held from someone else, which the user sent to
-  // the agent, as it was or edited (decision 0024).
   | {
       name: "question.asked";
       threadId: Ulid;
@@ -117,20 +77,11 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       kept: boolean;
     }
   | { name: "held-message.sent"; threadId: Ulid; from: HeldSender["kind"]; edited: boolean }
-  // The user discarded a held message, so it never reached the agent.
   | { name: "held-message.discarded"; threadId: Ulid; from: HeldSender["kind"] }
-  // A draft the agent made, held for the user, by its action; the user
-  // applied it, as drafted or `edited`, or discarded it, `stale` when the
-  // options it was drafted over had moved on (decision 0051). Never its
-  // input.
+  // Never its input.
   | { name: "draft.made"; threadId: Ulid; action: ActionName }
   | { name: "draft.applied"; threadId: Ulid; action: ActionName; edited: boolean }
   | { name: "draft.discarded"; threadId: Ulid; action: ActionName; stale: boolean }
-  // The thread was marked done, as one over read-only items needs: by the
-  // user, on its page, or from a menu or a swipe on a list of threads; or by
-  // someone else, who closed nothing in the window.
-  // `workstreamId`: it was marked done with its workstream, which closed
-  // nothing else in the window (decision 0028).
   | {
       name: "thread.marked-done";
       threadId: Ulid;
@@ -139,8 +90,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       undoes?: Actor;
       workstreamId?: Ulid;
     }
-  // The user deleted the thread. `kept`: it wrote to a source, so its records
-  // stay, out of sight. `workstreamRemoved`: its workstream, made for it, went too.
   | {
       name: "thread.deleted";
       threadId: Ulid;
@@ -150,13 +99,10 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       via: CloseVia;
     }
   | { name: "grouping.switched"; grouping: string }
-  // The user opened a cluster in Browse to its items, or closed it. Stored
-  // before OA-153 as `zoom.changed`, which a report maps (SPEC §7).
+  // Older rows store this as `zoom.changed`, which a report maps.
   | { name: "cluster.opened" }
   | { name: "cluster.closed" }
   | { name: "changeset.edited"; changeSetId: Ulid }
-  // The agent revised its own undecided change set in place (OA-309):
-  // `mutations`, how many changes it holds now.
   | { name: "changeset.revised"; changeSetId: Ulid; threadId: Ulid; mutations: number }
   | {
       name: "changeset.decided";
@@ -164,19 +110,11 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       decision: "approved" | "rejected";
       via: "thread" | "review-link";
     }
-  // The person undid their rejection in the thread (OA-258).
   | { name: "changeset.unrejected"; changeSetId: Ulid }
-  // `sources`: the sources it wrote to, in source order (OA-28).
   | { name: "changeset.applied"; changeSetId: Ulid; threadId: Ulid; sources: SourceKind[] }
-  // The rest of a change set that started landing, or may have, was dropped.
-  // Not a rejection: the person didn't decline it; the source stopped it.
   | { name: "changeset.dismissed"; changeSetId: Ulid; via: "thread" | "review-link" }
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
-  // An apply went a send's lease with nothing sent or answered (OA-82).
   | { name: "changeset.stalled"; changeSetId: Ulid; threadId: Ulid }
-  // A second look at a change set (decision 0054): made, by how
-  // many findings of each kind, how long it took and its tokens; failed, by
-  // why in a word; and a companion it suggested, added by the person.
   // Never its words or quotes.
   | {
       name: "challenge.made";
@@ -188,24 +126,15 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "challenge.failed"; changeSetId: Ulid; why: "no-record" | "error" }
   | { name: "challenge.companion-added"; changeSetId: Ulid }
   | { name: "review-link.opened"; changeSetId: Ulid }
-  // A live review link whose change set the page won't show: its workstream
-  // was deleted (decision 0028). Not an open (OA-143).
   | { name: "review-link.refused"; changeSetId: Ulid; why: "deleted" }
-  // The user opened an item's panel beside the page, by a plain click on a
-  // link to it or at an address with one open.
   | { name: "item.panel-opened"; source: SourceKind }
-  // A stand-in's item (decision 0059) created, edited or deleted, with the
-  // fields set, by name, and by whom: the person in its panel, or a change
-  // set's apply or revert. Never its words.
+  // Never its words.
   | {
       name: "standin.moving";
-      // The kind it moves into.
       source: SourceKind;
       step: "offered" | "moved";
       items: number;
     }
-  // Oriel offered one change set to move its stand-in's issues into a kind
-  // that turned on, or it applied, and how many (decision 0059).
   | {
       name: "standin.written";
       source: SourceKind;
@@ -213,63 +142,30 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       change: "created" | "edited" | "deleted";
       fields: string[];
     }
-  // The user left Oriel for an item's source: from its panel's button, or by
-  // a Cmd/Ctrl or middle click on a link to it.
   | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }
-  // The user asked about an open item from its panel, which took them to the
-  // window chat with it (decision 0025), by its source kind.
   | { name: "item.asked-about"; source: SourceKind }
   | { name: "item.dropped-on-composer"; source: SourceKind }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
-  // A block the agent asked for showed under its reply, by its form
-  // (decision 0030).
-  // A waiting connection's preview shows as a block unasked (decision 0051).
   | { name: "block.shown"; threadId: Ulid; form: BlockForm | "preview" }
-  // A block the agent asked for and Oriel refused; the agent was told why.
   | { name: "block.refused"; threadId: Ulid }
-  // The person regrouped a pivot block in the window, with no model call
-  // (decision 0053); nothing but that it happened.
   | { name: "block.regrouped" }
-  // A sketch the agent wrote showed under its reply, by its height and its
-  // size in bytes; or Oriel refused it, by why (decision 0033). Never its
-  // text or the names refused.
+  // Never its text or the names refused.
   | { name: "sketch.shown"; threadId: Ulid; height: SketchHeight; bytes: number }
   | { name: "sketch.refused"; threadId: Ulid; reason: SketchRefusal }
-  // An answer named IDs as chips that Oriel couldn't resolve, `count` of
-  // them, which drew as "unknown reference" (decision 0032).
   | { name: "chip.unknown"; threadId: Ulid; count: number }
-  // The window chat (decision 0027): its first question made it; New chat
-  // left it, `kept` working when something in it waits on the user.
   | { name: "window-chat.opened"; threadId: Ulid }
   | { name: "window-chat.new-chat"; threadId: Ulid; kept: boolean }
-  // Continue in used: the request went on in `to`, a thread on the item's
-  // workstream, or on one `made` for it; the chat was left as New chat
-  // leaves it, `kept` working when something in it waits on the user.
   | { name: "window-chat.continued"; threadId: Ulid; to: Ulid; made: boolean; kept: boolean }
-  // The user asked one of the questions to start from, by its kind.
   | { name: "window-chat.question-used"; question: StartQuestion }
-  // The user searched their threads from the sidebar: how long the query was
-  // and how many it found, never what it said. One per query the window
-  // asked about, once typing paused.
+  // How long the query was, never what it said.
   | { name: "threads.searched"; queryLength: number; results: number }
-  // The user opened what a search found: a thread, or a change set in one,
-  // and where it was in the list, from 1.
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
-  // The user searched items in Browse: how long the query was and how many
-  // items it found, never what it said. One per query Browse loaded.
+  // How long the query was, never what it said.
   | { name: "items.searched"; queryLength: number; results: number }
-  // The user opened the overview, the window's first view (decision 0027).
   | { name: "overview.opened" }
-  // The user opened a section's "more": in place, or in Browse filtered to
-  // that slice.
   | { name: "overview.more-opened"; section: OverviewSection }
-  // A cluster Not in a workstream yet suggested became a workstream, by
-  // Make a workstream there; `grouping` is the cluster's.
   | { name: "overview.suggestion-made"; workstreamId: Ulid; grouping: string }
-  // Noticed (decision 0052). A pass ended, by its counts and times, never
-  // its words: the signals it was offered, the cards it picked, the lines
-  // Oriel dropped, its tokens, the time to its first card (null with none)
-  // and in all, and whether it ended with its answer.
+  // Counts and times, never its words.
   | {
       name: "noticed.pass";
       offered: number;
@@ -281,24 +177,13 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       ms: number;
       ok: boolean;
     }
-  // A pass's card showed on the overview, once a pass and a card; and one
-  // the person pinned or dismissed, by its signal's kind. Ask about this is
-  // `window-chat.question-used`'s `noticed`.
   | { name: "noticed.shown"; kind: SignalKind }
   | { name: "noticed.pinned"; kind: SignalKind }
   | { name: "noticed.dismissed"; kind: SignalKind }
-  // The person picked a theme in Settings, by its name (decision 0034).
   | { name: "theme.picked"; theme: string }
-  // The desktop app's first run (decision 0038). Its first screen opened,
-  // which starts the onboarding budget's clock; `fresh`: on a data folder
-  // with nothing in it yet.
   | { name: "first-run.opened"; fresh: boolean }
-  // What the first run found of each command-line agent, by its state.
   | { name: "first-run.cli-found"; cli: "claude-code" | "codex"; state: string }
-  // An install, sign-in or update of the person's CLI started, from the
-  // first run or Settings, and how it ended, after how long. `cli`: which,
-  // since Codex's sign-in (decision 0048); an event without it was Claude
-  // Code's.
+  // Older events have no `cli`: they were Claude Code's.
   | {
       name: "cli.started";
       command: "install" | "sign-in" | "update";
@@ -311,8 +196,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       ms: number;
       cli?: "claude-code" | "codex";
     }
-  // The test turn that proves the plan answers: how long, its tokens, and
-  // why it failed if it did, on which CLI, as above.
   | {
       name: "first-run.test-turn";
       ms: number;
@@ -321,14 +204,10 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       failed?: string;
       cli?: "claude-code" | "codex";
     }
-  // `api`, the API key, in events stored before decision 0059 retired it.
+  // `api` only in events stored before the API key was retired.
   | { name: "first-run.ai-chosen"; ai: "claude-code" | "codex" | "api" }
   | { name: "first-run.step-skipped"; step: "ai" | "work" }
-  // Show details' log was copied, for someone helping the person.
   | { name: "first-run.details-copied"; what: string }
-  // The first run ended: how long from its opening, and whether it installed
-  // or signed in the person's CLI.
   | { name: "first-run.finished"; ms: number; installed: boolean; signedIn: boolean }
-  // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );
