@@ -42,7 +42,7 @@ import { FoundCard } from "./found.tsx";
 import { StatusBar } from "./window-page.tsx";
 import { OverviewComposer, QuestionButton } from "./window-chat-view.tsx";
 import { NoticedStrip, PinnedStrip } from "./noticed-strip.tsx";
-import { type Question, questionsFrom, type WindowChatModel } from "./window-chat.ts";
+import type { Question, WindowChatModel } from "./window-chat.ts";
 import type { ThreadModel } from "./thread.ts";
 
 export function OverviewPage(props: {
@@ -60,9 +60,8 @@ export function OverviewPage(props: {
   thread: ThreadModel | null;
   // Whether the window chat has a conversation.
   ongoing: boolean;
-  // The first run's overview (decision 0038): its one-time line, and its
-  // top question an instruction; and whether any AI is set up.
-  firstRun: { line: boolean; questions: boolean };
+  questions: Question[];
+  firstRun: { line: boolean };
   noAi: boolean;
   // Shows the sidebar's list of the threads waiting on the user.
   onNeedsYou(): void;
@@ -71,15 +70,8 @@ export function OverviewPage(props: {
   const { model, ending, added, connections, connectors, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
-  const questions =
-    view && !props.noAi
-      ? questionsFrom(
-          view,
-          props.firstRun.questions,
-          standingIn(connectors, connections).length > 0,
-        )
-      : [];
-  // A question whose headline isn't on screen sits in the composer's frame.
+  const started = props.ongoing || props.chat.open || props.chat.asking;
+  const questions = started ? [] : props.questions;
   const shownHere = new Set(view?.headlines.map((line) => line.id));
   const beside = questions.filter((q) => q.headline !== undefined && shownHere.has(q.headline));
   return (

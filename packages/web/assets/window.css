@@ -7250,6 +7250,19 @@ button.overview-title:hover {
   padding-right: var(--space-1);
 }
 
+.window-chat-entries:has(> .rail-starts) {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.rail-starts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
 .window-chat-empty,
 .window-chat-moved {
   color: var(--text-muted);

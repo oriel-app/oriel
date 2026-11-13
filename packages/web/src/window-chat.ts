@@ -15,7 +15,7 @@ import {
   notLooking,
   updateLooking,
 } from "./looking.ts";
-import { planQuestion, questionLabel } from "./questions.ts";
+import { planQuestion, questionLabel, questionShort } from "./questions.ts";
 import { initThread, type ThreadModel } from "./thread.ts";
 import type { HeadlineView, OverviewView } from "./view.ts";
 
@@ -63,6 +63,7 @@ export type WindowChatMsg =
 export type Question = {
   kind: StartQuestion;
   label: string;
+  short?: string;
   text: string;
   subject?: string;
   headline?: HeadlineView["id"];
@@ -94,7 +95,7 @@ export const loadWindowChat: Effect = get("/api/window-chat", { kind: "windowCha
 // approve rather than questions back.
 export function questionsFrom(view: OverviewView, firstRun = false, plans = false): Question[] {
   if (plans && view.workstreams.length === 0 && view.candidates.total === 0)
-    return [{ kind: "plan", label: planQuestion, text: planQuestion }];
+    return [{ kind: "plan", label: planQuestion, short: planQuestion, text: planQuestion }];
   const headline = (id: string) => view.headlines.find((line) => line.id === id)?.subject;
   const moved = headline("moved");
   const quiet = headline("quiet");
@@ -112,6 +113,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
       ? {
           kind: "chart-moved",
           label: label("chart-moved"),
+          short: questionShort("chart-moved"),
           text: "Chart what moved since I looked, by workstream",
           headline: "moved",
         }
@@ -120,6 +122,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
       ? {
           kind: "moved-most",
           label: label("moved-most", moved.name),
+          short: questionShort("moved-most"),
           text: "What moved in the workstream that moved most since I looked?",
           headline: "moved",
           subject: moved.id,
@@ -129,6 +132,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
       ? {
           kind: "stalled",
           label: label("stalled", quiet.name),
+          short: questionShort("stalled"),
           text: "Why has the workstream that's been quiet longest stalled?",
           headline: "quiet",
           subject: quiet.id,
@@ -138,6 +142,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
       ? {
           kind: "candidates",
           label: label("candidates", topName),
+          short: questionShort("candidates"),
           text: "Should the top item not in a workstream yet become one?",
           headline: "top",
           subject: topId,
@@ -149,6 +154,7 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
       ? {
           kind: "make-candidate",
           label: label("make-candidate", topName),
+          short: questionShort("make-candidate"),
           text: `Make a workstream of the top candidate in Not in a workstream yet, ${top.item.id}, with all its items.`,
           headline: "top",
           subject: top.item.id,

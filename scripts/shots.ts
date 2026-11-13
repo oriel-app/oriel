@@ -1714,6 +1714,75 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
+// Memory mode, as the fixture pins the clock and nothing would go quiet;
+// two days on, with one story moved, the overview has every headline.
+let questioning = server;
+const questioned = async () => {
+  let ahead = 0;
+  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  questioning = await start(0, {
+    db: ":memory:",
+    sources: {
+      jira: {
+        mode: "memory",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        fetch: site.fetch,
+      },
+    },
+    now: () => instant(new Date(Date.now() + ahead)),
+    agent: (deps) => scripted(deps, planning),
+  });
+  await syncKind("jira", questioning);
+  for (const cluster of ["10001", "10002", "10003"])
+    await post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster }, questioning);
+  const { seq } = await call<{ seq: number }>(questioning, "GET", "/api/overview");
+  await post("/api/overview/leave", { seq }, questioning);
+  ahead = 2 * 86_400_000;
+  site.edit("SYN-23", { status: "Done" });
+  await syncKind("jira", questioning);
+  return questioning;
+};
+
+async function questionsBeside(page: Page, checked: boolean): Promise<Record<string, string>> {
+  const named = (line: string) =>
+    page.locator(`[data-headline="${line}"] .overview-title`).first().innerText();
+  const want = [
+    ["moved", "What moved in it?", async () => `What moved in ${await named("moved")}?`],
+    ["moved", "Chart what moved", async () => "Chart what moved since I looked, by workstream"],
+    ["quiet", "Why is it stalled?", async () => `Why is ${await named("quiet")} stalled?`],
+  ] as const;
+  const whole: Record<string, string> = {};
+  for (const [line, short, label] of want) {
+    const button = page.locator(`[data-headline="${line}"] .ask-question`, { hasText: short });
+    await button.waitFor();
+    if (checked)
+      await check(async () => {
+        const about = await button.getAttribute("aria-describedby");
+        const body = page.locator(`[data-headline="${line}"] .overview-headline-body`);
+        if (!about || (await body.getAttribute("id")) !== about)
+          throw new Error(`${short} isn't described by its headline's line`);
+      });
+    whole[short === "Why is it stalled?" ? "stalled" : short] = await label();
+  }
+  const top = page.locator('[data-headline="top"] .ask-question');
+  await top.waitFor();
+  const topShort = await top.innerText();
+  if (checked)
+    await check(() => {
+      if (!/^(Should it become a workstream\?|Make it a workstream)$/.test(topShort))
+        throw new Error(`The top headline's question says ${topShort}`);
+    });
+  const title = page.locator('[data-headline="top"] .overview-title').first();
+  const key = title.locator(".key");
+  const said = await title.innerText();
+  const item = (await key.count()) ? said.slice((await key.innerText()).length).trim() : said;
+  whole.top = topShort.startsWith("Should")
+    ? `Should ${item} become a workstream?`
+    : `Make ${item} a workstream`;
+  return whole;
+}
+
 // Moving an item between workstreams (moving.ts), on a server of each
 // shot's own: "Checkout polish" holds three items, and "Gift cards" one.
 // At 1280 the item's row is dragged with the mouse, down, across and up,
@@ -4512,6 +4581,61 @@ const scenes: Scene[] = [
     make: async () => (await writing()).serving,
     act: (page) => movedChat(page, "gathered"),
   },
+  // Only the last checks: its steps pass through the other two's states.
+  ...(["questions-beside", "questions-asked", "questions-new-chat"] as const).map((name): Scene => {
+    const checked = name === "questions-new-chat";
+    return {
+      name,
+      ...(checked
+        ? {
+            test: "each question shows beside its headline in a short form described by its line, none once a chat has started, a thread from one is titled with its whole label, and New chat shows them all, whole",
+            testAt: [390],
+          }
+        : {}),
+      path: "/",
+      window: true,
+      make: questioned,
+      act: async (page) => {
+        await overviewShown(page);
+        const beside = await questionsBeside(page, checked);
+        if (name === "questions-beside") return;
+        await page
+          .locator(".overview-headline .ask-question", { hasText: "Why is it stalled?" })
+          .click();
+        await page.locator(".window-chat .user-message").first().waitFor();
+        await page.locator(".working").first().waitFor({ state: "detached" });
+        await until(page, `!document.documentElement.hasAttribute("data-carrying")`);
+        if (checked) {
+          await expectCount(page.locator(".overview .ask-question"), 0);
+          await check(async () => {
+            const { thread } = await call<{ thread: string }>(
+              questioning,
+              "GET",
+              "/api/window-chat",
+            );
+            const { title } = await call<{ title: string | null }>(
+              questioning,
+              "GET",
+              `/api/threads/${thread}`,
+            );
+            if (title !== beside.stalled)
+              throw new Error(`The thread is titled ${String(title)}, not ${beside.stalled}`);
+          });
+        }
+        if (name === "questions-asked") return;
+        await page.locator(".window-chat").getByRole("button", { name: "New chat" }).click();
+        const starts = page.locator(".window-chat .rail-starts .ask-question");
+        await starts.first().waitFor();
+        await check(async () => {
+          const shown = await starts.allInnerTexts();
+          const whole = Object.values(beside).sort();
+          if (shown.toSorted().join("|") !== whole.join("|"))
+            throw new Error(`New chat shows ${shown.join(", ")}, not ${whole.join(", ")}`);
+        });
+        await expectCount(page.locator(".overview .ask-question"), 0);
+      },
+    };
+  }),
 ];
 
 // The window chat moving into its workstream, each way in (OA-355), with no

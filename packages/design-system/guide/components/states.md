@@ -39,17 +39,17 @@ Most error text comes from the server: `errorOf` in `packages/web/src/http.ts` s
 
 ### Empty
 
-| Class                  | Where                               | Oriel's words                                                                                                                           | Look                       |
-| ---------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `.rail-empty`          | a workstream's items, the Done page | "No items. Add some from the window." (`WorkstreamPage` in `packages/web/src/workstream-page.tsx`)                                      | faint, page size           |
-| `.sidebar .rail-empty` | the sidebar's workstreams and Done  | "Pick items in the window, or make a workstream from a cluster." (`Workstreams` in `packages/web/src/sidebar.tsx`)                      | faint, `--text-sm`         |
-| `.rail-note`           | a thread's right rail               | "No items yet. What a change set here creates joins this workstream." (`Region` in `packages/web/src/thread-page.tsx`)                  | faint, `--text-sm`         |
-| `.window-chat-empty`   | the window chat, before a question  | "Ask about what changed, what needs you, or what should become a workstream." (`WindowChat` in `packages/web/src/window-chat-view.tsx`) | muted, `--text-md`         |
-| `.no-items`            | an opened Browse cluster            | "None of its items match." / "No items." (`Items` in `packages/web/src/window-page.tsx`)                                                | faint, a sunk band         |
-| `.no-matches`          | Browse, filtered to nothing         | "Nothing in the window matches these filters." + Clear filters (`Body` in `packages/web/src/window-page.tsx`)                           | muted, `--space-6` margins |
-| `.overview-quiet`      | an overview section                 | "Nobody has work in progress." (`People` in `packages/web/src/overview-page.tsx`)                                                       | muted, `--text-md`         |
-| `.panel-empty`         | a block in the item panel           | the source's own: "No comments." (`jiraPanel` in `packages/jira/src/panel.ts`)                                                          | faint, `--text-sm`         |
-| `.connect-none`        | a review step with no guess         | "Oriel couldn't guess: no column has a different value in every row." (`ReviewStep` in `packages/web/src/connect-steps.tsx`)            | muted                      |
+| Class                  | Where                                                       | Oriel's words                                                                                                                           | Look                       |
+| ---------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `.rail-empty`          | a workstream's items, the Done page                         | "No items. Add some from the window." (`WorkstreamPage` in `packages/web/src/workstream-page.tsx`)                                      | faint, page size           |
+| `.sidebar .rail-empty` | the sidebar's workstreams and Done                          | "Pick items in the window, or make a workstream from a cluster." (`Workstreams` in `packages/web/src/sidebar.tsx`)                      | faint, `--text-sm`         |
+| `.rail-note`           | a thread's right rail                                       | "No items yet. What a change set here creates joins this workstream." (`Region` in `packages/web/src/thread-page.tsx`)                  | faint, `--text-sm`         |
+| `.window-chat-empty`   | the window chat, before a question, with none to start from | "Ask about what changed, what needs you, or what should become a workstream." (`WindowChat` in `packages/web/src/window-chat-view.tsx`) | muted, `--text-md`         |
+| `.no-items`            | an opened Browse cluster                                    | "None of its items match." / "No items." (`Items` in `packages/web/src/window-page.tsx`)                                                | faint, a sunk band         |
+| `.no-matches`          | Browse, filtered to nothing                                 | "Nothing in the window matches these filters." + Clear filters (`Body` in `packages/web/src/window-page.tsx`)                           | muted, `--space-6` margins |
+| `.overview-quiet`      | an overview section                                         | "Nobody has work in progress." (`People` in `packages/web/src/overview-page.tsx`)                                                       | muted, `--text-md`         |
+| `.panel-empty`         | a block in the item panel                                   | the source's own: "No comments." (`jiraPanel` in `packages/jira/src/panel.ts`)                                                          | faint, `--text-sm`         |
+| `.connect-none`        | a review step with no guess                                 | "Oriel couldn't guess: no column has a different value in every row." (`ReviewStep` in `packages/web/src/connect-steps.tsx`)            | muted                      |
 
 And one borrowed class: Settings › Connections says "Nothing is connected yet." in a `.settings-field-about` (`Connections` in `packages/web/src/connections-page.tsx`).
 
