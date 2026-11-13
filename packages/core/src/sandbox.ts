@@ -16,16 +16,13 @@ import {
   unknown,
 } from "./validate.ts";
 
-// The temporary name of an item created earlier in the same run.
 export type NewRef = `new:${number}`;
 
 export function isNewRef(value: string): value is NewRef {
   return /^new:[1-9][0-9]*$/.test(value);
 }
 
-// Guest → host, one JSON object per line on stdout. Guest output is untrusted:
-// the host parses every line with `guestMessage`. Reads get a reply; writes are
-// queued as captured mutations, and intents recorded, never answered.
+// Guest output is untrusted: the host parses every line with `guestMessage`.
 export const guestMessage = union(
   object({ kind: literal("read"), id: number, fn: string, args: array(unknown) }),
   object({
@@ -42,7 +39,6 @@ export const guestMessage = union(
 );
 export type GuestMessage = Infer<typeof guestMessage>;
 
-// Host → guest, one JSON object per line on stdin: the answer to a read.
 export type HostReply =
   | { id: number; ok: true; value: unknown }
   | { id: number; ok: false; error: string };
@@ -52,39 +48,20 @@ export type CapturedMutation = {
   target: ItemId | NewRef | null;
   ref: NewRef | null;
   args: unknown;
-  // A create's kind, the namespace's that captured it, as two kinds'
-  // catalogues may share an op (decision 0059). Absent with a target, which
-  // says it, and on a create from before, whose op only one catalogue has.
+  // Two kinds' catalogues may share an op. Absent with a target, and on a create stored before it existed.
   into?: SourceKind;
 };
 
-// One of Oriel's own actions a run asked for (decision 0024), its input
-// checked and its defaults filled in: never applied in the run. When the
-// turn ends, the last finished run's intents apply, in the order it recorded
-// them.
+// Never applied in the run: when the turn ends, the last finished run's intents apply, in order.
 export type Intent = { action: ActionName; input: Record<string, unknown> };
 
-// One of the user's actions the agent wrote out for them (decision 0051),
-// its input checked as the composition root checks it: never applied in the
-// run, nor when the turn ends. The last finished run's drafts are held in
-// the thread, for the user to apply, edit or discard.
+// Never applied by the run or the turn: the user applies, edits or discards it.
 export type Draft = { action: ActionName; input: Record<string, unknown> };
 
-// A region's bindings, built per run: the declarations the agent codes
-// against, the guest stubs generated from the same description, and the host
-// side. `read` proxies live. `capture` validates a write against the source's
-// op catalogue and throws if its target is outside the region. `intend`
-// checks one of Oriel's own actions against its declaration and throws if it
-// adds an item the run can't reach. `draft` checks a draft of an action
-// closed to the agent (decision 0051) and throws if it doesn't fit. What any
-// of them throws names the function, and the sandbox passes it on as it is.
+// What any of these throws names the function; the sandbox passes it to the agent as it is.
 export type Bindings = {
   dts: string;
   shim: string;
-  // `found`: the items outside the region the read reached, as search()
-  // and the window chat's window.overview() do: the escape-hatch block.
-  // `preview`: what a waiting connection's preview read showed, which Oriel
-  // shows unasked as its block (decision 0051).
   read(
     fn: string,
     args: readonly unknown[],
@@ -94,8 +71,6 @@ export type Bindings = {
     found?: SearchHit[];
     preview?: PreviewTable[];
   }>;
-  // What a read declares of its result, for a block (decision 0030); null
-  // for a read a block can't use.
   fields?(fn: string): ResultFields | null;
   capture(fn: string, args: readonly unknown[], ref: NewRef | null): CapturedMutation;
   intend(fn: string, args: readonly unknown[]): Intent;
@@ -107,14 +82,11 @@ export type RunLimits = {
   maxScriptBytes: number;
   maxReads: number;
   maxMutations: number;
-  // Oriel's actions a run may record: intents and drafts together.
   maxIntents: number;
   maxResultBytes: number;
   maxConsoleBytes: number;
 };
 
-// Shaped so the agent can fix its own script: what failed, where, a hint, and
-// the log lines leading up to it.
 export type RunError = {
   phase: "typecheck" | "runtime" | "limit";
   message: string;
@@ -122,19 +94,14 @@ export type RunError = {
   logs: string[];
 };
 
-// Every read a run passed to its bindings, in the order the guest made them.
-// "failed": the read threw. "unanswered": the run ended before it answered,
-// and a late answer is ignored.
+// "unanswered": the run ended before its answer, and a late answer is ignored.
 export type ProxiedRead = {
   fn: string;
   args: unknown[];
-  // Until it answered, failed, or the run ended.
   ms: number;
   status: "answered" | "failed" | "unanswered";
-  // True for the escape hatch (`search()` and reads of what it found), as the
-  // bindings report with an answer; null for a read that got none.
   outsideRegion: boolean | null;
-  // A hash of the payload, never the payload (SPEC §7); null unless answered.
+  // A hash of the payload, never the payload.
   payloadHash: string | null;
 };
 
@@ -149,17 +116,13 @@ export type RunResult = {
   intents: Intent[];
   drafts: Draft[];
   transcript: TranscriptEntry[];
-  // A sandbox rejects with the reason when the run is aborted, so a result is
-  // never "aborted"; the run record says that (`Run`).
+  // A sandbox rejects with the reason when the run is aborted, so a result is never "aborted".
   outcome: Exclude<RunOutcome, "aborted">;
   wallMs: number;
-  // From starting the guest to its first line, or null when none came: the
-  // cold start plus whatever the script does before its first read, write,
-  // log or return. Eval #6 reads it.
   coldStartMs: number | null;
 };
 
-// One run of agent-written TypeScript. The bindings are the only way out.
+// The bindings are the only way out.
 export interface Sandbox {
   run(
     script: string,

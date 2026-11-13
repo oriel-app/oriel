@@ -1,9 +1,5 @@
-// The figures behind a chart block (decision 0053, under 0030's guarantee):
-// weeks binned from dates, a least-squares line with its R², a
-// forecast from it with a range, quantiles, histogram bins and a pivot's
-// tables. Every number a chart draws or its caption states comes from here,
-// in Oriel's code, from a read's result; none from the agent. Pure, and the
-// clock is the read's own `asOf`, never the machine's.
+// Every number a chart draws or states comes from here, from a read's result, never from the agent.
+// Pure: the clock is the read's own `asOf`, never the machine's.
 import type { Instant } from "./ids.ts";
 
 export const dayMs = 86_400_000;
@@ -13,7 +9,6 @@ export const chartSteps = ["day", "week"] as const;
 export type ChartStep = (typeof chartSteps)[number];
 const stepMs = (step: ChartStep) => (step === "day" ? dayMs : weekMs);
 
-// Where the bin holding `at` starts: midnight UTC, or Monday's for a week.
 export function binStart(at: number, step: ChartStep): number {
   const day = Math.floor(at / dayMs) * dayMs;
   if (step === "day") return day;
@@ -22,7 +17,6 @@ export function binStart(at: number, step: ChartStep): number {
   return day - sinceMonday * dayMs;
 }
 
-// A date as the caption writes it: "Nov 30".
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export function shortDate(at: number | string): string {
   const date = new Date(typeof at === "string" ? Date.parse(at) : at);
@@ -30,7 +24,6 @@ export function shortDate(at: number | string): string {
 }
 const iso = (at: number) => new Date(at).toISOString() as Instant;
 
-// A number as a caption writes it: whole when it is, else to one place.
 export function figure(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? rounded.toLocaleString("en-US") : rounded.toFixed(1);
@@ -38,9 +31,7 @@ export function figure(value: number): string {
 
 export type Line = { slope: number; intercept: number; r2: number; n: number };
 
-// The least-squares line through the points, and its R²; null with fewer
-// than two distinct x, which no line fits. A flat series fits with R² 1 when
-// every point is on it and 0 otherwise.
+// A flat series fits with R² 1 when every point is on it and 0 otherwise.
 export function leastSquares(points: readonly { x: number; y: number }[]): Line | null {
   const n = points.length;
   if (n < 2) return null;
@@ -62,8 +53,7 @@ export function leastSquares(points: readonly { x: number; y: number }[]): Line 
   return { slope, intercept, r2, n };
 }
 
-// The value below which `q` of the sorted values fall, interpolating between
-// neighbours (the usual "type 7").
+// Interpolates between neighbours: the usual "type 7" quantile.
 export function quantile(sorted: readonly number[], q: number): number {
   if (!sorted.length) return Number.NaN;
   const at = (sorted.length - 1) * q;
@@ -73,8 +63,6 @@ export function quantile(sorted: readonly number[], q: number): number {
   return low + ((sorted[hi] ?? low) - low) * (at - lo);
 }
 
-// A bin width a person reads easily, 1, 2 or 5 times a power of ten, giving
-// at most `most` bins over the range.
 export function niceStep(range: number, most: number): number {
   if (range <= 0) return 1;
   const rough = range / most;
@@ -83,47 +71,31 @@ export function niceStep(range: number, most: number): number {
   return Math.max(step, Number.EPSILON);
 }
 
-// What a series needs before Oriel fits a line to it, and forecasts from it.
 export const minFitBins = 4;
 export const minFitEvents = 5;
 export const minForecastR2 = 0.6;
-// A forecast further out than this isn't one: it says so instead.
 export const maxForecastDays = 182;
-// The forecast's range: the rate's 80% interval, ±1.2816 standard errors.
+// ±1.2816 standard errors: an 80% interval.
 const z80 = 1.2816;
 
 export type SeriesPoint = { at: Instant; value: number };
 export type SeriesFit = {
-  // Per step, as drawn: the line's value at the first and last bins.
   line: { from: SeriesPoint; to: SeriesPoint };
   r2: number;
-  // The rate the line rises by, per step, and how many whole steps it fits.
   rate: number;
   weeks: number;
-  // When a running series reaches its total at that rate, with its range,
-  // or why there's no forecast.
   forecast: { at: Instant; early: Instant; late: Instant | null; left: number } | null;
   noForecast: string | null;
 };
 
 export type Series = {
   points: SeriesPoint[];
-  // Rows dated at or before the read's horizon: known to have happened by
-  // then, but not when. A running series starts from them.
   before: number;
-  // A running series' whole: every row's value, dated or not.
   total: number | null;
   fit: SeriesFit | null;
-  // Why the series has no line, when it was asked for one.
   noFit: string | null;
 };
 
-// A series of rows' dates, binned by `step` from the read's horizon to its
-// `asOf`, counting rows (`weight` 1) or summing a field. Running, each bin
-// holds everything up to it, from the rows already dated by the horizon, and
-// the total counts every row, dated or not, so what's left is the undated
-// rows. With `fit`, a least-squares line over the bins, and for a running
-// series a forecast of when it reaches its total at the line's rate.
 export function seriesOf(
   rows: readonly { at: number | null; weight: number }[],
   options: { since: number; asOf: number; step: ChartStep; running: boolean; fit: boolean },
@@ -134,7 +106,6 @@ export function seriesOf(
   const width = stepMs(step);
   const bins = Math.max(1, Math.round((last - first) / width) + 1);
   const values = Array.from({ length: bins }, () => 0);
-  // How many rows each bin holds, whatever they weigh: a fit needs events.
   const counts = Array.from({ length: bins }, () => 0);
   let before = 0;
   let total = 0;
@@ -159,9 +130,7 @@ export function seriesOf(
   if (!options.fit) return { ...base, fit: null, noFit: null };
   const none = (why: string): Series => ({ ...base, fit: null, noFit: why });
   if (step !== "week") return none("a line is fitted to whole weeks, so ask for a weekly series");
-  // Only whole weeks: not the one the change log starts in, which it saw
-  // only part of, nor the one the read was answered in, still filling. The
-  // line is drawn across every bin.
+  // Only whole weeks: not the first, which the change log saw only part of, nor the last, still filling.
   const from = first < since ? 1 : 0;
   const to = asOf < last + width - 1 ? bins - 1 : bins;
   const whole = Math.max(to - from, 0);
@@ -192,11 +161,8 @@ export function seriesOf(
   };
 }
 
-// When a running series at `reached` of `total` gets there, from when the
-// read was answered, at the line's rate, with a range from the rate's standard error. The
-// steps rise by independent amounts, which a running total's own residuals
-// don't, so the error comes from each step's rise, not from the line's fit
-// to the running total, which would understate it.
+// The error comes from each step's rise, not the fit to the running total: a running total's residuals
+// aren't independent, so they'd understate it.
 function forecastOf(
   rises: readonly number[],
   reached: number,
@@ -216,7 +182,6 @@ function forecastOf(
   const sd = Math.sqrt(rises.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(n - 1, 1));
   const error = sd / Math.sqrt(n);
   const width = stepMs(step);
-  // What's left, from when the read was answered, at each rate.
   const after = (rate: number) => asOf + (left / rate) * width;
   const at = after(line.slope);
   if (at - asOf > maxForecastDays * dayMs)
@@ -243,22 +208,16 @@ export type Spread = {
   p90: number;
   min: number;
   max: number;
-  // How many values are only lower bounds: the true value is at least it.
   atLeast: number;
 };
 
 export const maxSpreadBins = 12;
 
-// Values in at most 12 bins of a width a person reads easily, with the
-// median and the 90th percentile. Where some values are only lower bounds,
-// so are the quantiles: every true value is at least its bound.
 export function spreadOf(values: readonly { value: number; atLeast: boolean }[]): Spread | null {
   if (!values.length) return null;
   const sorted = values.map((v) => v.value).toSorted((a, b) => a - b);
   const min = sorted[0] ?? 0;
   const max = sorted.at(-1) ?? 0;
-  // The narrowest readable width whose bins, from a multiple of it to past
-  // the largest value, are at most 12.
   let width = niceStep(max - min, maxSpreadBins);
   const binsAt = (w: number) => Math.max(1, Math.floor((max - Math.floor(min / w) * w) / w) + 1);
   while (binsAt(width) > maxSpreadBins) width = niceStep(width * 1.5, 1);
@@ -287,10 +246,6 @@ export function spreadOf(values: readonly { value: number; atLeast: boolean }[])
   };
 }
 
-// A pivot's grid: the values of one field down, another's across (or none),
-// each cell holding how many rows fall in it and the sum of each measure.
-// The most common values first, then by name; past the cap, the rest fold
-// into one "Other" row or column, which says how many values it holds.
 export const maxPivotRows = 10;
 export const maxPivotColumns = 6;
 export const otherValue = "Other";
@@ -299,7 +254,6 @@ export const blankValue = "—";
 export type PivotTable = {
   rows: string[];
   columns: string[];
-  // How many values each "Other" folds in, when there is one.
   otherRows: number;
   otherColumns: number;
   // [row][column][measure]: measure 0 is the count, then each sum in order.

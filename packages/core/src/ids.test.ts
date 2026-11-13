@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isItemId, itemId, parseItemId } from "./ids.ts";
 
-// Decision 0049's one-way door: every ID that exists now keeps its meaning,
-// as its kind's first connection's.
+// A one-way door: every ID that exists now keeps its meaning.
 test("today's IDs parse as they did, each its kind's first connection", () => {
   const today = [
     ["jira:SYN-12", "jira", "SYN-12"],

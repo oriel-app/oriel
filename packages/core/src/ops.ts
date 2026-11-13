@@ -1,16 +1,9 @@
-// How change sets treat a writable source's ops: each op's entry in the
-// source's catalogue, plus what a diff, an apply and a revert need from it.
-// The adapter declares them; the composition root hands them to change sets
-// by source kind (decision 0019).
 import type { Conflict } from "./changeset.ts";
 import type { ItemId } from "./ids.ts";
 import type { NewRef } from "./sandbox.ts";
 import type { FieldValues, OpCatalogue, WriteResult } from "./source.ts";
 import type { Validator } from "./validate.ts";
 
-// What a diff line knows about the item a mutation changes. `title` is its
-// title as the change set leaves it; on a line that sets the title, as the
-// lines before leave it.
 export type Subject =
   | { kind: "item"; id: ItemId; title: string | null }
   | { kind: "new"; ref: NewRef; title: string | null }
@@ -18,73 +11,39 @@ export type Subject =
 
 export type LineContext = {
   subject: Subject;
-  // Field values just before this mutation.
   before: FieldValues;
-  // What a person calls an ID the op names in its source, such as an
-  // account or a channel; null when unknown.
   name(id: string): Promise<string | null>;
-  // An item's title, or a new item's, as the change set leaves it.
   title(id: ItemId | NewRef): Promise<string | null>;
 };
 
 export type Undo = { op: string; args: unknown } | { refused: string };
 
-// How the change-set engine treats one of a source's ops: its entry in the
-// source's `OpCatalogue` (`args`, which validates captured or edited
-// arguments, and replay sends what it returns; `revertOnly`), and more.
 export type OpSpec = OpCatalogue[string] & {
-  // A create has no target and may give its item a NewRef.
   creates: boolean;
-  // What a create makes, as a person names it ("story"); null otherwise.
   makes: string | null;
-  // A delete removes its target, emptying every field the source lists.
   deletes: boolean;
-  // Sending it twice leaves the source as sending it once does, so a failed
-  // attempt may be retried. Anything else that failed may have landed and is
-  // never sent again.
+  // Sending it twice leaves the source as sending it once does, so a failed attempt may be retried.
+  // Anything else that failed may have landed and is never sent again.
   idempotent: boolean;
-  // The item IDs among its arguments, which must be in the run's region.
+  // Its item IDs, which must be in the run's region.
   refs(args: unknown): string[];
-  // The arguments that may instead name an item an earlier create in the
-  // same change set makes, by its NewRef, each with the op that create must
-  // be; apply sends that item's ID. A diff shows each as the field of the
-  // same name.
   newRefArgs: Readonly<Record<string, string>>;
-  // The fields a diff shows, with the values this op sets. Keys are field
-  // names as the source's reader and writer report them.
   after(args: unknown): FieldValues;
-  // One plain-language sentence for a person who isn't an engineer.
   describe(args: unknown, context: LineContext): Promise<string>;
-  // The mutation that undoes an applied one, or why it can't be undone.
   undo(args: unknown, applied: WriteResult): Undo;
 };
 
-// One source's op specs, and what change sets need to name its items.
 export type OpSpecs = {
-  // The source's name as a person knows it.
   name: string;
-  // The field holding an item's title, read for every line.
   titleField: string;
-  // The fields an item has, in the order a diff lists them, each with what
-  // its value is: an item ID ("item", as an epic is) or a plain value. A
-  // pending delete lists them all, as an applied one does.
   fields: Readonly<Record<string, "item" | "value">>;
-  // The field holding an item's last update time. Every write result's
-  // `after` carries it, except a delete's. Field conflict checks skip it;
-  // reverting a create checks only it.
+  // Field conflict checks skip it; reverting a create checks only it.
   updatedField: string;
   ops: Readonly<Record<string, OpSpec>>;
-  // What stops a revert, in the source's own words, given the item's title
-  // where Oriel knows it. Without it, or where it gives null, Oriel's words
-  // name the item by its key.
   explain?(conflict: Conflict, title: string | null): string | null;
 };
 
-// One op: its entry in the source's own catalogue (how to check its
-// arguments, and whether it exists only as a revert), and how change sets
-// treat it. Typed from the entry's validator, then erased so a catalogue can
-// hold ops with different argument shapes. Arguments are re-validated on the
-// way in, since they come back from the database.
+// Arguments are re-validated on the way in: they come back from the database.
 export function op<T>(
   entry: { args: Validator<T>; revertOnly: boolean },
   spec: {

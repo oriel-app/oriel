@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { homeLocation, homeRelative, homeRelativeIn } from "./home.ts";
 
-// Secrets never sent (keep rule 1): the Mac's user name in a path the window
-// or the agent reads (OA-315). Screenshots of the window go to a public repo.
+// The Mac's user name must never reach the window or the agent: screenshots of the window go to a public repo.
 const home = "/Users/pat";
 
 test("a path from home reads from ~; one outside it, or a sibling, stays absolute", () => {
@@ -14,7 +13,6 @@ test("a path from home reads from ~; one outside it, or a sibling, stays absolut
   assert.equal(homeRelative("/opt/homebrew/bin/claude", home), "/opt/homebrew/bin/claude");
   assert.equal(homeRelative("/Users/pat2/notes", home), "/Users/pat2/notes");
   assert.equal(homeRelative("/Users/patrick", home), "/Users/patrick");
-  // No home to show from: every path as it is.
   assert.equal(homeRelative("/Users/pat/notes", "/"), "/Users/pat/notes");
 });
 

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { parseDeclared, sourceKinds, specs } from "./index.ts";
 
 test("an item ID outside its kind's declared shape is refused", () => {
-  // A source server's answer names items; a folder key is a hash, never a path.
+  // A folder key is a hash, never a path.
   for (const id of ["jira:SYN-12", "folder:0123456789abcdef", "linear:ENG-4"])
     assert.ok(parseDeclared(id), id);
   const bad = [
@@ -24,7 +24,6 @@ test("an item ID outside its kind's declared shape is refused", () => {
 });
 
 test("an untagged create from before migration 0031 goes to the source it was made for", () => {
-  // It goes to the first kind whose catalogue has its op.
   const first = (op: string) => sourceKinds.find((kind) => specs[kind]?.ops[op]);
   assert.equal(first("createEpic"), "jira");
   assert.equal(first("createStory"), "jira");

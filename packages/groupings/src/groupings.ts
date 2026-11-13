@@ -1,8 +1,3 @@
-// The phase 1 groupings: by epic, by assignee, "stuck" and linked. They work from
-// core's facets alone, so they span sources and know none of them (decision
-// 0019). A cluster the source has (an epic, an assignee, no epic) says so;
-// one Oriel derives carries a rule, true of every item it holds and of no
-// item it leaves out. Pure: `now` is passed in.
 import {
   type Cluster,
   type Grouping,
@@ -15,24 +10,16 @@ import {
 
 const day = 86_400_000;
 
-// Records in item ID order (so SYN-9 comes before SYN-10).
 export const byKey =
   (order: ItemOrder) =>
   (a: IndexRecord, b: IndexRecord): number =>
     order(a.id, b.id);
 
-// An item's identity: its connection and stable ID. Handles can change.
+// Identity is the connection and stable ID: handles can change.
 const identity = (id: ItemId, stableId: string) =>
   `${parseItemId(id)?.prefix ?? ""}\u0000${stableId}`;
 const ids = (records: readonly IndexRecord[]) => records.map((record) => record.id);
 
-// One cluster per epic: an item of kind "epic", even one with no stories, or
-// one another item names as its container, whatever its kind. Each is keyed
-// by its stable ID and anchored on it, holding the items it contains. Epics
-// are anchors, never items, so an item only lands in the derived cluster when
-// its container really isn't in the index. An item whose source has no
-// containers at all (no container facet) isn't "no epic": it gets a derived
-// cluster of its own, so every item shows exactly once.
 export const epicGrouping: Grouping = {
   id: "epic",
   label: "Epic",
@@ -96,14 +83,10 @@ export const epicGrouping: Grouping = {
 
 const names = new Intl.Collator("en");
 
-// The person in the "assignee" role, if any.
 export function assigneeOf(record: IndexRecord): { id: string; name: string } | null {
   return record.facets.people?.find((person) => person.role === "assignee") ?? null;
 }
 
-// One cluster per assignee, by name, then the unassigned. Epics are items here.
-// An item whose source has no people (no people facet) isn't unassigned: it
-// gets a derived cluster of its own.
 export const assigneeGrouping: Grouping = {
   id: "assignee",
   label: "Assignee",
@@ -155,21 +138,14 @@ export const assigneeGrouping: Grouping = {
   },
 };
 
-// What "stuck" covers: work items, not epics, sub-tasks or documents.
 const workKinds = new Set(["story", "task", "bug"]);
 const stuckAfter = stuckDays * day;
 
-// A work item with a state other than done.
 const isOpenWork = (record: IndexRecord) =>
   workKinds.has(record.facets.kind ?? "") &&
   record.facets.state !== undefined &&
   record.facets.state !== "done";
 
-// Each cluster shows even when empty, so it says nothing is stuck that way.
-// "No update" lists the longest idle first. "Unestimated" counts only items
-// whose source estimates: one with no estimate facet has nothing to lack.
-// When nothing in the index estimates, as with a board that takes no
-// estimates, there is no such cluster at all.
 export const stuckGrouping: Grouping = {
   id: "stuck",
   label: "Stuck",
@@ -205,12 +181,6 @@ export const stuckGrouping: Grouping = {
   },
 };
 
-// One cluster per item another item's text names (decision 0027): that
-// item first, then the items that name it and those it names. A reference
-// is no hierarchy, so no cluster has an anchor to hang off, nor makes one
-// for a workstream made of it: every cluster is derived, an item may show
-// in several, and one nothing names and that names nothing shows in none.
-// The most linked come first.
 export const linkedGrouping: Grouping = {
   id: "linked",
   label: "Linked",

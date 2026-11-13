@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { literal, number, object, record, string, union } from "./validate.ts";
 
-// OA-125 (#112): a refused connect named the issues of every alternative,
-// not just those of the kind it picked.
+// Defect fixed in e5dfd009: a refused connect named the issues of every alternative, not just the one it picked.
 test("a union of objects told apart by a literal names only the issues of the one the input picks", () => {
   const connect = union(
     object({ kind: literal("folder"), path: string }),

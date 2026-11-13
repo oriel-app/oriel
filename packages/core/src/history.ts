@@ -1,16 +1,5 @@
-// `history()`: items as the index holds them, with what the change log saw
-// of each: when it started, when it was done, and how long it has been in
-// its state. IDs and facets only, never content: an item and its epic are
-// their IDs, whose names Oriel draws. From the index and the change log
-// alone, with no call to a source and no model, so a block built from it
-// can be rerun on the overview as a pin (decision 0053).
-//
-// The change log starts when Oriel first saw a change, and keeps 90 days
-// (decision 0027); before that, Oriel knows only that something had
-// happened, not when. So a date at `since` means "by then": an item already
-// done when the log starts is done at `since`, and one already in its state
-// has been in it at least since then (`inStateBefore`). Charts read `since`
-// from the read's declared fields and say so.
+// IDs and facets only, never content.
+// The change log starts late and keeps 90 days, so a date at `since` means "by then", not "then".
 import type { ResultFields } from "./block.ts";
 import type { ChangeLogEntry } from "./change-log.ts";
 import { dayMs } from "./chart.ts";
@@ -29,7 +18,6 @@ export type HistoryItem = {
   kind: string | null;
   state: string | null;
   assignee: string | null;
-  // The item that holds it, as an epic holds its stories.
   epic: ItemId | null;
   estimate: number | null;
   startedAt: Instant | null;
@@ -42,9 +30,6 @@ export type HistoryItem = {
 
 export type History = { asOf: Instant; since: Instant; items: HistoryItem[] };
 
-// What a block can show of it (decision 0030): the items, by these labels,
-// over the change log's dates. It holds no content, so no block of it is
-// the escape hatch, though it reads outside the region (decision 0053).
 export const historyFields: ResultFields = {
   source: "the index and its change log",
   contentFree: true,
@@ -69,8 +54,6 @@ export const historyFields: ResultFields = {
   },
 };
 
-// The history of `records`, from the whole change log `changes`, as of
-// `asOf`.
 export function historyOf(
   records: readonly IndexRecord[],
   changes: readonly ChangeLogEntry[],
@@ -98,9 +81,7 @@ export function historyOf(
     );
     const state = record.facets.state ?? null;
     const last = moves.at(-1);
-    // A state the log never saw it reach was reached by `since`, if nothing
-    // has touched the item since then, and by its last update otherwise: it
-    // may have joined the index after the log started, unlogged.
+    // A state the log never saw it reach was reached by `since`, or by its last update if later: it may have joined unlogged.
     const by = record.updatedAt <= since ? since : record.updatedAt;
     const first = moves[0]?.facets.state?.before;
     const startedEarlier = moves.length === 0 || (first !== undefined && first !== "todo");
@@ -115,8 +96,6 @@ export function historyOf(
       assignee: record.facets.people?.find((person) => person.role === "assignee")?.name ?? null,
       epic: record.facets.container?.id ?? null,
       estimate: record.facets.estimate ?? null,
-      // Moving from a started state first, it had started by the time the
-      // log began, whatever touched it since.
       startedAt:
         state === null || state === "todo"
           ? null

@@ -1,10 +1,4 @@
-// The chart blocks (decision 0053): a series over time, a timeline, a
-// spread and a pivot, built as every block is (decision 0030), from the
-// host's copy of a read's answer, under the read's declared fields. A chart over time needs a read
-// that says when it was answered and since when its dates are known
-// (`time`), so a chart never reads the machine's clock and never draws
-// before what Oriel knows. A row dated at that horizon happened by then, not
-// then, and each chart says so.
+// A chart over time takes its clock from the read (`time`), never the machine's, and never draws before what Oriel knows.
 import {
   blankValue,
   type ChartStep,
@@ -37,18 +31,13 @@ import {
 
 export type Lane = {
   label: string;
-  // The item the lane is, when it is one; a lane of a group has none.
   id: ItemId | null;
   start: Instant;
-  // Null while it is still going.
   end: Instant | null;
   due: Instant | null;
-  // It started at or before the read's horizon: by then, not then.
   earlier: boolean;
-  // How many rows a group's lane holds, and how many of them have ended.
   count: number | null;
   ended: number | null;
-  // Days past its due date: ended after it, or still going past it.
   late: number | null;
 };
 
@@ -57,7 +46,6 @@ export type ChartBlock =
       form: "series";
       step: ChartStep;
       running: boolean;
-      // The declared labels of the date and of what it counts or sums.
       label: string;
       measure: string | null;
       since: Instant;
@@ -68,11 +56,8 @@ export type ChartBlock =
   | { form: "spread"; label: string; spread: Spread; missing: number }
   | {
       form: "pivot";
-      // Each field a person can put down or across, and each they can sum.
       dims: { field: string; label: string }[];
       measures: { field: string; label: string }[];
-      // Every grid Oriel computed, by "down|across" ("down|" for none), so
-      // regrouping in the window asks nothing of anyone.
       tables: Record<string, PivotTable>;
       initial: { down: string; across: string | null; measure: number };
       n: number;
@@ -89,7 +74,6 @@ export type ChartSpec =
     }
   | {
       form: "timeline";
-      // Without it, each lane is its row's item, by `id`.
       label?: string | undefined;
       start: string;
       end: string;
@@ -99,15 +83,11 @@ export type ChartSpec =
   | { form: "spread"; value: string }
   | { form: "pivot"; rows: string; columns?: string | undefined; value?: string | undefined };
 
-// The forms a chart's builder draws. A chart shows Oriel's figures, not an
-// item's content, so only these drop the outside label for a content-free read.
+// A chart shows Oriel's figures, never an item's content, so only these drop the outside label for a content-free read.
 export const chartForms: readonly ChartSpec["form"][] = ["series", "timeline", "spread", "pivot"];
 export const isChart = <S extends { form: string }>(spec: S): spec is S & ChartSpec =>
   (chartForms as readonly string[]).includes(spec.form);
 
-// What a chart's builder is handed: the rows, the declared labels, the
-// read's clock if it declares one, and its lower bounds, by block.ts's one
-// rule.
 export type ChartInput = {
   rows: readonly unknown[];
   where: string;
@@ -117,7 +97,6 @@ export type ChartInput = {
   bound: Bound;
   sums: readonly string[] | null;
   field: (row: unknown, name: string) => unknown;
-  // Built for a pin: a pivot computes only its own grouping.
   pinned: boolean;
 };
 
@@ -126,19 +105,15 @@ export type ChartBuilt =
   | { ok: false; why: string };
 
 const refuse = (why: string): ChartBuilt => ({ ok: false, why });
-// A caption's notes, each a sentence.
 const sentences = (notes: readonly string[]) =>
   notes.map((note) => note.charAt(0).toUpperCase() + note.slice(1)).join(". ");
 export const maxLanes = 12;
-// More rows than this make no pivot: the agent narrows the read first.
 export const maxPivotInput = 10_000;
 const maxDims = 5;
 const maxMeasures = 2;
 const maxDistinct = 50;
 
-// A row's date as a time, null when it has none. A read's rows share few
-// dates (each sync's), so each is checked once, as a pin rerun on every look
-// of the overview must be quick (decision 0053).
+// Rows share few dates, so each is parsed once: a pin reruns on every look of the overview.
 const checked = new Map<string, number | "bad">();
 const dateOf = (value: unknown): number | null | "bad" => {
   if (value === null || value === undefined) return null;
@@ -251,8 +226,6 @@ function timeline(spec: Extract<ChartSpec, { form: "timeline" }>, input: ChartIn
     due: number | null;
   };
   const dated: Row[] = [];
-  // A group's members, started or not: one not started yet keeps its group
-  // going, and counts in it.
   type Member = Omit<Row, "start"> & { start: number | null };
   let undated = 0;
   const groups = new Map<string, Member[]>();
@@ -296,7 +269,6 @@ function timeline(spec: Extract<ChartSpec, { form: "timeline" }>, input: ChartIn
       ? dated.map((row) => ({ ...row, count: null, ended: null }))
       : [...groups].flatMap(([key, members]) => {
           const starts = members.flatMap((m) => (m.start === null ? [] : [m.start]));
-          // A group none of whose rows has started has no bar.
           if (!starts.length) {
             undated += members.length;
             return [];
@@ -307,7 +279,6 @@ function timeline(spec: Extract<ChartSpec, { form: "timeline" }>, input: ChartIn
             label: key,
             id: null,
             start: Math.min(...starts),
-            // A group is still going while any of it is.
             end: ends.length === members.length ? Math.max(...ends) : null,
             due: dues.length ? Math.max(...dues) : null,
             count: members.length,
@@ -403,7 +374,6 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
   if (rows.length > maxPivotInput)
     return refuse(`${where} has ${rows.length} rows; a pivot takes at most ${maxPivotInput}`);
   if (!rows.length) return refuse(`${where} is empty`);
-  // A pin is only its own grouping, so it reads only the fields it names.
   const names = input.pinned
     ? [...new Set([spec.rows, spec.columns, spec.value])].flatMap((name) =>
         name === undefined ? [] : [name],
@@ -412,10 +382,6 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
   const flat = rows.map((row) =>
     Object.fromEntries(names.map((name) => [name, input.field(row, name)])),
   );
-  // A field is something to group by when its values are text or yes/no,
-  // few enough to read; something to sum when they're all numbers, the
-  // read says they add up, and none is only a lower bound, which a grid's
-  // cell can't say.
   const distinct = new Map<string, number>();
   const boundIn = (name: string) => {
     const bounded = input.bound(name);
@@ -433,16 +399,12 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
       return [
         name,
         values.every((v) => typeof v === "string" || typeof v === "boolean") &&
-        // One asked for is grouped by however many values it has: past
-        // the grid's cap, the rest fold into "Other".
         ((distinct.get(name) ?? 0) <= maxDistinct || name === spec.rows || name === spec.columns)
           ? ("dim" as const)
           : ("none" as const),
       ];
     }),
   );
-  // What else the person may regroup by: a field that splits the rows,
-  // into fewer groups than half of them, so not one value each, as a title.
   const splits = (name: string) => {
     const count = distinct.get(name) ?? 0;
     return count >= 2 && count <= Math.max(2, Math.ceil(rows.length / 2));
@@ -458,7 +420,6 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
   if (wrong) return refuse(wrong);
   if (spec.columns !== undefined && spec.columns === spec.rows)
     return refuse("a pivot's rows and columns are two fields");
-  // The asked-for fields first, so they're never the ones left out.
   const pick = (kind: "dim" | "measure", first: (string | undefined)[], most: number) => {
     const asked = first.flatMap((f) => (f === undefined ? [] : [f]));
     return [...new Set([...asked, ...names])]
@@ -480,8 +441,6 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
   return {
     ok: true,
     more: 0,
-    // What it shows as built; in the window, the person may regroup it,
-    // and the line above the grid names what it shows then.
     caption: `${spec.value === undefined ? "Count" : `Sum of ${label(spec.value)}`} by ${label(spec.rows)}${spec.columns === undefined ? "" : ` and ${label(spec.columns)}`}, of ${plural(rows.length, "row")}${input.pinned ? "" : "; it can be regrouped in the window from this same read, with no model"}`,
     chart: {
       form: "pivot",
@@ -494,7 +453,6 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
   };
 }
 
-// A chart block as it is stored and read back, checked as the others are.
 const instant = refine(string, isInstant, "expected an instant");
 const point = object({ at: instant, value: number });
 const pivotTable = object({

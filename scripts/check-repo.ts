@@ -349,7 +349,13 @@ export function chromeLaunchProblems(path: string, text: string): string[] {
   return found;
 }
 
-export const commentsCleaned = ["packages/db/"];
+export const commentsCleaned = [
+  "packages/db/",
+  "packages/core/",
+  "packages/sources/",
+  "packages/groupings/",
+];
+export const commentsCleanedLater = ["packages/core/src/telemetry.ts"];
 
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
@@ -380,7 +386,10 @@ export function problems(repo: {
       }
     for (const problem of chromeLaunchProblems(path, text)) found.add(problem);
     for (const problem of webSourceNames(path, text)) found.add(problem);
-    if (commentsCleaned.some((cleaned) => path.startsWith(cleaned)))
+    if (
+      commentsCleaned.some((cleaned) => path.startsWith(cleaned)) &&
+      !commentsCleanedLater.includes(path)
+    )
       for (const problem of storyKeyComments(path, text)) found.add(problem);
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");

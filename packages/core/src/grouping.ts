@@ -1,12 +1,8 @@
 import type { Instant, ItemId, ItemOrder } from "./ids.ts";
 import type { IndexRecord } from "./source.ts";
 
-// A cluster either mirrors structure the source has (an epic) or is derived
-// by Oriel, in which case `derived` says how, and the UI shows it. `anchor` is
-// the item the cluster hangs off, if any (the epic itself).
 export type Cluster = {
-  // Stable across syncs. The "epic" grouping keys each cluster by the epic's
-  // stable ID; frozen fixture regions depend on that.
+  // Stable across syncs: frozen fixture regions depend on the epic grouping keying by the epic's stable ID.
   key: string;
   label: string;
   anchor: ItemId | null;
@@ -14,14 +10,11 @@ export type Cluster = {
   origin: "source" | { derived: string };
 };
 
-// What a workstream made of a cluster holds: its anchor, then its items, each
-// once.
 export const clusterMembers = (cluster: Cluster): ItemId[] => [
   ...new Set(cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds]),
 ];
 
-// Pure: no I/O and no clock reads; `now` is passed in, and so is the order
-// of item IDs, which follows the declared kinds.
+// Pure: no I/O and no clock reads; `now` is passed in.
 export interface Grouping<R extends IndexRecord = IndexRecord> {
   readonly id: string;
   readonly label: string;

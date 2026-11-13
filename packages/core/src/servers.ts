@@ -1,51 +1,24 @@
-// Source servers (decision 0059): the MCP servers in the person's own agent
-// that Oriel reads a source through. A connector declares the ones it knows;
-// the agent reports the ones the person has; telling which kind a server
-// serves is a lookup between the two, with no model call, so nothing a
-// server says of itself, such as its description, can steer it.
+// Which kind a server serves is a lookup, with no model call, so nothing a server says of itself can steer it.
 import type { PickChoice } from "./connect.ts";
 import type { IndexRecord } from "./source.ts";
 
-// A source server a connector knows, as its declaration gives it: what a
-// person calls it, how it's recognised (the name it reports, its address or
-// command where that's fixed, and the tools it must offer), and where its
-// vendor says how to add it to an agent, which Oriel never does itself.
+// Oriel never adds a server to the person's agent itself.
 export type SourceServer = {
-  // Such as "Atlassian's Jira server".
   name: string;
-  // The name it reports in its MCP handshake.
   reports: string;
-  // Where it is, where that's fixed: its URL, or the command line that
-  // starts it, as the person's agent runs it.
   at?: { url: string } | { command: string };
-  // The tools sync reads with, every one of which it must offer to count,
-  // and those a change set's replay writes with.
   reads: readonly string[];
   writes: readonly string[];
-  // Its vendor's own instructions for adding it to an agent.
   instructions: string;
-  // Whether what it reads is the person's to set, as Sheets' mapping of
-  // which tabs it reads: then a connection through it is kept, and waits for
-  // its options until they're set, as one made in the window does (OA-279).
   keepsOptions?: true;
-  // What a person picks on a connection through it, such as Jira's project,
-  // in Settings and the first run: a connection through it is kept, so its
-  // picks last, and with nothing picked it reads what `unpicked` says.
   picks?: readonly ServerPick[];
 };
 
-// One of a connection's options a person picks through its source server:
-// the option, its label, whether several are picked and at most how many,
-// what the connection
-// reads with none, in a phrase such as "your first 20 channels", and its
-// list, `query` narrowing it, read through the server's read tools, never a
-// write tool. `connection` is what the connection identifies and its
-// options, as its kind opens with them.
+// Its list is read through the server's read tools, never a write tool.
 export type ServerPick = {
   name: string;
   label: string;
   many?: true;
-  // The most a person may pick of several.
   most?: number;
   unpicked: string;
   list(
@@ -53,22 +26,12 @@ export type ServerPick = {
     query: string,
     connection: { identity: string; options: Readonly<Record<string, unknown>> },
   ): Promise<{ choices: PickChoice[]; more: boolean }>;
-  // Where the option holds more than the values picked, as Sheets'
-  // spreadsheets hold how each one's tabs read: the values picked, from a
-  // connection's options; and the option with `values` picked, from the
-  // options it has, which keeps what each one kept has beside its value.
-  // Absent, the option is the value picked, or the values.
   picked?(options: Readonly<Record<string, unknown>>): string[];
   into?(options: Readonly<Record<string, unknown>>, values: readonly string[]): unknown;
-  // Where its list marks a picked value it doesn't give (`unlisted`): what
-  // the picker says of one, such as "You're not in this channel", and the
-  // names Oriel last knew of values, by value, from what the connection
-  // indexed, which it shows such a one by.
   unlisted?: string;
   known?(records: readonly IndexRecord[]): Iterable<readonly [string, string]>;
 };
 
-// The values a connection's options pick, by one of its server's picks.
 export function pickedOf(pick: ServerPick, options: Readonly<Record<string, unknown>>): string[] {
   if (pick.picked) return pick.picked(options);
   const value = options[pick.name];
@@ -76,10 +39,6 @@ export function pickedOf(pick: ServerPick, options: Readonly<Record<string, unkn
   return Array.isArray(value) ? value.filter((each) => typeof each === "string") : [];
 }
 
-// Options a person set through a server's picks, as its kind checks them:
-// a pick whose option holds more than its values (`into`), given as the
-// values picked, is written into the option from the options a connection
-// has; anything else is as given, as an Undo's options are.
 export function pickedInto(
   picks: readonly ServerPick[],
   options: Readonly<Record<string, unknown>>,
@@ -95,18 +54,10 @@ export function pickedInto(
   );
 }
 
-// The most a pick's list shows, and the longest name it shows of one: a
-// server's answer is source content, which a picker draws as text.
+// A server's answer is source content, which a picker draws as text.
 export const mostChoices = 200;
 const longestChoice = 200;
 
-// A list of choices from a server's answer, narrowed by `query` against
-// each one's name and value, in any case, at most `mostChoices` of them; one
-// with no value or no name is left out, and a name is cut to its longest.
-// Given what's `picked`, from a list that's whole, a picked one past the
-// most still shows, and one it doesn't give shows after the rest, by its
-// value, marked `unlisted`, so it can be unpicked: whatever `query` is, as
-// it's named and narrowed by the name Oriel last knew (`unlistedNamed`).
 export function narrowed(
   choices: readonly (Pick<PickChoice, "value" | "name"> & Partial<PickChoice>)[],
   query: string,
@@ -146,8 +97,6 @@ export function narrowed(
   };
 }
 
-// A list's unlisted choices by the names Oriel last knew of them, from
-// `known`, else by their values, narrowed by `query` as `narrowed` does.
 export function unlistedNamed(
   listed: { choices: PickChoice[]; more: boolean },
   query: string,
@@ -166,10 +115,7 @@ export function unlistedNamed(
   };
 }
 
-// What the person's agent said of one of its MCP servers: its name in the
-// agent's configuration, whether it's connected, the name it reports, its
-// URL or command line, and its tools' names. Nothing of it is trusted but
-// as a key to look up.
+// Nothing of it is trusted but as a key to look up.
 export type FoundServer = {
   name: string;
   status: "connected" | "needs-auth" | "failed" | "pending" | "disabled";
@@ -177,20 +123,13 @@ export type FoundServer = {
   url: string | null;
   command: string | null;
   tools: readonly string[];
-  // How a remote one is reached, where the agent says: what a process that
-  // loads it alone names it with, with its URL.
   transport?: "http" | "sse";
-  // A local one's command and its arguments, apart, as the agent runs it:
-  // never its environment, which may hold a secret.
+  // A local one's command and arguments, never its environment, which may hold a secret.
   local?: { command: string; args: readonly string[] };
 };
 
-// A found server Oriel knows, with the kind it serves and the entry it
-// matched.
 export type Recognized = { kind: string; known: SourceServer; found: FoundServer };
 
-// A URL as two spellings of it compare: its origin and path, with no
-// trailing slash, query or fragment.
 const urlKey = (url: string): string | null => {
   try {
     const parsed = new URL(url);
@@ -200,12 +139,8 @@ const urlKey = (url: string): string | null => {
   }
 };
 
-// Whether a found server is the known one, and offers every read tool. One
-// whose entry gives its address is it only at that address, whatever it
-// reports: a server anywhere else could report the same name, and would
-// then feed the kind. One whose entry gives no address is known by the name
-// it reports. One whose tools the agent couldn't list, as one that needs
-// signing in, isn't.
+// One whose entry gives its address is it only at that address: a server anywhere else could report
+// the same name, and would then feed the kind.
 export function serves(known: SourceServer, found: FoundServer): boolean {
   const at = known.at;
   const placed =
@@ -217,9 +152,6 @@ export function serves(known: SourceServer, found: FoundServer): boolean {
   return placed && known.reads.every((tool) => found.tools.includes(tool));
 }
 
-// Each found server Oriel knows, with its kind, in the order the agent
-// listed them; one that matches two kinds' entries serves the first
-// declared. A server Oriel doesn't know isn't in it, so it's never offered.
 export function recognize(
   found: readonly FoundServer[],
   known: readonly { kind: string; server: SourceServer }[],
@@ -230,29 +162,20 @@ export function recognize(
   });
 }
 
-// One call of a source server's tool, by its name on the server, and its
-// arguments.
 export type ToolCall = { tool: string; args: Readonly<Record<string, unknown>> };
 
-// A tool's answer, as MCP gives it: its content blocks, its structured
-// content where it has some, and whether the tool failed. Source content,
-// which only its connector's parser reads.
+// Source content, which only its connector's parser reads.
 export type ToolAnswer = {
   content: readonly unknown[];
   structuredContent?: unknown;
   isError?: boolean;
 };
 
-// Calls a source server's tools from one process the person's agent runs.
-// When `signal` aborts, as when the run that made the call ends, a call
-// still waiting is never sent, and one already out fails (decision 0060).
+// When `signal` aborts, a call still waiting is never sent, and one already out fails.
 export type ToolCaller = (call: ToolCall, signal?: AbortSignal) => Promise<ToolAnswer>;
 
-// How a connection reaches the source server its kind is on through
-// (decision 0059): the server, as the person's agent lists it and as the
-// entry it matched names it; its reads, from a process with only its read
-// tools; and its writes, a change set's replay, from another with only its
-// write tools. Sync and replay never share a process.
+// Reads come from a process with only the server's read tools, writes from another with only its write tools:
+// sync and replay never share a process.
 export type ThroughServer = {
   known: SourceServer;
   found: FoundServer;
@@ -260,14 +183,11 @@ export type ThroughServer = {
   write: ToolCaller;
 };
 
-// A source server's answer Oriel can't read (decision 0059): the sync
-// stops, and the index stays as it was. Its message names the tool and what
-// was wrong, never the answer.
+// Its message names the tool and what was wrong, never the answer.
 export class ServerUnreadable extends Error {
   override name = "ServerUnreadable";
 }
 
-// The words of an answer's text blocks, as one.
 export const answerText = (answer: ToolAnswer): string =>
   answer.content
     .flatMap((block) =>
@@ -277,8 +197,6 @@ export const answerText = (answer: ToolAnswer): string =>
     )
     .join("");
 
-// A tool's answer as JSON: its structured content, or its text parsed. Text
-// that isn't JSON can't be read.
 export function answerJson(tool: string, answer: ToolAnswer): unknown {
   if (typeof answer !== "object" || answer === null || !Array.isArray(answer.content))
     throw new ServerUnreadable(`${tool} answered with no content`);
@@ -291,17 +209,13 @@ export function answerJson(tool: string, answer: ToolAnswer): unknown {
   }
 }
 
-// A sync through a source server reads every page before it gives one, so
-// a page it can't read stops it before anything lands: the index stays as
-// it was.
+// Every page is read before any is given, so a page it can't read stops the sync before anything lands.
 export async function* readWhole<T>(pages: AsyncIterable<T>): AsyncGenerator<T> {
   const read: T[] = [];
   for await (const page of pages) read.push(page);
   yield* read;
 }
 
-// A tool as a stand-in of a source server serves it (packages/standin-mcp):
-// as `tools/list` shows it, and its answer to a call, failed or not.
 export type StandInTool = {
   name: string;
   description: string;
@@ -312,8 +226,6 @@ export type StandInTool = {
 
 export type StandInAnswer = { content: { type: "text"; text: string }[]; isError?: true };
 
-// A stand-in's tools as a caller in this process: what the person's agent
-// would answer through it, for tests.
 export const standInCalls =
   (tools: readonly StandInTool[]): ToolCaller =>
   async (call) => {
