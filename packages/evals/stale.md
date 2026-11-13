@@ -1,2 +1,0 @@
-- OA-309: every region's module declares `thread.revise(changeSet)` (+210 B on the base module), so every case's request hash changes; a run that revises says so in its result.
-- OA-346 (epic OA-332): every window chat's module gains `window.continue()`, a draft of Continue in… (decision 0062): 131 bytes. A thread's about-note for an outside item now says to add it with workstream.add() to change it, and the window chat's says to draft window.continue(). A thread that looked outside its region declares its LookedId as "read-only until workstream.add() joins them".
