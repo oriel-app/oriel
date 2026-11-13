@@ -169,7 +169,6 @@ export function namespacesOf(
   return namespacesFor(records, contexts as NamespaceContexts);
 }
 
-// Each source sees only its own.
 export function candidatesFor(input: OverviewInput): (Candidate & { source: DeclaredKind })[] {
   const records = Map.groupBy(input.records, (record) => parseItemId(record.id)?.kind);
   const changes = Map.groupBy(input.changes, (entry) => kindOf(entry.source));

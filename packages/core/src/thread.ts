@@ -55,7 +55,7 @@ export const maxHeldChars: Record<HeldSender["kind"], number> = {
 export const heldText = (from: HeldSender, text: string): boolean =>
   text.trim() !== "" && text.length <= maxHeldChars[from.kind];
 
-// Oriel's, never the agent's: the agent reads it as a note from Oriel, never as something it said.
+// The notes below are Oriel's, never the agent's: the agent reads one as a note from Oriel, never as something it said.
 export const maxUnknownChips = 20;
 export const maxQuotes = 20;
 export const maxQuoteChars = 8_000;

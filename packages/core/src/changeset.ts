@@ -140,6 +140,7 @@ export interface ChangeSets {
   // Only the token's hash is stored, so a link can't be shown twice.
   reviewLink(id: Ulid): Promise<URL>;
   revokeReviewLink(id: Ulid): Promise<void>;
+  // The desktop app's review links live only while it runs.
   revokeAllReviewLinks(workspaceId: Ulid): Promise<number>;
   // Records nothing: the caller says whether it was opened.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;

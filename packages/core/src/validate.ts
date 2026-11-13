@@ -92,7 +92,6 @@ function isPlainObject(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null && !Array.isArray(input);
 }
 
-// Holds only the shape's keys: unknown keys are dropped.
 export function object<S extends Record<string, Validator<unknown>>>(
   shape: S,
 ): Described<{ [K in keyof S]: Infer<S[K]> }> {

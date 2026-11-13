@@ -45,7 +45,7 @@ export type OptionField =
   | { kind: "read-only"; name: "readOnly" }
   | { kind: "mapping"; name: string; label: string; about: string };
 
-// Anything but an explicit off is read-only, so a malformed option can't open writes.
+// Any `readOnly` value but `false` is read-only, so a malformed option can't open writes.
 export const readOnlyOf = (options: Readonly<Record<string, unknown>>): boolean =>
   options.readOnly !== undefined && options.readOnly !== false;
 
