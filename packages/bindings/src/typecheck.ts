@@ -1,9 +1,5 @@
-// The pre-run typecheck: the agent's script against its region's declarations,
-// by the repo's pinned `tsc` (its native compiler, see `tscCommand`) on a
-// fresh temporary directory. The child gets an empty environment. With `noResolve`,
-// no `types`, an explicit file list and the script wrapped in a function (so
-// a `///` line in it is only a comment), tsc reads the listed files and the
-// es2024 lib, nothing else.
+// The child gets an empty environment. With `noResolve`, no `types`, an explicit file list and the script wrapped
+// in a function (so a `///` line is only a comment), tsc reads the listed files and the es2024 lib, nothing else.
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -15,7 +11,6 @@ import type { RunError } from "@oriel/core";
 import { guestStart, wrap } from "./shim.ts";
 
 export type Diagnostic = {
-  // Null for a diagnostic about no file in particular.
   file: string | null;
   line: number;
   column: number;
@@ -70,20 +65,12 @@ export function parseOutput(output: string): Diagnostic[] {
   return diagnostics;
 }
 
-// How to start tsc: the file to run and the arguments before tsc's own.
 type TscCommand = { file: string; args: string[] };
 
 let command: Promise<TscCommand> | undefined;
 
-// The native compiler itself, the binary TypeScript 7's launcher would
-// `execve` into: `lib/tsc` in the `@typescript/typescript-<platform>-<arch>`
-// package the typescript package depends on. Run directly, its pid is the
-// compiler, so a kill of that pid stops it. If that package can't be found,
-// fall back to the launcher run by this Node. On Node 22.15 and later it
-// execs the compiler in place, keeping the pid; before that, it spawns the
-// compiler as a child the pid kill would miss. In the desktop app this Node
-// is Electron's, whose binary doesn't run as Node (decision 0047), so the
-// app always carries the native package.
+// The native compiler, run directly, so its pid is the compiler and a kill stops it. The launcher, before Node 22.15,
+// spawns it as a child a kill would miss; in the desktop app this Node is Electron's, so the app carries the native package.
 function tscCommand(): Promise<TscCommand> {
   command ??= (async () => {
     const manifest = fileURLToPath(import.meta.resolve("typescript/package.json"));
@@ -102,10 +89,7 @@ function tscCommand(): Promise<TscCommand> {
   return command;
 }
 
-// What a caller can do about tsc from outside: put it in a directory the
-// caller owns and removes, and learn its pid as soon as it starts, to watch
-// its memory or kill it. tsc stays in the caller's process group, so a Ctrl-C
-// or a hangup that reaches the caller reaches tsc too.
+// tsc stays in the caller's process group, so a Ctrl-C or a hangup that reaches the caller reaches tsc too.
 export type TscControl = { dir?: string; onSpawn?: (pid: number) => void };
 
 const maxOutput = 1 << 20;
@@ -172,8 +156,7 @@ function tsc(
   });
 }
 
-// Checks `files` (name → source) as one program. Names are ours, never the
-// agent's. Without `dir`, it makes its own temporary directory and removes it.
+// Names are ours, never the agent's.
 export async function compile(
   files: Readonly<Record<string, string>>,
   options: { timeoutMs: number; signal?: AbortSignal } & TscControl,
@@ -209,12 +192,8 @@ function where(d: Diagnostic, scriptLines: number): string {
   return `line ${Math.min(Math.max(d.line - 1, 1), scriptLines)}:${d.column}`;
 }
 
-// Type errors come back as a RunError the agent can fix its script from; a
-// clean script gives null. The script must first pass the same compile step
-// the run does (`guestStart`), so it can't typecheck as anything but the
-// body of an async function, and tsc then checks that same text, wrapped the
-// same way. Like `guestStart`, run it off the host's main thread, in a worker
-// replaced after any failure.
+// The script must first pass the run's own compile step, so it can't typecheck as anything but an async function's body.
+// Like `guestStart`, run it off the host's main thread, in a worker replaced after any failure.
 export async function typecheck(
   script: string,
   dts: string,
@@ -249,15 +228,12 @@ export async function typecheck(
   };
 }
 
-// What to fix, naming the functions this region's declarations say create
-// items, and generic when there are none.
 function hintFor(dts: string): string {
   const makers = creators(dts);
   const refs = makers.length ? ` and refs from ${makers.join(" or ")}` : "";
   return `Fix the script against the region's declarations and run it again. Writes take only this region's IDs${refs}; search() reads outside the region.`;
 }
 
-// The functions the declarations say return a NewRef, as `namespace.name`.
 export function creators(dts: string): string[] {
   const found: string[] = [];
   let space: string | null = null;

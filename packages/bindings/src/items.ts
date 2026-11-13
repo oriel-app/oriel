@@ -1,5 +1,3 @@
-// What works for any item in the region, whatever its source: `items.read()`
-// and `items.list()`, which return its title and text, and the escape hatch.
 import { type ItemId, number, optionalParam, param, read, searchFields, string } from "@oriel/core";
 import { type Fn, type Host, outside } from "./fn.ts";
 
@@ -8,9 +6,7 @@ const field = (content: unknown, key: string): unknown =>
     ? (content as Record<string, unknown>)[key]
     : null;
 
-// The guest's view of any item: its title and text, and nothing the reader
-// added. Both are the source's content, read live like the rest: they reach
-// the model in the run's result, never in the declarations.
+// Both are the source's content: they reach the model in the run's result, never in the declarations.
 function itemView(id: ItemId, content: unknown) {
   const title = field(content, "title");
   const text = field(content, "text");
@@ -53,10 +49,7 @@ const listItems: Fn = {
 
 export const itemFns: readonly Fn[] = [readItem, listItems];
 
-// A second look's `items.read()` (decision 0054) reads this run's
-// search() hits too, read-only, since what else a change touches is mostly
-// outside its workstream: the host refuses any other ID, and a read of one
-// outside the region is the escape hatch, as a namespace's is.
+// Reads this run's search() hits too, read-only: the host refuses any other ID, and a read outside the region is the escape hatch.
 const readAnyItem: Fn = {
   space: "items",
   outsideRegion: false,
@@ -74,9 +67,7 @@ const readAnyItem: Fn = {
 
 export const challengeItemFns: readonly Fn[] = [readAnyItem, listItems];
 
-// In a thread whose messages were about items outside its region (decision
-// 0062), `items.read()` reads those too, read-only: the host reaches them as
-// it does what search() found, and no write takes them.
+// Reads the items the messages were about too, read-only: no write takes them.
 const readLookedItem: Fn = {
   space: "items",
   outsideRegion: false,
@@ -119,8 +110,6 @@ export const searchFn: Fn = {
 
 const itemDoc = "An item read live, from any source: its title and its text.";
 
-// What `items` and `search()` add to the declarations: `Item` says what the
-// items of each source the region holds are, one line per source.
 export const itemTypes = (docs: readonly string[]) => [
   ...(docs.length
     ? ["/**", ` * ${itemDoc}`, ...docs.map((doc) => ` * - ${doc}`), " */"]

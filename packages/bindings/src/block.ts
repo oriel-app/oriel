@@ -1,10 +1,4 @@
-// `show()`: the one binding for blocks (decision 0030). The agent names a
-// read this turn ran, its arguments and the block's form; the turn builds
-// the block from what that read returned (core's `buildBlock`), so a script
-// can't hand Oriel a block's numbers. The turn checks the spec too, so a
-// wrong one is refused with what each form takes, rather than failing the
-// run: the declaration stays short, and the refusal teaches the rest:
-// `from`, and each form's fields, which the type leaves open.
+// The turn builds the block from what the named read returned, so a script can't hand Oriel a block's numbers.
 import { param, read, unknown } from "@oriel/core";
 import type { Fn, Host } from "./fn.ts";
 

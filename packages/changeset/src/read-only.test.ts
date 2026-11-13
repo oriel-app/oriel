@@ -3,8 +3,6 @@ import { test } from "node:test";
 import { changeSets } from "./change-sets.ts";
 import { approve, nth, setup, specs } from "./testing.ts";
 
-// Change sets with no writer config: Jira is read through the reader the
-// composition root passes, as when Oriel runs on the fixture.
 function readOnly() {
   const fixture = setup();
   const sets = changeSets({

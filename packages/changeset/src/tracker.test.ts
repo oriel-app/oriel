@@ -1,7 +1,4 @@
-// The stand-in tracker through change sets (decision 0059): its creates share
-// their ops with Jira's, so each goes to the kind its namespace captured it
-// for; applied, they land in Oriel's own store through the writer writers.ts
-// builds; reverted, they go.
+// Its creates share their ops with Jira's, so each goes to the kind its namespace captured it for.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Instant, instant, type OwnItems, ulid, unknown } from "@oriel/core";
@@ -29,7 +26,6 @@ function setup() {
   const workspaceId = id(0);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
   const index = indexStore(db);
-  // Oriel's own store, over the index, as the composition root lends it.
   const store = index.own(workspaceId, "tracker", unknown, trackerDeclaration.facets);
   let tick = 0;
   const now = () => instant(new Date(Date.parse(t0) + ++tick * 1000)) as Instant;

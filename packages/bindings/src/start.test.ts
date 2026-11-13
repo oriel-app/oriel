@@ -1,6 +1,3 @@
-// The script reaches the guest as data and runs as the body of an async
-// function. These tests hold the line: what can't compile as a function body
-// never starts, and the typecheck refuses exactly what the compile step refuses.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
@@ -13,8 +10,7 @@ const bindings = bindingsFor(fixtureRegion("picked"), {
   namespaces,
 });
 
-// The escape a joined entry allowed: close the wrapper, import a file
-// statically, reopen.
+// The escape a joined entry once allowed: close the wrapper, import a file statically, reopen.
 const escape = [
   "});",
   "// @ts-ignore",

@@ -1,7 +1,3 @@
-// The agent revising its own change set in place (OA-309, decision 0024):
-// only its own thread's undecided set, whose ID and review link stay while
-// its hash changes, so an approval of the old diff is refused as stale.
-// Keep rule: only a person approves (1), and a change set a person can lose (2).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { orielRunModel, type RunRef, type Ulid, ulid } from "@oriel/core";
@@ -14,7 +10,6 @@ const estimate = (key: string, points: number) => ({
   args: { points },
 });
 
-// Another run, in the set's thread or in a new thread on its workstream.
 function anotherRun(s: ReturnType<typeof setup>, newThread: boolean, model = "model"): RunRef {
   const at = Date.parse("2026-10-29T09:00:01.000Z");
   const threadId = newThread ? (ulid(at) as Ulid) : s.run.threadId;
@@ -53,7 +48,6 @@ test("a revision replaces the changes, keeps the ID and the live review link, an
   );
   assert.notEqual(revised.hash, set.hash);
   assert.equal((await changeSets.ofThread(s.run.threadId)).length, 1);
-  // Approving what was shown before is refused, in the thread and on the link.
   await assert.rejects(
     changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, shown.hash),
     { code: "stale" },
@@ -62,7 +56,6 @@ test("a revision replaces the changes, keeps the ID and the live review link, an
     changeSets.decide(set.id, "approved", { via: "review-link", token, by: "Ann" }, shown.hash),
     { code: "stale" },
   );
-  // The link still opens, on the change as it is now.
   const opened = await changeSets.openReview(token);
   assert.equal(opened?.changeSet.hash, revised.hash);
   assert.ok(s.events.some((e) => e.name === "changeset.revised" && e.changeSetId === set.id));
@@ -74,16 +67,13 @@ test("only the agent's own undecided change set in its thread can be revised", a
   const { changeSets } = s;
   const set = await changeSets.capture(s.run, [estimate("SYN-8", 3)]);
   const before = set.hash;
-  // Another thread's run.
   await assert.rejects(changeSets.revise(set.id, anotherRun(s, true), [estimate("SYN-8", 5)]), {
     code: "refused",
   });
   assert.equal((await changeSets.get(set.id))?.hash, before);
-  // Outside the region, checked as a capture is.
   await assert.rejects(changeSets.revise(set.id, s.run, [estimate("SYN-45", 5)]), {
     code: "refused",
   });
-  // Decided: approved, then applied, then its revert, which a person asked for.
   await approve(changeSets, set.id);
   await assert.rejects(changeSets.revise(set.id, s.run, [estimate("SYN-8", 5)]), {
     code: "refused",

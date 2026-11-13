@@ -1,8 +1,5 @@
-// Test support. The sandbox tests' shared parts: they run in several files,
-// so that the tests that wait out a deadline wait in parallel. And real
-// bindings from @oriel/bindings over a two-story region whose reader has
-// nothing, with Jira's production namespace, so the escape tests run the
-// production shim, stubs and typecheck rather than a stand-in.
+// The sandbox tests run in several files so the ones that wait out a deadline wait in parallel; the escape tests run
+// the production shim, stubs and typecheck rather than a stand-in.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { bindingsFor } from "@oriel/bindings";
@@ -31,8 +28,6 @@ export const limits: RunLimits = {
 
 export type Logged = { message: string; fields: Record<string, unknown> | undefined };
 
-// Runs a script in `sandbox` under `limits` and the caps given, and keeps
-// what it logs.
 export const runner =
   (sandbox: DenoSandbox) =>
   async (script: string, caps: Partial<RunLimits> = {}, bindings: Bindings = fakeBindings()) => {

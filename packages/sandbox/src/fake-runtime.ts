@@ -1,10 +1,4 @@
-// The fake bindings' guest runtime: a test fixture that speaks the same
-// contract as the runtime in @oriel/bindings's shim (PR 14). JSON lines,
-// calls out on stdout, replies in on stdin. Reply 0 carries the script's
-// stripped body, which runs as an async function with the bindings as its
-// parameters. The guest's own reads count from 1, and a create names its item
-// `new:N`, counting from 1. Intents and drafts, like writes, are sent and never
-// answered. Console output becomes log messages.
+// A test fixture that speaks the same contract as the runtime in @oriel/bindings's shim.
 import type { NewRef } from "@oriel/core";
 
 type Sink = { writeSync(bytes: Uint8Array): number };

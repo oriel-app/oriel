@@ -29,17 +29,11 @@ const link = (target: string, url: string, title: string): CapturedMutation => (
 test("capture refuses refs no earlier create gives, and keeps nothing", async () => {
   const { changeSets, run, db } = setup();
   const refused: CapturedMutation[][] = [
-    // used before the create that names it
     [estimate("new:1", 3), story("new:1", "Wallet refunds", null)],
-    // never created
     [story("new:1", "Wallet refunds", null), estimate("new:2", 3)],
-    // named twice
     [story("new:1", "Wallet refunds", null), story("new:1", "Wallet receipts", null)],
-    // a non-create naming a new item
     [{ ...estimate("jira:SYN-21", 3), ref: "new:1" }],
-    // a create with a target
     [{ ...story(null, "Wallet refunds", null), target: "jira:SYN-21" }],
-    // arguments the op doesn't take
     [estimate("jira:SYN-21", "3" as unknown as number)],
   ];
   for (const mutations of refused) {
@@ -93,7 +87,6 @@ test("a change set reaches only its region: targets and item IDs in arguments", 
 
 test("a moved item stays in the region under its old handle and its new one", async () => {
   const { changeSets, run, indexPage, indexed } = setup();
-  // SYN-21 and its epic SYN-1 move to another project; nothing takes their keys.
   indexPage([
     { ...indexed("SYN-21"), id: "jira:OPS-5" },
     { ...indexed("SYN-1"), id: "jira:OPS-1" },
@@ -125,8 +118,6 @@ test("apply resolves a moved item's old handle the way capture did", async () =>
 
 test("a handle reused by an item outside the region names that item and is refused", async () => {
   const { changeSets, run, indexPage, indexed } = setup();
-  // SYN-21 moves away and an outside item takes its key; SYN-27 was deleted
-  // and an outside item now has its key too.
   indexPage([
     { ...indexed("SYN-21"), id: "jira:OPS-5" },
     { ...indexed("SYN-14"), id: "jira:SYN-21", stableId: "99999" },
@@ -177,7 +168,6 @@ test("an item removed from the workstream after capture is never written (decisi
   workstreamStore(db).remove(workstreamId, [syn21], { kind: "user" }, t0);
   await approve(changeSets, set.id);
   await assert.rejects(changeSets.apply(set.id), { code: "refused" });
-  // The row says why, as a stop partway through would.
   assert.ok((await changeSets.get(set.id))?.mutations[0]?.error);
   assert.deepEqual(jira.calls, []);
 });
@@ -198,7 +188,6 @@ test("a set op that landed with its answer lost is recorded on retry, even after
   const retry = await changeSets.apply(set.id);
   assert.deepEqual(retry.applied, [mutationId]);
   assert.equal(status(db, mutationId), "applied");
-  // Recorded in place: nothing was sent again.
   assert.equal(jira.calls.length, 1);
 });
 
@@ -269,7 +258,6 @@ test("a key another item took after capture is never written", async () => {
   const { changeSets, run, jira, indexPage, indexed } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   await approve(changeSets, set.id);
-  // SYN-21 moves away and an item outside the region takes its key.
   indexPage([
     { ...indexed("SYN-21"), id: "jira:OPS-5" },
     { ...indexed("SYN-14"), id: "jira:SYN-21", stableId: "99999" },
@@ -467,9 +455,8 @@ test("of two instances that both sent a row, only the later mark records it", as
   await approve(changeSets, set.id);
   const elsewhere = instance();
 
-  // This instance marks its send, which then takes longer than the lease.
-  // Another instance marks the row again and starts its own send; then this
-  // one lands first.
+  // This instance marks its send, which takes longer than the lease. Another instance marks the row again
+  // and starts its own send; then this one lands first.
   const otherMarked = Promise.withResolvers<void>();
   const releaseOther = Promise.withResolvers<void>();
   let other: Promise<unknown> | undefined;
@@ -489,9 +476,7 @@ test("of two instances that both sent a row, only the later mark records it", as
   assert.deepEqual(report, { changeSetId: set.id, applied: [mutationId], skipped: [], failed: [] });
   assert.equal(status(db, mutationId), "applied");
   assert.equal(jira.calls.length, 2);
-  // The instance that recorded it saw the row already sent, so the source's
-  // "before" may be Oriel's own write: a revert can't restore it, and isn't
-  // offered.
+  // The recording instance saw the row already sent, so the source's "before" may be Oriel's own write: no revert.
   assert.deepEqual(await changeSets.nextSteps(set.id), []);
   await assert.rejects(changeSets.revert(set.id), {
     code: "not-revertible",
@@ -531,10 +516,8 @@ test("apply replays exactly the captured arguments, in seq order", async () => {
     events.filter((e) => e.name === "changeset.applied").map((e) => e.changeSetId),
     [set.id],
   );
-  // Once applied, a line shows what Jira reported, without its update time.
   const shown = await changeSets.diff(set.id);
   assert.deepEqual(nth(shown.lines, 1).fields, [{ name: "points", before: 2, after: 5 }]);
-  // Nothing is left to apply, so applying again is refused.
   await assert.rejects(changeSets.apply(set.id), { code: "refused" });
   assert.equal(jira.calls.length, 3);
 });
@@ -605,7 +588,6 @@ test("a story can go in an epic the same change set creates, and is reverted bef
     // A title that reads like a ref stays a title.
     story("new:3", "new:1", "new:1"),
   ]);
-  // Only the epic is marked as an item made above, not a title that reads like one.
   const fields = nth((await changeSets.diff(set.id)).lines, 2).fields;
   assert.deepEqual(
     fields.map((f) => [f.name, f.after, f.createdAbove ?? false]),
@@ -614,7 +596,6 @@ test("a story can go in an epic the same change set creates, and is reverted bef
       ["epic", "new:1", true],
     ],
   );
-  // Nor can an edit put a story in another new story.
   await assert.rejects(
     changeSets.edit(set.id, {
       set: [{ mutationId: nth(set.mutations, 2).id, args: { summary: "x", epic: "new:2" } }],
@@ -627,7 +608,6 @@ test("a story can go in an epic the same change set creates, and is reverted bef
   assert.equal(jira.issue("SYN-901")?.epic, "jira:SYN-900");
   assert.equal(jira.issue("SYN-902")?.epic, "jira:SYN-900");
   assert.equal(jira.issue("SYN-902")?.summary, "new:1");
-  // A new epic must come first, and a new story can't hold another.
   await assert.rejects(
     changeSets.capture(run, [
       story("new:1", "Gate change sounds", "new:2"),
@@ -635,7 +615,6 @@ test("a story can go in an epic the same change set creates, and is reverted bef
     ]),
     { code: "invalid" },
   );
-  // What was approved is kept as it was captured.
   const stored = await changeSets.get(set.id);
   assert.deepEqual(nth(stored?.mutations ?? [], 1).args, {
     summary: "Pay with a phone wallet at the kiosk",
@@ -678,9 +657,8 @@ test("after a crash, apply resumes and skips what already landed", async () => {
   await reached.promise;
   jira.hooks.before = undefined;
 
-  // Within the send's lease the new process won't send it again: it may
-  // still be on its way. After the lease it resumes, and resolves new:1 from
-  // the stored result of the create.
+  // Within the send's lease the new process won't send it again: it may still be on its way.
+  // After the lease it resumes, and resolves new:1 from the stored result of the create.
   const restarted = instance();
   await assert.rejects(restarted.apply(set.id), { code: "refused" });
   assert.equal(jira.calls.length, 2);
@@ -733,8 +711,7 @@ test("a send another instance started meanwhile isn't repeated or reset", async 
   await approve(changeSets, set.id);
   const elsewhere = instance();
 
-  // While this apply checks whether the value is already in place, another
-  // instance sends the same row and is still waiting on Jira.
+  // While this apply checks whether the value is already in place, another instance sends the same row.
   const sentElsewhere = Promise.withResolvers<void>();
   jira.hooks.read = async () => {
     jira.hooks.read = undefined;

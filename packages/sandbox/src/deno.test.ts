@@ -1,7 +1,5 @@
-// What Deno itself does with imports under decision 0006's flags alone: no
-// import map, no host. These pin down why the script is sent as data, never as
-// module source. If one starts failing after a Deno upgrade, Deno's behavior
-// changed: re-read deno.ts and compiler.ts before changing anything.
+// What Deno itself does with imports under the run's flags alone: why the script is sent as data, never as module source.
+// If one starts failing after a Deno upgrade, Deno's behavior changed: re-read deno.ts and compiler.ts before changing anything.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -24,8 +22,6 @@ after(() => rmSync(root, { recursive: true, force: true }));
 
 let runs = 0;
 
-// Runs `source` as the entry module, with the flags from decision 0006 and
-// nothing else unless `withImportMap`.
 function entry(source: string, withImportMap = false) {
   const dir = join(root, `run-${++runs}`);
   const work = join(dir, "work");
@@ -64,7 +60,6 @@ test("--deny-read stops a JSON import inside an AsyncFunction body", async () =>
   assert.match(out, /Requires read access/);
 });
 
-// The entry module prints what the worker sent, or its error, then exits.
 const workerEntry = (url: string) =>
   `const worker = new Worker(${JSON.stringify(url)}, { type: "module" });
 worker.onmessage = (event) => { console.log("sent " + event.data); Deno.exit(0); };

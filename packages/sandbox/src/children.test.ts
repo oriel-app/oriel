@@ -18,7 +18,6 @@ test(
         if (data.what === "ended") resolve();
       };
     });
-    // A worker that relays, as the compiler's does, and starts a true.
     const code = `
       import { spawn } from "node:child_process";
       import { parentPort } from "node:worker_threads";

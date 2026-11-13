@@ -1,5 +1,3 @@
-// Test support: Jira in memory over the SYN fixture, and a fresh database per
-// test. The writer reports fields the way jira.ts names them.
 import type { DatabaseSync } from "node:sqlite";
 import {
   type Approved,
@@ -70,8 +68,6 @@ const fixture = (): JiraFixture => {
 
 const site = "https://oriel.atlassian.net";
 
-// Jira as the SYN fixture leaves it after all its source edits: SYN-16
-// renamed, SYN-88 moved to SYN-3, SYN-27 deleted.
 // Computed once: it is pure, and memoryJira copies what it takes from it.
 let synJira: MemorySnapshot | null = null;
 export function fixtureJira(): MemorySnapshot {
@@ -93,7 +89,6 @@ function buildFixtureJira(): MemorySnapshot {
         id: record.stableId,
         summary: c.summary,
         description: c.description,
-        // The fixture's board estimates, so every item has points or null.
         points: c.points ?? null,
         accountId: c.assignee?.accountId ?? null,
         epic: c.epic,
@@ -109,7 +104,6 @@ type Request = WriteRequest<"jira">;
 
 export type MemoryJira = ReturnType<typeof memoryJira>;
 
-// What a copy of Jira in memory carries on from the one it copies.
 type Carried = {
   hidden: string[];
   final: string[];
@@ -118,10 +112,7 @@ type Carried = {
   ticks: number;
 };
 
-// Every write and every touch from outside moves the clock one second on from
-// `clock`, and stamps the item's `updated` with it. A write that never
-// reaches the issue (it is gone, names another item, or its arguments are
-// bad) changes nothing and says so, as the Jira writer does.
+// A write that never reaches the issue (gone, another item, bad arguments) changes nothing and says so, as the Jira writer does.
 export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carried) {
   const issues = new Map(start.issues.map((issue) => [issue.key, structuredClone(issue)]));
   if (!carried)
@@ -141,18 +132,13 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
   let nextIssue = carried?.nextIssue ?? firstNewIssue;
   let nextLink = carried?.nextLink ?? firstNewLink;
   let ticks = carried?.ticks ?? 0;
-  // Every request a writer received, in order, including ones that then failed.
   const calls: Request[] = [];
-  // Keys of the issues writes created, in order.
   const created: string[] = [];
-  // Every write that landed, in order, with the item just before and after it.
   const landings: { request: Request; before: MemoryIssue | null; after: MemoryIssue | null }[] =
     [];
   const hooks: {
-    // Runs before a request lands, with the write's limit; a promise that
-    // never settles is a crash.
+    // A promise that never settles is a crash.
     before?: (request: Request, call: number, limit?: WriteLimit) => Promise<void> | void;
-    // Runs after a request has landed, before the writer answers.
     after?: (request: Request, call: number) => Promise<void> | void;
     read?: (id: ItemId) => Promise<void> | void;
     // Runs once a read has its answer, before the reader gets it: what
@@ -380,7 +366,6 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     landings,
     hooks,
     issue: (key: string): MemoryIssue | null => structuredClone(issues.get(key) ?? null),
-    // An edit someone makes directly in Jira, outside Oriel.
     edit(
       key: string,
       change: Partial<Pick<MemoryIssue, "summary" | "description" | "points" | "accountId">>,
@@ -391,7 +376,6 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     comment(key: string) {
       touch(key);
     },
-    // A teammate retitles a remote link.
     retitleLink(key: string, linkId: string, title: string) {
       const found = touch(key).links.find((l) => l.linkId === linkId);
       if (!found) throw new Error(`no link ${linkId} on ${key}`);
@@ -401,22 +385,18 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     reuse(key: string, stableId: string) {
       touch(key).id = stableId;
     },
-    // A teammate moves the item in Jira.
     move(key: string, status: string) {
       touch(key).status = status;
     },
-    // The workflow lets nothing leave this status from now on.
     makeFinal(status: string) {
       final.add(status);
     },
-    // The item can't be seen (deleted, moved or forbidden), then can again.
     hide(key: string) {
       hidden.add(key);
     },
     show(key: string) {
       hidden.delete(key);
     },
-    // What `forkJira` copies.
     state: (): { snapshot: MemorySnapshot; clock: Instant; carried: Carried } => ({
       snapshot: { ...start, issues: [...issues.values()] },
       clock,
@@ -425,8 +405,6 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
   };
 }
 
-// A copy of Jira in memory as it stands, with no history and no hooks: what
-// happens to one doesn't happen to the other.
 export function forkJira(jira: MemoryJira): MemoryJira {
   const { snapshot, clock, carried } = jira.state();
   return memoryJira(snapshot, clock, carried);
@@ -434,11 +412,9 @@ export function forkJira(jira: MemoryJira): MemoryJira {
 
 export const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9, 0, 0)));
 
-// Jira's op specs, as the composition root hands them to change sets.
 export const specs: Specs = { jira: jiraSpecs };
 
-// The thread's region: hand-picked stories that cover the fixture's mess, with
-// SYN-27, which the fixture's edits delete. SYN-2 and SYN-14 are outside it.
+// Hand-picked stories that cover the fixture's mess, with SYN-27, which the fixture's edits delete; SYN-2 and SYN-14 are outside it.
 export const regionKeys = [
   "SYN-1",
   "SYN-3",
@@ -452,9 +428,6 @@ export const regionKeys = [
   "SYN-117",
 ];
 
-// A fresh in-memory database with a workspace, a workstream of the region's items
-// at version 1, a thread on it and a run in that version, Jira in memory, and
-// a clock the test moves by hand.
 export function setup() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -483,8 +456,6 @@ export function setup() {
     t0,
   );
 
-  // The index, synced as the sync worker would: the base state, then the
-  // fixture's source edits, which tombstone SYN-27.
   const syn = fixture();
   const index = indexStore(db);
   const indexPage = (records: IndexRecord[], gone: string[] = []) => {
@@ -499,7 +470,6 @@ export function setup() {
   const jira = memoryJira(fixtureJira(), t0);
   let now: Instant = t0;
   const events: TelemetryEvent[] = [];
-  // Another instance over the same database, as after a restart.
   const instance = (writer: SourceWriter<"jira"> = jira.writer): ChangeSets =>
     changeSetsOver({
       db,
@@ -516,13 +486,10 @@ export function setup() {
     events,
     run,
     workspaceId: workspaceId as Ulid,
-    // The thread's workstream, at version 1 holding `regionKeys`.
     workstreamId: workstreamId as Ulid,
     changeSets: instance(),
     instance,
-    // A later sync page, such as a move or a reused key.
     indexPage,
-    // An item's index record after the fixture's edits.
     indexed(key: string): IndexRecord {
       const record = synced.records.find((r) => r.id === `jira:${key}`);
       if (!record) throw new Error(`no record for ${key}`);
@@ -534,7 +501,6 @@ export function setup() {
   };
 }
 
-// Diffs the change set and approves exactly what the diff showed, in the thread.
 export async function approve(changeSets: ChangeSets, id: Ulid) {
   const diff = await changeSets.diff(id);
   return changeSets.decide(id, "approved", { via: "thread", by: "pm" }, diff.hash);
@@ -554,7 +520,6 @@ export function status(db: DatabaseSync, mutationId: Ulid): unknown {
   return db.prepare("select status from mutations where id = ?").get(mutationId)?.status;
 }
 
-// What a diff last recorded as shown for a mutation.
 export function preview(db: DatabaseSync, mutationId: Ulid): unknown {
   const row = db.prepare("select preview from mutations where id = ?").get(mutationId);
   return typeof row?.preview === "string" ? JSON.parse(row.preview) : null;

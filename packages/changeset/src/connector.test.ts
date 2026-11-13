@@ -1,6 +1,3 @@
-// Change sets take kinds as data (decision 0049): a kind no package here
-// knows applies and reverts through the writer of its item's connection, as
-// a connector's line in writers.ts would build it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -48,7 +45,6 @@ const memoSpecs: OpSpecs = {
   },
 };
 
-// Memos in memory, by item ID, each with its stable ID.
 function memoWriter(): SourceWriter & { titles: Map<string, string> } {
   const titles = new Map([["memo:M1", "Launch"]]);
   const values = (memo: string): FieldValues | "gone" => {

@@ -1,5 +1,3 @@
-// What a person can do with a change set, from the engine's own state: each
-// step offered is one the engine takes, and each it would refuse is left out.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type CapturedMutation, type NextStep, SourceRefused, type Ulid } from "@oriel/core";
@@ -25,7 +23,6 @@ const kinds = (steps: NextStep[]) => steps.map((step) => step.kind);
 const removable = (steps: NextStep[]) =>
   steps.flatMap((step) => (step.kind === "remove" ? step.mutationIds : []));
 
-// Jira refuses the write of the call-th request, and changes nothing.
 function refuseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
   jira.hooks.before = (_request, n) => {
     if (n === call)
@@ -35,7 +32,6 @@ function refuseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
   };
 }
 
-// The call-th request goes out and its answer never comes back.
 function loseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
   jira.hooks.before = (_request, n) => {
     if (n === call) throw new TypeError("fetch failed");
@@ -99,7 +95,6 @@ test("a write has until a write's limit after it went, inside a send's lease, th
     };
     assert.equal((await changeSets.apply(set.id)).failed.length, 1);
     assert.deepEqual(left, [writeLimitMs, 0]);
-    // Over before the window would see it stalled, with what can be done next.
     assert.equal(changeSets.applying(set.id), false);
     assert.equal(changeSets.stalled(set.id), false);
     assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), steps);
@@ -135,7 +130,6 @@ test("dismissing a change set whose create may have landed leaves revert for wha
     reverse.mutations.map((m) => m.reverts),
     [estimated],
   );
-  // The dismissed set keeps the row its warning names, and stays dismissed.
   const original = await changeSets.get(set.id);
   assert.equal(original?.decision?.kind, "rejected");
   assert.equal(original?.mutations[1]?.status, "failed");
@@ -176,7 +170,6 @@ test("while a change set is applying, nothing else can be done with it", async (
   ])
     await assert.rejects(attempt(), { code: "busy" });
   release.resolve();
-  // The apply ran to its end undisturbed, and recorded completion.
   assert.deepEqual((await applying).applied, [first, second]);
   assert.equal(changeSets.applying(set.id), false);
   assert.ok((await changeSets.get(set.id))?.completedAt);
@@ -194,12 +187,10 @@ test("a revert that undid part of a change set before it was dismissed ends its 
   const reverse = await changeSets.revert(set.id);
   assert.ok(!("conflicts" in reverse));
   await approve(changeSets, reverse.id);
-  // The reverse puts SYN-3 back, then Jira refuses SYN-21's.
   refuseCall(jira, 4);
   await changeSets.apply(reverse.id);
   await changeSets.dismiss(reverse.id);
-  // SYN-3 no longer holds what the change set applied, so a second revert
-  // could only conflict: it isn't offered, and the reverse is done with too.
+  // SYN-3 no longer holds what the change set applied, so a second revert could only conflict: it isn't offered.
   assert.deepEqual(await changeSets.nextSteps(set.id), []);
   assert.deepEqual(await changeSets.nextSteps(reverse.id), []);
   await assert.rejects(changeSets.revert(set.id), { code: "refused" });
@@ -212,8 +203,7 @@ test("a sent change Oriel can't check stays may-have-landed: an item it can't re
   await approve(changeSets, set.id);
   loseCall(jira, 1);
   await changeSets.apply(set.id);
-  // SYN-3 can't be read now (deleted, moved, or a 403): it may hold the
-  // change or not, so the row stays sent, and isn't sent again.
+  // SYN-3 can't be read now: it may hold the change or not, so the row stays sent, and isn't sent again.
   jira.hide("SYN-3");
   const report = await changeSets.apply(set.id);
   assert.ok(nth(report.failed, 0).error);
@@ -282,7 +272,6 @@ test("a sent change whose item can't be read now can't be approved again", async
   await approve(changeSets, set.id);
   loseCall(jira, 1);
   await changeSets.apply(set.id);
-  // Leaving the other change out voids the approval; then SYN-21 can't be read.
   await changeSets.edit(set.id, { remove: [other] });
   jira.hide("SYN-21");
   const unreadable = await changeSets.diff(set.id);
@@ -291,7 +280,6 @@ test("a sent change whose item can't be read now can't be approved again", async
     changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, unreadable.hash),
     { code: "refused" },
   );
-  // Readable again, it can be, and it still shows what it was approved from.
   jira.show("SYN-21");
   const shown = await changeSets.diff(set.id);
   assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["approve", "dismiss"]);

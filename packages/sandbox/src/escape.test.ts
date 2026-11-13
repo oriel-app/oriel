@@ -1,10 +1,5 @@
-// Escape tests (decision 0006): each tries a way out of the guest and must
-// fail. Never weaken one in the PR that changes the sandbox.
-//
-// They run the production shim and typecheck. The typecheck isn't a
-// boundary, so each script gets past it the way a hostile one would: Deno's
-// own APIs untyped, through globalThis, and `// @ts-ignore` above a literal
-// import. What stops them is Deno's permissions and the import map.
+// Each tries a way out of the guest and must fail. Never weaken one in the PR that changes the sandbox. The typecheck
+// isn't a boundary, so each script gets past it as a hostile one would; Deno's permissions and the import map stop them.
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
@@ -57,8 +52,6 @@ async function run(
   });
 }
 
-// Runs `attempt` (a function body) inside the guest and checks that it threw
-// there, and that nothing secret came back anywhere in the result.
 async function mustFail(attempt: string, thrown: RegExp) {
   const result = await run(`
     try {
@@ -162,9 +155,7 @@ test("subprocess: Deno.Command", () =>
 
 test("subprocess: node:child_process", () =>
   mustFail(
-    // Deno's child_process reads NODE_V8_COVERAGE before it spawns, so env
-    // access is refused first, even with an explicit env. Deno.Command above
-    // shows the run denial.
+    // Deno's child_process reads NODE_V8_COVERAGE before it spawns, so env access is refused first, even with an explicit env.
     `// @ts-ignore
      const { execFileSync } = await import("node:child_process");
      return String(execFileSync("/bin/echo", ["hi"], { env: {} }));`,
@@ -173,9 +164,7 @@ test("subprocess: node:child_process", () =>
 
 test("FFI", () => mustFail(`return Deno.dlopen("libc.so.6", {});`, denied("ffi")));
 
-// The script becomes a function at run time, so even a literal specifier in it
-// is a run-time import: the import map refuses `file:`, and read permission
-// would too (deno.test.ts shows Deno's own behavior).
+// The script becomes a function at run time, so even a literal specifier in it is a run-time import, which the import map refuses.
 test("import(): a literal file path, as JSON", () =>
   mustFail(
     `// @ts-ignore\nreturn JSON.stringify(await import(${JSON.stringify(secretJson)}, { with: { type: "json" } }));`,
@@ -198,9 +187,7 @@ test("import(): a computed file: URL", () =>
     /no-imports|NotCapable|Requires read access/,
   ));
 
-// A static import would be loaded before anything runs, outside
-// `--deny-read`. The script can't hold one: it is compiled on the host as a
-// function body and refused before Deno starts.
+// A static import would be loaded before anything runs, outside `--deny-read`; the script can't hold one: it is refused before Deno starts.
 async function refusedBeforeDeno(script: string) {
   const result = await run(script);
   assert.ok(!JSON.stringify(result).includes(canary), "the canary got out");
@@ -279,7 +266,6 @@ test("a worker inherits the denials", () =>
     denied("read"),
   ));
 
-// Waits for a worker made from `url`: its first message, or its error.
 const workerFrom = (url: string) => `
   const worker = new Worker(${url}, { type: "module" });
   try {
@@ -294,10 +280,8 @@ const workerFrom = (url: string) => `
     worker.terminate();
   }`;
 
-// A parse error would quote the file's first line, so its contents must never
-// be read at all. Deno 2.9 applies the import map to a worker's own script
-// URL and to its imports, so the map refuses these first; deno.test.ts shows
-// --deny-read alone stops them too.
+// A parse error would quote the file's first line, so its contents must never be read. Deno 2.9 applies the import map
+// to a worker's own script URL and its imports, so the map refuses these first; deno.test.ts shows --deny-read alone stops them too.
 test("a worker whose script is a local file", () =>
   mustFail(workerFrom(JSON.stringify(pathToFileURL(secretEnv).href)), noImports));
 
@@ -391,10 +375,8 @@ test("an error message shaped to make the host's error cleanup slow", async () =
   assert.ok(errorOf(result.transcript.at(-1)).message.length <= 4_001);
 });
 
-// Node's type stripper is SWC built as WebAssembly. A deep enough script
-// overflows its stack and can break it for the rest of its thread. Deep
-// brackets are refused before it runs; other deep shapes reach it, so it runs
-// in a worker that is replaced after any refusal.
+// Node's type stripper is SWC built as WebAssembly: a deep enough script overflows its stack and can break it for the rest
+// of its thread. Deep brackets are refused before it runs; other deep shapes reach it, so it runs in a worker replaced after any refusal.
 async function strippingSurvives(deep: string) {
   for (let i = 0; i < 3; i++) {
     const result = await run(deep);

@@ -1,5 +1,3 @@
-// Change sets build their own writers from config; the package entry offers
-// no way to pass one in (decision 0003).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as entry from "./index.ts";
@@ -24,6 +22,5 @@ test("config a writer can't be built from is refused when change sets are made",
 
 test("the package entry builds change sets from config and has no way to pass a writer in", () => {
   assert.equal(typeof entry.changeSets, "function");
-  // Each of these takes a writer, or builds one from config a caller hands it.
   for (const name of ["changeSetsOver", "buildWriters"]) assert.ok(!(name in entry), name);
 });

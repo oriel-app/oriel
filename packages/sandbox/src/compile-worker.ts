@@ -1,5 +1,3 @@
-// The compiler's worker thread (see compiler.ts): one script in; tsc's pid as
-// it starts, then the reply that starts the guest or why it can't start, out.
 import { parentPort } from "node:worker_threads";
 import { guestStart, typecheck } from "@oriel/bindings";
 import { relayChildren } from "./children.ts";

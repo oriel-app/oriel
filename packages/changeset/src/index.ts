@@ -1,6 +1,4 @@
-// The package entry. It doesn't export `changeSetsOver` or `buildWriters`:
-// change sets build their own writers from config, and nothing outside this
-// package can hand them one (decision 0003).
+// It exports neither `changeSetsOver` nor `buildWriters`: nothing outside this package can hand change sets a writer.
 export {
   type ChangeSetDeps,
   ChangeSetError,

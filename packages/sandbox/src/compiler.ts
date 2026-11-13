@@ -1,19 +1,5 @@
-// The pre-run steps, `typecheck` then `guestStart`, run in a worker thread,
-// never on the host's main thread. Both strip types with Node's stripper,
-// SWC built as WebAssembly: a deeply nested script overflows its stack and
-// leaves it failing every later call in that isolate, Node's own loading of
-// `.ts` files included. So a worker that refused a script, failed or ran long
-// is thrown away, and the next script gets a fresh one.
-//
-// tsc is a child of the worker, but the main thread owns its lifecycle, since
-// terminating a worker neither kills its children nor runs its cleanup:
-// - it makes and removes tsc's directory, whatever happens to the worker;
-// - it learns tsc's pid as tsc starts, watches its memory, and at the
-//   deadline, on abort or over the cap kills tsc before the worker goes.
-//   bindings runs the native compiler directly, so the pid is tsc itself;
-// - if the host exits while tsc runs, its exit hook kills tsc. tsc stays in
-//   the host's process group, so a Ctrl-C or hangup reaches it anyway. A
-//   SIGTERM to the host alone runs no hook, and is the remaining gap.
+// Node's stripper (SWC in WebAssembly) overflows on deep scripts and fails every later call in that isolate, so a worker that
+// refused, failed or ran long is thrown away. The main thread owns tsc: terminating a worker neither kills its children nor runs its cleanup.
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -24,12 +10,10 @@ import { watchMemory } from "./memory.ts";
 export type CompileJob = {
   script: string;
   dts: string;
-  // The main thread's deadline for the whole step, and the error it gives.
   deadlineMs: number;
   deadlineMessage: string;
   signal: AbortSignal;
   log: Log;
-  // Called when the job leaves the queue and starts.
   onStart: () => void;
 };
 
@@ -39,8 +23,7 @@ export type Compiled =
 
 export type Compiler = { prepare(job: CompileJob): Promise<Compiled> };
 
-// How long a retired worker gets to see its tsc die (and so reap it) before
-// it is terminated regardless.
+// How long a retired worker gets to see its tsc die, and so reap it, before it is terminated regardless.
 const graceMs = 2_000;
 
 const kill = (pid: number) => {
@@ -51,7 +34,6 @@ const kill = (pid: number) => {
   }
 };
 
-// Every tsc a compiler in this process has started and not yet seen exit.
 // One exit hook for all of them: a synchronous kill is all `exit` allows.
 const live = new Set<number>();
 let hooked = false;
@@ -70,8 +52,6 @@ const limit = (message: string, outcome: "timeout" | "limit"): Compiled => ({
   outcome,
 });
 
-// A refusal from the worker. bindings' limits are its script-size cap, which
-// is a limit, and tsc's own timeout, which is a timeout.
 function refusal(error: RunError): Compiled {
   if (error.phase !== "limit") return { ok: false, error, outcome: "threw" };
   const timedOut = error.message.startsWith("the typecheck took longer than");
@@ -155,9 +135,7 @@ export function createCompiler(options: {
           track(message.pid);
           job.log("sandbox.typecheck", { tsc_pid: message.pid });
           if (settled) return stop(message.pid);
-          // An addition to decision 0006 (see 0017): tsc gets the same memory
-          // cap as the guest. TypeScript 7's compiler is native, so V8 heap
-          // flags don't apply to it; the RSS watchdog is its only cap.
+          // tsc gets the guest's memory cap: TypeScript 7's compiler is native, so V8 heap flags don't apply, and the RSS watchdog is its only cap.
           stopWatching = watchMemory(
             message.pid,
             options.maxRssBytes,
@@ -222,7 +200,6 @@ export function createCompiler(options: {
   return {
     prepare(job) {
       const turn = queue.then(async (): Promise<Compiled | null> => {
-        // Dropped if aborted while it waited: no worker, no tsc.
         if (job.signal.aborted) return null;
         job.onStart();
         return run(job);
@@ -256,7 +233,6 @@ function spawnWorker(): Worker {
     // Node marks its type stripper experimental; that one warning says nothing new.
     execArgv: ["--disable-warning=ExperimentalWarning"],
   });
-  // An idle compiler doesn't keep the host alive.
   worker.unref();
   return worker;
 }

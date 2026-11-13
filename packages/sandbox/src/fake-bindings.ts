@@ -1,9 +1,4 @@
-// A three-story region and hand-written bindings over it: a fixture for this
-// package's tests, not a model of what packages/bindings generates. Its shim
-// keeps the bindings' contract: the entry file is the shim alone, which
-// starts the script with the bindings `jira`, `workstream`, `source` and
-// `search` as
-// parameters.
+// A fixture for this package's tests, not a model of what packages/bindings generates.
 import {
   type Bindings,
   type CapturedMutation,
@@ -51,7 +46,6 @@ const search = (query: string) => __oriel.read("search", [query]);
 __oriel.start({ jira, workstream, source, search });
 `;
 
-// What the typecheck holds scripts to, shaped like the real declarations.
 const dts = `declare const jira: {
   listStories(): Promise<{ id: string; summary: string; points: number | null }[]>;
   getStory(id: string): Promise<{ id: string; summary: string; points: number | null }>;

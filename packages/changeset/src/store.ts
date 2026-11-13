@@ -129,8 +129,6 @@ export type NewMutation = {
 
 export type Store = ReturnType<typeof store>;
 
-// The change_sets, mutations, decisions and review_links tables. Plain reads
-// and writes; the rules live in change-sets.ts.
 export function store(db: DatabaseSync) {
   const selectChangeSet = db.prepare(
     "select id, workspace_id, thread_id, run_id, revert_of, created_at, completed_at, revised_at from change_sets where id = ?",
@@ -170,7 +168,6 @@ export function store(db: DatabaseSync) {
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
-  // The workstream a run's thread is on, and the version of it the run used.
   const selectRunModel = db.prepare("select model from runs where id = ?");
   const selectRunRegion = db.prepare(`
     select t.workstream_id, r.region_version from runs r join threads t on t.id = r.thread_id
@@ -181,7 +178,6 @@ export function store(db: DatabaseSync) {
       select 1 from threads t join workstream_members m on m.workstream_id = t.workstream_id
       where t.id = ? and m.source = ? and m.stable_id = ? and m.removed_version is null
     ) as found`);
-  // The item a handle names now: the live one, or else the latest tombstone.
   const selectStableId = db.prepare(`
     select stable_id from items where workspace_id = ? and source = ? and item_id = ?
     order by gone_at is not null, gone_at desc limit 1`);
@@ -244,7 +240,6 @@ export function store(db: DatabaseSync) {
     where l.workspace_id = ? and l.revoked_at is null and l.opened_at is null and l.created_at > ?
     order by l.created_at, l.change_set_id`);
 
-  // The stable ID of the item a handle names in the index, or null.
   const stableIdOf = (workspaceId: Ulid, handle: string): string | null => {
     const source = parseItemId(handle)?.prefix;
     if (!source) return null;
@@ -275,9 +270,7 @@ export function store(db: DatabaseSync) {
   };
 
   return {
-    // A change set as its rows say now, with the hash derived from them. Its
-    // decision is the latest one, only while its hash still matches and
-    // nobody undid it (OA-258).
+    // Its decision is the latest one, only while its hash still matches and nobody undid it.
     load(id: string): ChangeSet | null {
       const raw = selectChangeSet.get(id);
       if (!raw) return null;
@@ -311,7 +304,6 @@ export function store(db: DatabaseSync) {
       };
     },
 
-    // The change sets that revert this one, oldest first.
     revertsOf(changeSetId: Ulid): Ulid[] {
       return selectRevertsOf
         .all(changeSetId)
@@ -323,21 +315,17 @@ export function store(db: DatabaseSync) {
       return raw ? toMutation(raw) : null;
     },
 
-    // A thread's change sets, oldest first.
     ofThread(threadId: Ulid): Ulid[] {
       return selectOfThread
         .all(threadId)
         .map((raw) => parse(object({ id: ulidValue }), raw, "change_sets").id);
     },
 
-    // Whether anyone decided on it and nobody undid that, whatever its hash
-    // then: an edit voids an approval only while the rows differ from what
-    // was approved.
+    // An edit voids an approval only while the rows differ from what was approved, so this ignores the hash.
     everDecided(changeSetId: Ulid): boolean {
       return parse(foundRow, selectStandingDecision.get(changeSetId), "decisions").found > 0;
     },
 
-    // The model a run recorded, or null for no such run.
     runModel(runId: Ulid): string | null {
       const row = selectRunModel.get(runId);
       return row ? parse(object({ model: string }), row, "runs").model : null;
@@ -351,7 +339,6 @@ export function store(db: DatabaseSync) {
 
     stableId: stableIdOf,
 
-    // Whether the thread's workstream holds an item now, in its latest version.
     inWorkstreamNow(threadId: Ulid, source: string, stableId: string): boolean {
       return (
         parse(foundRow, selectInWorkstream.get(threadId, source, stableId), "workstream_members")
@@ -359,13 +346,8 @@ export function store(db: DatabaseSync) {
       );
     },
 
-    // Handles as the region a run used sees them: its thread's workstream at the
-    // run's version (decision 0018). A change set no run produced, a revert,
-    // has no region. Membership is by stable ID (decision 0004). A handle
-    // resolves through the index first, so one reused by another item names
-    // that item and is refused. A handle no index row has, such as a moved
-    // item's old one, falls back to the handle the member was added with.
-    // Capture, edit and apply all resolve this way.
+    // A handle resolves through the index first, so one reused by another item names that item and is refused; one no
+    // index row has, such as a moved item's old handle, falls back to the handle the member was added with.
     region(runId: Ulid | null, workspaceId: Ulid) {
       const raw = runId === null ? undefined : selectRunRegion.get(runId, workspaceId);
       const at = raw ? parse(runRegionRow, raw, "runs") : null;
@@ -428,8 +410,6 @@ export function store(db: DatabaseSync) {
       updateArgs.run(JSON.stringify(args), mutationId, changeSetId);
     },
 
-    // The agent revised it (OA-309): its rows are now `runId`'s, whose
-    // region checks and resolves them.
     markRevised(changeSetId: Ulid, runId: Ulid, at: Instant): void {
       markRevised.run(runId, at, changeSetId);
     },
@@ -442,17 +422,13 @@ export function store(db: DatabaseSync) {
       updatePreview.run(JSON.stringify(preview), mutationId);
     },
 
-    // After an edit, every unsent row needs a fresh diff before approval. A
-    // sent row keeps what the diff showed when it was approved: its source
-    // may hold the change by now, so a fresh read can't show what was there.
+    // A sent row keeps what the diff showed when it was approved: its source may hold the change by now.
     clearPreviews(changeSetId: Ulid): void {
       clearPreviews.run(changeSetId);
     },
 
-    // Records a result only on the row as the caller read it (for a send, as
-    // marking it left it), so of two instances that both sent a row only the
-    // last to mark it can record it. Throws otherwise, since the write landed
-    // but its row was removed, edited, applied or sent again meanwhile.
+    // Only on the row as the caller read it, so of two instances that both sent a row only the last to mark it records it.
+    // Throws otherwise: the write landed but its row changed meanwhile.
     markApplied(
       mutationId: Ulid,
       from: { version: number },
@@ -470,22 +446,15 @@ export function store(db: DatabaseSync) {
       return Number(updateFailed.run(error, mutationId, from.version).changes) === 1;
     },
 
-    // Records, before a write goes out, that it was sent: until its result is
-    // recorded, it may have landed. Only from the row as the caller read it,
-    // so another apply's mark is never overwritten. The row's version after,
-    // which recording the result compares; null if the row moved on.
+    // Before a write goes out: until its result is recorded, it may have landed. Only from the row as the caller read it,
+    // so another apply's mark is never overwritten.
     markSent(mutationId: Ulid, from: { version: number }, mark: string): number | null {
       return Number(updateSent.run(mark, mutationId, from.version).changes) === 1
         ? from.version + 1
         : null;
     },
 
-    // Nothing of a send landed (the source answered it and changed nothing,
-    // or it was found absent): the row goes to the status the caller gives
-    // (unsent, unless an earlier send may be in place). Only from the row as
-    // the caller read it: if anything wrote to it since (another apply's
-    // send, say, which may have landed), it stays as that left it. False if
-    // so.
+    // Only from the row as the caller read it: if anything wrote to it since, it stays as that left it.
     markRefused(
       mutationId: Ulid,
       from: { version: number },
@@ -495,9 +464,7 @@ export function store(db: DatabaseSync) {
       return Number(updateRefused.run(status, error, mutationId, from.version).changes) === 1;
     },
 
-    // Apply stopped before sending this mutation, and says why. The status
-    // stays as it was, so a row an earlier pass sent stays sent; the next
-    // apply checks again. Only over the row as the caller read it.
+    // The status stays as it was, so a row an earlier pass sent stays sent.
     markStopped(mutationId: Ulid, from: { version: number }, error: string): boolean {
       return Number(updateStopped.run(error, mutationId, from.version).changes) === 1;
     },
@@ -528,7 +495,6 @@ export function store(db: DatabaseSync) {
       );
     },
 
-    // Marks a decision undone; false when it already was.
     undoDecision(decisionId: Ulid, at: Instant): boolean {
       return markUndone.run(at, decisionId).changes > 0;
     },
@@ -542,13 +508,10 @@ export function store(db: DatabaseSync) {
       revokeLinks.run(at, changeSetId);
     },
 
-    // How many were live.
     revokeAllLinks(workspaceId: Ulid, at: Instant): number {
       return Number(revokeAllLinks.run(at, workspaceId).changes);
     },
 
-    // Records when a change set's last change applied, once. True if this
-    // call recorded it.
     markCompleted(changeSetId: Ulid, at: Instant): boolean {
       return Number(markCompleted.run(at, changeSetId).changes) === 1;
     },
@@ -557,13 +520,10 @@ export function store(db: DatabaseSync) {
       insertLink.run(tokenHash, workspaceId, changeSetId, at);
     },
 
-    // The link was first opened at `at`, unless it had been before.
     markLinkOpened(tokenHash: string, at: Instant): void {
       markLinkOpened.run(at, tokenHash);
     },
 
-    // Links made after `after` that are neither revoked nor opened, oldest
-    // first.
     unopenedLinks(
       workspaceId: Ulid,
       after: Instant,

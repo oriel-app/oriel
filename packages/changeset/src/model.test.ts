@@ -1,19 +1,5 @@
-// A model-based test: seeded random histories of what a PM, a teammate, two
-// Oriel instances and a flaky Jira do, with invariants checked after every
-// step. A pure function of the seed: no clock, no sleeps.
-//
-// Besides what lands, it checks what is offered. After every step, each of
-// the newest change sets offers a step or is done with (invariant 8), and
-// every step offered succeeds when taken from that state (invariant 7),
-// tried on a copy of the database and of Jira so the walk goes on from the
-// state as it was. While an apply is in flight, nothing is offered and every
-// action is refused as busy (invariant 9).
-//
-// CI walks all 200 histories (GitHub Actions sets `CI`). Elsewhere it walks
-// the first 30 of the same 200, in a tenth of the time, and skips the checks
-// that the walk reached the states the invariants are about, which take all
-// 200. To walk all 200 locally:
-// `CI=true node --test packages/changeset/src/model.test.ts`.
+// Seeded random histories with invariants checked after every step: a pure function of the seed. CI walks all 200;
+// elsewhere the first 30. All 200 locally: `CI=true node --test packages/changeset/src/model.test.ts`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -73,9 +59,7 @@ type Fault = "fail" | "lost" | "crash" | null;
 const thread = { via: "thread", by: "pm" } as const;
 const reviewBase = new URL("http://localhost:4000/review/");
 
-// Jira's catalogue, which can tighten under stored arguments: each of
-// `banned` (an op and its arguments as JSON) no longer passes. The rows, and
-// so any approval of them, stay as they were.
+// Jira's catalogue, which can tighten under stored arguments; the rows, and any approval of them, stay as they were.
 function tightening(banned: ReadonlySet<string>): Specs {
   const jira = specs.jira;
   if (!jira) throw new Error("no Jira specs");
@@ -94,9 +78,6 @@ function tightening(banned: ReadonlySet<string>): Specs {
   return { jira: { ...jira, ops } };
 }
 
-// Whether every change a set applied can be undone, judged from its rows
-// alone: a change to an item it created goes with the item, and what an undo
-// puts back must pass the catalogue too.
 function undoable(set: ChangeSet, catalogue: Specs): boolean {
   const ops = catalogue.jira?.ops ?? {};
   const created = new Set(
@@ -112,10 +93,6 @@ function undoable(set: ChangeSet, catalogue: Specs): boolean {
   });
 }
 
-// Done with: nothing more of it applies (it applied in full, or it was
-// rejected or dismissed) and nothing it applied can be reverted (nothing
-// did, it is a revert itself, or a change can't be undone); or a revert of
-// it is under way or undid part of it.
 function finished(set: ChangeSet, reverts: readonly ChangeSet[], catalogue: Specs): boolean {
   if (reverts.some((r) => r.decision?.kind !== "rejected" || r.mutations.some((m) => m.applied)))
     return true;
@@ -136,8 +113,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   const problems: string[] = [];
   const problem = (what: string) => problems.push(what);
 
-  // One database for every sequence: each makes its own change sets, and
-  // Jira in memory is fresh per sequence.
   const { db } = shared;
   const rows = store(db);
   const jira = memoryJira(fixtureJira(), t0);
@@ -145,7 +120,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   // lease, never while a send is in flight.
   let clock: Instant = t0;
 
-  // Every row the model has seen: its change set and the row it undoes.
   const known = new Map<Ulid, { setId: Ulid; op: string; reverts: Ulid | null }>();
   const sets: { id: Ulid; revertOf: Ulid | null }[] = [];
   const remember = (set: {
@@ -156,19 +130,14 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     if (!sets.some((s) => s.id === set.id)) sets.push({ id: set.id, revertOf: set.revertOf });
     for (const m of set.mutations) known.set(m.id, { setId: set.id, op: m.op, reverts: m.reverts });
   };
-  // Rows a person removed: their writes are theirs to check.
   const removed = new Set<Ulid>();
-  // Reads that found a sent row's item without its value, and the landings
-  // before each; and each row's last landing.
   const absentReads: { row: Ulid; landed: number }[] = [];
   const lastLanding = new Map<Ulid, number>();
 
-  // Checked as each write leaves.
   const writer: SourceWriter<"jira"> = {
     kind: "jira",
     current: jira.writer.current,
-    // Each read notes the sent rows on the item that it found without their
-    // value, and how many writes had landed by then (invariant 10).
+    // Notes the sent rows on the item it found without their value, and how many writes had landed by then (invariant 10).
     async read(id, fields) {
       // Landings so far: the read's answer can't reflect any later one.
       const landed = jira.landings.length;
@@ -213,7 +182,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   // A fault for the next write; and, for two instances at once, the other
   // one starts while the first has its write in flight.
   let fault: Fault = null;
-  // Writes to let through before the fault hits.
   let faultAfter = 0;
   let lost = false;
   let crash: PromiseWithResolvers<void> | null = null;
@@ -238,14 +206,10 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     throw new Error("timed out");
   };
 
-  // What landed, read from the fake's log after each step.
   let read = 0;
   const landings = new Map<Ulid, number>();
-  // Per row, the value just before its first landing.
   const firstBefore = new Map<Ulid, { item: string; field: Field; value: unknown }>();
   const created = new Map<Ulid, string>();
-  // Fields a teammate changed since Oriel last wrote them, and fields Oriel
-  // has written at all.
   const dirty = new Set<string>();
   const oriel = new Set<string>();
   const absorb = () => {
@@ -287,15 +251,9 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     }
   };
 
-  // Invariant 3. Once all of a reverse applied, every write of the original
-  // that landed is undone, unless a person removed it or its reverse row, or
-  // dismissed it unapplied (the dismissal warned it may have landed, and a
-  // revert covers exactly what applied).
-  // And as the reverse rows for a field apply, the field holds its value from
-  // before the original: judged in the step they apply, since anyone may
-  // change it again afterwards.
+  // Invariant 3: once all of a reverse applied, every write of the original that landed is undone, unless a person removed
+  // or dismissed it; as the reverse rows apply, the field holds its value from before the original, judged in that step.
   const verified = new Set<Ulid>();
-  // Rows seen applied at the end of an earlier step.
   const appliedBefore = new Set<Ulid>();
   let checked = 0;
   const checkReverts = () => {
@@ -356,8 +314,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     }
   };
 
-  // Invariant 5: a row is applied only if its write landed, or its value was
-  // already in place (then its `after` holds the value it would have set).
+  // Invariant 5: a row is applied only if its write landed, or its value was already in place.
   const checkApplied = () => {
     for (const [id, info] of known) {
       const row = rows.mutation(id);
@@ -370,9 +327,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     }
   };
 
-  // Invariant 10: a row whose write landed is unsent again only once a read
-  // made after that landing found its item without its value. Anything else
-  // un-sends a write that may have landed.
+  // Invariant 10: a row whose write landed is unsent again only once a read made after that landing found its item
+  // without its value. Anything else un-sends a write that may have landed.
   const checkUnsent = () => {
     for (const [id, last] of lastLanding) {
       if (rows.mutation(id)?.status !== "pending") continue;
@@ -397,8 +353,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       expected(error);
     }
   };
-  // Runs an apply, or stops waiting once its instance has crashed; a crashed
-  // instance is replaced, as a restarted process would be.
+  // A crashed instance is replaced, as a restarted process would be.
   const applyOn = async (slot: number, id: Ulid) => {
     crash = Promise.withResolvers<void>();
     const crashed = crash.promise.then(() => "crashed" as const);
@@ -417,23 +372,17 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     if (outcome === "crashed") instances[slot] = instance();
   };
 
-  // States the offered-step invariants must reach, counted over the run.
   const reached = {
     dismissedWithSent: 0,
     goneUnapproved: 0,
     stale: 0,
     applying: 0,
     dismissedPartReverse: 0,
-    // Stale arguments under an approval that still stands.
     staleApproved: 0,
-    // A row sent before whose item Oriel couldn't check.
     couldntTell: 0,
-    // A sent row whose item can't be read, and so can't be approved again.
     sentGone: 0,
   };
 
-  // Whether a row's item can't be read as the item it should be: hidden, or
-  // its key taken by another item.
   const unreadable = (
     set: {
       mutations: readonly {
@@ -450,11 +399,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     return k !== "" && (hidden.has(k) || reused.has(k));
   };
 
-  // Invariant 7: takes one offered step on a copy of the database and of
-  // Jira, and checks that it succeeds. A retry must send, or record in place,
-  // its first change: only a revert's conflict check or (for a change sent
-  // before, once found not in place) the workstream may stop it, since those read
-  // the source.
+  // Invariant 7: takes one offered step on a copy of the database and of Jira, and checks it succeeds. A retry must send
+  // or record its first change: only a revert's conflict check or the workstream may stop it, since those read the source.
   const probe = async (id: Ulid, step: NextStep, mutationId?: Ulid) => {
     const copy = open(":memory:");
     copy.deserialize(db.serialize());
@@ -500,7 +446,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           const sentBefore = new Set(
             set.mutations.filter((m) => m.status === "failed").map((m) => m.id),
           );
-          // A refusal before any send is about the first row still open.
           const first = set.mutations.find((m) => m.status !== "applied");
           const report = await engine.apply(id).catch((error: unknown) => ({
             failed: [
@@ -519,7 +464,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
               m.preview === null ||
               m.preview["$gone"] === true ||
               catalogue.jira?.ops[m.op]?.args(m.args).ok !== true ||
-              // Sent before, and stopped unsent on an item it couldn't check.
               (sentBefore.has(m.id) &&
                 idempotent(m.op) &&
                 m.status === "failed" &&
@@ -554,8 +498,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         }
         case "revert": {
           await engine.revert(id);
-          // One revert at a time: no other may be under way, or have undone
-          // part of it.
           const standing = copied
             .revertsOf(id)
             .flatMap((r) => copied.load(r) ?? [])
@@ -576,10 +518,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     }
   };
 
-  // Invariants 7 and 8, over the newest change sets: the ones the walk acts
-  // on. Older ones change only through a teammate, which no guard reads. A
-  // state already seen isn't checked again: what a guard reads is the set's
-  // rows, its reverts', and the clock while a send's lease may be running.
+  // Invariants 7 and 8, over the newest change sets, the ones the walk acts on: older ones change only through a teammate,
+  // which no guard reads. A state already seen isn't checked again.
   const seen = new Set<string>();
   const checkSteps = async () => {
     const a = nth(instances, 0);
@@ -655,10 +595,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       if (outcome !== "busy") problem(`${name} of ${id} while it applies: ${outcome}, not busy`);
     }
   };
-  // Render, approve and apply in one go, perhaps with a fault on the first write.
-  // Jira's catalogue tightens under a change not yet applied, other than
-  // the next one: its stored arguments no longer pass. The row is as it was,
-  // so an approval of it stands.
+  // Jira's catalogue may tighten under a change not yet applied, other than the next one; the row, and its approval, stand.
   const tighten = (id: Ulid): boolean => {
     const open = rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? [];
     // Only a rename: summaries are unique to a row, so this bans that row's
@@ -680,14 +617,11 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       const shown = await a.diff(id);
       await a.decide(id, "approved", { via: "thread", by: "pm" }, shown.hash);
     });
-    // Now and then the catalogue tightens between approval and apply.
     if (chance(0.1)) tighten(id);
     await applyOn(slot, id);
     fault = null;
   };
 
-  // Pool stories taken out of the thread's workstream, which every sequence
-  // shares, for as long as one move.
   const outOfWorkstream = new Set<string>();
   const member = (item: string) => ({
     id: item as `jira:${string}`,
@@ -703,13 +637,10 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     outOfWorkstream.delete(item);
   };
   let teammate = 0;
-  // A summary no other row has: titles, numbered.
   let named = 0;
   const summary = () => `${pick(titles)} ${(named += 1)}`;
   const hidden = new Set<string>();
-  // Keys another item has taken, with the stable ID of the item that had it.
-  // A story the index holds is taken there too, as the next sync would see
-  // it, so Oriel no longer knows which item the key should be.
+  // A story the index holds is taken there too, as the next sync would see it, so Oriel no longer knows which item the key should be.
   const reused = new Map<string, string>();
   const indexedKey = (key: string) => pool.includes(`jira:${key}` as (typeof pool)[number]);
   const reuseKey = (key: string, stableId: string) => {
@@ -746,8 +677,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     if (!newest) return null;
     return chance(0.5) ? newest.id : pick(sets.slice(-4)).id;
   };
-  // The same, among those not rejected or dismissed: for the moves that act
-  // as if it could still apply.
   const liveSet = () => {
     const live = sets
       .slice(-4)
@@ -797,10 +726,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     ];
   };
 
-  // A random walk that leans toward the next interesting move: retry or
-  // revert what was sent, revert or edit around what applied, ship a revert.
-  // A random walk that also takes the steps the engine offers, and moves the
-  // world under them: an item that can't be read, a catalogue that tightened.
   type Action =
     | "capture"
     | "ship"
@@ -869,7 +794,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       // A rejection is final, so it ends a set's history: rarely.
       const kind = chance(0.9) ? "approved" : "rejected";
       trail.push(kind === "approved" ? "approve" : "reject");
-      // A person decides on the diff in front of them.
       await attempt(async () => {
         const shown = await a.diff(id);
         await a.decide(id, kind, thread, shown.hash);
@@ -888,7 +812,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       const id = liveSet();
       if (!id) continue;
       trail.push("apply(both)");
-      // Approved first, if it can be, so that a write goes out.
       await attempt(async () => {
         const shown = await a.diff(id);
         await a.decide(id, "approved", thread, shown.hash);
@@ -899,7 +822,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           await applyOn(1, id);
         };
       } else {
-        // Or while the first checks whether an earlier send is in place.
         trail.push("(while reading)");
         jira.hooks.answered = async (item) => {
           jira.hooks.answered = undefined;
@@ -950,10 +872,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         await attempt(() => a.edit(id, { set: [{ mutationId: m.id, args }] }));
       }
     } else if (action === "teammate") {
-      // A teammate changes a field, often one Oriel just wrote. Before Oriel
-      // ever writes a field, the teammate may pick a value Oriel might also
-      // set; after, always one nobody else uses, since a later change back to
-      // Oriel's value can't be told apart from no change at all.
+      // Before Oriel ever writes a field, the teammate may pick a value Oriel might also set; after, always one nobody else uses,
+      // since a later change back to Oriel's value can't be told apart from no change at all.
       const aimed = sets
         .slice(-2)
         .flatMap((s) => rows.load(s.id)?.mutations ?? [])
@@ -1002,7 +922,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       trail.push("revert");
       await revert(id);
     } else if (action === "step") {
-      // One of the steps the engine offers, taken for real.
       const id = randomSet();
       if (!id) continue;
       const offered = await a.nextSteps(id);
@@ -1029,9 +948,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       trail.push("dismiss");
       await attempt(() => a.dismiss(id));
     } else if (action === "unreadable") {
-      // A change sent with no answer, the rest of its set left out (which
-      // voids the approval), then its item can't be read: the next diff shows
-      // it gone, and approving is refused.
+      // A change sent with no answer, the rest of its set left out (voiding the approval), then its item can't be read.
       const candidates = sets.slice(-4).flatMap(({ id }) => {
         const set = rows.load(id);
         if (!set || set.decision?.kind === "rejected") return [];
@@ -1055,9 +972,6 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       jira.hide(key);
       await attempt(() => a.diff(id));
     } else if (action === "hide") {
-      // A story becomes unreadable (deleted, moved, forbidden), or another
-      // item takes its key; or it comes back. Either way Oriel can't tell
-      // what it holds. Mostly briefly: one comes back more often than not.
       const back = [...hidden, ...reused.keys()];
       if (back.length && chance(0.7)) {
         const key = pick(back);
@@ -1118,11 +1032,7 @@ test("model: random histories keep the change-set invariants", async (t) => {
     );
     return;
   }
-  // And the states the offered-step invariants are about: a dismissed set
-  // with applied rows and one sent unanswered, a gone item, stale arguments,
-  // an apply in flight, and a revert dismissed partway.
   for (const [state, n] of Object.entries(reached)) assert.ok(n > 0, `never reached: ${state}`);
-  // The histories must reach the states the invariants are about.
   assert.ok(landed > 450, `only ${landed} writes landed`);
   assert.ok(reverts > 40, `only ${reverts} reverted fields were checked`);
 });

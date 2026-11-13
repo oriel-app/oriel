@@ -57,7 +57,6 @@ test("eval #5: a revert after an external edit reports the conflict and overwrit
     },
   ]);
   await applied(changeSets, set);
-  // Someone changes the estimate in Jira after Oriel applied it.
   jira.edit("SYN-21", { points: 8 });
   const writes = jira.calls.length;
   const changeSetCount = count(db, "change_sets");
@@ -105,7 +104,6 @@ test("a revert is a change set of reverse mutations that puts things back once a
   assert.equal(back.revertOf, set.id);
   assert.equal(back.runId, null);
   assert.equal(back.decision, null);
-  // The story's link goes with the story: one delete undoes both.
   assert.deepEqual(
     back.mutations.map((m) => [m.op, m.target, m.args, m.reverts]),
     [
@@ -320,7 +318,6 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   });
   db.prepare("update mutations set preview = ? where id = ?").run(shown ?? null, second);
 
-  // Retrying apply finds the value in place and records it without sending.
   const writes = jira.calls.length;
   const retry = await changeSets.apply(set.id);
   assert.deepEqual(retry.applied, [second]);
@@ -342,7 +339,6 @@ test("reverting a partly applied change set drops what wasn't sent, so it can't 
   ]);
   const [landed, unsent] = [nth(set.mutations, 0).id, nth(set.mutations, 1).id];
   await approve(changeSets, set.id);
-  // Apply stops before sending the second.
   db.prepare("update mutations set preview = null where id = ?").run(unsent);
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [landed]);
@@ -479,7 +475,6 @@ test("a value a teammate set to the same thing before apply isn't overwritten by
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const mutationId = nth(set.mutations, 0).id;
   await approve(changeSets, set.id);
-  // After approval, a teammate sets the estimate Oriel was about to set.
   jira.edit("SYN-21", { points: 5 });
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [mutationId]);
@@ -533,7 +528,6 @@ test("a revert the workflow has no way back for stops unsent", async () => {
   const { changeSets, run, jira, db } = setup();
   const set = await changeSets.capture(run, [move("jira:SYN-117", "Done")]);
   await applied(changeSets, set);
-  // Done is final here: nothing leaves it.
   jira.makeFinal("Done");
 
   const back = await reverse(changeSets, set.id);
