@@ -30,6 +30,8 @@ export type CalledServer =
 export type ServerCallsOptions = {
   server: CalledServer;
   tools: readonly string[];
+  // Those of `tools` its declaration lists as reads; the rest are writes.
+  reads?: readonly string[];
   env?: Readonly<Record<string, string | undefined>>;
   spawn?: Spawn;
   log: Log;
@@ -88,7 +90,11 @@ export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptio
   return reopening(server.name, () =>
     claudeCodeToolHost(cli, {
       grants: [grantOf(server)],
-      tools: options.tools.map((tool) => ({ server: server.name, tool })),
+      tools: options.tools.map((tool) => ({
+        server: server.name,
+        tool,
+        read: options.reads?.includes(tool) === true,
+      })),
       dev: "dev" in server ? [server.dev] : [],
       parent: options.env ?? process.env,
       log: options.log,

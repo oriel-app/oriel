@@ -109,6 +109,7 @@ export type Models = {
     server: FoundServer,
     tools: readonly string[],
     log: Log,
+    reads?: readonly string[],
   ): Promise<Calling | null>;
 };
 
@@ -329,7 +330,7 @@ export function models(options: ModelsOptions): Models {
         };
       }
     },
-    async serverCalls(settings, server, tools, log) {
+    async serverCalls(settings, server, tools, log, reads) {
       await latest;
       const { model: chosen } = choose(settings);
       if (!chosen?.cli || chosen.provider.kind === "api") return null;
@@ -337,6 +338,7 @@ export function models(options: ModelsOptions): Models {
       const calls = callsOf(chosen.cli, chosen.provider.kind, {
         server: calledOf(server),
         tools,
+        ...(reads && { reads }),
         log,
       });
       return {

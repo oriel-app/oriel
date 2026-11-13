@@ -32,7 +32,7 @@ function setup(fake: Record<string, unknown> = {}, over: Partial<ToolHostOptions
   };
   const lines = () =>
     existsSync(journal) ? readFileSync(journal, "utf8").split("\n").filter(Boolean) : [];
-  const calls = () => lines().filter((line) => line.startsWith("call "));
+  const calls = () => lines().filter((line) => line.startsWith("call ") || line === "released");
   return {
     options,
     lines,
@@ -158,6 +158,39 @@ test("a queued call whose own run ends is never sent, while the call ahead, and 
   await calls.call({ tool: "echo", args: { q: "next" } });
   assert.deepEqual(t.calls(), ["call slow not-for-model", "call echo not-for-model"]);
   calls.close();
+  t.done();
+});
+
+test("up to four reads go out together, a write waits until the reads out are answered, and a read asked after it waits for it", async (context) => {
+  const t = setup(
+    { heldMs: 300 },
+    {
+      tools: [
+        { server: "teams", tool: "held", read: true },
+        { server: "teams", tool: "keep" },
+      ],
+    },
+  );
+  const host = await openToolHost(t.options);
+  context.after(() => host.close());
+  const read = () => host.call({ server: "teams", tool: "held", args: {} });
+  const reads = [read(), read(), read(), read(), read()];
+  const write = host.call({ server: "teams", tool: "keep", args: {} });
+  const after = read();
+  for (const each of await Promise.all([...reads, write, after]))
+    assert.deepEqual(each.content, [{ type: "text", text: "held" }]);
+  const held = "call held not-for-model";
+  const keep = "call keep not-for-model";
+  assert.deepEqual(
+    t.calls(),
+    [
+      [held, held, held, held, "released"],
+      [held, "released"],
+      [keep, "released"],
+      [held, "released"],
+    ].flat(),
+  );
+  await host.close();
   t.done();
 });
 
