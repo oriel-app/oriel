@@ -2,7 +2,9 @@
 // still waits on the user, and no other thread reads the window.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import type { ThreadsView, ThreadView } from "@oriel/web/view";
+import type { StartQuestion } from "@oriel/core/window-chat";
+import { planQuestion } from "@oriel/web/questions";
+import type { OverviewView, ThreadsView, ThreadView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 const epic: Script = async () => ({
@@ -57,4 +59,51 @@ test("a thread on any other workstream has no window namespace", async (t) => {
   );
   assert.ok(finished?.kind === "run.finished");
   assert.notEqual(finished.run.returned, JSON.stringify("read"));
+});
+
+test("a question to start from titles its thread with its button's words", async (t) => {
+  const asked: string[] = [];
+  const it = await testApp(t, {
+    plan: () => [{ text: "Hello." }],
+    titler: async (text) => {
+      asked.push(text);
+      return "Written by the title model";
+    },
+  });
+  const overview = json<OverviewView>(await it.get("/api/overview"));
+  const top = overview.candidates.rows[0]?.subject;
+  const item = top?.kind === "item" ? top.item : top?.lead;
+  assert.ok(item?.title);
+  const made = await it.post("/api/workstreams", {
+    kind: "picked",
+    name: "Kiosk wallets",
+    items: [item.id],
+  });
+  const { id: workstream } = json<{ id: string }>(made);
+  const asks: [StartQuestion, string | undefined, string][] = [
+    ["chart-moved", undefined, "Chart what moved since I looked, by workstream"],
+    ["moved-most", workstream, "What moved in Kiosk wallets?"],
+    ["stalled", workstream, "Why is Kiosk wallets stalled?"],
+    ["candidates", item.id, `Should ${item.title} become a workstream?`],
+    ["make-candidate", item.id, `Make ${item.title} a workstream`],
+    ["plan", undefined, planQuestion],
+  ];
+  const titleOf = async (subject: string | undefined, kind: StartQuestion) => {
+    await it.post("/api/window-chat/new", {});
+    const question = subject === undefined ? { kind } : { kind, subject };
+    const reply = await it.post("/api/window-chat/messages", { text: "A question", question });
+    await it.app.settled();
+    const { id } = json<{ id: string }>(reply);
+    const listed = json<ThreadsView>(await it.get("/api/threads")).threads;
+    return listed.find((each) => each.id === id)?.title;
+  };
+  for (const [kind, subject, label] of asks)
+    assert.equal(await titleOf(subject, kind), label, kind);
+  assert.deepEqual(asked, []);
+
+  assert.equal(
+    await titleOf("01JZZZZZZZZZZZZZZZZZZZZZZZ", "stalled"),
+    "Written by the title model",
+  );
+  assert.deepEqual(asked, ["A question"]);
 });

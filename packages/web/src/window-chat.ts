@@ -15,6 +15,7 @@ import {
   notLooking,
   updateLooking,
 } from "./looking.ts";
+import { planQuestion, questionLabel } from "./questions.ts";
 import { initThread, type ThreadModel } from "./thread.ts";
 import type { HeadlineView, OverviewView } from "./view.ts";
 
@@ -63,6 +64,7 @@ export type Question = {
   kind: StartQuestion;
   label: string;
   text: string;
+  subject?: string;
   headline?: HeadlineView["id"];
 };
 
@@ -90,7 +92,6 @@ export const loadWindowChat: Effect = get("/api/window-chat", { kind: "windowCha
 // nothing yet, its one question asks for a plan to draft there, in words
 // that ask for the draft itself, so one click ends in a change set to
 // approve rather than questions back.
-export const planQuestion = "Draft a small launch plan: one epic and a few stories I can edit";
 export function questionsFrom(view: OverviewView, firstRun = false, plans = false): Question[] {
   if (plans && view.workstreams.length === 0 && view.candidates.total === 0)
     return [{ kind: "plan", label: planQuestion, text: planQuestion }];
@@ -104,11 +105,13 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
       : top?.kind === "workstream"
         ? top.name
         : null;
+  const topId = top?.kind === "item" ? top.item.id : top?.id;
+  const label = (kind: StartQuestion, name = "") => questionLabel(kind, name) ?? "";
   const asked: (Question | null)[] = [
     view.changed.workstreams.length > 0
       ? {
           kind: "chart-moved",
-          label: "Chart what moved since I looked, by workstream",
+          label: label("chart-moved"),
           text: "Chart what moved since I looked, by workstream",
           headline: "moved",
         }
@@ -116,25 +119,28 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
     moved?.kind === "workstream"
       ? {
           kind: "moved-most",
-          label: `What moved in ${moved.name}?`,
+          label: label("moved-most", moved.name),
           text: "What moved in the workstream that moved most since I looked?",
           headline: "moved",
+          subject: moved.id,
         }
       : null,
     quiet?.kind === "workstream"
       ? {
           kind: "stalled",
-          label: `Why is ${quiet.name} stalled?`,
+          label: label("stalled", quiet.name),
           text: "Why has the workstream that's been quiet longest stalled?",
           headline: "quiet",
+          subject: quiet.id,
         }
       : null,
-    topName && !firstRun
+    topName && topId && !firstRun
       ? {
           kind: "candidates",
-          label: `Should ${topName} become a workstream?`,
+          label: label("candidates", topName),
           text: "Should the top item not in a workstream yet become one?",
           headline: "top",
+          subject: topId,
         }
       : null,
   ];
@@ -142,9 +148,10 @@ export function questionsFrom(view: OverviewView, firstRun = false, plans = fals
     firstRun && topName && top?.kind === "item"
       ? {
           kind: "make-candidate",
-          label: `Make ${topName} a workstream`,
+          label: label("make-candidate", topName),
           text: `Make a workstream of the top candidate in Not in a workstream yet, ${top.item.id}, with all its items.`,
           headline: "top",
+          subject: top.item.id,
         }
       : null;
   return [make, ...asked].filter((question) => question !== null);
@@ -190,7 +197,7 @@ export function handedOver(before: ThreadModel | null, after: ChatState): ChatSt
 const ask = (
   state: ChatState,
   text: string,
-  used: StartQuestion | null,
+  used: Pick<Question, "kind" | "subject"> | null,
   looking = false,
 ): [ChatState, Effect[]] => {
   const trimmed = text.trim();
@@ -200,8 +207,12 @@ const ask = (
   return [
     { ...state, chat: { ...state.chat, asking: true, asked: trimmed, open: true, problem: null } },
     [
-      post("/api/window-chat/messages", { text: trimmed, about }, { kind: "windowChatAsked" }),
-      ...(used ? [report({ name: "window-chat.question-used", question: used })] : []),
+      post(
+        "/api/window-chat/messages",
+        { text: trimmed, about, ...(used ? { question: used } : {}) },
+        { kind: "windowChatAsked" },
+      ),
+      ...(used ? [report({ name: "window-chat.question-used", question: used.kind })] : []),
     ],
   ];
 };
@@ -219,7 +230,10 @@ export function updateWindowChat(state: ChatState, msg: WindowChatMsg): [ChatSta
         [],
       ];
     case "questionPicked":
-      return ask(state, msg.question.text, msg.question.kind);
+      return ask(state, msg.question.text, {
+        kind: msg.question.kind,
+        ...(msg.question.subject ? { subject: msg.question.subject } : {}),
+      });
     // The old chat is marked done, or kept in Needs you while it waits on
     // the user; either way it leaves the window chat, which is empty until
     // the next question.
