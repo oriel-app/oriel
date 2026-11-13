@@ -28,7 +28,7 @@ The shell's flags behind it: `--background`, `--data <dir>`, and `--launch-file`
 
 ## Releasing
 
-Release builds come from a workflow the maintainer starts, in an environment only they can approve (decision 0036).
+A release workflow, started by the maintainer in an environment only they can approve, is planned and waits on signing (decision 0036).
 
 ## Before a pilot
 
