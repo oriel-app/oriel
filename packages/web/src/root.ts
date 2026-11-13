@@ -54,6 +54,7 @@ import {
   movingReplied,
   updateMoving,
 } from "./moving.ts";
+import { cameBack } from "./came-back.ts";
 import { type Connectors, connectorsReplied, loadConnectors, noConnectors } from "./connectors.ts";
 import { type Effect, errorOf, get, post, type Replied, report, type Tag } from "./http.ts";
 import { samePage, withItem } from "./nav.ts";
@@ -306,8 +307,7 @@ export type Msg =
   // The page changed: after a link, or back and forward.
   | { type: "routed"; route: Route }
   | { type: "streamed"; event: StreamEvent }
-  // The thread's stream reconnected after dropping.
-  | { type: "streamReopened" }
+  | { type: "streamReopened"; stream: "thread" | "threads" }
   // The workspace changed: some thread's turn started or ended, a change set
   // of one moved, or one of Oriel's own actions changed a workstream or thread,
   // in this tab or another.
@@ -947,9 +947,22 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       return withPanel(routed, effects);
     }
     case "streamReopened": {
-      if (model.thread === null) return [model, []];
-      const [thread, effects] = reconnected(model.thread);
-      return [{ ...model, thread }, [...effects, loadThreads]];
+      const [back, reading] = cameBack(model);
+      if (msg.stream === "thread") {
+        if (back.thread === null) return [back, reading];
+        const [thread, effects] = reconnected(back.thread);
+        return [{ ...back, thread }, [...reading, ...effects, loadThreads]];
+      }
+      const [window, loading] = back.window
+        ? updateWindow(back.window, { type: "retryClicked" })
+        : [null, []];
+      const page =
+        back.route.page === "settings"
+          ? [loadSettings, loadUsage, loadSetup]
+          : back.route.page === "overview"
+            ? [loadWindowChat]
+            : [];
+      return [{ ...back, window }, [...reading, ...loading, ...page, ...workspaceChanged(back)]];
     }
     case "streamed": {
       if (msg.event.type === "threads") return [model, workspaceChanged(model)];

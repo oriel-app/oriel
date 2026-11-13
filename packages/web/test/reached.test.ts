@@ -41,7 +41,7 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
   assert.equal(down.thread?.notice, unreachable);
   assert.equal(down.thread?.problems[setId], unreachable);
   // The stream reconnects: the thread and its change set load again.
-  const [back, effects] = run(down, { type: "streamReopened" });
+  const [back, effects] = run(down, { type: "streamReopened", stream: "thread" });
   const loads = requests(effects);
   const load = loads.find((r) => r.tag.kind === "thread");
   const diffed = loads.find((r) => r.tag.kind === "diff");
@@ -56,4 +56,24 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
   assert.equal(after.thread?.notice, null);
   assert.equal(after.thread?.problems[setId], undefined);
   assert.equal(after.thread?.view?.changeSets[0]?.status, "applied");
+});
+
+// Defect fixed in #281: the overview and the Done page kept saying Oriel
+// can't be reached after it came back.
+test("every other page, once the threads stream is back, loads again and stops saying Oriel can't be reached", () => {
+  const back: Msg = { type: "streamReopened", stream: "threads" };
+  const [overview] = run(init({ page: "overview" })[0], replied({ kind: "overview" }, away, false));
+  assert.equal(overview.overview?.problem, unreachable);
+  const [shown, loads] = run(overview, back);
+  assert.equal(shown.overview?.problem, null);
+  assert.ok(requests(loads).some((r) => r.tag.kind === "overview"));
+  const [done] = run(
+    init({ page: "done" })[0],
+    { type: "closing", msg: { type: "markDoneClicked", threadId, via: "menu" } },
+    replied({ kind: "markedDone", threadId }, away, false),
+  );
+  assert.equal(done.closing.problem, unreachable);
+  const [after, again] = run(done, back);
+  assert.equal(after.closing.problem, null);
+  assert.ok(requests(again).some((r) => r.tag.kind === "threads"));
 });

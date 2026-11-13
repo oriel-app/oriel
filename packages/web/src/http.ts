@@ -243,10 +243,10 @@ export const report = (event: Report): Effect =>
 
 // What a request that never reached Oriel says, as while it restarts. A load
 // that works once it's back takes it back: what the request did, if anything,
-// shows on the page that loaded.
+// shows on the page that loaded. Some notices name what failed first.
 export const unreachable = "Oriel can't be reached. Is it still running?";
 export const reached = (notice: string | null): string | null =>
-  notice === unreachable ? null : notice;
+  notice?.endsWith(unreachable) ? null : notice;
 
 // What a failed reply says, for the person.
 export function errorOf(body: unknown): string {

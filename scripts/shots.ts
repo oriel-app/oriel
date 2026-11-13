@@ -52,6 +52,7 @@ import { parseArgs } from "node:util";
 import { chromium, type Locator, type Page, type Route } from "playwright-core";
 import { defaultTheme, themeNames } from "../packages/web/themes.ts";
 import { type TextSize, textSizes } from "../packages/web/src/view.ts";
+import { unreachable } from "../packages/web/src/http.ts";
 import { type Instant, instant, type Ulid, ulid } from "../packages/core/src/ids.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
@@ -101,6 +102,8 @@ type Scene = {
   window?: true;
   // It shows a sketch, whose sandbox refuses the pinned clock's script.
   sketch?: true;
+  // Its server stops under it, which the browser logs as errors.
+  down?: true;
   // What its behaviour test checks, if it has one (decision 0063): `pnpm
   // ui-test` runs its steps and its `check`s, light, at 1280 and at any
   // other width in `testAt`, and takes no picture; `pnpm shots` takes its
@@ -6156,6 +6159,40 @@ scenes.push(
   },
 );
 
+let restarting: { on: Serving; db: string } | null = null;
+const restartSources = { jira: { mode: "fixture" } } as const;
+scenes.push({
+  name: "comes-back",
+  test: "once Oriel restarts, the overview stops saying it can't be reached, on the same page",
+  path: "/",
+  down: true,
+  make: async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oriel-shots-db-"));
+    keepUntilDone(dir);
+    const db = join(dir, "window.db");
+    const on = await start(0, { db, sources: restartSources });
+    restarting = { on, db };
+    return on;
+  },
+  act: async (page) => {
+    if (!restarting) throw new Error("no server to restart");
+    const { on, db } = restarting;
+    await overviewShown(page);
+    const at = page.url();
+    await on.close();
+    await page.locator(".overview-dock .chat-input-field").fill("What moved this week?");
+    await page.getByRole("button", { name: "Ask", exact: true }).click();
+    const notice = page.getByText(unreachable).first();
+    await notice.waitFor();
+    await start(on.port, { db, sources: restartSources });
+    await notice.waitFor({ state: "detached" });
+    await overviewShown(page);
+    await check(() => {
+      if (page.url() !== at) throw new Error(`the page went to ${page.url()}`);
+    });
+  },
+});
+
 // A chat taller than the window, on a server of its own: a thread's, or the
 // window chat's, eight questions and answers long. `following` is its thread.
 const savedCards = "What's holding up saved cards?";
@@ -6293,7 +6330,9 @@ async function pagesAt(width: number) {
     if (pinned) await context.clock.setFixedTime(shootStarted);
     const page = await context.newPage();
     page.on("console", (message) => {
-      const expected = acting?.refused && message.text().includes(`status of ${acting.refused}`);
+      const expected =
+        (acting?.refused && message.text().includes(`status of ${acting.refused}`)) ||
+        (acting?.down && message.text().includes("net::ERR_"));
       if ((message.type() === "error" || message.type() === "warning") && !expected) {
         const { url } = message.location();
         problems.push(
