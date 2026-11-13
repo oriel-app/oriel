@@ -7560,6 +7560,30 @@ html:has(.settings-page) {
   color: var(--text-faint);
 }
 
+.provider-status[data-tone="done"] {
+  --tone: var(--done);
+}
+
+.provider-status[data-tone="progress"] {
+  --tone: var(--in-progress);
+}
+
+.provider-status[data-tone="quiet"] {
+  --tone: var(--text-faint);
+}
+
+.provider-status[data-tone="danger"] {
+  --tone: var(--danger);
+}
+
+.provider-status[data-tone] .provider-mark {
+  background: var(--tone);
+}
+
+.provider-status[data-tone] .provider-state {
+  color: var(--tone);
+}
+
 .provider-uses {
   color: var(--text-faint);
   font-size: var(--text-sm);
@@ -7611,31 +7635,52 @@ html:has(.settings-page) {
   width: 2.25rem;
   height: 1.25rem;
   padding: 0;
-  border: 0;
+  border: var(--border-thin) solid var(--text-faint);
   border-radius: var(--radius-lg);
-  background: var(--line-strong);
+  background: var(--surface);
   cursor: pointer;
-  transition: background var(--duration-quick) var(--ease-out);
+  transition:
+    background-color var(--duration-quick) var(--ease-out),
+    border-color var(--duration-quick) var(--ease-out);
+}
+
+.switch:not([aria-checked="true"], :disabled):hover {
+  border-color: var(--text-muted);
 }
 
 .switch[aria-checked="true"] {
+  border-color: var(--accent);
   background: var(--accent);
 }
 
 .switch-knob {
   position: absolute;
-  top: 0.1875rem;
-  left: 0.1875rem;
+  top: calc(0.1875rem - var(--border-thin));
+  left: calc(0.1875rem - var(--border-thin));
   width: 0.875rem;
   height: 0.875rem;
   border-radius: 50%;
-  background: var(--on-accent);
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--duration-quick) var(--ease-out);
+  background: var(--text-faint);
+  transition:
+    transform var(--duration-quick) var(--ease-out),
+    background-color var(--duration-quick) var(--ease-out);
+}
+
+.switch:not([aria-checked="true"], :disabled):hover .switch-knob {
+  background: var(--text-muted);
 }
 
 .switch[aria-checked="true"] .switch-knob {
+  background: var(--on-accent);
+  box-shadow: var(--shadow-sm);
   transform: translateX(1rem);
+}
+
+/* Forced colours drop backgrounds, so the knob is a ring there. */
+@media (forced-colors: active) {
+  .switch-knob {
+    border: var(--border-thick) solid;
+  }
 }
 
 .settings-field {

@@ -6307,6 +6307,27 @@ scenes.push(
       },
     })),
   ),
+  {
+    name: "settings-connections-syncing",
+    path: "/settings/connections",
+    make: firstRun({
+      cli: { signedIn: true },
+      atlassian: "on",
+      folder: notes,
+      state: setupFinished,
+    }),
+    act: async (page) => {
+      await hang(page, "/api/connections/*/sync");
+      const folder = page.locator(".connection-row", { hasText: "Folder" });
+      await folder.getByRole("button", { name: "Sync", exact: true }).click();
+      await folder
+        .locator('.provider-status[data-tone="progress"] .provider-state', {
+          hasText: "Syncing…",
+        })
+        .waitFor();
+      await pointerAway(page);
+    },
+  },
 );
 
 scenes.push(

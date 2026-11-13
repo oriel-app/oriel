@@ -2,7 +2,7 @@
 title: Switch
 status: proposed
 order: 30
-summary: Today's switch is a button with role switch. Three ways to build one, compared, and a redraw whose off state can be seen in every theme and whose locked state can be reached by keyboard. Keep the button.
+summary: Today's switch is a button with role switch. Three ways to build one, compared, and a locked state that can be reached by keyboard. The redraw whose off state can be seen in every theme is in Oriel. Keep the button.
 classes: switch-track, switch, switch-knob, settings-switch, settings-field, settings-field-name, settings-field-about
 ---
 
@@ -19,6 +19,8 @@ There are three ways to build one:
 3. **The `switch` attribute**, `<input type="checkbox" switch>`. Safari draws it as a switch and tells a screen reader it is one. **Chromium hasn't shipped it**, so in the desktop app it's a plain checkbox.
 
 The proposal keeps the button and redraws it with one class, `.switch-track`, which also draws the other two, so they can be compared here.
+
+**The redraw is in Oriel (OA-254)**: `.switch` in `window.css` now draws off as an outline, darkens on hover and keeps its knob as a ring in forced colours, with the `.switch-knob` span kept. So "Today" below already shows it. Still proposed: dropping the span for `::before`, and the locked state.
 
 ## Today
 
@@ -100,7 +102,7 @@ Settings › General, as the app renders it, off and on.
 
 `assets/proposals/switch.css`, one class on the control itself; the knob is its `::before`, so there's no `.switch-knob` span. The same size and the same move as today (2.25rem by 1.25rem, the knob 1rem along). What changes:
 
-- **Off can be seen.** Today's off track is `--line-strong` on the surface, 1.8:1 to 2.4:1 across the themes, and its knob is `--on-accent`. In the dark schemes `--on-accent` is the dark ink, so the off knob is dark on a dark track (1.9:1). Proposed, off is an outline: a `--border-thin` edge and a knob in `--text-faint`, 5.4:1 to 6.3:1 against `--surface`. On is unchanged: the accent, with the knob in `--on-accent`.
+- **Off can be seen.** The old off track is `--line-strong` on the surface, 1.8:1 to 2.4:1 across the themes, and its knob is `--on-accent`. In the dark schemes `--on-accent` is the dark ink, so the off knob is dark on a dark track (1.9:1). Proposed, off is an outline: a `--border-thin` edge and a knob in `--text-faint`, 5.4:1 to 6.3:1 against `--surface`. On is unchanged: the accent, with the knob in `--on-accent`.
 - **Hover is styled**: the edge and knob darken to `--text-muted`. Today a switch doesn't change under the pointer.
 - **It survives high-contrast mode.** Today's switch is drawn only with backgrounds, which Windows' forced colours drop; it vanishes. The proposed one keeps its edge and draws its knob as a ring there.
 - **Locked can be reached.** See States.

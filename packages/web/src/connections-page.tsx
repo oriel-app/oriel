@@ -34,6 +34,19 @@ import type {
   ReviewOutline,
 } from "./view.ts";
 
+type ConnectionState = "waiting" | "shut" | "syncing" | "problem" | "unsynced" | "synced";
+const connectionStates: Record<
+  ConnectionState,
+  { name: string; tone: "done" | "progress" | "quiet" | "danger" }
+> = {
+  waiting: { name: "Waiting for options that fit", tone: "quiet" },
+  shut: { name: "Not open", tone: "danger" },
+  syncing: { name: "Syncing…", tone: "progress" },
+  problem: { name: "A problem", tone: "danger" },
+  unsynced: { name: "Not synced yet", tone: "quiet" },
+  synced: { name: "Synced", tone: "done" },
+};
+
 // How often a connection syncs while Oriel is open, by minutes.
 const everyNames: { value: string; label: string }[] = [
   { value: "start", label: "When Oriel starts, and when you ask" },
@@ -102,12 +115,19 @@ function ConnectionRow(props: {
   const besideChange = setting.said !== null && settable;
   const saidBeside = besideChange && setting.problem === problem;
   const connectorName = connector?.name ?? connection.kind;
+  const state: ConnectionState = waiting
+    ? "waiting"
+    : !open
+      ? "shut"
+      : syncing
+        ? "syncing"
+        : problem !== null
+          ? "problem"
+          : connection.syncedAt === null
+            ? "unsynced"
+            : "synced";
   return (
-    <li
-      class="provider-row connection-row"
-      id={`connection-${connection.id}`}
-      data-status={open && problem === null ? "ready" : undefined}
-    >
+    <li class="provider-row connection-row" id={`connection-${connection.id}`}>
       <span class="provider-icon" aria-hidden="true">
         {connector?.offer?.mark ?? connectorName.charAt(0)}
       </span>
@@ -116,20 +136,12 @@ function ConnectionRow(props: {
         <span class="provider-about">
           {connection.named ? `${connectorName} · ${connection.about}` : connection.about}
         </span>
-        <span class="provider-status">
+        <span class="provider-status" data-tone={connectionStates[state].tone}>
           <span class="provider-mark" aria-hidden="true" />
           <span class="provider-state">
-            {waiting
-              ? "Waiting for options that fit"
-              : !open
-                ? "Not open"
-                : syncing
-                  ? "Syncing…"
-                  : problem !== null
-                    ? "A problem"
-                    : connection.syncedAt === null
-                      ? "Not synced yet"
-                      : `Synced ${synced(connection.syncedAt)}`}
+            {state === "synced" && connection.syncedAt !== null
+              ? `${connectionStates.synced.name} ${synced(connection.syncedAt)}`
+              : connectionStates[state].name}
           </span>
           {open && <span>· {plural(connection.items, "item")}</span>}
         </span>
