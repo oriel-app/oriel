@@ -348,6 +348,7 @@ const windowEvent = union(
     via: union(literal("panel"), literal("link")),
   }),
   object({ name: literal("item.asked-about"), item: itemIdValue }),
+  object({ name: literal("item.dropped-on-composer"), item: itemIdValue }),
   // How long the query was, never what it said.
   object({ name: literal("threads.searched"), queryLength: count, results: count }),
   object({ name: literal("items.searched"), queryLength: count, results: count }),
@@ -1070,7 +1071,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         deps.emit(
           event.name === "grouping.switched"
             ? { name: event.name, at, workspaceId, grouping: event.grouping }
-            : event.name === "item.panel-opened" || event.name === "item.asked-about"
+            : event.name === "item.panel-opened" ||
+                event.name === "item.asked-about" ||
+                event.name === "item.dropped-on-composer"
               ? { name: event.name, at, workspaceId, source: sourceOf(event.item) }
               : event.name === "item.source-opened"
                 ? {

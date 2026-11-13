@@ -76,7 +76,7 @@ How components combine for one job.
 - [Forms and validation](guide/patterns/forms.md): Labels that say what to type, notes beside the field, a submit that waits for what's required, the server's one sentence on submit, and the field it's about marked invalid. No field is marked or tied to its error today.
 - [Connect steps](guide/patterns/connect-steps.md): One component draws a connector's steps, in the connector's own words, wherever a connection is made in the window, which since decision 0059 is only a folder; and one review step draws a connection's mapping, to apply or edit, in Settings. Everything else comes through the person's own source servers.
 - [Drop to add](guide/patterns/drop-zone.md): Dragging a card, a link, an item's key or a file onto a workstream or one of its threads adds it to the workstream; a veil over the page says where the drop goes.
-- [Drag to move](guide/patterns/drag-to-move.md): An item's or a thread's row dragged onto a workstream in the sidebar moves it there; an item onto the Workstreams heading, a menu offers a new workstream. A row's menu does the same from the keyboard.
+- [Drag to move](guide/patterns/drag-to-move.md): An item's or a thread's row dragged onto a workstream in the sidebar moves it there; an item onto the Workstreams heading, a menu offers a new workstream; an item onto a composer, the next message is about it. A row's menu does the same from the keyboard.
 
 ## Screens
 

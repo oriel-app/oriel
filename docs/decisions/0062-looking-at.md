@@ -1,6 +1,6 @@
 # 0062 A message says what it is about: looking at an item adds nothing
 
-Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged. Amended 2026-11-10 (epic OA-332): asked to change an item outside the region, a thread adds it first, and the window chat offers Continue in….
+Accepted 2026-11-09 (OA-334, epic OA-332). Changes SPEC §2. Amends 0027 and 0030 only in what reaches the agent with a message; cite (OA-137) is unchanged. Amended 2026-11-10 (epic OA-332): asked to change an item outside the region, a thread adds it first, and the window chat offers Continue in…. Amended 2026-11-12 (OA-345): an item's row dropped on a composer; the composer offers no Cite.
 
 Adds: none
 
@@ -41,3 +41,5 @@ Adds: none
 - **Unchanged:** a source's write still binds only the region's IDs, and the change-set engine still checks its targets against the region. The draft names only an item the person chose, one their messages were about or one in the chat's region, never one a read found, which synced text could steer it to; Oriel, not the agent, names the window chat and the message it continues.
 - **Costs:** the base module and system prompt are unchanged. Every window chat's module gains `window.continue()`: 131 bytes, on a budget of its own (140), as `source.off`'s is. The note for an outside item is 27 bytes longer in a thread; in the window chat it's 52 bytes longer than it was. A thread that looked outside its region has 34 bytes more in its module.
 - **Telemetry:** `window-chat.continued` (SPEC §7's "Continue in used"): the chat, the thread it went on in, whether a workstream was made, and whether the chat stayed working. `thread.marked-done` gains `via: "continue"`.
+
+**Amended 2026-11-12 (OA-345).** An item's row dropped on a composer goes in what the next message is about, as + puts it, and stays while other items open and close beside it until the message is sent; the read-only rule is the same, and nothing joins the workstream. The composer no longer offers Cite beside a read-only item: the item panel's Add to workstream adds it, with its Undo, and the agent may still add it, as 0024 allows. A read-only item says so on its chip alone; the foot names it plainly ("Reads 14 items, and SYN-54"), and names no version, which the rail shows. Telemetry: `item.dropped-on-composer`, by the item's source kind.

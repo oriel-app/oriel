@@ -8,7 +8,7 @@
 // entries render as a thread's page renders them, blocks included; its
 // fields are the one ChatInput.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ChatInput, type Composer, LookingChips, readsWith } from "./chat-input.tsx";
+import { ChatInput, type Composer, readsWith } from "./chat-input.tsx";
 import { FoldedItem } from "./dock.tsx";
 import { watchLatest } from "./effects.ts";
 import { notLooking } from "./looking.ts";
@@ -87,21 +87,18 @@ export function OverviewComposer(props: {
         elevation="raised"
         submitLabel="Ask"
         context={
-          <>
-            {starts.length > 0 && (
-              <div class="ask-starts" role="group" aria-label="Questions to start from">
-                {starts.map((question) => (
-                  <QuestionButton
-                    key={question.kind}
-                    question={question}
-                    chat={chat}
-                    dispatch={dispatch}
-                  />
-                ))}
-              </div>
-            )}
-            {composer.context}
-          </>
+          starts.length > 0 && (
+            <div class="ask-starts" role="group" aria-label="Questions to start from">
+              {starts.map((question) => (
+                <QuestionButton
+                  key={question.kind}
+                  question={question}
+                  chat={chat}
+                  dispatch={dispatch}
+                />
+              ))}
+            </div>
+          )
         }
         extra={
           ongoing && (
@@ -319,14 +316,14 @@ export function windowChatComposer(
       running: view.running,
       notice: thread.notice ?? chat.problem,
       placeholder: "Ask a follow-up",
-      reads: readsWith("Reads your whole window", followUp, noneReadOnly),
-      context: (
-        <LookingChips
-          lookingAt={followUp}
-          readOnly={noneReadOnly}
-          onLooking={(msg) => sendThread({ type: "looking", msg })}
-        />
-      ),
+      reads: readsWith("Reads your whole window", followUp),
+      looking: thread.composing
+        ? undefined
+        : {
+            lookingAt: followUp,
+            readOnly: noneReadOnly,
+            onLooking: (msg) => sendThread({ type: "looking", msg }),
+          },
       onDraft: (text) => sendThread({ type: "draftChanged", text }),
       onSubmit: () => sendThread({ type: "sendClicked" }),
       onStop: () => sendThread({ type: "stopClicked" }),
@@ -339,14 +336,12 @@ export function windowChatComposer(
     busy: chat.asking,
     notice: chat.problem,
     placeholder: "Ask about your window",
-    reads: readsWith("Reads your whole window", chat.lookingAt, noneReadOnly),
-    context: (
-      <LookingChips
-        lookingAt={chat.lookingAt}
-        readOnly={noneReadOnly}
-        onLooking={(msg) => send({ type: "looking", msg })}
-      />
-    ),
+    reads: readsWith("Reads your whole window", chat.lookingAt),
+    looking: {
+      lookingAt: chat.lookingAt,
+      readOnly: noneReadOnly,
+      onLooking: (msg) => send({ type: "looking", msg }),
+    },
     onDraft: (text) => send({ type: "draftChanged", text }),
     onSubmit: () => send({ type: "askClicked" }),
   };

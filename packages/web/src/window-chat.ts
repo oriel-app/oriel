@@ -13,6 +13,7 @@ import {
   type LookingMsg,
   type LookItem,
   notLooking,
+  lookingReported,
   updateLooking,
 } from "./looking.ts";
 import { planQuestion, questionLabel, questionShort } from "./questions.ts";
@@ -233,7 +234,7 @@ export function updateWindowChat(state: ChatState, msg: WindowChatMsg): [ChatSta
     case "looking":
       return [
         { ...state, chat: { ...chat, lookingAt: updateLooking(chat.lookingAt, msg.msg) } },
-        [],
+        lookingReported(msg.msg),
       ];
     case "questionPicked":
       return ask(state, msg.question.text, {

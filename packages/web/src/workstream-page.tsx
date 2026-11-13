@@ -1,6 +1,6 @@
 // A workstream: ask about it, see its threads, and curate its items.
 import { useEffect, useRef } from "preact/hooks";
-import { ChatInput, LookingChips, readsWith } from "./chat-input.tsx";
+import { ChatInput, readsWith } from "./chat-input.tsx";
 import { ThreadMenu } from "./close-thread.tsx";
 import { EndButtons, WindowUndos } from "./end-workstream.tsx";
 import { deleted, type EndingModel } from "./ending.ts";
@@ -146,7 +146,7 @@ export function WorkstreamPage(props: {
     });
   };
   // An item open beside the Ask box that the workstream doesn't hold is
-  // read-only to the thread it starts, which Cite adds it to (decision 0062).
+  // read-only to the thread it starts (decision 0062).
   const readOnly = (id: string) => !members.some((member) => member.ref.id === id);
   return (
     <DropZone
@@ -203,28 +203,12 @@ export function WorkstreamPage(props: {
           busy={model.pending}
           notice={model.notice}
           placeholder={askPrompt(workstream.size)}
-          reads={readsWith(
-            `Reads ${plural(workstream.size, "item")} · v${workstream.version}`,
-            model.lookingAt,
+          reads={readsWith(`Reads ${plural(workstream.size, "item")}`, model.lookingAt)}
+          looking={{
+            lookingAt: model.lookingAt,
             readOnly,
-          )}
-          context={
-            <LookingChips
-              lookingAt={model.lookingAt}
-              readOnly={readOnly}
-              onLooking={(msg) => send({ type: "looking", msg })}
-              onCite={(item) =>
-                dispatch({
-                  type: "panelAdd",
-                  msg: {
-                    type: "addClicked",
-                    item: { id: item.id, key: item.key },
-                    workstream: { id: workstream.id, name: workstream.name },
-                  },
-                })
-              }
-            />
-          }
+            onLooking: (msg) => send({ type: "looking", msg }),
+          }}
           onDraft={(text) => send({ type: "draftChanged", text })}
           onSubmit={() => send({ type: "askClicked" })}
         />

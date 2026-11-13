@@ -4418,7 +4418,6 @@ const scenes: Scene[] = [
       await page.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
       await closePanelOnPhone(page);
       await page.locator(".ctx-chip:visible", { hasText: "read-only" }).waitFor();
-      await page.getByRole("button", { name: "Cite" }).waitFor();
     },
   },
   // Sent with the chip, the agent reads the item by its ID (the scripted
@@ -6420,6 +6419,220 @@ scenes.push({
     });
   },
 });
+
+// Drags need the rail or the sidebar beside the page; narrower, + is the way.
+let dropThread = "";
+const dropping = async () => {
+  const on = (await writing()).serving;
+  const { id } = await post<{ id: string }>("/api/workstreams", checkout, on);
+  dropThread = await ask("What's left before checkout ships?", on, id);
+  return on;
+};
+// drop-look-over ends holding its drag, for its shot, on a page the next
+// scene in its lane reuses.
+async function letGo(page: Page): Promise<void> {
+  await page.mouse.move(1, 1);
+  await page.mouse.up();
+}
+async function dragOnto(page: Page, from: Locator, onto: Locator, hold = false): Promise<void> {
+  await letGo(page);
+  await from.hover();
+  await page.mouse.down();
+  const box = await onto.boundingBox();
+  if (!box) throw new Error("nothing to drop on");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  if (!hold) await page.mouse.up();
+}
+const railRow = (page: Page, n: number) => page.locator(".rail .members .member").nth(n);
+const threadComposer = (page: Page) => page.locator("main.thread .composer");
+async function openDropThread(page: Page): Promise<void> {
+  await letGo(page);
+  await page.goto(new URL(`/threads/${dropThread}`, page.url()).href);
+  await railRow(page, 1).waitFor();
+}
+async function droppedTwo(page: Page): Promise<string> {
+  const composer = threadComposer(page);
+  const row = railRow(page, 1);
+  const key = (await row.locator("a.key").innerText()).trim();
+  await dragOnto(page, row.locator(".member-title"), composer);
+  await composer.locator(".ctx-chip", { hasText: "Looking at" }).filter({ hasText: key }).waitFor();
+  await expectCount(composer.locator(".ctx-chip", { hasText: "read-only" }), 0);
+  await composer.getByRole("textbox", { name: "Message" }).fill("Does this touch checkout?");
+  // Opened in place, so the typed question stays.
+  await page.evaluate(
+    `history.pushState(null, "", location.pathname + ${JSON.stringify(outsideItem)});
+     dispatchEvent(new PopStateEvent("popstate"));`,
+  );
+  await page.locator(".item-panel .panel-facts").waitFor();
+  await composer.locator(".ctx-chip[data-off]", { hasText: "SYN-54" }).waitFor();
+  await dragOnto(page, page.locator(".item-panel .panel-title"), composer);
+  await composer
+    .locator(".ctx-chip:not([data-off])", { hasText: "SYN-54" })
+    .filter({ hasText: "read-only" })
+    .waitFor();
+  await expectCount(composer.locator(".ctx-chip[data-off]"), 0);
+  await expectCount(composer.getByRole("button", { name: "Cite" }), 0);
+  await check(async () => {
+    const reads = await composer.locator(".chat-input-reads").innerText();
+    if (reads !== `Reads 14 items, and ${key}, SYN-54`) throw new Error(`the foot says ${reads}`);
+  });
+  return key;
+}
+async function aboutSent(page: Page, thread: string): Promise<string> {
+  const about = await page.evaluate(async (id) => {
+    const view = (await (await fetch(`/api/threads/${id}`)).json()) as {
+      entries: { kind: string; about?: unknown }[];
+    };
+    return view.entries.find((entry) => entry.kind === "user" && entry.about)?.about;
+  }, thread);
+  return JSON.stringify(about);
+}
+scenes.push(
+  {
+    name: "drop-look",
+    path: "/",
+    make: dropping,
+    test: "an item's row dropped on a thread's composer goes in Looking at; one outside the workstream says read-only on its chip alone, with no Cite",
+    act: async (page) => {
+      if (!beside(page)) return;
+      await openDropThread(page);
+      await droppedTwo(page);
+      await pointerAway(page);
+    },
+  },
+  {
+    name: "drop-look-over",
+    path: "/",
+    make: dropping,
+    test: "a composer is drawn as a target while an item's row is over it",
+    act: async (page) => {
+      if (!beside(page)) return;
+      await openDropThread(page);
+      const composer = threadComposer(page);
+      await dragOnto(page, railRow(page, 1).locator(".member-title"), composer, true);
+      await composer.and(page.locator("[data-drop-over]")).waitFor();
+    },
+  },
+  {
+    name: "drop-look-sent",
+    path: "/",
+    make: dropping,
+    test: "a message sent after drops is about the dropped items, the outside one read-only, and the workstream holds what it held",
+    act: async (page) => {
+      if (!beside(page)) return;
+      await openDropThread(page);
+      const before = await page.locator(".rail .members .member").count();
+      const key = await droppedTwo(page);
+      await threadComposer(page).getByRole("button", { name: "Send" }).click();
+      const said = page.locator(".user-message .about").last();
+      await said.filter({ hasText: key }).filter({ hasText: "read-only" }).waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await check(async () => {
+        const about = await aboutSent(page, dropThread);
+        if (
+          !about.includes('{"id":"jira:SYN-54","outside":true}') ||
+          about.split('"id"').length !== 3
+        )
+          throw new Error(`The message should be about ${key} and SYN-54, not ${about}`);
+      });
+      await expectCount(page.locator(".rail .members .member"), before);
+      await pointerAway(page);
+    },
+  },
+  {
+    name: "drop-look-kept",
+    path: "/",
+    make: dropping,
+    test: "a dropped item stays while items open and close beside an empty composer, itself among them, and the message is about it",
+    act: async (page) => {
+      if (!beside(page)) return;
+      await openDropThread(page);
+      const composer = threadComposer(page);
+      const row = railRow(page, 1);
+      const key = (await row.locator("a.key").innerText()).trim();
+      await dragOnto(page, row.locator(".member-title"), composer);
+      const chip = composer.locator(".ctx-chip:not([data-off])", { hasText: key });
+      await chip.waitFor();
+      await row.locator("a.key").click();
+      await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
+      await page.getByRole("button", { name: "Next item" }).click();
+      await page.locator(".panel-place", { hasText: "3 of" }).waitFor();
+      await expectCount(composer.locator(".ctx-chip:not([data-off])"), 2);
+      await page.getByRole("button", { name: "Close the panel" }).click();
+      await page.locator(".item-panel").waitFor({ state: "detached" });
+      await expectCount(composer.locator(".ctx-chip:not([data-off])"), 1);
+      await chip.waitFor();
+      await composer.getByRole("textbox", { name: "Message" }).fill("Is this one blocked?");
+      await composer.getByRole("button", { name: "Send" }).click();
+      await page.locator(".user-message .about", { hasText: key }).last().waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await check(async () => {
+        const about = await aboutSent(page, dropThread);
+        if (about.split('"id"').length !== 2)
+          throw new Error(`The message should be about ${key} alone, not ${about}`);
+      });
+      await pointerAway(page);
+    },
+  },
+  {
+    name: "drop-look-window",
+    path: "/",
+    window: true,
+    make: async () => (docking = (await writing()).serving),
+    test: "a Browse row dropped on the window chat's composer goes in Looking at, and the follow-up is about it",
+    act: async (page) => {
+      if (!beside(page)) return;
+      await letGo(page);
+      await page.reload();
+      await overviewShown(page);
+      await askChat(page, "What's holding up saved cards?", ".window-chat .reply .chip", docking);
+      await page.evaluate(
+        `history.pushState(null, "", "/browse?grouping=epic");
+         dispatchEvent(new PopStateEvent("popstate"));`,
+      );
+      await shown(page, "epic");
+      await openFirstCluster(page);
+      const row = page.locator("li.item").first();
+      const key = (await row.locator("a.key").innerText()).trim();
+      const composer = page.locator(".window-chat .composer");
+      await until(page, `!document.documentElement.hasAttribute("data-carrying")`);
+      await dragOnto(page, row.locator(".pick"), composer);
+      await composer
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: key })
+        .waitFor();
+      await expectCount(composer.locator(".ctx-chip", { hasText: "read-only" }), 0);
+      await composer.getByRole("textbox", { name: "Message" }).fill("Which of these ships first?");
+      await composer.getByRole("button", { name: "Send" }).click();
+      await page.locator(".window-chat .user-message .about", { hasText: key }).last().waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await pointerAway(page);
+    },
+  },
+  {
+    name: "drop-look-workstream",
+    path: "/",
+    make: moving,
+    test: "a workstream's row dropped on its Ask box goes in Looking at, and the thread it starts is about it",
+    act: async (page) => {
+      if (!beside(page)) return;
+      await openMoving(page);
+      const ask = page.locator(".workstream-ask");
+      await dragOnto(page, movingRow(page).locator(".member-title"), ask);
+      await ask
+        .locator(".ctx-chip", { hasText: "Looking at" })
+        .filter({ hasText: "SYN-23" })
+        .waitFor();
+      await ask
+        .getByRole("textbox", { name: "Ask about this workstream" })
+        .fill("Is this one blocked?");
+      await ask.getByRole("button", { name: "Ask" }).click();
+      await page.locator(".user-message .about", { hasText: "SYN-23" }).waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await pointerAway(page);
+    },
+  },
+);
 
 // A chat taller than the window, on a server of its own: a thread's, or the
 // window chat's, eight questions and answers long. `following` is its thread.

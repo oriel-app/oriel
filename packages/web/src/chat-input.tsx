@@ -6,7 +6,8 @@
 // the primary one.
 import type { ComponentChildren } from "preact";
 import { useContext } from "preact/hooks";
-import type { LookItem, LookingAt, LookingMsg } from "./looking.ts";
+import { useMoveDrop } from "./drag-move.ts";
+import { type LookItem, type LookingAt, type LookingMsg, placeable } from "./looking.ts";
 import { SendKeyContext } from "./parts.tsx";
 import { sendable, sends } from "./settings.ts";
 import { Tooltip } from "./tooltip.tsx";
@@ -33,7 +34,7 @@ export function ChatInput(props: {
   extra?: ComponentChildren;
   // What floats over it, such as the pill for a change set out of view.
   above?: ComponentChildren;
-  // What the next message is about, over the field (`LookingChips`).
+  looking?: Looking;
   context?: ComponentChildren;
   class?: string;
   onDraft(text: string): void;
@@ -41,10 +42,22 @@ export function ChatInput(props: {
 }) {
   const sendKey = useContext(SendKeyContext);
   const live = sendable(props.draft, props.busy);
+  const { looking } = props;
+  const drop = useMoveDrop(
+    (item) =>
+      item.kind === "item" && looking !== undefined && placeable(looking.lookingAt, item.id),
+    (item) => {
+      if (item.kind !== "item" || !looking) return;
+      const { id, key, title } = item;
+      looking.onLooking({ type: "lookPlaced", item: { id, key, title, under: null } });
+    },
+  );
   return (
     <form
       class={props.class ? `chat-input ${props.class}` : "chat-input"}
       data-elevation={props.elevation === "raised" ? "raised" : undefined}
+      data-drop-over={drop.over || undefined}
+      {...drop.props}
       onSubmit={(event) => {
         event.preventDefault();
         props.onSubmit();
@@ -52,6 +65,7 @@ export function ChatInput(props: {
     >
       {props.above}
       {props.context}
+      {looking && <LookingChips {...looking} />}
       <textarea
         rows={2}
         class="chat-input-field"
@@ -96,14 +110,14 @@ export type Composer = Parameters<typeof ChatInput>[0];
 // 0062): the item open beside it, "Looking at", with × to leave it out;
 // left out, dashed, "Not sending", with Add back; and the item opened since
 // beside a draft that keeps its own, dashed, which + adds. One outside the
-// thread's region says read-only, with Cite beside it, which adds it to the
-// workstream as the panel's Add does: looking alone never does.
-export function LookingChips(props: {
+// thread's region says read-only.
+export type Looking = {
   lookingAt: LookingAt;
   readOnly(id: string): boolean;
   onLooking(msg: LookingMsg): void;
-  onCite?(item: LookItem): void;
-}) {
+};
+
+function LookingChips(props: Looking) {
   const { chips, offered } = props.lookingAt;
   if (chips.length === 0 && offered === null) return null;
   const named = (item: LookItem) => (
@@ -148,15 +162,6 @@ export function LookingChips(props: {
           >
             Add back
           </button>
-        ) : props.onCite && props.readOnly(item.id) ? (
-          <button
-            type="button"
-            class="quiet-action ctx-action"
-            key={`cite-${item.id}`}
-            onClick={() => props.onCite?.(item)}
-          >
-            Cite
-          </button>
         ) : null,
       )}
       {offered && (
@@ -176,16 +181,10 @@ export function LookingChips(props: {
 }
 
 // The foot's line with what the message is about: "Reads your whole
-// window, and SYN-99", saying which are read-only.
-export function readsWith(
-  reads: string | null,
-  lookingAt: LookingAt,
-  readOnly: (id: string) => boolean,
-): string | null {
+// window, and SYN-99".
+export function readsWith(reads: string | null, lookingAt: LookingAt): string | null {
   const on = lookingAt.chips.filter((chip) => chip.on).map((chip) => chip.item);
   if (on.length === 0) return reads;
-  const named = on
-    .map((item) => (readOnly(item.id) ? `${item.key} (read-only)` : item.key))
-    .join(", ");
+  const named = on.map((item) => item.key).join(", ");
   return reads ? `${reads}, and ${named}` : `Reads ${named}`;
 }

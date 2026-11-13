@@ -219,6 +219,7 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The user asked about an open item from its panel, which took them to the
   // window chat with it (decision 0025), by its source kind.
   | { name: "item.asked-about"; source: SourceKind }
+  | { name: "item.dropped-on-composer"; source: SourceKind }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
   // A block the agent asked for showed under its reply, by its form
   // (decision 0030).

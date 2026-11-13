@@ -89,7 +89,7 @@ A frame holding the field, then its foot, then at most one line for a problem.
       aria-label="Message"
     ></textarea>
     <div class="chat-input-foot">
-      <span class="chat-input-reads">Reads 17 items · v3</span>
+      <span class="chat-input-reads">Reads 17 items</span>
       <button type="submit" class="button" disabled>Send</button>
     </div>
   </form>
@@ -105,7 +105,7 @@ A frame holding the field, then its foot, then at most one line for a problem.
     aria-label="Ask about this workstream"
   ></textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 6 items · v2</span>
+    <span class="chat-input-reads">Reads 6 items</span>
     <button type="submit" class="button" disabled>Ask</button>
   </div>
 </form>
@@ -113,14 +113,15 @@ A frame holding the field, then its foot, then at most one line for a problem.
 
 ## What it's about (Looking at)
 
-Over the field, the composer offers the item open beside it as what the next message is about (decision 0062): `LookingChips` in `packages/web/src/chat-input.tsx`, in the `context` slot. Sent, the message keeps the item by ID, and the agent reads it in a tool result. Looking adds nothing to the workstream: that's a cite's.
+Over the field, the composer offers the item open beside it as what the next message is about (decision 0062): `LookingChips` in `packages/web/src/chat-input.tsx`, drawn from the `looking` prop. Sent, the message keeps the item by ID, and the agent reads it in a tool result. Looking adds nothing to the workstream: that's a cite's.
 
-- **Offered** (`.ctx-chip`): "Looking at", the item's key and title, and × (`.ctx-x`) to leave it out. The foot adds it: "Reads 17 items · v3, and SYN-99".
+- **Offered** (`.ctx-chip`): "Looking at", the item's key and title, and × (`.ctx-x`) to leave it out. The foot adds it: "Reads 17 items, and SYN-99".
 - **Not sending** (`.ctx-chip[data-off]`): dashed, with Add back (`.ctx-action`) beside it.
 - **A second item:** with words typed, opening another item keeps the draft's own and offers the new one dashed, as a button: "+ SYN-104". + adds it. With the field empty, opening another item swaps the chip.
-- **Read-only:** in a thread, an item outside its region says "· read-only", and Cite beside it adds it to the workstream, with its Undo. The window chat reads every item as the window does, so it never says read-only.
+- **Read-only:** in a thread, an item outside its region says "· read-only" on its chip, and only there: the foot names it plainly. The composer adds nothing to the workstream; the item panel's Add to workstream does. The window chat reads every item as the window does, so it never says read-only.
 - Closing the item takes its chip only while nothing is typed.
-- **A question that starts a thread** keeps it too: the workstream's Ask box and a new thread's first message carry what they're about, and the thread opens with the item still beside it. In the Ask box, an item the workstream doesn't hold says read-only, with Cite; on a new thread whose workstream it makes, every item is read-only, since the new workstream holds none, and there's no Cite until it exists.
+- **Dropped on it:** an item's row dragged onto the composer (from a workstream's page, Browse, a thread's rail, or the item panel's head) goes in as + puts it, read-only by the same rule, adding nothing to the workstream. It stays while other items open and close beside it, until the message is sent. While a row is over a composer that takes it, the composer is drawn as the [drop veil](/patterns/drop-zone) is: `--accent-soft`, a `--border-thick` `--accent` ring inside (`.chat-input[data-drop-over]`). An item already going, a fifth, or a composer holding a held message's words takes nothing, and a drop there is a drop nowhere. Telemetry hears `item.dropped-on-composer`, by the item's source kind. The keyboard's way is + on the item opened beside it. See [Drag to move](/patterns/drag-to-move#onto-a-composer).
+- **A question that starts a thread** keeps it too: the workstream's Ask box and a new thread's first message carry what they're about, and the thread opens with the item still beside it. In the Ask box, an item the workstream doesn't hold says read-only; on a new thread whose workstream it makes, every item is read-only, since the new workstream holds none.
 
 ```html specimen id=looking title="Looking at: offered, and a second item while typing"
 <form class="chat-input">
@@ -142,13 +143,13 @@ Over the field, the composer offers the item open beside it as what the next mes
   </div>
   <textarea class="chat-input-field" rows="2" aria-label="Message">Is this blocked on</textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 17 items · v3, and SYN-99</span>
+    <span class="chat-input-reads">Reads 17 items, and SYN-99</span>
     <button type="submit" class="button primary">Send</button>
   </div>
 </form>
 ```
 
-```html specimen id=looking-off title="Not sending, and read-only with Cite"
+```html specimen id=looking-off title="Not sending, and read-only"
 <form class="chat-input">
   <div class="ctx" role="group" aria-label="What your message is about">
     <span class="ctx-chip" data-off
@@ -164,7 +165,7 @@ Over the field, the composer offers the item open beside it as what the next mes
     aria-label="Message"
   ></textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-reads">Reads 17 items</span>
     <button type="submit" class="button" disabled>Send</button>
   </div>
 </form>
@@ -176,7 +177,6 @@ Over the field, the composer offers the item open beside it as what the next mes
       ><span class="ctx-label">· read-only</span
       ><button type="button" class="ctx-x" aria-label="Leave SYN-54 out">×</button></span
     >
-    <button type="button" class="quiet-action ctx-action">Cite</button>
   </div>
   <textarea
     class="chat-input-field"
@@ -185,7 +185,7 @@ Over the field, the composer offers the item open beside it as what the next mes
     aria-label="Message"
   ></textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 17 items · v3, and SYN-54 (read-only)</span>
+    <span class="chat-input-reads">Reads 17 items, and SYN-54</span>
     <button type="submit" class="button" disabled>Send</button>
   </div>
 </form>
@@ -200,7 +200,7 @@ Focus is forced in the first specimen (`.ws-focus-within` carries window.css's o
   <textarea class="chat-input-field" rows="2" aria-label="Message">
 Estimate SYN-23 and SYN-104 like SYN-92</textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-reads">Reads 17 items</span>
     <button type="submit" class="button primary">Send</button>
   </div>
 </form>
@@ -218,7 +218,7 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
     aria-label="Message"
   ></textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-reads">Reads 17 items</span>
     <button type="button" class="button">Stop</button>
   </div>
 </form>
@@ -233,7 +233,7 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
     aria-label="Message"
   ></textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 17 items · v3</span>
+    <span class="chat-input-reads">Reads 17 items</span>
     <button type="submit" class="button" disabled>Send</button>
   </div>
   <p class="chat-input-notice" role="alert">
@@ -277,17 +277,17 @@ Estimate SYN-23 and SYN-104 like SYN-92</textarea>
 
 - Placeholders say what the question is about, never how to ask: "Ask about your window", "Ask about 17 items…", "Ask a follow-up". Use the count of items, from `askPrompt` in `packages/web/src/workstream.ts`.
 - Where there's nothing to ask about yet, the placeholder invites a plan: "What are you planning? Describe it, and ask for an epic and its stories…".
-- The foot says what the agent will read, in Oriel's own counts: "Reads 17 items · v3", "Reads your whole window". A thread behind its workstream says "Reads its workstream at v4", which the next message catches up with (`readsOf` in `packages/web/src/thread-page.tsx`). A thread with no items says nothing.
+- The foot says what the agent will read, in Oriel's own counts: "Reads 17 items", "Reads your whole window". It names no version: the rail does. A thread behind its workstream says "Reads its workstream as it is now", which the next message catches up with (`readsOf` in `packages/web/src/thread-page.tsx`). A thread with no items says nothing.
 - The button says **Ask** where a question starts something, **Send** inside a conversation.
 - A problem says what happened and what to do: "Claude Code stopped before it answered. Send again to retry." Not "Error" or "Something went wrong".
 - Questions to start from are whole questions in sentence case, about the person's own workstreams, with no caption. Beside the headline each comes from, a short form names nothing the headline does: "What moved in it?", "Why is it stalled?", "Chart what moved", "Should it become a workstream?". In a new chat they're whole: "What moved in Payments?", "Why is Checkout v2 stalled?". Both come from one table, `questionLabel` and `questionShort` in `packages/web/src/questions.ts`; the whole label titles the thread a question starts.
 
 ## Where the app uses it
 
-- The component: `ChatInput` in `packages/web/src/chat-input.tsx`. CSS `.chat-input`, `.chat-input-field`, `.chat-input-foot`, `.chat-input-reads`, `.chat-input-notice` and `.chat-input[data-off]` in `window.css`.
+- The component: `ChatInput` in `packages/web/src/chat-input.tsx`. CSS `.chat-input`, `.chat-input-field`, `.chat-input-foot`, `.chat-input-reads`, `.chat-input-notice`, `.chat-input[data-off]` and `.chat-input[data-drop-over]` in `window.css`.
 - The overview's composer: `OverviewComposer` in `packages/web/src/window-chat-view.tsx`, with its props from `windowChatComposer`, mounted at the foot by `OverviewPage` in `packages/web/src/overview-page.tsx`. Its questions: `QuestionButton` in the same file, placed by `Headline`; CSS `.overview-dock`, `.ask-starts`, `.headline-asks` and `.ask-question` in `window.css`. A new chat's: `WindowChat`, from `startQuestions` in `packages/web/src/app.tsx`; CSS `.rail-starts`.
 - The window chat's two composers: `WindowChat` in `packages/web/src/window-chat-view.tsx`, at the rail's foot, which imports only `ChatInput` for them, with its props from `windowChatComposer`. `OverviewComposer` draws nothing while the chat is open.
 - In the item panel's dock, over the window chat at every width, and over a thread's page below 1100px: the conversation under the item hands its composer's props (`Composer` in `packages/web/src/chat-input.tsx`, from `windowChatComposer` or `threadComposer`) to `PanelDock` in `packages/web/src/item-panel.tsx`, which draws the same `ChatInput`, flat. See [Item panel](/components/item-panel#the-dock).
 - The thread composer: `ThreadPage` and `NewThreadPage` in `packages/web/src/thread-page.tsx`, inside `Dock`, with the thread's props from `threadComposer`. While the item panel's dock carries it, `Dock` is `inert` and hidden. CSS `.chat-dock` in `window.css`. `composer` stays on the frame as a placement hook: the pill for a change set out of view (`ToReview`) and `focusComposer` find it.
 - The workstream's Ask box: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`, with `.workstream-ask` for its margin.
-- What a message is about: `LookingChips` and `readsWith` in `packages/web/src/chat-input.tsx`, fed by `lookedAt` in `packages/web/src/looking.ts`, which `update` in `packages/web/src/root.ts` runs against the open panel. CSS `.ctx`, `.ctx-chip`, `.ctx-label`, `.ctx-name`, `.ctx-x` and `.ctx-action` in `window.css`.
+- What a message is about: `LookingChips` and `readsWith` in `packages/web/src/chat-input.tsx`, fed by `lookedAt` in `packages/web/src/looking.ts`, which `update` in `packages/web/src/root.ts` runs against the open panel. A row dropped on it: `useMoveDrop` in `ChatInput`, sending `lookPlaced` (`updateLooking` and `placeable` in `packages/web/src/looking.ts`). CSS `.ctx`, `.ctx-chip`, `.ctx-label`, `.ctx-name`, `.ctx-x` and `.ctx-action` in `window.css`.

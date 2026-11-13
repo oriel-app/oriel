@@ -424,7 +424,7 @@ A workstream's page, opened from the sidebar, where it is the current row with i
           aria-label="Ask about this workstream"
         ></textarea>
         <div class="chat-input-foot">
-          <span class="chat-input-reads">Reads 17 items · v3</span>
+          <span class="chat-input-reads">Reads 17 items</span>
           <button type="submit" class="button" disabled>Ask</button>
         </div>
       </form>

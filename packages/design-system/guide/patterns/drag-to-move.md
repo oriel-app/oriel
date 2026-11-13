@@ -1,7 +1,7 @@
 ---
 title: Drag to move
 order: 61
-summary: An item's or a thread's row dragged onto a workstream in the sidebar moves it there; an item onto the Workstreams heading, a menu offers a new workstream. A row's menu does the same from the keyboard.
+summary: An item's or a thread's row dragged onto a workstream in the sidebar moves it there; an item onto the Workstreams heading, a menu offers a new workstream; an item onto a composer, the next message is about it. A row's menu does the same from the keyboard.
 ---
 
 # Drag to move
@@ -12,7 +12,7 @@ A person reading a workstream sees an item that belongs in another. Removing it 
 
 ## The pattern
 
-On a workstream's page each item's row drags (`Member` in `packages/web/src/parts.tsx`, with `dragMove` from `packages/web/src/drag-move.ts`). So does a Browse row, which came from no workstream, so it only joins. The cursor is a grab over the row and says move during the drag.
+On a workstream's page each item's row drags (`Member` in `packages/web/src/parts.tsx`, with `dragMove` from `packages/web/src/drag-move.ts`). So does a thread's rail row, from the thread's workstream, with no menu. So do a Browse row and the item panel's head, which came from no workstream, so they only join. The cursor is a grab over the row and says move during the drag.
 
 The item rides on a card while it's dragged, in place of the browser's picture of its row (`lift` in `packages/web/src/drag-card.ts`): its key and title, raised on `--shadow`, the pointer at its left edge (`.drag-card`, `.drag-card-face` and `.drag-card-title` in `window.css`). It leans a couple of degrees the way it's pulled, 3° at most and never past 4°, and eases back to level when the pointer stops, like a card held at one corner. The row it came from dims while it's away (`[data-lifted]`). Dropped, the card is set down where the pointer let go: it comes level, shrinks a touch and fades. Dropped nowhere, it goes back toward its row at once, fading as it goes, and the row comes back. See [Motion](/foundations/motion#drag).
 
@@ -89,6 +89,25 @@ A move is Oriel's two actions on workstreams, in turn: the item joins where it g
 
 The keyboard, and a phone where the sidebar is a drawer, move it with the row's own menu: right-click, Shift+F10 or the Menu key on the row, then Move to “{name}” or Move to a new workstream.
 
+## Onto a composer
+
+An item dropped on a composer (the window chat's, a thread's, a workstream's Ask box, or the item panel's dock) goes in what the next message is about, "Looking at", as its + puts it, and moves nothing (see [Chat input](/components/chat-input#what-it-s-about-looking-at)). An item outside the thread's region is read-only; nothing joins the workstream. The composer takes it through the same `useMoveDrop`, inside `ChatInput`, so every composer does; it's drawn as a workstream is while one is over it. One already going, or a fifth, isn't taken. A thread isn't taken. The keyboard's way is the + chip.
+
+```html specimen id=composer title="An item over a thread's composer" bg=surface
+<form class="chat-input" data-lines="grow" data-drop-over>
+  <textarea
+    class="chat-input-field"
+    rows="2"
+    placeholder="Ask about 14 items…"
+    aria-label="Message"
+  ></textarea>
+  <div class="chat-input-foot">
+    <span class="chat-input-reads">Reads 14 items</span>
+    <button type="submit" class="button" disabled>Send</button>
+  </div>
+</form>
+```
+
 ## A thread
 
 A working thread's row in the sidebar drags the same way, from Needs you or from under its workstream (`dragThread` in `packages/web/src/sidebar.tsx`, through the same `dragMove`). Its card shows its title alone, since a thread has no key. Every open workstream but its own takes it, drawn as for an item; the Workstreams heading doesn't, so a thread dropped there is a drop nowhere. A done, handed-off or dropped thread doesn't drag.
@@ -100,6 +119,7 @@ The keyboard, and a phone, move it with the row's own menu: right-click, Shift+F
 ## Do
 
 - Draw the target only while it takes the drop, and only under the pointer.
+- Let an item's row drag the same wherever it's listed, onto every target.
 - Say what moved, from where and to where, in the note, with Undo.
 - Offer the same moves in the row's menu.
 - Let the card lean only with the pull, and set it down level.
@@ -116,7 +136,7 @@ The keyboard, and a phone, move it with the row's own menu: right-click, Shift+F
 - The drag and the drop targets: `dragMove` and `useMoveDrop` in `packages/web/src/drag-move.ts`.
 - The card and its lean: `lift`, `drop` and `leanStep` in `packages/web/src/drag-card.ts`. The browser's own picture is set to an empty `.drag-blank`, since the page's policy loads no `data:` image.
 - The move, its note and its Undo: `updateMoving`, `movingReplied` and `movingUndos` in `packages/web/src/moving.ts`.
-- The targets: `Workstreams` and `WorkstreamEntry` in `packages/web/src/sidebar.tsx`. A thread's drag and its menu's moves: `dragThread` and `threadMoves` there, with `moves` on `ThreadMenu` in `packages/web/src/close-thread.tsx`.
+- The targets: `Workstreams` and `WorkstreamEntry` in `packages/web/src/sidebar.tsx`; a composer, `ChatInput` in `packages/web/src/chat-input.tsx`. A thread's drag and its menu's moves: `dragThread` and `threadMoves` there, with `moves` on `ThreadMenu` in `packages/web/src/close-thread.tsx`.
 - A thread's move on the server: `thread.continue` and its Undo, `thread.uncontinue`, in `packages/server/src/actions.ts`; the quote, `quoted` in `packages/server/src/turns.ts`. The menu at the drop: `Menu` in `packages/web/src/menu.tsx`.
 - The row's menu: `movingOf` in `packages/web/src/workstream-page.tsx`.
-- CSS: `.member-menu`, and `[data-drop-over]` on `.nav-workstream-row` and `.fold-head`, in `window.css`.
+- CSS: `.member-menu`, and `[data-drop-over]` on `.nav-workstream-row`, `.fold-head` and `.chat-input`, in `window.css`.

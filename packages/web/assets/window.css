@@ -2736,6 +2736,18 @@ a.replies:hover {
     var(--shadow);
 }
 
+.chat-input[data-drop-over] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 var(--border-thick) var(--accent);
+}
+
+.chat-input[data-drop-over]:focus-within {
+  box-shadow:
+    inset 0 0 0 var(--border-thick) var(--accent),
+    0 0 0 var(--border-thin) var(--focus);
+}
+
 .chat-input-field {
   width: 100%;
   min-width: 0;
@@ -4944,7 +4956,8 @@ button.ctx-chip:hover {
    heading, take the drop, drawn as the veil is while one is over them. The
    row's menu lays its cells out as the row does. */
 .member[data-movable],
-.item[draggable="true"] {
+.item[draggable="true"],
+.panel-head[draggable="true"] {
   cursor: grab;
 }
 
