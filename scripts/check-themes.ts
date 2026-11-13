@@ -1,19 +1,3 @@
-// What every theme must pass (decision 0034), judged on window.css itself:
-//
-// - Contrast. Every text token on every background, a state or `--derived`
-//   on its own `-soft`, `--on-accent` on each fill it's written on, and what
-//   the sidebar and the bead write on the frame, is at least 4.5:1 (WCAG
-//   AA), in light and dark.
-// - The five states a PM scans for stay apart: any two differ by at least
-//   10 in CIEDE2000, and by at least 4 under protanopia, deuteranopia and
-//   tritanopia. The method is pinned: Machado 2009's matrices at full
-//   strength in linear sRGB, then CIELAB under D65, then CIEDE2000 with
-//   kL = kC = kH = 1.
-// - Values, not rules. A theme block sets only theme tokens, and every
-//   theme sets every colour token; shared tokens sit on `html`; no rule
-//   outside a theme block selects on `data-theme`; and no rule writes a
-//   literal colour, font family, weight, font size, radius (a dot's 50%
-//   apart), border width, shadow or transition duration.
 import {
   type Scheme,
   defaultTheme,
@@ -24,9 +8,6 @@ import {
   tokens,
 } from "../packages/web/themes.ts";
 
-// --- Colour -------------------------------------------------------------
-
-// sRGB, each channel 0 to 1, gamma-encoded, with alpha.
 export type Rgba = [number, number, number, number];
 
 const named: Record<string, Rgba> = {
@@ -35,7 +16,6 @@ const named: Record<string, Rgba> = {
   transparent: [0, 0, 0, 0],
 };
 
-// Top-level comma-separated arguments of a function's text.
 function args(text: string): string[] {
   const out = [""];
   let depth = 0;
@@ -48,8 +28,6 @@ function args(text: string): string[] {
   return out.map((a) => a.trim());
 }
 
-// A colour as the browser computes it: hex, `rgb()`, a few names, and
-// `color-mix()` in srgb, interpolated with premultiplied alpha.
 export function parseColor(text: string): Rgba {
   const value = text.trim().toLowerCase();
   const name = named[value];
@@ -103,8 +81,6 @@ export function parseColor(text: string): Rgba {
   throw new Error(`Not a colour Oriel's check reads: ${text}`);
 }
 
-// A colour as the screen paints it: 8 bits a channel, as the spike read
-// every mix.
 export function painted(c: Rgba): Rgba {
   return [
     Math.round(c[0] * 255) / 255,
@@ -114,7 +90,6 @@ export function painted(c: Rgba): Rgba {
   ];
 }
 
-// `fg` drawn over the opaque `bg`.
 function over(fg: Rgba, bg: Rgba): Rgba {
   const a = fg[3];
   const channel = (i: 0 | 1 | 2) => fg[i] * a + bg[i] * (1 - a);
@@ -127,7 +102,6 @@ function luminance([r, g, b]: Rgba): number {
   return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
 }
 
-// WCAG 2's contrast ratio.
 export function contrast(fg: Rgba, bg: Rgba): number {
   const [a, b] = [luminance(over(fg, bg)), luminance(bg)];
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
@@ -135,7 +109,6 @@ export function contrast(fg: Rgba, bg: Rgba): number {
 
 type Lab = [number, number, number];
 
-// Linear sRGB to CIELAB under D65.
 function lab([r, g, b]: [number, number, number]): Lab {
   const x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
   const y = 0.2126729 * r + 0.7151522 * g + 0.072175 * b;
@@ -144,7 +117,6 @@ function lab([r, g, b]: [number, number, number]): Lab {
   return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
 }
 
-// CIEDE2000, kL = kC = kH = 1 (Sharma, Wu and Dalal 2005).
 export function ciede2000([l1, a1, b1]: Lab, [l2, a2, b2]: Lab): number {
   const rad = Math.PI / 180;
   const c1 = Math.hypot(a1, b1);
@@ -195,7 +167,6 @@ export function ciede2000([l1, a1, b1]: Lab, [l2, a2, b2]: Lab): number {
 
 export type Vision = "typical" | "protanopia" | "deuteranopia" | "tritanopia";
 
-// Machado, Oliveira and Fernandes 2009, severity 1.0, on linear sRGB.
 type Row = [number, number, number];
 const machado: Record<Exclude<Vision, "typical">, [Row, Row, Row]> = {
   protanopia: [
@@ -215,7 +186,6 @@ const machado: Record<Exclude<Vision, "typical">, [Row, Row, Row]> = {
   ],
 };
 
-// How far apart two opaque colours look, to `vision`.
 export function distance(a: Rgba, b: Rgba, vision: Vision = "typical"): number {
   const seen = (c: Rgba): Lab => {
     const rgb: Row = [linear(c[0]), linear(c[1]), linear(c[2])];
@@ -227,8 +197,6 @@ export function distance(a: Rgba, b: Rgba, vision: Vision = "typical"): number {
   };
   return ciede2000(seen(a), seen(b));
 }
-
-// --- The rules ----------------------------------------------------------
 
 export const textTokens = [
   "--text",
@@ -243,11 +211,8 @@ export const textTokens = [
   "--del",
 ];
 export const backgrounds = ["--bg", "--surface", "--surface-hover", "--surface-sunk", "--list-bg"];
-// Each drawn on its own `-soft`.
 export const onSoft = ["--accent", "--todo", "--in-progress", "--done", "--danger", "--derived"];
-// The fills `--on-accent` is written on.
 export const onAccent = ["--accent", "--done", "--danger"];
-// What the sidebar and the bead write on the frame (decision 0056, amended).
 export const onFrame = [
   "--text",
   "--text-muted",
@@ -257,16 +222,12 @@ export const onFrame = [
   "--done",
   "--danger",
 ];
-// The five states a PM scans for: your move, in progress, an error or a
-// stall, done, and an Oriel rule.
 export const scanned = ["--accent", "--in-progress", "--danger", "--done", "--derived"];
 
 export const minContrast = 4.5;
 export const minDistance = 10;
 export const minSimulated = 4;
 
-// The tokens a theme sets, and no other block may. Colour ones are set by
-// every theme.
 export const colourTokens = [
   "--bg",
   "--surface",
@@ -347,7 +308,6 @@ export const themeTokens = [
 const schemes: Scheme[] = ["light", "dark"];
 const fixed = (n: number) => n.toFixed(2);
 
-// A colour token as `theme` paints it in `scheme`.
 export function themeColour(css: string, theme: string, scheme: Scheme, name: string): Rgba {
   const values = tokens(css, theme, scheme);
   const value = values.get(name);
@@ -355,7 +315,6 @@ export function themeColour(css: string, theme: string, scheme: Scheme, name: st
   return painted(parseColor(resolve(value, values)));
 }
 
-// Contrast and states, for one theme in one scheme.
 export function colourProblems(css: string, theme: string, scheme: Scheme): string[] {
   const where = `${theme}, ${scheme}`;
   const found: string[] = [];
@@ -419,7 +378,6 @@ const withoutVars = (value: string) => {
   return out;
 };
 
-// A colour's mix, say, has percentages that aren't widths.
 const withoutCalls = (value: string) => {
   let out = value;
   for (let last = ""; last !== out;) {
@@ -431,12 +389,10 @@ const withoutCalls = (value: string) => {
 
 const wide = new Set(["inherit", "initial", "unset", "none", "0", "transparent", "currentcolor"]);
 
-// What's literal in one declaration of a rule, if anything.
 export function literal(property: string, value: string): string | null {
   const bare = withoutVars(value).trim();
   const plain = bare.replace(/\s+/g, " ").toLowerCase();
   if (property.startsWith("--")) {
-    // A component's own property: judge it by what it stands for.
     return colourWord.test(bare) ? "a literal colour" : null;
   }
   if (colourWord.test(bare.replace(/url\([^)]*\)/g, ""))) return "a literal colour";
@@ -471,8 +427,6 @@ export function literal(property: string, value: string): string | null {
   }
   if (property === "box-shadow" || property === "text-shadow") {
     if (wide.has(plain) || plain === "") return null;
-    // A token's shadow, or a ring: no offset or blur, and a border token's
-    // spread. A ring with a literal spread has a literal border width.
     let what: string | null = null;
     for (const shadow of args(value)) {
       const lengths = withoutVars(shadow)
@@ -494,7 +448,6 @@ export function literal(property: string, value: string): string | null {
   return null;
 }
 
-// Values, not rules, over every rule in `css`.
 export function ruleProblems(css: string): string[] {
   const found: string[] = [];
   const all = rules(css);
@@ -545,8 +498,6 @@ export function ruleProblems(css: string): string[] {
       names.add(property);
     }
   }
-  // Every token resolves in every theme and scheme: none names itself, or
-  // a token nothing sets.
   for (const theme of themeNames(css))
     for (const scheme of schemes) {
       const values = tokens(css, theme, scheme);
@@ -568,7 +519,6 @@ export function ruleProblems(css: string): string[] {
         found.push(`window.css: ${theme} sets ${name} in light but not in dark`);
     }
     if (theme === defaultTheme) continue;
-    // A token the default sets per scheme, a theme sets in both or neither.
     for (const name of defaults?.get("dark") ?? [])
       if (!colourSet.has(name) && light.has(name) !== dark.has(name))
         found.push(
@@ -578,8 +528,6 @@ export function ruleProblems(css: string): string[] {
   return found;
 }
 
-// Whether `theme`'s light value of `name` is written with a colour of its
-// own, rather than derived from other tokens, so dark needs its own value.
 function literalIn(css: string, theme: string, name: string): boolean {
   for (const rule of rules(css)) {
     const block = themeBlock(rule);
@@ -591,7 +539,6 @@ function literalIn(css: string, theme: string, name: string): boolean {
   return false;
 }
 
-// Every problem with window.css's themes.
 export function themeProblems(css: string): string[] {
   const found = ruleProblems(css);
   if (found.length > 0) return found;

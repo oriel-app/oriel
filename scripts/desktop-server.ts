@@ -1,16 +1,4 @@
-// `pnpm desktop:server`: the server in desktop mode, started by a fake shell
-// on this terminal, so a person can try the desktop app's server without
-// the app (decision 0036, desktop/PROTOCOL.md). For development only:
-//
-// - It draws the launch secret, as the shell does, and prints it here, so
-//   another browser can be given the cookie by hand.
-// - It opens Chrome with the cookie already set, as the shell's window has
-//   it, unless `--no-browser`.
-// - Secrets are kept in memory and gone when it stops. A folder pick asks
-//   on this terminal; a notification prints here.
-// - The data folder is the gitignored `.oriel/desktop/`.
-//
-// Ctrl-C quits both: the server's stdin closes, as when the shell quits.
+// `pnpm desktop:server [--no-browser]`; Ctrl-C quits it and the server.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -27,8 +15,7 @@ const data = join(root, ".oriel", "desktop");
 mkdirSync(data, { recursive: true, mode: 0o700 });
 const secret = randomBytes(32).toString("hex");
 
-// Only what the shell gives it (packages/desktop/shell/main.ts,
-// serverEnvironment): never this terminal's own environment. Without USER and
+// Only what the shell gives the server, never this terminal's environment. Without USER and
 // LOGNAME, Claude Code can't find its sign-in in the Keychain.
 const env: Record<string, string> = {};
 for (const name of ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "PATH"]) {
@@ -44,8 +31,6 @@ server.stdin.write(`${secret}\n`);
 const exited = new Promise<number>((resolve) =>
   server.once("exit", (code, signal) => resolve(code ?? (signal ? 1 : 0))),
 );
-// The terminal sends Ctrl-C to the server too; closing its stdin is how the
-// shell asks on every OS.
 process.on("SIGINT", () => server.stdin.end());
 
 const secrets = new Map<string, string>();
@@ -54,7 +39,6 @@ let browser = null as Browser | null;
 const answer = (id: number, value: unknown) =>
   server.stdin.write(`${JSON.stringify({ id, ok: true, value })}\n`);
 
-// Asked only when a folder is, so the terminal is otherwise left alone.
 async function askFolder(prompt: string): Promise<string | null> {
   const terminal = createInterface({ input: process.stdin, output: process.stdout });
   const typed = await new Promise<string>((resolve) =>

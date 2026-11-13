@@ -1,12 +1,4 @@
-// `node --expose-gc scripts/bench-search.ts`: what search costs on a big
-// index. Generates `--items` items (20,000 by default) with titles and
-// texts of made-up words, some accented, a few common and most rare, at
-// lengths up to what the index keeps, and syncs them in one full sync into
-// a database file in a temporary directory. Then it times search()'s first
-// query and its warm ones, and Browse's search over every item, and reports
-// the heap and resident memory after each, collected. Deterministic, so every
-// run builds the same index; it reads the clock, so it is a script, not a
-// test.
+// `node --expose-gc scripts/bench-search.ts [--items <n>] [--runs <n>]`
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,7 +23,6 @@ const runs = Number(values.runs);
 const gc = (globalThis as { gc?: () => void }).gc;
 if (!gc) throw new Error("run with node --expose-gc");
 
-// A small deterministic generator (mulberry32).
 let seed = 264;
 const random = () => {
   seed = (seed + 0x6d2b79f5) | 0;
@@ -48,7 +39,6 @@ const vocabulary = Array.from({ length: 20_000 }, (_, i) => {
   for (let n = 2 + (i % 3); n > 0; n--) word += syllables[Math.floor(random() * syllables.length)];
   return word;
 });
-// Mostly common words, then a long tail, as prose is.
 const word = () =>
   random() < 0.45
     ? (common[Math.floor(random() * common.length)] ?? "")
@@ -56,10 +46,8 @@ const word = () =>
 const words = (count: number) => Array.from({ length: count }, word).join(" ");
 
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
-// The nth item and its text, made in order, so no run holds them all.
 const item = (n: number): { record: IndexRecord; text: string } => {
   const key = `SYN-${n + 1}`;
-  // From a line to the whole of what the index keeps, most of them short.
   const length = Math.floor(80 + (maxSearchText - 80) * random() ** 2);
   return {
     record: {
@@ -90,8 +78,6 @@ try {
   const index = indexStore(db);
   const generated = memory();
 
-  // One full sync, in pages of 100 as Jira's are.
-  // Only the index's own work is timed, not making the items.
   let syncMs = 0;
   let at = performance.now();
   const run = index.beginSync(workspaceId, "jira", unknown, t0);
@@ -127,7 +113,6 @@ try {
     }
   const searched = memory();
 
-  // Browse's search, every item checked against the query.
   const browse = (query: string) => {
     const store = index as unknown as Record<string, (...args: unknown[]) => unknown>;
     const all = index.records(workspaceId, "jira", unknown);
@@ -135,7 +120,6 @@ try {
       const found = store.matches(workspaceId, query) as ReadonlyMap<string, string>;
       return all.filter((record) => found.has(record.id)).length;
     }
-    // Before OA-264: the folded texts in memory.
     const text = store.searchText?.(workspaceId) as (id: string) => string;
     return all.filter((record) => text(record.id).includes(query)).length;
   };

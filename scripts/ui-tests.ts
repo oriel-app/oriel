@@ -1,10 +1,4 @@
-// `pnpm ui-test`: the window's behaviour tests (decision 0063). Each is a
-// scene of `pnpm shots` that checks behaviour, run light at 1280 (and at the
-// other widths it names), with no picture; and the first run's timed
-// onboarding on each path. They run in workers, each a `scripts/shots.ts
-// --test` of its own, with its own servers, taking every nth test.
-// `pnpm ui-test ask-panel-` takes only the tests whose names start so, and
-// `--workers <n>` sets how many run at once.
+// `pnpm ui-test [<name prefix>] [--workers <n>]`
 // Not `ui-test.ts`: `node --test` would take that name for a test file.
 import { fork } from "node:child_process";
 import { availableParallelism } from "node:os";

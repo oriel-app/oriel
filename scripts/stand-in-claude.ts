@@ -1,13 +1,5 @@
-// A stand-in for Claude Code, for `pnpm desktop:try` (packages/desktop/README.md).
-// The desktop app runs it from Settings' Claude Code path, as it would the
-// person's own, and it answers what the first run asks from a state file in
-// its folder, so a try never runs, signs in or updates the person's CLI:
-// `--version`, `auth login`, `auth status`, `update`, and a session's
-// `initialize` and turn, with fixed text and no model. A thread's turn
-// runs one script that never ends, so a try can see a run, and what quitting
-// or a crash does to it, until the sandbox's wall time stops it.
-//
-// Run as `stand-in-claude.ts <folder> <claude's arguments…>`.
+// Run as `stand-in-claude.ts <folder> <claude's arguments…>`; it answers from a state file
+// in <folder>.
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -15,7 +7,6 @@ import { harnessRunTool, harnessServer } from "../packages/agent/src/claude-code
 
 export type StandIn = {
   version: string;
-  // The version `update` moves to.
   updatesTo: string;
   signedIn: boolean;
   signIn: "works" | "fails";
@@ -23,7 +14,6 @@ export type StandIn = {
 
 type Answer = { out: string[]; err: string[]; code: number; next?: StandIn };
 
-// What a command prints and how it exits, and the state it leaves.
 export function command(state: StandIn, args: readonly string[]): Answer {
   const [first, second] = args;
   if (first === "--version") return { out: [`${state.version} (Claude Code)`], err: [], code: 0 };
@@ -61,11 +51,9 @@ const account = { authMethod: "claude.ai", email: "pm@example.com", subscription
 
 type Message = Record<string, unknown>;
 
-// The script a thread's turn runs: one that never ends.
 export const endlessScript = "while (true) {}";
 const runCall = "toolu_stand_in_run";
 
-// A response as the CLI relays the model's stream: one tool call, or text.
 const response = (model: string, block: Message, json: string | null, stop: string) =>
   [
     { type: "message_start", message: { model, usage: { input_tokens: 12, output_tokens: 0 } } },
@@ -84,10 +72,6 @@ const response = (model: string, block: Message, json: string | null, stop: stri
     { type: "message_stop" },
   ].map((event) => ({ type: "stream_event", event, parent_tool_use_id: null }));
 
-// A session's answers to one line from Oriel: `initialize`, saying whether
-// there's an account, and a turn. With `run`, a thread's turn: it runs
-// endlessScript, asks Oriel for the result as the CLI would, and ends once
-// Oriel answers. Without, a title's turn.
 export function session(state: StandIn, model: string, line: Message, run = false): Message[] {
   const request = (line.request ?? {}) as Message;
   if (run && line.type === "control_response") {

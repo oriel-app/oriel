@@ -1,16 +1,5 @@
-// A kind through its source server, end to end on the person's own Claude
-// Code or Codex, against packages/standin-mcp's stand-in for its server, in
-// dev only (OA-276, OA-277, OA-278). The agent's processes get the stand-in on their
-// command line, never in the person's configuration. It looks for the
-// person's servers, turns the kind on through the stand-in, syncs its
-// fixture into the index, and approves one scripted change set, which
-// replays through the server's write tools: for Jira a rename of SYN-10,
-// for Slack a reply to Amara's question, for Linear ENG-4 planned into
-// cycle 14, for Sheets BL-108 moved on, after mapping the Backlog tab of
-// packages/sheets-mcp's shipped fixture, which it runs in fixture mode, as
-// a local server Claude Code starts by its command. No model runs on
-// either agent. The index is in memory.
 // Usage: node scripts/try-source-server.ts <claude-code|codex> [jira|slack|linear|sheets]
+// The stand-in goes on the agent's command line, never in the person's configuration.
 import { checkCodex } from "../packages/agent/src/index.ts";
 import { rowKey } from "../packages/sheets/src/attrs.ts";
 import { backlogPicks } from "./record-source-mcp.ts";
@@ -21,13 +10,8 @@ import { devStandIns } from "../packages/server/src/standins.ts";
 import { json, testApp } from "../packages/server/src/testing.ts";
 import type { DiffView, ThreadView } from "../packages/web/src/view.ts";
 
-// BL-108 of sheets-mcp's shipped fixture, as Oriel keys it.
 const bl108 = `sheets:${rowKey("1q2w3e4r5t6y7u8i9o0pBacklogFixture", 0, "BL-108")}`;
 
-// What each kind tries: its stand-in, the one write it approves, the items
-// the workstream that asks for it holds, and the options it's set to first,
-// where they're the person's to set through the server, or the pick it
-// lists through the server and sets, as Settings does.
 const kinds: Record<
   string,
   {
@@ -197,7 +181,6 @@ try {
     at,
   );
 } catch (error) {
-  // What went wrong inside, as the app logged it: never a source's content.
   const failed = it.logged.filter((each) => /fail|couldn't|stopped|missed/i.test(each.message));
   for (const each of failed)
     console.error(`logged: ${each.message} ${JSON.stringify(each.fields)}`);

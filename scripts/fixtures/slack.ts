@@ -1,20 +1,3 @@
-// Writes fixtures/slack/workspace.json: a synthetic Slack workspace for
-// Ferrowick, the fictional ferry app of the SYN fixture, written by the same
-// made-up people. `#weather-disruptions` is the channel the user picked; it
-// talks about SYN-3's rebooking work. `#random` is there to show that a
-// channel nobody picked is never read. The content is hand-written and the
-// times are fixed, so regenerating is byte-identical.
-//
-// It covers what Slack sends that a tidy fixture wouldn't: a message an app
-// posted for a person (`bot_id` and `user`), one an app posted as itself, a
-// reply also sent to the channel, a thread picked up again days later, an
-// edit, a deleted message that leaves its replies, joins and a purpose
-// change, mentions of known, deactivated and unknown people, escaped `&`,
-// `<` and `>`, links, user groups, dates, emoji and non-Latin text, a
-// message that is only a file, two messages with the same text, a long one,
-// an injection in a message, in a reply and in a person's name, and a link
-// to an item whose label is an injection.
-//
 // Usage: node scripts/fixtures/slack.ts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -25,8 +8,6 @@ import {
   slackFixtureFile,
 } from "../../packages/slack/src/fixture.ts";
 
-// A `ts` in September 2026, UTC, before the SYN fixture's window, which is
-// frozen on 2 October. `n` tells apart messages in the same second.
 const ts = (day: number, hour: number, minute: number, n = 1) =>
   `${Date.UTC(2026, 8, day, hour, minute) / 1000}.${String(n * 100).padStart(6, "0")}`;
 
@@ -199,8 +180,6 @@ const weatherMessages: FixtureMessage[] = [
   },
   { ts: ts(16, 17, 45), user: yuting, text: retro },
   { ts: ts(17, 18, 2), user: ines, text: "Can someone check the 18:00 from Inchmore?" },
-  // A reference that is itself an injection: the link names SYN-54, and its
-  // label is the instruction (decision 0027).
   {
     ts: ts(18, 9, 0),
     user: rowan,

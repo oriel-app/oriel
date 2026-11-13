@@ -1,17 +1,5 @@
-// `pnpm desktop:debug-flags`: launches the built desktop app once with each
-// way a program running as the person could ask for a debugger, and tries to
-// reach one (OA-209). A debugger in the app reads its state, the secrets it
-// has opened from the OS's store among it.
-//
-// Each launch is a copy of the app, as `pnpm desktop:try` runs it: hidden,
-// on a fresh data folder and a throwaway home, with secrets in memory. After
-// the app starts or stops, it asks every port the app's processes listen on,
-// and the port the flag named, for a debugger's `/json/version`; a pipe flag
-// gets a command on its pipe; a flag that would run code or write a file
-// leaves one if it did. Any argument but the shell's own must stop the app
-// starting. The first launch has none, and must show the server's own port,
-// so a run that sees nothing has looked. It stops only the processes it
-// started. Over any of these, it exits 1.
+// `pnpm desktop:debug-flags`; exits 1 if any flag or signal reaches a debugger in the built app,
+// which could read the secrets it has opened from the OS's store.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -40,7 +28,6 @@ export const ways: Way[] = [
   { name: "--inspect-wait", args: (port) => [`--inspect-wait=127.0.0.1:${port}`] },
   { name: "--inspect-port and SIGUSR1", args: (port) => [`--inspect-port=${port}`], signal: true },
   { name: "SIGUSR1", signal: true },
-  // Not a debugger, but the launch cookie in a file.
   {
     name: "--log-net-log",
     args: (_, marker) => [`--log-net-log=${marker}`, "--net-log-capture-mode=IncludeSensitive"],
@@ -77,7 +64,6 @@ const alive = (pid: number) => {
   }
 };
 
-// The ports each process in `pids` listens on, from `lsof -F pn`.
 export function listening(lsof: string): { pid: number; port: number }[] {
   const found: { pid: number; port: number }[] = [];
   let pid = 0;
@@ -108,8 +94,6 @@ function listeners(pids: number[]) {
   }
 }
 
-// Whether a DevTools or inspector endpoint answers on the port: both serve
-// `/json/version` with a protocol version.
 export function isDebugger(body: string): boolean {
   try {
     const parsed = JSON.parse(body) as unknown;
@@ -130,7 +114,6 @@ async function debuggerOn(port: number): Promise<boolean> {
   }
 }
 
-// A CDP command on the pipe, and whether anything answers.
 async function pipeAnswers(child: ChildProcess): Promise<boolean> {
   const [, , , input, output] = child.stdio as unknown as [
     unknown,
@@ -151,10 +134,8 @@ async function pipeAnswers(child: ChildProcess): Promise<boolean> {
 
 const table = () => execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" });
 
-// Ends the shell, and then whatever of `tree` is left.
 async function stop(pid: number, tree: number[]) {
   if (alive(pid)) process.kill(pid, "SIGTERM");
-  // The shell gives the server 5 s to quit before it kills it.
   for (let waited = 0; waited < 10_000 && tree.some(alive); waited += 100) await pause(100);
   for (const each of tree.filter(alive)) process.kill(each, "SIGKILL");
 }
@@ -191,8 +172,7 @@ async function launch(executable: string, folder: string, way: Way): Promise<See
   for (let waited = 0; waited < 45_000 && !exited && !existsSync(launchFile); waited += 200)
     await pause(200);
   await pause(1_500);
-  // Every process the launch started, kept: one the shell leaves when a
-  // signal ends it is launchd's child, no longer the shell's.
+  // Kept from the start: a process the shell leaves when a signal ends it becomes launchd's child.
   const owned = new Set([pid, ...descendants(table(), pid)]);
   const tree = () => {
     const now = table();

@@ -1,9 +1,5 @@
-// Builds the folder fixture (`fixtures/folder/tree.json`) as a real tree, for
-// a person to look at.
-//
 // Usage: node scripts/fixtures/folder.ts [--edited <n>]
-//   builds the tree, with its first n edits applied, in a fresh temporary
-//   directory, and prints the folder's path.
+//   prints the path of a fresh tree, with its first n edits applied.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

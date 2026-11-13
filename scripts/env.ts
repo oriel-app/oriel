@@ -1,12 +1,9 @@
-// Reads a .env a script is pointed at, as the folder source reads a file
-// (decision 0019): no link on the way to it, no second link to it, no pipe
-// or device. The evals' `--env` reads through it, so a worktree without
-// its own .env can use the main checkout's without copying or linking it.
+// Read as the folder source reads a file: no link on the way to it, no second link to it,
+// no pipe or device.
 import { lstatSync } from "node:fs";
 import { resolve } from "node:path";
 import { openChecked } from "../packages/folder/src/index.ts";
 
-// Null when nothing is there; no problem quotes the file.
 export async function readEnv(
   path: string,
 ): Promise<{ text: string | null } | { problem: string }> {

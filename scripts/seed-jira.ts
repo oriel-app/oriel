@@ -1,10 +1,5 @@
-// Recreates SYN on the throwaway site from fixtures/jira, which stay the
-// source of truth. Issues are created in key order so live keys match fixture
-// keys; a key the fixtures skip gets a placeholder that is created, then
-// deleted. The fixture's source edits are applied last. Field IDs are discovered
-// at run time. It refuses unless SYN exists, is company-managed and holds no
-// issues, and it deletes only what this run created.
 // Usage: pnpm seed:jira [--dry-run | --preflight]
+// Reads JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN from .env.
 import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -23,13 +18,10 @@ import {
 } from "../packages/core/src/validate.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 
-// The only site this script writes to (SPEC §4).
 const throwawaySite = "https://oriel.atlassian.net";
 
 export type JiraEnv = { site: string; email: string; token: string };
 
-// Reads JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN and nothing else. Messages
-// never include a value.
 export function jiraEnv(envFile: string | null): JiraEnv | { error: string } {
   const env = envFile ? parseEnv(envFile) : {};
   const site = env.JIRA_SITE;
@@ -53,8 +45,6 @@ export type Step =
 
 const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 
-// Pure: what the seed will do, in order. Only what is in the fixtures is
-// seeded (SPEC §5).
 export function plan(fixture: JiraFixture): Step[] {
   const byNumber = new Map(fixture.issues.map((issue) => [keyNumber(issue.key), issue]));
   const last = Math.max(0, ...byNumber.keys());
@@ -82,9 +72,7 @@ export function plan(fixture: JiraFixture): Step[] {
   return steps;
 }
 
-// Plain text as Atlassian Document Format: blank lines split paragraphs and
-// single newlines become hard breaks. Text nodes are literal, so nothing in
-// the fixture is read as markup.
+// Text nodes are literal, so nothing in the fixture is read as markup.
 export function adf(text: string) {
   return {
     type: "doc",
@@ -101,7 +89,6 @@ export function adf(text: string) {
   };
 }
 
-// What discovery found. In a dry run each value is a <placeholder>.
 export type Discovered = { pointsField: string; issueTypes: Record<string, string> };
 
 export type Request = { method: "GET" | "POST" | "PUT" | "DELETE"; path: string; body?: unknown };
@@ -114,8 +101,6 @@ function typeId(found: Discovered, name: string): string {
   return id;
 }
 
-// The request for one step. A status step's transition ID is read from the
-// issue at run time, so `transition` names it until then.
 export function request(
   project: string,
   step: Step,
@@ -126,11 +111,7 @@ export function request(
   switch (step.kind) {
     case "create": {
       const { issue: fixture } = step;
-      // Always unassigned: the site has one real user, so the fixture's
-      // people can't be assigned. Assignees stay in the fixtures only; besides
-      // them, the live copy differs only where Jira sets values itself:
-      // issue stable IDs (so region clusters too), comment authors and times,
-      // updatedAt and link IDs. Live tests match on keys, not stable IDs.
+      // The site has one real user, so the fixture's people can't be assigned.
       const fields: Record<string, unknown> = {
         project: { key: project },
         issuetype: { id: typeId(found, fixture.issueType) },
@@ -179,7 +160,6 @@ export function request(
   }
 }
 
-// One line per request. Rich text and long strings are shortened.
 export function describe(request: Request): string {
   if (request.body === undefined) return `${request.method} ${request.path}`;
   const body = JSON.stringify(request.body, (key, value: unknown) => {
@@ -233,8 +213,6 @@ export function dryRun(fixture: JiraFixture): string[] {
   ];
 }
 
-// Live run.
-
 type Response = { status: number; body: unknown };
 type Call = (request: Request) => Promise<Response>;
 
@@ -285,8 +263,8 @@ async function send<T>(call: Call, request: Request, shape: Validator<T>): Promi
 
 const get = (path: string): Request => ({ method: "GET", path });
 
-// Project permissions the run needs. Remote links need Browse projects and
-// Link issues; creating an issue unassigned needs Assign issues.
+// Remote links need Browse projects and Link issues; creating an issue unassigned needs
+// Assign issues.
 const permissions = [
   "BROWSE_PROJECTS",
   "CREATE_ISSUES",
@@ -400,7 +378,6 @@ export async function discover(fixture: JiraFixture, call: Call): Promise<Discov
       createFieldsShape,
     );
     const ids = new Set(screen.fields.map((field) => field.fieldId));
-    // Creates always send labels and assignee, and description when there is one.
     for (const field of ["labels", "description", "assignee"])
       if (!ids.has(field)) throw new Error(`refusing: ${field} isn't on the ${name} create screen`);
     const ofType = fixture.issues.filter((issue) => issue.issueType === name);
@@ -474,8 +451,6 @@ if (import.meta.main) {
     process.exit(1);
   }
   try {
-    // --preflight runs only the read-only checks against the live site and
-    // writes nothing, so a run can be validated before it creates anything.
     if (args.includes("--preflight")) {
       const found = await discover(fixture, client(env));
       console.log(

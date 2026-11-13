@@ -367,8 +367,13 @@ export const commentsCleaned = [
   "packages/changeset/",
   "packages/bindings/",
   "packages/sandbox/",
+  "scripts/",
 ];
-export const commentsCleanedLater = ["packages/core/src/telemetry.ts"];
+export const commentsCleanedLater = [
+  "packages/core/src/telemetry.ts",
+  "scripts/check-repo.ts",
+  "scripts/shots.ts",
+];
 
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));

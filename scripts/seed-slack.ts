@@ -1,20 +1,9 @@
-// Fills a channel in the test Slack workspace from a local scenario, each
-// message posted by the person whose role it names, so authors, threads and
-// mentions are real (OA-22). A message names its person as their Slack
-// profile has them: title, display name or full name. A scenario is a local
-// file, never committed, so no person's details are; keep it under .oriel/. It refuses unless every token is for the test
-// workspace and the channel has no messages yet.
-//
-// Each person authorizes the app (scripts/slack-app.json) once:
+// Each person authorizes the app once:
 //   pnpm seed:slack --authorize       the link to open, signed in as them
-//   pnpm seed:slack --add <file>      <file> holds the address Slack sent the
-//                                     browser to; their token joins .env
-// Then:
-//   pnpm seed:slack <scenario> [--dry-run]
-//
-// A scenario: { "channel": "name", "messages": [{ "as": "<name>",
-// "text": "...", "thread": <index of an earlier message to reply under> }] }.
-// `{@<name>}` in a text mentions that person.
+//   pnpm seed:slack --add <file>      <file> holds the address Slack sent the browser to
+// Then: pnpm seed:slack <scenario> [--dry-run]. Keep scenarios under .oriel/, never committed.
+// A scenario: { "channel": "name", "messages": [{ "as": "<name>", "text": "...",
+// "thread": <index of an earlier message> }] }; `{@<name>}` mentions that person.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -29,7 +18,6 @@ import {
   type Validator,
 } from "../packages/core/src/validate.ts";
 
-// The only workspace this script writes to.
 export const testWorkspace = "T0CDS3SHGQ6";
 
 const manifest = object({
@@ -44,8 +32,6 @@ const userScopes = manifest.value.oauth_config.scopes.user;
 
 export type SlackEnv = { clientId: string | null; clientSecret: string | null; tokens: string[] };
 
-// Reads SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and SLACK_USER_TOKENS and nothing
-// else. Messages never include a value.
 export function slackEnv(envFile: string | null): SlackEnv | { error: string } {
   const env = envFile ? parseEnv(envFile) : {};
   const tokens = (env.SLACK_USER_TOKENS ?? "").split(/\s+/).filter(Boolean);
@@ -80,7 +66,6 @@ export function codeFrom(text: string): { code: string } | { error: string } {
   return code ? { code } : { error: "the address has no code" };
 }
 
-// .env with the token added to SLACK_USER_TOKENS. Every other line is kept.
 export function withToken(envFile: string, token: string): string {
   const env = slackEnv(envFile);
   const tokens = "error" in env ? [] : env.tokens;
@@ -101,8 +86,7 @@ const scenarioShape: Validator<Scenario> = object({
 const mention = /\{@([^}]+)\}/g;
 const role = (name: string) => name.trim().toLowerCase();
 
-// Checks what Slack can't post: a reply goes under an earlier message that
-// isn't itself a reply, as Slack threads are one level deep.
+// Slack threads are one level deep: a reply must go under a message that isn't itself a reply.
 export function parseScenario(text: string): Scenario | { error: string } {
   let json: unknown;
   try {
@@ -133,9 +117,6 @@ export function parseScenario(text: string): Scenario | { error: string } {
 
 export type Person = { token: string; user: string; names: string[] };
 
-// Who posts each name: the one person their profile gives it to. Every name a
-// message is posted as or mentions must be exactly one person's; a name two
-// people share is fine while the scenario doesn't use it.
 export function cast(
   people: readonly Person[],
   scenario: Scenario,
@@ -166,8 +147,6 @@ export function cast(
   return byRole;
 }
 
-// The text as Slack reads it: mentions as user IDs, and &, < and > escaped
-// everywhere else. Splitting on the mention pattern puts names at odd indexes.
 export function resolve(text: string, roles: ReadonlyMap<string, Person>): string {
   const escape = (part: string) =>
     part.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -193,8 +172,6 @@ export function dryRun(scenario: Scenario): string[] {
     ),
   ];
 }
-
-// Live run.
 
 export type Call = (
   method: string,
@@ -265,8 +242,6 @@ async function person(run: Call, token: string): Promise<Person> {
   return { token, user: auth.user_id, names: [...new Set(names.filter(Boolean))] };
 }
 
-// Exchanges the code for the person's token. The token is returned, never
-// printed.
 export async function authorize(
   run: Call,
   env: SlackEnv,
@@ -325,8 +300,7 @@ export async function seed(
     channel = created.channel.id;
     log(`created #${scenario.channel}`);
   }
-  // Only the first poster joins until the channel is known to be empty. A run
-  // that stops partway leaves the channel part-filled; seed a new one.
+  // A run that stops partway leaves the channel part-filled; seed a new one.
   await run("conversations.join", first.token, { channel });
   const history = await send(
     run,

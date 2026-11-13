@@ -1,12 +1,7 @@
-// `node --test` with Node's compile cache, which keeps each file's type
-// stripping and compiled code between runs. `pnpm test` runs it from the
-// root, and each package's `check` from the package, so every test run
-// shares the one cache under the root's node_modules/.cache.
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { onCi } from "./annotations.ts";
 
-// On CI, each failing test is also an annotation, which `pr-wait` prints.
 const reporters = onCi
   ? [
       "--test-reporter=spec",

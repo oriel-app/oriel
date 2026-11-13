@@ -1,25 +1,15 @@
-// `pnpm drive await <thread>`: block until the maintainer decides the
-// thread's change sets awaiting review, then exit. It listens to the thread's
-// event stream and, after each event, reads the thread's state and decides
-// from that. It reads state only: it never approves, applies or rejects
-// (decision 0003). It prints change-set IDs and statuses, never synced content.
+// It reads state only, never approving, applying or rejecting, and prints change-set IDs and
+// statuses, never synced content.
 import { setTimeout as wait } from "node:timers/promises";
 
-// The exit codes, listed in scripts/drive.ts's header. 2 is a usage error
-// and 3 a refusal, as for every drive command.
 export const exits = { decided: 0, nothing: 4, unfinished: 5, timedOut: 6, serverGone: 7 };
 
 type ChangeSet = { id: string; status: string };
 export type Outcome = { code: number; lines: string[] };
 
-// The change sets awaiting review: those still open.
 export const awaiting = (sets: readonly ChangeSet[]): string[] =>
   sets.filter((set) => set.status === "open").map((set) => set.id);
 
-// What the wait comes to, given the change sets it waits on and the thread's
-// change sets now (null: the thread is gone), or null while any is undecided.
-// One a person approved that is still being applied waits on; one whose
-// apply stopped partway, or gone with its thread, ends the wait unfinished.
 export function settle(
   waited: readonly string[],
   sets: readonly ChangeSet[] | null,
@@ -37,7 +27,6 @@ export function settle(
 
 export type Asked = { thread: string; minutes: number };
 
-// `<thread> [--timeout <minutes>]`, or why not.
 export function parseAwait(args: readonly string[]): Asked | string {
   const [thread, ...rest] = args;
   if (thread === undefined || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(thread))
@@ -49,8 +38,6 @@ export function parseAwait(args: readonly string[]): Asked | string {
   return { thread, minutes };
 }
 
-// The server answering, as the stream's `retry: 2000` asks, and how long it
-// may stay gone before the wait gives up: a restart takes seconds.
 const retry = 2_000;
 const goneFor = 120_000;
 
@@ -60,7 +47,6 @@ class TimedOut extends Error {}
 export async function awaitDecision(app: string, asked: Asked): Promise<Outcome> {
   const deadline = Date.now() + asked.minutes * 60_000;
   let downSince: number | null = null;
-  // Each call to the server, again while it is down, until it's been down too long.
   async function reach<T>(call: () => Promise<T>): Promise<T> {
     for (;;) {
       try {
@@ -78,7 +64,6 @@ export async function awaitDecision(app: string, asked: Asked): Promise<Outcome>
   }
   const sets = () =>
     reach(async () => {
-      // No longer than the wait: a server that hangs times it out too.
       const reply = await fetch(new URL(`/api/threads/${asked.thread}`, app), {
         signal: AbortSignal.timeout(Math.max(0, deadline - Date.now())),
       });
@@ -122,14 +107,12 @@ export async function awaitDecision(app: string, asked: Asked): Promise<Outcome>
       }
       try {
         for await (const type of eventTypes(reply.body)) {
-          // Another thread moving says nothing about this one.
           if (type === "threads") continue;
           outcome = settle(waited, await sets());
           if (outcome) return outcome;
         }
       } catch (error) {
         if (stop.aborted) throw new TimedOut();
-        // The stream dropped; connect again.
         if (!(error instanceof TypeError)) throw error;
       }
       await reply.body.cancel().catch(() => {});
@@ -142,7 +125,6 @@ export async function awaitDecision(app: string, asked: Asked): Promise<Outcome>
   }
 }
 
-// Each server-sent event's `type`, as the stream's `data:` lines carry it.
 export async function* eventTypes(body: AsyncIterable<Uint8Array>): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let buffered = "";

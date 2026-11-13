@@ -40,15 +40,12 @@ import { awaitDecision, parseAwait } from "./drive-await.ts";
 const root = new URL("../", import.meta.url);
 const port = Number(process.env.ORIEL_DRIVE_PORT ?? 9333);
 const app = process.env.ORIEL_URL ?? "http://127.0.0.1:4310/";
-// A second window, e.g. a mock PM's fresh run beside the maintainer's, needs
-// its own profile as well as its own debugging port.
 const profileName = process.env.ORIEL_CHROME_PROFILE ?? "chrome";
 if (!/^[a-z0-9-]+$/.test(profileName))
   throw new Error("ORIEL_CHROME_PROFILE is lowercase letters, digits and dashes");
 const chrome =
   process.env.ORIEL_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const shots = fileURLToPath(new URL("shots/drive/", root));
-// Long enough for a model turn to land, short enough to notice a hang.
 const timeout = 30_000;
 
 async function attach(): Promise<Browser | null> {
@@ -85,7 +82,6 @@ async function browser(): Promise<Browser> {
   throw new Error(`Chrome didn't open its debugging port, ${port}`);
 }
 
-// The tab showing Oriel, or the first tab.
 async function page(on: Browser): Promise<Page> {
   const pages = on.contexts().flatMap((context) => context.pages());
   const origin = new URL(app).origin;
@@ -109,8 +105,7 @@ async function shot(tab: Page, name?: string): Promise<string> {
   return path;
 }
 
-// The page as an accessibility outline, with every password field's value
-// masked: the outline carries what a field holds, and this one is printed.
+// Password values masked: the outline carries what a field holds, and it is printed.
 async function outline(tab: Page): Promise<string> {
   const secrets = await tab
     .locator('input[type="password"]')
@@ -141,18 +136,14 @@ type ThreadView = {
   changeSets: { id: string; status: string }[];
 };
 
-// GETs need no Origin (packages/server/src/guard.ts).
 async function get<T>(path: string): Promise<T> {
   const reply = await fetch(new URL(path, app));
   if (!reply.ok) throw new Error(`GET ${path}: ${reply.status}`);
   return (await reply.json()) as T;
 }
 
-// Each thread as a transcript, oldest first, one JSON line per entry, so no
-// text inside an entry can pass for another: what the person typed, what the
-// agent said (its streamed text joined), its runs and its change sets. Only
-// `person` lines come from someone at the window; the rest, workstream names
-// included, is source content, which anyone who can edit a source can write.
+// One JSON line per entry, so no text inside one can pass for another. Only `person` lines come
+// from the window; the rest is source content, which anyone who can edit a source can write.
 async function threads(only?: string): Promise<void> {
   const { threads: list } = await get<{ threads: { id: string }[] }>("/api/threads");
   const line = (value: Record<string, unknown>) => console.log(JSON.stringify(value));
@@ -178,7 +169,6 @@ async function threads(only?: string): Promise<void> {
       } else if (entry.kind === "run.started" || entry.kind === "run.finished")
         line({ kind: entry.kind });
       else {
-        // Markers, errors, limits, searches: everything they say but the order.
         const { seq: _seq, ...rest } = entry;
         line(rest);
       }
@@ -187,11 +177,8 @@ async function threads(only?: string): Promise<void> {
   }
 }
 
-// Only a person approves a change set (decision 0003), and only a person
-// sends a message held for the user to the agent, or discards it
-// (decision 0024). The driver never presses a control that does either, or
-// submits a form that has one, and never acts on a review link's page,
-// whatever the server: the maintainer does that, in the same window.
+// Only a person approves a change set, or sends or discards a held message: the driver never
+// presses a control that does, submits a form with one, or acts on a review link's page.
 const writes = /^(approve|apply|try again|revert)/i;
 const held = /^(send to agent|discard)/i;
 function refuse(why: string): true {
@@ -218,20 +205,15 @@ const oneKey = (chord: string): boolean => {
   return keys.length > 0 && keys.slice(0, -1).every((key) => modifiers.has(key));
 };
 
-// An element's accessible name, near enough: its label, else its text. It
-// runs in the page; these are the two DOM members it uses.
 type Named = { getAttribute(name: string): string | null; textContent: string | null };
 const nameOf = (el: Named | null): string =>
   el ? (el.getAttribute("aria-label") ?? (el.textContent || el.getAttribute("value")) ?? "") : "";
-// An element's name and the names of the controls inside it. It runs in the
-// page, so it stands alone.
 type Within = Named & { querySelectorAll(selector: string): ArrayLike<Named> };
 const namesWithin = (el: Within): string[] =>
   [el, ...Array.from(el.querySelectorAll("button, input[type=submit], [role=button]"))].map(
     (each) =>
       each.getAttribute("aria-label") ?? (each.textContent || each.getAttribute("value")) ?? "",
   );
-// The focused element's name, and its form's submit buttons', which Enter presses.
 const focusedNames = `(() => {
   const nameOf = ${nameOf.toString()};
   const el = document.activeElement;
@@ -253,7 +235,6 @@ const commands = [
   "await",
 ];
 const [command = "look", ...args] = process.argv.slice(2);
-// What each command needs, checked before Chrome opens.
 const needs: Record<string, number> = { click: 1, fill: 2, press: 1, drop: 2, wait: 1 };
 // Output is left to drain: exiting at once could cut a long transcript.
 if (!commands.includes(command)) {
@@ -274,14 +255,12 @@ else if (command === "await") {
     process.exitCode = code;
   }
 } else if (command === "close") {
-  // Only a running Chrome; nothing running is already closed.
   const running = await attach();
   if (running) await (await running.newBrowserCDPSession()).send("Browser.close");
 } else await drive();
 
-// One command at a time, so none can move focus or change the page between
-// another's check and its action. A lock left by a command that died is
-// taken over.
+// One command at a time, so none can move focus or change the page between another's check
+// and its action.
 function lock(): boolean {
   const path = fileURLToPath(new URL(".oriel/drive.lock", root));
   mkdirSync(fileURLToPath(new URL(".oriel/", root)), { recursive: true });
@@ -368,7 +347,6 @@ async function drive(): Promise<void> {
         const target = tab.locator(need(args[0], "a selector")).first();
         const links = args.slice(1);
         if (links.length === 0) need(undefined, "a link or text to drop");
-        // Built in the page, which has the DOM this script's types don't.
         const data = await tab.evaluateHandle(`(() => {
           const dropped = ${JSON.stringify(links)};
           const transfer = new DataTransfer();
@@ -377,7 +355,6 @@ async function drive(): Promise<void> {
           transfer.setData("text/plain", dropped.join("\\n"));
           return transfer;
         })()`);
-        // The zone shows its veil on dragenter, and the veil takes the drop.
         await target.dispatchEvent("dragenter", { dataTransfer: data });
         const veil = tab.locator(".drop-veil");
         const onto = (await veil.count()) > 0 ? veil : target;

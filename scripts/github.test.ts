@@ -85,8 +85,6 @@ test("an edit's new title is checked for values from .env, as a new PR's is", ()
   assert.deepEqual(published({ op: "pr-view", number: 1 }), []);
 });
 
-// pr-enqueue on a red head: #228 was queued with ui failing, and ui isn't
-// required, so the queue merged it (fixed by #229).
 const pr = { id: "PR_x", number: 7, headRefOid: "fa66b697774d37ce99f89348c82cc44a5d19a4c7" };
 const noPause = async () => assert.fail("paused");
 const again = async () => assert.fail("read the PR again");
@@ -102,8 +100,6 @@ const checksOf = (runs: CheckRun[], despite: string[] = []) => ({
   despite,
 });
 
-// A stand-in for GitHub that answers each mutation from a script and records
-// what it was sent.
 type Answer = { data?: unknown; errors?: { message?: string }[] };
 function standIn(answers: Record<string, Answer>) {
   const sent: string[] = [];
