@@ -76,7 +76,7 @@ Each tab is padded `0.25rem var(--space-3)`, `--radius`, `--weight-medium`, `--t
 
 ### Beside the radios it resembles
 
-Picking one of a few is drawn six ways in Oriel (cms:B1). The two closest to tabs:
+Picking one of a few is drawn six ways in Oriel. The two closest to tabs:
 
 ```html specimen id=compare title="A saved setting is radios; a page's sections are nav links"
 <div class="ws-stack">
@@ -169,7 +169,7 @@ Tabs and radios both pick one of a few. The difference is what picking does: a t
 
 ## Drift
 
-Status **drifting**, as part of "pick one of a few" (cms:B1 in [the drift report](/drift)):
+Status **drifting**, as part of "pick one of a few":
 
 - One `.tabs` rule styles two controls, buttons and links, by element (`.tabs button`, `.tabs a`), with no class of their own.
 - The padding is a raw `0.25rem` (`.tabs button` in `window.css`), like `.button`'s.

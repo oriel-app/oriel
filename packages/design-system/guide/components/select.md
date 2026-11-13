@@ -285,4 +285,4 @@ Status **drifting**: one control, three boxes.
 
 `.select` has no rule of its own outside `.settings`, so it can't be reused anywhere else as it is. Add to… is a menu made of a select because Browse's context menu has no visible opener.
 
-**Until a Select component lands, copy Browse's filter**: a `<label class="filter">` around a bare `<select>`, with `data-set` when it holds a value. Inside Settings, use `.select` as Settings does. Don't copy `.add-to` for a new action list; use a [menu](/components/menu). The [drift report](/drift) has the proposal, and the [lab](/lab/select) shows it in modern CSS.
+**Until a Select component lands, copy Browse's filter**: a `<label class="filter">` around a bare `<select>`, with `data-set` when it holds a value. Inside Settings, use `.select` as Settings does. Don't copy `.add-to` for a new action list; use a [menu](/components/menu). The [lab](/lab/select) shows the proposal in modern CSS.

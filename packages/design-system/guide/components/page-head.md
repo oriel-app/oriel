@@ -506,4 +506,4 @@ Status **drifting**. The heads agree on their height and disagree on their type 
 - `.tabs a { text-decoration: none }` sits apart from the rest of `.tabs` (`.tabs a` in `window.css`).
 - `workstream-page`, `done-page` and `settings-page` are classes with no CSS.
 
-Until one `PageHead` settles it, **copy the thread head** for anything that is a thing with a state (`h1` in the heading face, chip, a quiet action at the end), and **`h1.page-title`** for a place. If a name must be editable, copy the workstream head as it is, and say in your story that it has no `h1`. Use `.head-action` icons only where a workstream already does. See [the drift report](/drift).
+Until one `PageHead` settles it, **copy the thread head** for anything that is a thing with a state (`h1` in the heading face, chip, a quiet action at the end), and **`h1.page-title`** for a place. If a name must be editable, copy the workstream head as it is, and say in your story that it has no `h1`. Use `.head-action` icons only where a workstream already does.

@@ -213,7 +213,7 @@ Status **drifting**: one `Tooltip` component, and the browser's `title` on every
 
 - Two looks for one job: Oriel's box on controls, the system's on marks. The native one never shows to the keyboard.
 - `data-side` is set and never styled.
-- Its surface is `--radius-sm`; the context menu's, the other top-layer surface, is `--radius-lg` (cms:B3).
+- Its surface is `--radius-sm`; the context menu's, the other top-layer surface, is `--radius-lg`.
 - One icon button has none: the narrow bar's menu.
 
-**Until it's consolidated:** use `Tooltip` for any control. For a mark that isn't a control, keep `title` only as a convenience, and make sure the same words are on the page or in an accessible name. See [the drift report](/drift).
+**Until it's consolidated:** use `Tooltip` for any control. For a mark that isn't a control, keep `title` only as a convenience, and make sure the same words are on the page or in an accessible name.

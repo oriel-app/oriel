@@ -2708,9 +2708,7 @@ a.replies:hover {
   padding: 0.1875rem 0;
 }
 
-/* ChatInput (DRIFT D3): wherever a person asks the agent, one frame, one
-   focus ring, one problem line and one foot. The frame shows focus, as the
-   sidebar's search does, so the field inside needs no outline. */
+/* The frame shows focus, so the field inside needs no outline. */
 
 .chat-input {
   display: grid;

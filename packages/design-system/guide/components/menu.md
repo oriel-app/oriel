@@ -254,10 +254,10 @@ A menu comes from where it opened (`Menu` in `packages/web/src/menu.tsx` sets it
 
 ### A maintainer's decision: focus that looks like hover
 
-`.context-menu-item:is(:hover, :focus-visible)` gives both the same fill and removes the outline. The drift report's two families disagree on it:
+`.context-menu-item:is(:hover, :focus-visible)` gives both the same fill and removes the outline. There are two views of it:
 
-- **Keep it** (cms:B3): a fill is the usual way to mark the current item in a roving menu, and a ring inside a 10rem popover is heavy. The rest of the menu is already one component and needs nothing.
-- **Change it** (btn:B8): with the pointer resting on one item and the arrow keys on another, two items are lit, and nothing says which one Enter will choose. That's the specimen above. The fix is to keep the fill for hover and give `:focus-visible` an inset ring (`outline-offset` of minus `--border-thick`), as `.cluster-toggle` already does.
+- **Keep it:** a fill is the usual way to mark the current item in a roving menu, and a ring inside a 10rem popover is heavy. The rest of the menu is already one component and needs nothing.
+- **Change it:** with the pointer resting on one item and the arrow keys on another, two items are lit, and nothing says which one Enter will choose. That's the specimen above. The fix is to keep the fill for hover and give `:focus-visible` an inset ring (`outline-offset` of minus `--border-thick`), as `.cluster-toggle` already does.
 
 Until it's decided, copy the menu as it is: don't give a new menu its own focus rule.
 
@@ -269,7 +269,7 @@ Until it's decided, copy the menu as it is: don't give a new menu its own focus 
 - **Close:** Escape or Tab closes it and gives focus back. Both stop there, so Escape doesn't also close the drawer behind it. A click outside closes it too (`popover="auto"`).
 - `role="menu"` with `aria-label` "Actions for {title}"; items are `role="menuitem"` with `tabindex="-1"`, reached by the arrow keys, not Tab.
 - **Swipe:** the actions are `aria-hidden` and out of the tab order until revealed; then each revealed one is `tabindex="0"`. Escape on an open row closes it. A tap on an open row closes it rather than following the link. A rightward swipe on a closed row is left to the browser, whose back gesture it is.
-- The row itself gives no sign that it has a menu. Neither `aria-haspopup` nor a visible "⋯" exists; a visible trigger is a separate product decision (cms:B3).
+- The row itself gives no sign that it has a menu. Neither `aria-haspopup` nor a visible "⋯" exists; a visible trigger is a separate product decision.
 
 ## Content
 
@@ -285,4 +285,4 @@ Until it's decided, copy the menu as it is: don't give a new menu its own focus 
 - `WorkstreamMenu` in `packages/web/src/end-workstream.tsx`, used by `WorkstreamEntry` in `packages/web/src/sidebar.tsx` (with the swipe) and by `DonePage` in `packages/web/src/other-pages.tsx`.
 - `Swipeable` in `packages/web/src/swipe.tsx`, which draws its actions too; the stops in `packages/web/src/swiping.ts`. CSS: `.swipe`, `.swipe-row`, `.swipe-actions`, `.swipe-action` and `.swipe-action[data-danger]` in `window.css`.
 
-The menu is one component used everywhere it shows, so its status is stable. Two small things drift with other pages: the focus look above (btn:B8), and the tooltip's `--radius-sm` against the menu's `--radius-lg` for the two top-layer surfaces (cms:B3). See [the drift report](/drift).
+The menu is one component used everywhere it shows, so its status is stable. Two small things drift with other pages: the focus look above, and the tooltip's `--radius-sm` against the menu's `--radius-lg` for the two top-layer surfaces.

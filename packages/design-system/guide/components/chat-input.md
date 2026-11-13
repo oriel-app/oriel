@@ -11,7 +11,7 @@ summary: Where a person asks the agent: one ChatInput for the overview's compose
 
 ## What it is
 
-The field a person asks the agent in, with its button. It's where "point, don't prompt" turns into a question, so it's the most-used control in Oriel. One component, `ChatInput`, draws it in every place (DRIFT D3, done):
+The field a person asks the agent in, with its button. It's where "point, don't prompt" turns into a question, so it's the most-used control in Oriel. One component, `ChatInput`, draws it in every place:
 
 1. **The overview's composer** (decision 0030): a thread's, raised in a dock at the page's foot, "Ask about your window". Its questions to start from sit beside the headlines they come from. Asking carries it into the window chat's rail, and it isn't drawn at the foot while the chat is open. Hiding the chat puts it back, with its draft and what it's looking at, and **Back to the chat** in its foot.
 2. **The window chat's composer**: its first ask, and its follow-ups once there's an answer. It sits at the rail's foot, raised, or the sheet's under 1100px; while an item is open, the item's dock carries it, at every width. Once the chat has moved into its workstream, it's a fresh chat's again ("Ask about your window"), and the next question starts that chat.

@@ -199,7 +199,7 @@ export function refPath(file: string): string {
   return file === "window.css" ? "packages/web/assets/window.css" : file;
 }
 
-export function inline(text: string, at?: string): string {
+export function inline(text: string): string {
   // Code spans first, held aside, so nothing inside them is read as markup
   // and bold or a link can still hold one.
   const held: string[] = [];
@@ -213,8 +213,7 @@ export function inline(text: string, at?: string): string {
       held.push(`<a class="ws-ref" href="${escape(href)}"><code>${escape(code)}</code></a>`);
     } else if (ref) {
       const [, file = "", line] = ref;
-      const then = line && at ? `?at=${at}` : "";
-      const href = `/source/${refPath(file)}${then}${line ? `#L${line}` : ""}`;
+      const href = `/source/${refPath(file)}${line ? `#L${line}` : ""}`;
       held.push(`<a class="ws-ref" href="${href}"><code>${escape(code)}</code></a>`);
     } else held.push(`<code>${escape(code)}</code>`);
     plain.push(`<code>${escape(code)}</code>`);
@@ -274,7 +273,7 @@ export function refs(text: string): {
   return { files, names: nameRefs(bare) };
 }
 
-export type Render = { fence(fence: Fence): string | null; at?: string };
+export type Render = { fence(fence: Fence): string | null };
 
 export function html(nodes: Node[], render: Render): string {
   return nodes
@@ -282,27 +281,25 @@ export function html(nodes: Node[], render: Render): string {
       switch (node.kind) {
         case "heading": {
           const tag = `h${node.level}`;
-          return `<${tag} id="${node.id}"><a class="ws-anchor" href="#${node.id}" aria-label="Link to this section">#</a>${inline(node.text, render.at)}</${tag}>`;
+          return `<${tag} id="${node.id}"><a class="ws-anchor" href="#${node.id}" aria-label="Link to this section">#</a>${inline(node.text)}</${tag}>`;
         }
         case "paragraph":
-          return `<p>${inline(node.text, render.at)}</p>`;
+          return `<p>${inline(node.text)}</p>`;
         case "list": {
           const tag = node.ordered ? "ol" : "ul";
           const items = node.items
-            .map((item) => `<li>${inline(item.text, render.at)}${html(item.children, render)}</li>`)
+            .map((item) => `<li>${inline(item.text)}${html(item.children, render)}</li>`)
             .join("");
           return `<${tag}>${items}</${tag}>`;
         }
         case "quote":
           return `<blockquote>${html(node.children, render)}</blockquote>`;
         case "table": {
-          const head = node.head
-            .map((c) => `<th scope="col">${inline(c, render.at)}</th>`)
-            .join("");
+          const head = node.head.map((c) => `<th scope="col">${inline(c)}</th>`).join("");
           const rows = node.rows
             .map(
               (r) =>
-                `<tr>${node.head.map((_, j) => `<td>${inline(r[j] ?? "", render.at)}</td>`).join("")}</tr>`,
+                `<tr>${node.head.map((_, j) => `<td>${inline(r[j] ?? "")}</td>`).join("")}</tr>`,
             )
             .join("");
           return `<div class="ws-table"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;

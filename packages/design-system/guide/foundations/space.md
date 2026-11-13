@@ -64,10 +64,7 @@ Six steps, in rem, so they follow the Text size. There's no `--space-5` or `--sp
 
 ### Literals left in rules
 
-[The drift report](/drift) counts what's left (its section 1):
-
-- **55 rem literals** in padding, margin, gap and inset, not through `--space-*`. Most are under `--space-1`: 0.125rem 13 times, then 0.1875rem, 0.25rem and 0.3125rem in small controls' vertical padding. `.button`'s own `padding: 0.25rem var(--space-3)` (`.button` in `window.css`) is one. The rest are page ends (6rem, 7rem) and gutters kept free for a button placed over a row.
-- **31 px literals** outside the token blocks: hairline gaps of 1px and 2px, the visually-hidden 1px, a sketch frame's heights, the focus ring's 2px offset, and a few one-offs.
+[Counts](/foundations/counts) lists the rem literals in padding, margin, gap and inset that aren't a `--space-*` token, and the px literals outside the token blocks. Most rem literals are under `--space-1`, in small controls' vertical padding; `.button`'s own `padding: 0.25rem var(--space-3)` (`.button` in `window.css`) is one. The rest are page ends and gutters kept free for a button placed over a row. Most px literals are hairline gaps, the visually-hidden 1px, a sketch frame's heights and the focus ring's offset.
 
 They're allowed, but a new one should have a reason. Reach for the scale first. A nudge under 4px is fine as a literal. A gap you'd want a theme to change isn't.
 

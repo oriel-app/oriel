@@ -1,9 +1,4 @@
-// Where a person asks the agent (DRIFT D3): the thread's composer, the window
-// chat's, the overview's and a workstream's Ask box, one frame for all of
-// them. Its foot says what the agent will read, on the left. The send
-// key is Settings' (Settings › Send says which); the box doesn't repeat it.
-// Send is a plain button until there's something to send; only then is it
-// the primary one.
+// The send key is Settings' to say (Settings › Send); the box doesn't repeat it.
 import type { ComponentChildren } from "preact";
 import { useContext } from "preact/hooks";
 import { useMoveDrop } from "./drag-move.ts";

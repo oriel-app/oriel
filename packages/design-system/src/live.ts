@@ -94,7 +94,7 @@ function contrast(): Live {
       );
     }
   if (lines.length > 0) {
-    const note = `Hairlines aren't claimed: \`--line\` and \`--line-strong\` sit at ${range(lines)}:1 against their backgrounds, under the 3:1 a control's only edge would need. Oriel's fields and buttons are told by their label and fill too, so this is reported, not failed. See the drift report.`;
+    const note = `Hairlines aren't claimed: \`--line\` and \`--line-strong\` sit at ${range(lines)}:1 against their backgrounds, under the 3:1 a control's only edge would need. Oriel's fields and buttons are told by their label and fill too, so this is reported, not failed.`;
     md.push(note);
     html.push(`<p class="ws-note">${inline(note)}</p>`);
   }

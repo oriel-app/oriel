@@ -1124,7 +1124,7 @@ Hover and focus here are forced with the workshop's `ws-` classes, which copy wi
 
 ## Drift
 
-Status **drifting**. The row shapes are deliberately different, but the same jobs are done several ways. From the drift report ([rfc:R1, R3, R4, R5, R6](/drift)):
+Status **drifting**. The row shapes are deliberately different, but the same jobs are done several ways.
 
 - **Framed lists ignore the theme (R1).** `.overview-rows` takes `--list-frame` and `--list-bg`, so Broadsheet draws it open on the page. `.clusters` and `.members` in `window.css` hard-code a `--line` border on `--surface`, so Browse and a workstream's items keep a white framed card in every theme. Row separators are written three ways at two strengths (`--line`, or 60% `--line`).
 - **One item, three rows (R3).** Browse's `.item` and the workstream's `.member` draw the same thing (type, key, title, status) with different grids, padding (`--space-6` against `--space-3`) and markup (Browse puts the type mark inside the key's link and doesn't use `ItemKey`). The overview's candidate draws it a third way, and a block's rows a fourth. `Member` in `packages/web/src/parts.tsx` still takes an `inRegion` prop no caller passes.

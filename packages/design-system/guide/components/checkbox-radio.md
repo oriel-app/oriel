@@ -297,4 +297,4 @@ Status **drifting**.
 - The first run's `.cli-picked` is a third "picked" look, and not a control.
 - No radio or checkbox has a disabled look of Oriel's own.
 
-**Until a ChoiceList component lands, copy Choices** for a setting: `Choices` in `packages/web/src/settings-page.tsx` is exported, so import it. Its `about` explanation is optional; omit it when the label and options are enough. The [drift report](/drift) has the proposal, and the [lab](/lab/checkbox-radio) has modern-CSS versions of both.
+**Until a ChoiceList component lands, copy Choices** for a setting: `Choices` in `packages/web/src/settings-page.tsx` is exported, so import it. Its `about` explanation is optional; omit it when the label and options are enough. The [lab](/lab/checkbox-radio) has modern-CSS versions of both.

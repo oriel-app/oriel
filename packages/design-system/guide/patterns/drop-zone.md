@@ -55,4 +55,4 @@ What was dropped goes to the server as links and files by name and time, never a
 
 ### Drift
 
-- **The veil's line uses raw values.** `.drop-veil p` pads `0.5rem 1rem` and the veil sits `0.5rem` in, not on `--space-*` tokens ([Drift report](/drift), D15).
+- **The veil's line uses raw values.** `.drop-veil p` pads `0.5rem 1rem` and the veil sits `0.5rem` in, not on `--space-*` tokens (see [Counts](/foundations/counts)).

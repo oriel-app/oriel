@@ -12,7 +12,6 @@ import {
   proposalsCss,
   root,
   shownSource,
-  sourceAt,
   tokenCss,
   windowCss,
 } from "./oriel.ts";
@@ -101,13 +100,6 @@ export function handle(req: IncomingMessage, res: ServerResponse): void {
     }
     if (path.startsWith("/source/")) {
       const file = path.slice("/source/".length);
-      const at = url.searchParams.get("at");
-      if (at !== null) {
-        const then = sourceAt(file, at);
-        if (then === null)
-          return send(res, 404, htmlType, notFound(v, `No ${file} at ${at} in ${oriel}.`));
-        return send(res, 200, htmlType, sourcePage(file, then, v, at));
-      }
       const text = shownSource(file);
       if (text === null) return send(res, 404, htmlType, notFound(v, `No ${file} in ${oriel}.`));
       const name = url.searchParams.get("find");

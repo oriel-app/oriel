@@ -285,7 +285,7 @@ Not tried: Safari, and clicking in Firefox (its headless mode only takes a pictu
 
 ## Adopt now or wait
 
-- **Adopt now:** `@starting-style` with `allow-discrete` for menus, tooltips and the confirm dialog; `interpolate-size` with `::details-content` for run lines, folds and history (polish, desktop only); `text-wrap: balance` on titles and `pretty` on prose; `scrollbar-gutter: stable` on the scrolling columns.
+- **Adopt now:** `@starting-style` with `allow-discrete` for menus, tooltips and the confirm dialog, with the [popover lab](/lab/popover)'s fade (`.more-enter` here only shows `@starting-style` alone); `interpolate-size` with `::details-content` for run lines, folds and history (polish, desktop only); `text-wrap: balance` on titles and `pretty` on prose; `scrollbar-gutter: stable` on the scrolling columns.
 - **Keep using:** `color-mix()`, `:has()`, container size queries.
 - **Use when needed:** container style queries, `sibling-index()`.
 - **Don't:** `light-dark()` (the token blocks already do it), `@scope` (prefixes do it), `@layer` (one sheet).

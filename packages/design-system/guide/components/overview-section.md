@@ -672,7 +672,7 @@ Status **drifting**:
 
 - **Two "N more"s on one page.** Workstreams' is a button under the list; the side's are links in the head. Decision 0027 explains why they go to different places, but not why they sit in different places. Browse's "Show 50 more" and the sidebar's "N more" are two more versions; see [List rows](/components/list-row) and [Sidebar](/components/sidebar).
 - **Two section heads.** The overview's `.overview-head` follows the theme; every other page's `.section-title` is small caps in every theme. In Broadsheet the overview's heads are large, ruled and in sentence case, while a workstream page's are still `--text-xs` capitals.
-- **Lists that ignore the frame tokens.** `.overview-rows` and `.overview-headlines` follow `--list-frame` and `--list-bg`; `.members` and `.clusters` on other pages don't ([rfc:R1](/drift)).
+- **Lists that ignore the frame tokens.** `.overview-rows` and `.overview-headlines` follow `--list-frame` and `--list-bg`; `.members` and `.clusters` on other pages don't.
 - **`.overview-quiet` is two things**: the empty line here, and the inline "none moved" in a workstream row, where its `--text-md` is a step too big (`.overview-quiet` in `window.css`).
 - **Rules only on hover.** A headline's and a signal's rule live in `title`, so the keyboard and touch can't read them, though "each derived one shows its rule".
 
