@@ -1,14 +1,3 @@
-// Settings' Connections (decision 0049): one row per connection, drawn the
-// same way for every connector: its name, its connector and what it reads,
-// its state (synced, syncing, a problem, not open), what its last sync left
-// out, and what a person sets on it: its name in the window, its connector's
-// own options, whether it may propose changes, and how often it syncs; or,
-// through a source server, what the person picks through it (decision 0059).
-// Each applies at once, with an Undo, and the next sync reads with it. A
-// mapping shows in its connector's review step, which the person edits and
-// applies (OA-232), through a source server too. Disconnect asks first. Then
-// Add a connection, which lists each connector the window connects itself,
-// and draws its steps.
 import { Fragment } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { ConnectSteps, ReviewStep } from "./connect-steps.tsx";
@@ -47,7 +36,6 @@ const connectionStates: Record<
   synced: { name: "Synced", tone: "done" },
 };
 
-// How often a connection syncs while Oriel is open, by minutes.
 const everyNames: { value: string; label: string }[] = [
   { value: "start", label: "When Oriel starts, and when you ask" },
   { value: "5", label: "Every 5 minutes" },
@@ -106,12 +94,7 @@ function ConnectionRow(props: {
   const problem = connections.problems[connection.id] ?? connection.problem;
   const open = connection.state === "open";
   const waiting = connection.state === "waiting";
-  // One waiting for options that fit its source is set as an open one is;
-  // one through a source server, by what the person picks through it, and
-  // its mapping, if its connector reads one (decision 0059).
   const { settable, mappings } = settableOf(connection, connector);
-  // The last change says what it set, and its own problem, beside the
-  // option it changed; any other problem says itself here.
   const besideChange = setting.said !== null && settable;
   const saidBeside = besideChange && setting.problem === problem;
   const connectorName = connector?.name ?? connection.kind;
@@ -229,9 +212,6 @@ function ConnectionRow(props: {
   );
 }
 
-// What the last change set, with its Undo; or why it didn't work, or why
-// what it set doesn't fit the source, with the Undo right there to put the
-// old options back. Settings draws it beside the option it changed.
 function Said(props: {
   connection: ConnectionView;
   connections: ConnectionsModel;
@@ -265,8 +245,7 @@ function Said(props: {
   );
 }
 
-// Disconnect, which asks first, saying what goes. A connection a flag makes
-// is made again at every start, so it has none.
+// A connection a flag makes is made again at every start, so it has no Disconnect.
 export function Disconnect(props: {
   connection: ConnectionView;
   connector: ConnectorView | undefined;
@@ -325,7 +304,6 @@ export function Disconnect(props: {
   );
 }
 
-// What a person sets on a connection, drawn the same way for every one.
 function Options(props: {
   connection: ConnectionView;
   connector: ConnectorView;
@@ -342,7 +320,6 @@ function Options(props: {
       what,
       field: Object.keys(options)[0] ?? "",
     });
-  // The last change's word, beside the option it changed.
   const beside = (field: string) =>
     setting.said?.field === field && (
       <Said connection={connection} connections={connections} send={send} />
@@ -417,16 +394,7 @@ function Options(props: {
   );
 }
 
-// How a connection's tables feed Oriel's fields (OA-232): while it waits,
-// its connector's review step, the one a connect shows, with the draft or
-// guess to apply. Once it reads, one line a table it reads, each with Ask
-// Oriel, which drafts a change in the window chat, and Edit by hand, which
-// opens the review step's editor on that table alone; the tables it doesn't
-// read fold into one line. A change is the person's own, applied with an
-// Undo, and says before then what it does to the items the connection has.
-// Where a mapping's last change is said: its own place, apart from a pick
-// that keeps the same option, for an option that is both picked through
-// its server and mapped.
+// Apart from a pick's place: one option can be both picked through its server and mapped.
 const mappingPlace = (name: string) => `${name}:mapping`;
 
 function MappingOption(props: {
@@ -440,7 +408,6 @@ function MappingOption(props: {
   const review = connections.reviews[connection.id] ?? null;
   const setting = settingOf(connections, connection.id);
   const editing = connections.edits[connection.id] ?? null;
-  // Drawn again whenever its options change, wherever they were set.
   const options = JSON.stringify(connection.options);
   useEffect(() => {
     send({ type: "reviewAsked", kind: connection.kind, connection: connection.id });
@@ -529,8 +496,6 @@ function MappingOption(props: {
   );
 }
 
-// Names the person types, with commas between them, set as they leave the
-// field or press Enter.
 function ListOption(props: {
   field: Extract<OptionField, { kind: "list" }>;
   connection: ConnectionView;
@@ -569,9 +534,6 @@ function ListOption(props: {
   );
 }
 
-// Whether Oriel may propose changes to a connection, its connector's
-// `readOnly` option turned round. One its source lets the person only view
-// is read-only whatever it says: locked, with why.
 function ReadOnly(props: {
   connection: ConnectionView;
   connector: ConnectorView;
@@ -598,13 +560,6 @@ function ReadOnly(props: {
   );
 }
 
-// What a person picks on a connection through its source server (decision
-// 0059), such as a project or channels, from the lists the
-// server gives, each with the last change's word beside it. With nothing
-// picked, each says what the connection reads instead. Settings draws it
-// in the connection's row, and the first run under what Oriel found, where
-// each names its source (`of`), as its connector names it, and says itself
-// why a list didn't come, as no row says it there.
 export function ServerPicks(props: {
   connection: ConnectionView;
   connections: ConnectionsModel;
@@ -646,11 +601,6 @@ export function ServerPicks(props: {
   );
 }
 
-// What a person picks on a connection through its source server, from the
-// list the server gives: what's picked now, as the server reads it from the
-// connection's options, and Change, which lists. One of several is ticked,
-// then used together, up to `most`; with none picked, it says what the
-// connection reads instead.
 function PickOption(props: {
   pick: ConnectionPick;
   connection: ConnectionView;
@@ -663,17 +613,15 @@ function PickOption(props: {
   const [listing, list] = useState(false);
   const { picked, many } = field;
   const { current, none, said } = pickSaid(field);
-  // Those ticked, while listing several.
   const [ticked, tick] = useState<string[]>(picked);
   const most = field.most ?? Number.POSITIVE_INFINITY;
   return (
     <fieldset class="settings-field">
       <legend class="settings-field-name">{field.label}</legend>
       <span class="settings-field-about">
-        {said} {/* Again, while no list came, as when the source didn't give one. */}
+        {said}
         {(!listing || setting.choices === null) && (
-          // Listing asks the person's agent, which takes a while: the button
-          // says so at once, and takes no second click.
+          // Listing asks the person's agent, which takes a while.
           <button
             type="button"
             class="quiet-action pick-open"
@@ -705,8 +653,6 @@ function PickOption(props: {
         )}
       </span>
       {listing && setting.choices !== null && (
-        // The list scrolls; Find above it and its actions below stay in
-        // sight, however long it is.
         <div class="pick-list">
           {(setting.more || setting.query !== "") && (
             <input
@@ -769,8 +715,6 @@ function PickOption(props: {
               <button
                 type="button"
                 class="button primary"
-                // Unticking every one picked, the connection reads what it
-                // reads with none, where it says.
                 disabled={setting.pending || (ticked.length === 0 && (none || !field.unpicked))}
                 onClick={() => {
                   list(false);
@@ -797,9 +741,6 @@ function PickOption(props: {
   );
 }
 
-// A choice in a pick's list, by its name, with its value where one is
-// picked alone; one picked that the list didn't give says why, in its
-// pick's words, under its name.
 function ChoiceName(props: { choice: PickChoiceView; pick: ConnectionPick }) {
   const { choice, pick } = props;
   const name = pick.many ? choice.name : `${choice.name} (${choice.value})`;
@@ -817,9 +758,6 @@ function ChoiceName(props: { choice: PickChoiceView; pick: ConnectionPick }) {
 const choiceClass = (choice: PickChoiceView) =>
   choice.unlisted ? "choice choice-unlisted" : "choice";
 
-// Every connector the window connects itself, what's on this Mac, and whether it
-// may connect it now, or why not; one picked shows its steps beneath it. The
-// rest come through source servers, above (decision 0059).
 function AddConnection(props: {
   connections: ConnectionsModel;
   connectors: Connectors;
@@ -836,7 +774,6 @@ function AddConnection(props: {
       </h2>
       <ul class="provider-rows">
         {Object.values(connectors)
-          // A kind turned off doesn't show at all (decision 0059).
           .filter((connector) => connector.connect !== null)
           .filter((connector) => !turnedOff(connections).includes(connector.kind))
           .map((connector) => {

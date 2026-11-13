@@ -1,34 +1,19 @@
-/* Shared tokens (decision 0034): layout, and what's derived from a theme's
-   tokens. Every theme reads them, and none sets them. */
+/* Every theme reads these, and none sets them. */
 html {
   color-scheme: light dark;
 
   --page: 74rem;
-  /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
   --rail: 15rem;
-  /* The sidebar, open. */
   --sidebar-open: 15.5rem;
-  /* A thread's rail at the window's edge, in the sidebar's material: with
-     the frame's band beside the column, as wide as the open sidebar, so the
-     two read as a pair. */
   --rail-beside: calc(var(--sidebar-open) - var(--frame-band));
   --chat: 44rem;
-  /* The window chat's rail at the window's edge, once asked (decision
-     0030); narrower under 1280. */
   --chat-rail: 24rem;
-  /* Every column's first line: how far down it starts, and how tall it is,
-     its contents centred, so the sidebar, the page, the rail and the panel
-     share one top line. */
   --inset-top: var(--space-3);
   --head-row: 2rem;
-  /* How far the panel beside the page slides as it arrives. */
   --slide-panel: 0.375rem;
-  /* The one pulse's speed: work going on that the person waits for. */
   --pulse: 1.6s;
-  /* What stacks over what, lowest first. Raised lifts a part over its
-     sibling inside one thing; the rest order the window's own layers.
-     Menus, tooltips and dialogs need none: they open in the top layer. */
+  /* Menus, tooltips and dialogs need none: they open in the top layer. */
   --layer-raised: 1;
   --layer-bar: 3;
   --layer-float: 4;
@@ -40,8 +25,6 @@ html {
   --layer-drawer: 21;
   --layer-toast: 22;
 
-  /* Each state is one colour, for its text and its mark; its tint is mixed
-     from it by the theme's --tint. */
   --accent-soft: color-mix(in srgb, var(--accent) var(--tint), var(--surface));
   --todo-soft: color-mix(in srgb, var(--todo) var(--tint), var(--surface));
   --in-progress-soft: color-mix(in srgb, var(--in-progress) var(--tint), var(--surface));
@@ -50,35 +33,18 @@ html {
   --derived-soft: color-mix(in srgb, var(--derived) var(--tint), var(--surface));
   --derived-line: color-mix(in srgb, var(--derived) 40%, var(--surface));
   --focus: var(--accent);
-  /* Inserted words are done's colour. Handed off is a way of being
-     finished, so it is drawn as done. */
+  /* Handed off is a way of being finished, so it is drawn as done. */
   --ins: var(--done);
   --ins-soft: var(--done-soft);
   --handed-off: var(--done);
   --handed-off-soft: var(--done-soft);
-  /* The frame (decision 0056, amended): the sidebar, a band along the top
-     of the page column and one down its right are one material, and the
-     column is set into it, its top corners curved like a table's apron
-     running into its leg, in the frame's slight shadow. What sits on the
-     right of the column, the item panel or a thread's rail, is the
-     sidebar's material too, so the column sits inset between the two. On a
-     narrow screen the bar is the frame, and the corners curve from its
-     lower edge. */
   --sidebar-bg: var(--frame);
   --frame-band: 4px;
   --frame-curve: var(--frame-corner);
   --frame-top: calc(var(--bar-height) + var(--frame-band));
   --frame-shadow: inset 0 2px 3px -1px var(--frame-shade);
-  /* How far the frame's colour reaches out from the column's edge. */
   --frame-reach: 100vmax;
-  /* What dims the page under the drawer and a dialog: the ink, or in the
-     dark, the paper. */
   --scrim: color-mix(in srgb, var(--text) 32%, transparent);
-  /* The bead grows from the band, in the frame's colour: the bead it drops
-     as, its resting height, how far each neck reaches along the band, what
-     it keeps clear of the column's corners beyond them, and its swell under
-     the pointer. The column's top keeps room for it, so it covers no page
-     head. */
   --bead-seed: 22px;
   --bead-height: 2.75rem;
   --bead-neck: 13px;
@@ -93,13 +59,8 @@ html {
   }
 }
 
-/* The default theme, Graphite (decision 0034): warm greys, one indigo
-   accent, hairlines and compact rows, with serif titles and a thin rule
-   above the overview's sections. Another theme is one
-   :root[data-theme="<name>"] block of these tokens, and its dark block. */
+/* Another theme is one :root[data-theme="<name>"] block of these tokens, and its dark block. */
 :root {
-  /* Colour. The accent means "your move"; each state is one colour, for
-     its text and its mark. */
   --bg: #f6f5f2;
   --surface: #ffffff;
   --surface-hover: #edece8;
@@ -115,12 +76,10 @@ html {
   --in-progress: #0d6b8f;
   --done: #276f44;
   --danger: #b03a22;
-  /* What Oriel computed or found rather than read: a rule, a search. */
   --derived: #54524c;
   --del: #6c6a63;
   --tint: 13%;
   --list-bg: var(--surface);
-  /* A source's own marks stay muted: kind is told by shape and name. */
   --type-story: color-mix(in srgb, var(--done) 55%, var(--line-strong));
   --type-bug: color-mix(in srgb, var(--danger) 55%, var(--line-strong));
   --type-task: color-mix(in srgb, var(--in-progress) 55%, var(--line-strong));
@@ -128,11 +87,9 @@ html {
   --type-other: var(--line-strong);
   --avatar: var(--surface-hover);
   --avatar-text: var(--text-muted);
-  /* The frame: the sidebar's material, and the shadow it casts on the page. */
   --frame: #edece8;
   --frame-shade: rgb(40 32 20 / 0.16);
 
-  /* Type. A sans for everything but the thread, panel and page titles. */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --font-heading: Charter, "Iowan Old Style", Cambria, Georgia, serif;
@@ -149,7 +106,6 @@ html {
   --leading: 1.45;
   --leading-prose: 1.6;
 
-  /* The overview: its section heads under a thin rule, and its lists. */
   --section-rule: var(--border-thin) solid var(--line-strong);
   --section-head-font: var(--weight-strong) var(--text-sm) / var(--leading) var(--font);
   --section-head-case: uppercase;
@@ -158,7 +114,6 @@ html {
   --row: 2rem;
   --row-pad: 0.375rem;
 
-  /* Space and shape. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -168,7 +123,6 @@ html {
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 8px;
-  /* The page column's top corners, in the frame; and the bead's lower ones. */
   --frame-corner: 26px;
   --frame-corner-narrow: 18px;
   --bead-radius: 1rem;
@@ -177,9 +131,6 @@ html {
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow: 0 2px 4px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.1);
 
-  /* Motion: quick for a state, move for a place, and how a move settles;
-     morph for a shape that changes, settling on a damped spring, about 5%
-     over (decision 0056). */
   --duration-quick: 120ms;
   --duration-move: 180ms;
   --duration-morph: 440ms;
@@ -239,10 +190,6 @@ html {
   }
 }
 
-/* Broadsheet (decision 0034): a newspaper page. Cream paper and ink, serif
-   section heads under a heavy rule, square corners, open lists on the page
-   with roomier rows. The accent is umber; each state
-   has a hue of its own. */
 :root[data-theme="broadsheet"] {
   --bg: #f4efe3;
   --surface: #fffcf5;
@@ -287,7 +234,6 @@ html {
   --radius-sm: 0;
   --radius: 2px;
   --radius-lg: 4px;
-  /* A tighter corner, and the bead a printed slip. */
   --frame-corner: 12px;
   --frame-corner-narrow: 8px;
   --bead-radius: 2px;
@@ -327,15 +273,12 @@ html {
    contained body's background doesn't fill the window below a short page. */
 html {
   background: var(--bg);
-  /* Every checkbox, radio and range takes the theme's accent, not the
-     browser's blue. */
   accent-color: var(--accent);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-/* Text size, from Settings: the root's size, which every rem follows. The
-   server writes the attribute, so the first paint is right. */
+/* The server writes the attribute, so the first paint is right. */
 html[data-text-size="small"] {
   --text-size: 93.75%;
 }
@@ -348,11 +291,8 @@ html[data-text-size] {
   font-size: var(--text-size);
 }
 
-/* On Browse the scrollbar's room is kept whether the page is long enough to
-   need it or not, so switching groupings, which grow and shrink the page,
-   never moves it sideways. Only where a scrollbar takes room: an overlay
-   scrollbar keeps none, and a phone-width page keeps none. The room is the
-   frame's, a wider band down the column's right. */
+/* Browse keeps the scrollbar's room, so switching groupings never moves the page sideways.
+An overlay scrollbar keeps none, and a phone-width page keeps none. */
 @media (min-width: 761px) {
   html:has(.window-layout) {
     scrollbar-gutter: stable;
@@ -366,7 +306,6 @@ body {
   color: var(--text);
   font: var(--weight-regular) var(--text-md) / var(--leading) var(--font);
   -webkit-font-smoothing: antialiased;
-  /* A page is as wide as the screen, unless the shell holds it (.shell-main). */
   container: page / inline-size;
 }
 
@@ -378,11 +317,8 @@ textarea {
   color: inherit;
 }
 
-/* Every select draws its own arrow, inset from its right edge as far as
-   its words are from its left, in every theme and scheme. Two strokes, as
-   gradients in the theme's colour, since the page loads no image but its
-   own. A page sets the box: its height, border and size, never the
-   inline padding or the background image. */
+/* Two strokes as gradients, since the page loads no image but its own. A page sets the box,
+never the inline padding or the background image. */
 select {
   --select-inset: var(--space-2);
   --select-arrow: var(--text-muted);
@@ -427,8 +363,6 @@ a {
   outline: var(--border-thick) solid var(--focus);
   outline-offset: 2px;
 }
-
-/* Buttons. A quiet action is text until hovered. */
 
 .button {
   display: inline-flex;
@@ -485,20 +419,14 @@ a {
   cursor: default;
 }
 
-/* The shell: the sidebar beside the page. */
-
-/* The sidebar stays on screen as the page scrolls; the frame, painted
-   here, runs the page's whole height beside it, however long the page. */
 .shell {
   --sidebar: var(--sidebar-open);
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
   min-height: 100vh;
   background: var(--frame);
-  /* The panel's width, and the room it takes beside the page. */
   --panel: 30rem;
   --beside: 0rem;
-  /* The room the bead keeps clear of on its right. */
   --bead-beside: var(--beside);
   transition: grid-template-columns var(--duration-move) ease;
 }
@@ -507,21 +435,14 @@ a {
   --sidebar: 3.25rem;
 }
 
-/* The page column, set into the frame: the band down its right, and its
-   first line far enough down to leave the bead room. */
 .shell-main {
   --inset-top: var(--frame-room);
   min-width: 0;
   margin-right: calc(var(--beside) + var(--frame-band));
   background: var(--bg);
-  /* The page lays out by its own width, which the panel beside it narrows. */
   container: page / inline-size;
 }
 
-/* The band along the column's top and the curve of its top corners: the
-   frame's colour reaching out from a box as wide as the column, fixed as
-   the page scrolls under it, cut to the column's top. The bead grows from
-   its lower edge. */
 .frame {
   position: fixed;
   top: var(--frame-top);
@@ -558,8 +479,6 @@ a {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-
-/* The sidebar: the pages, the workstreams with their threads, the folder. */
 
 .sidebar {
   position: sticky;
@@ -632,8 +551,6 @@ a {
   display: grid;
   gap: 1px;
 }
-
-/* The search over threads, with New thread beside it as an icon. */
 
 .sidebar-search {
   display: grid;
@@ -815,19 +732,14 @@ button.sidebar-search-open {
   padding-left: var(--space-1);
 }
 
-/* The workstream's menu and swipe hold its link, and take its place. */
 .nav-workstream-menu {
   flex: 1;
   min-width: 0;
 }
 
-/* A workstream's name, renamed in place in its row from its menu: the
-   row's height, framed and ringed as the sidebar's search is, since it only
-   shows focused. */
 .rename-field {
   width: 100%;
   min-height: 1.875rem;
-  /* Its text where the row's name was. */
   padding: 0 var(--space-2) 0 calc(var(--space-1) - var(--border-thin));
   border: var(--border-thin) solid var(--focus);
   border-radius: var(--radius);
@@ -903,8 +815,6 @@ button.nav-disclose:hover {
   font-size: var(--text-sm);
 }
 
-/* A thread waiting on the user: its title, then what it waits on and its
-   workstream. */
 .nav-waiting {
   display: grid;
   gap: 1px;
@@ -958,7 +868,6 @@ button.nav-disclose:hover {
   content: "· " / "";
 }
 
-/* A thread's state at a glance: working pulses, the rest hold still. */
 .state-dot {
   flex: none;
   width: 0.4375rem;
@@ -971,8 +880,6 @@ button.nav-disclose:hover {
   background: var(--in-progress);
 }
 
-/* Only an agent mid-turn, or a change set applying, pulses; a change set to
-   review or stalled applying, or a reason held for the person, stands out. */
 .state-dot:is([data-waiting="agent"], [data-waiting="apply"]) {
   animation: pulse var(--pulse) ease-in-out infinite;
 }
@@ -994,9 +901,6 @@ button.nav-disclose:hover {
   box-shadow: inset 0 0 0 var(--border-thin) var(--todo);
 }
 
-/* The workstreams, the done threads, the sources and Settings sit together
-   at the foot of the sidebar, so Needs you has the room under the pages.
-   Whichever of them shows first takes the free space above it. */
 .sidebar-workstreams,
 .sidebar-done,
 .sidebar-sources,
@@ -1009,8 +913,6 @@ button.nav-disclose:hover {
   margin-top: 0;
 }
 
-/* A section's heading that folds it, with what it says folded, or its
-   actions, at its end. */
 .fold-head {
   display: flex;
   align-items: center;
@@ -1069,7 +971,6 @@ button.nav-disclose:hover {
   padding: 0 var(--space-2);
 }
 
-/* "More" in a list that grows in place. */
 button.nav-more {
   width: 100%;
   border: 0;
@@ -1080,8 +981,6 @@ button.nav-more {
   cursor: pointer;
 }
 
-/* The sources sit at the foot of the sidebar, folded to one quiet line
-   that draws the eye only while a sync runs or a source has a problem. */
 .sidebar-sources {
   display: grid;
   gap: var(--space-1);
@@ -1089,7 +988,6 @@ button.nav-more {
   border-top: var(--border-thin) solid var(--line);
 }
 
-/* Settings, at the very foot, under the sources once they load. */
 .sidebar-foot {
   display: grid;
 }
@@ -1122,8 +1020,6 @@ button.nav-more {
   list-style: none;
 }
 
-/* A source: its name, items and last sync open Browse filtered to it;
-   Sync sits at its end, shown on hover or focus where there is hover. */
 .source-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1169,8 +1065,6 @@ button.nav-more {
   padding: var(--space-1) var(--space-2);
 }
 
-/* The overview's count of what waits on the user points here: the list is
-   marked for a moment. */
 .sidebar-needs {
   border-radius: var(--radius);
   outline: none;
@@ -1186,7 +1080,6 @@ button.nav-more {
   }
 }
 
-/* Folded, on a wide screen: icons only, with their names kept for readers. */
 @media (min-width: 761px) {
   .shell[data-folded] .sidebar {
     padding-inline: var(--space-2);
@@ -1198,7 +1091,6 @@ button.nav-more {
     padding: 0;
   }
 
-  /* The brand alone is the first line. */
   .shell[data-folded] .brand {
     min-height: var(--head-row);
   }
@@ -1216,7 +1108,6 @@ button.nav-more {
     display: none;
   }
 
-  /* Search and New thread as two icons; the search's opens the sidebar. */
   .shell[data-folded] .sidebar-search-row {
     flex-direction: column;
     gap: 1px;
@@ -1230,7 +1121,7 @@ button.nav-more {
     display: flex;
   }
 
-  /* The sidebar's own links only: Settings' sections are nav links too. */
+  /* Settings' sections are nav links too. */
   .shell[data-folded] .sidebar .nav-link {
     position: relative;
     justify-content: center;
@@ -1239,8 +1130,6 @@ button.nav-more {
     margin-inline: auto;
   }
 }
-
-/* The narrow-screen bar: the menu and the brand. */
 
 .bar {
   position: sticky;
@@ -1260,7 +1149,6 @@ button.nav-more {
   color: var(--text-muted);
 }
 
-/* How many threads wait on the user, on the menu that shows them. */
 .bar-count {
   position: absolute;
   top: -0.125rem;
@@ -1282,14 +1170,12 @@ button.nav-more {
 }
 
 @media (max-width: 760px) {
-  /* The bar is the frame: no bands beside the page, and a tighter curve. */
   html {
     --bar-height: 2.75rem;
     --frame-band: 0px;
     --frame-curve: var(--frame-corner-narrow);
   }
 
-  /* The drawer floats over the page, so it takes no room beside it. */
   .shell,
   .shell[data-folded] {
     --sidebar: 0rem;
@@ -1300,8 +1186,6 @@ button.nav-more {
     display: flex;
   }
 
-  /* The sidebar is a drawer: off screen, and out of the tab order, until the
-     menu opens it. */
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
@@ -1343,8 +1227,6 @@ button.nav-more {
     pointer-events: auto;
   }
 }
-
-/* Pages */
 
 .page {
   max-width: 52rem;
@@ -1448,7 +1330,6 @@ button.nav-more {
   white-space: nowrap;
 }
 
-/* A thread head's chip that goes to what waits, as Needs review ↓ does. */
 .state-chip[data-jump] {
   border: 0;
   font-family: inherit;
@@ -1479,8 +1360,6 @@ button.nav-more {
   color: var(--handed-off);
 }
 
-/* A chip reads as words of its sentence and wraps with them: its icon and
-   key never part, and its state stays beside the punctuation after it. */
 .chip {
   --chip-dot: var(--todo);
   --chip-state: var(--text-faint);
@@ -1529,9 +1408,6 @@ button.nav-more {
   text-decoration-color: currentColor;
 }
 
-/* The chip whose item is open in the panel stays marked while it is, so the
-   person sees which words the item came from: its name underlined in full
-   in the focus colour, and a small open mark, a panel at an edge. */
 .chip[data-open] .chip-name {
   color: var(--text);
   text-decoration-color: var(--focus);
@@ -1569,9 +1445,6 @@ button.nav-more {
   vertical-align: 0.08em;
 }
 
-/* Where it stands, in the state colours: working, approved and in progress
-   are under way, needing the user and pending wait on them, done and applied
-   landed, the rest are over or open. */
 .chip:is([data-state="working"], [data-state="approved"], [data-state="in-progress"]) {
   --chip-dot: var(--in-progress);
   --chip-state: var(--in-progress);
@@ -1597,8 +1470,6 @@ button.nav-more {
   box-shadow: inset 0 0 0 var(--border-thin) var(--todo);
 }
 
-/* One Oriel can't resolve, and one named while the turn runs, before the
-   thread reloads with what it is. */
 .chip[data-unknown] {
   border-bottom: var(--border-thin) dashed var(--line-strong);
   color: var(--text-faint);
@@ -1617,8 +1488,6 @@ button.nav-more {
   background: var(--in-progress);
 }
 
-/* The window: the clusters, under a grouping. */
-
 .window-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1627,8 +1496,6 @@ button.nav-more {
   margin: 0 auto;
   padding: var(--inset-top) var(--space-6) 6rem;
 }
-
-/* The folder's path, typed when the user adds a source. */
 
 .path-form {
   display: grid;
@@ -1671,16 +1538,10 @@ button.nav-more {
   min-width: 0;
 }
 
-/* What the window says of a connection, and a review step's line. */
-
 .connect-note {
   margin: 0;
   color: var(--text-muted);
 }
-
-/* What Oriel found in the person's agent (decision 0059): the overview's
-   card when it changes, the first run's step, and Settings' list of what a
-   server it didn't find would turn on. */
 
 .found-card {
   display: grid;
@@ -1737,7 +1598,6 @@ button.nav-more {
   justify-content: flex-end;
 }
 
-/* What a person picks through a server just turned on, in the first run. */
 .found-picks {
   margin-top: var(--space-3);
 }
@@ -1757,8 +1617,6 @@ button.nav-more {
     flex-wrap: wrap;
   }
 }
-
-/* Jira connected to a project with no issues yet. */
 
 .connected-empty {
   display: grid;
@@ -1825,7 +1683,6 @@ button.nav-more {
   box-shadow: 0 0 0 var(--border-thin) var(--line);
 }
 
-/* Browse's filters: item search, then a source, a status and an assignee. */
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -1947,8 +1804,6 @@ button.nav-more {
   opacity: 0.55;
 }
 
-/* A cluster closed is its header row; opened, its items follow. */
-
 .cluster + .cluster {
   border-top: var(--border-thin) solid var(--line);
 }
@@ -1961,8 +1816,6 @@ button.nav-more {
 
 .cluster-toggle {
   display: grid;
-  /* An Oriel rule takes at most a third of the row and wraps, so the cluster's
-     name keeps its first words. */
   grid-template-columns: 1rem minmax(0, 1fr) fit-content(32%) auto;
   align-items: center;
   gap: var(--space-3);
@@ -1984,7 +1837,6 @@ button.nav-more {
   outline-offset: -2px;
 }
 
-/* "Make workstream" waits on the row's right until the row is pointed at. */
 .make-workstream {
   position: absolute;
   top: 50%;
@@ -2005,8 +1857,6 @@ button.nav-more {
   }
 }
 
-/* An anchor's checkbox sits in the items' pick column, and every heading
-   makes room for it, so chevrons line up with or without one. */
 [data-anchored] .cluster-toggle {
   padding-left: calc(var(--space-6) + 1.25rem + var(--space-3));
 }
@@ -2108,10 +1958,8 @@ button.nav-more {
   font-size: var(--text-xs);
 }
 
-/* The count, with the status bar under it, sits centered over the items'
-   status column, and the points over their assignee column: the heading's
-   7rem right padding and the points' 9rem cell match the item row's right
-   padding and its idle, points and assignee columns. */
+/* The heading's 7rem right padding and the points' 9rem cell match the item row's right
+padding and its idle, points and assignee columns. */
 .cluster-meta {
   display: grid;
   grid-template-columns: 6.5rem 9rem;
@@ -2169,8 +2017,6 @@ button.nav-more {
   background: var(--todo);
 }
 
-/* A cluster's items: one row per item, each one pickable. */
-
 .items {
   margin: 0;
   padding: 0 0 var(--space-2);
@@ -2187,8 +2033,6 @@ button.nav-more {
   color: var(--text-faint);
 }
 
-/* A cluster's items load a page at a time: what's on its way, and the
-   button for the next page. */
 .more-items {
   display: flex;
   align-items: center;
@@ -2230,7 +2074,6 @@ button.nav-more {
   background: var(--accent-soft);
 }
 
-/* The checkbox waits until the row is pointed at, or something is picked. */
 .pick {
   display: grid;
   place-items: center;
@@ -2262,8 +2105,7 @@ button.nav-more {
   gap: var(--space-2);
 }
 
-/* A kind is told by its mark's shape: a square, but a bug's dot. A
-   theme's radius would round so small a square into a dot. */
+/* A theme's radius would round so small a square into a dot. */
 .type {
   flex: none;
   width: 0.5rem;
@@ -2294,7 +2136,6 @@ button.nav-more {
   background: none;
 }
 
-/* A chat message: a hollow bubble, its tail at the bottom left. */
 .type[data-type="message"] {
   border: var(--border-thick) solid var(--text-faint);
   border-radius: 50% 50% 50% 0;
@@ -2346,7 +2187,6 @@ button.nav-more {
   white-space: nowrap;
 }
 
-/* A message's replies, in its assignee's place: a message has none. */
 a.replies {
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -2394,12 +2234,9 @@ a.replies:hover {
   color: var(--text-faint);
 }
 
-/* What can be done with picked items: a bar that appears once there are some. */
-
 .selection-bar {
   position: fixed;
   bottom: var(--space-4);
-  /* Centred on the page, between the sidebar and the panel. */
   left: calc(50% + (var(--sidebar) - var(--beside)) / 2);
   z-index: var(--layer-float);
   display: flex;
@@ -2434,8 +2271,6 @@ a.replies:hover {
   color: var(--danger);
   font-size: var(--text-sm);
 }
-
-/* A workstream's page. */
 
 .workstream-head {
   margin-bottom: var(--space-4);
@@ -2479,7 +2314,6 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
-/* The name, with Mark done or Reopen, and Delete, beside it (decision 0028). */
 .workstream-title-row {
   display: flex;
   align-items: center;
@@ -2581,7 +2415,6 @@ a.replies:hover {
   }
 }
 
-/* Last on its row, whether a status, replies or nothing came before it. */
 .remove-member {
   grid-column: -2;
 }
@@ -2592,7 +2425,6 @@ a.replies:hover {
   color: var(--danger);
 }
 
-/* A suggestion's +, where a member's × would be, always shown. */
 .add-member {
   grid-column: -2;
   width: 1.5rem;
@@ -2620,7 +2452,6 @@ a.replies:hover {
   margin-bottom: var(--space-3);
 }
 
-/* The Done page's way to its other pages. */
 .pager {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -2660,7 +2491,6 @@ a.replies:hover {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto;
 }
 
-/* Beside its workstream, a working thread also says what it waits on. */
 .thread-link:has(.thread-link-workstream):has(.state-chip) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto auto;
 }
@@ -2758,7 +2588,6 @@ a.replies:hover {
   font: inherit;
   line-height: var(--leading);
   resize: none;
-  /* Grows with what's written, up to the limit, then scrolls. */
   field-sizing: content;
 }
 
@@ -2770,7 +2599,6 @@ a.replies:hover {
   color: var(--text-faint);
 }
 
-/* What the agent will read on the left; the button on the right. */
 .chat-input-foot {
   display: flex;
   flex-wrap: wrap;
@@ -2797,9 +2625,6 @@ a.replies:hover {
   background: var(--type-epic);
 }
 
-/* What the next message is about (decision 0062): the item open beside the
-   composer, over its field. Left out, or offered beside a draft that keeps
-   its own, a chip is dashed. */
 /* min-width: a long title shortens, rather than widen the frame. */
 .ctx {
   display: flex;
@@ -2887,8 +2712,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* Off: no AI set up (decision 0038). The field can't be used, and the
-   frame's one button opens Settings. */
 .chat-input[data-off] {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -2902,8 +2725,6 @@ button.ctx-chip:hover {
 .workstream-ask {
   margin-bottom: var(--space-6);
 }
-
-/* A thread: the chat, with the region on the right. */
 
 .thread-layout {
   display: grid;
@@ -2949,7 +2770,6 @@ button.ctx-chip:hover {
   margin-top: var(--space-1);
 }
 
-/* With no workstream yet, the title is the head's first line. */
 .thread-head > .thread-title-row:first-child {
   min-height: var(--head-row);
   margin-top: 0;
@@ -2967,9 +2787,6 @@ button.ctx-chip:hover {
   margin-left: auto;
 }
 
-/* A new thread's workstream: Browse's filter, at the top of the rail where
-   the rail sits beside the chat, as wide as the rail; beside the title,
-   across the head row, where the rail waits below the chat. */
 .new-thread-workstream {
   display: flex;
   align-items: center;
@@ -2996,8 +2813,6 @@ button.ctx-chip:hover {
   margin-bottom: var(--space-2);
 }
 
-/* What the new workstream will be called, under the picker while it's the
-   default; under the title line where the rail waits below the chat. */
 .rail > .new-workstream-name {
   margin-bottom: var(--space-3);
 }
@@ -3028,7 +2843,6 @@ button.ctx-chip:hover {
   overflow-wrap: anywhere;
 }
 
-/* What the message was about, under its words (decision 0062). */
 .user-message .about {
   display: block;
   margin-top: var(--space-1);
@@ -3085,9 +2899,6 @@ button.ctx-chip:hover {
   color: var(--text-muted);
 }
 
-/* A quote from an item (decision 0032): Oriel's caption, with the item's
-   chip, over the quote, which its check marks as found there word for word
-   or not. */
 .reply .quote-from {
   margin: 0 0 var(--space-3);
 }
@@ -3201,14 +3012,11 @@ button.ctx-chip:hover {
   animation: pulse var(--pulse) ease-in-out infinite;
 }
 
-/* The one pulse: a working dot, a thread's state at a glance. */
 @keyframes pulse {
   50% {
     opacity: 0.3;
   }
 }
-
-/* A run: one quiet line until opened. */
 
 .run {
   border-radius: var(--radius);
@@ -3236,7 +3044,6 @@ button.ctx-chip:hover {
   color: var(--danger);
 }
 
-/* Inside the fold, what the line leaves out: every read, and how long. */
 .run-meta {
   margin: 0 0 var(--space-1);
   color: var(--text-faint);
@@ -3279,17 +3086,12 @@ button.ctx-chip:hover {
   color: var(--text-muted);
 }
 
-/* The escape hatch: what came from outside the workstream, read-only. */
-
-/* A diff line naming an item the agent or a tool put in the workstream. */
 .brought {
   margin: 0 0 var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
 
-/* What Oriel did with the agent's actions, under its reply: the host's
-   record, set apart from the model's words. */
 .actions-block {
   display: flex;
   align-items: baseline;
@@ -3344,8 +3146,6 @@ button.ctx-chip:hover {
   text-transform: uppercase;
 }
 
-/* A block under the agent's reply (decision 0030): Oriel's, built from a
-   read, with its caption saying which. */
 .answer-block {
   margin: 0;
   padding: var(--space-3);
@@ -3365,9 +3165,7 @@ button.ctx-chip:hover {
   font-size: var(--text-xs);
 }
 
-/* A sketch (decision 0033): the agent's HTML in a sandboxed frame, inside a
-   border no block has, with Oriel's caption under it. Both are outside the
-   frame, so no sketch can draw or hide them. */
+/* The border and caption are outside the frame, so no sketch can draw or hide them. */
 .answer-sketch {
   margin: 0;
   padding: var(--space-2);
@@ -3465,9 +3263,6 @@ button.ctx-chip:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* The chart blocks: Oriel's figures, placed. One series colour, hairline
-   axes in the line tokens, and a dash only for what's projected: the fitted
-   line and the forecast. Text wears text tokens, never the series colour. */
 .chart {
   display: block;
   width: 100%;
@@ -3517,8 +3312,6 @@ button.ctx-chip:hover {
   fill: var(--accent);
 }
 
-/* The part of a column that is only a lower bound: the series colour,
-   lighter, so it shows on the block in both schemes. */
 .chart-bound {
   fill: color-mix(in srgb, var(--accent) 40%, var(--surface-sunk));
 }
@@ -3612,14 +3405,12 @@ button.ctx-chip:hover {
   background: var(--accent);
 }
 
-/* Still going: it runs to today, lighter, with an open end. */
 .timeline-bar[data-state="open"] {
   border: var(--border-thin) solid var(--accent);
   border-right-style: dashed;
   background: var(--accent-soft);
 }
 
-/* Started by the change log's first day: no start of its own. */
 .timeline-bar[data-earlier] {
   border-left: var(--border-thin) dashed var(--accent);
   border-top-left-radius: 0;
@@ -3679,7 +3470,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* A grid wider than a phone scrolls, and no figure breaks across lines. */
 .pivot-scroll {
   overflow-x: auto;
 }
@@ -3729,8 +3519,6 @@ button.ctx-chip:hover {
   font-size: var(--text-xs);
 }
 
-/* A change set: its diff, and what can be done with it. */
-
 /* Clipped, not hidden, so its actions can stick inside it. */
 .change-set {
   border: var(--border-thin) solid var(--line-strong);
@@ -3739,12 +3527,10 @@ button.ctx-chip:hover {
   overflow: clip;
 }
 
-/* Awaiting review, it's the person's move: the accent's edge. */
 .change-set[data-awaits] {
   border-inline-start: var(--border-thick) solid var(--accent);
 }
 
-/* The change set a link opened the thread at: marked, and clear of the bar. */
 .change-set[data-opened] {
   border-color: var(--accent);
   box-shadow: 0 0 0 var(--border-thin) var(--accent);
@@ -3787,12 +3573,10 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* The agent revised it in place (OA-309): said with the status, kept on one line. */
 .change-set-revised {
   white-space: nowrap;
 }
 
-/* What Approve writes, counted from the diff. */
 .change-set-writes {
   margin-right: auto;
   color: var(--text-muted);
@@ -3811,8 +3595,6 @@ button.ctx-chip:hover {
   text-decoration: line-through;
 }
 
-/* A rejected or applied change set folds to its head: Show or Hide sits at
-   its end, and a click anywhere on the head presses it. */
 .change-set-head:has(> .quiet-action) {
   position: relative;
   justify-content: flex-start;
@@ -3833,8 +3615,7 @@ button.ctx-chip:hover {
   border-bottom: 0;
 }
 
-/* One whose apply ended on screen closes to its head after a beat, then
-   folds there (`landing` in thread.ts, whose closeMs matches). */
+/* thread.ts's `landing` closeMs matches. */
 .change-set[data-closing] {
   interpolate-size: allow-keywords;
 }
@@ -3859,9 +3640,8 @@ button.ctx-chip:hover {
   }
 }
 
-/* A change set's second look (decision 0054): set apart from the
-   diff on a sunk surface, in neutral tones only. It never wears the done,
-   accent or danger colours, so nothing in it reads as a pass or a block. */
+/* It never wears the done, accent or danger colours, so nothing in it reads as a pass or a
+block. */
 .second-look {
   margin: 0 var(--space-3) var(--space-3);
   padding: var(--space-2) var(--space-3) var(--space-3);
@@ -3972,7 +3752,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* One of Oriel's own lines, never the agent's reply: it reads as a note. */
 .oriel-note {
   margin: var(--space-2) 0;
   padding: var(--space-1) var(--space-3);
@@ -4010,9 +3789,6 @@ button.ctx-chip:hover {
   background: var(--danger-soft);
 }
 
-/* The line whose item is open in the panel, so the person sees which change
-   they're reading the item for: the focus colour's edge, as the open chip's
-   underline, on the accent's tint. One that stopped keeps its own colour. */
 .diff-line[data-open] {
   box-shadow: inset var(--border-thick) 0 0 var(--focus);
 }
@@ -4047,7 +3823,6 @@ button.ctx-chip:hover {
   text-decoration: underline;
 }
 
-/* An apply stuck on its source: nothing to do yet but know. */
 .apply-stuck {
   margin: 0;
   padding: var(--space-2) var(--space-3);
@@ -4081,7 +3856,6 @@ button.ctx-chip:hover {
   overflow-wrap: anywhere;
 }
 
-/* What a line does to its item, beside its title: makes it, or deletes it. */
 .line-mark {
   display: inline-block;
   margin-right: var(--space-2);
@@ -4116,7 +3890,6 @@ button.ctx-chip:hover {
   overflow-wrap: anywhere;
 }
 
-/* What a new message says, word for word, as the person approves it. */
 .new-description[data-body] {
   margin-top: var(--space-2);
   padding-left: var(--space-3);
@@ -4191,7 +3964,6 @@ button.ctx-chip:hover {
   text-decoration: none;
 }
 
-/* A delete leaves each field empty: nothing it shows is added. */
 .diff-line[data-kind="delete"] .field > dd > ins {
   padding: 0;
   background: none;
@@ -4202,8 +3974,6 @@ button.ctx-chip:hover {
   color: var(--text-faint);
 }
 
-/* An edited field: a row for what it held and one for what it will hold,
-   tinted, with only the words that differ marked. */
 .field dd.edited {
   display: grid;
   justify-items: start;
@@ -4298,9 +4068,7 @@ button.ctx-chip:hover {
   display: none;
 }
 
-/* While any of a change set awaiting review shows, its actions stick above
-   the composer, which says how much of the window it covers. The keyboard
-   still reaches them in the card's order. */
+/* The keyboard still reaches the actions in the card's order. */
 .change-set[data-awaits] > .change-set-actions {
   position: sticky;
   bottom: calc(var(--dock-cover, 0px) + var(--space-2));
@@ -4320,8 +4088,6 @@ button.ctx-chip:hover {
   font-size: var(--text-xs);
 }
 
-/* A change set whose diff is still reading its source: its actions wait
-   for it (OA-257). */
 .change-set-loading {
   display: flex;
   align-items: center;
@@ -4357,9 +4123,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* The composer's dock: it sticks at the thread's foot and fades from the
-   page's colour over what scrolls under it, so nothing reads through it,
-   and the last entry stops above it. */
 .chat-dock {
   position: sticky;
   bottom: 0;
@@ -4379,9 +4142,6 @@ button.ctx-chip:hover {
   visibility: hidden;
 }
 
-/* Pills floating just over a chat's composer, clear of the bead at the
-   top: a change set to review out of view (OA-260), and a new message
-   below while the person reads further up (OA-350). */
 .window-chat > .chat-input {
   position: relative;
 }
@@ -4419,7 +4179,6 @@ button.ctx-chip:hover {
   background: var(--accent-soft);
 }
 
-/* Nothing to do but read it: the window's ink, not the accent. */
 .new-message-pill {
   border-color: var(--line-strong);
   color: var(--text);
@@ -4435,8 +4194,6 @@ button.ctx-chip:hover {
     transform: translateY(var(--space-1));
   }
 }
-
-/* The right rail: the region this thread works in. */
 
 .rail {
   position: sticky;
@@ -4459,16 +4216,12 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* When the thread last synced with its workstream; behind it, Sync
-   workstream now right after the time, which it never leaves. */
 .rail-sync-end {
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
 }
 
-/* The icon at the line's own size, centred on it; the button reaches past
-   the line, so the line keeps its height. */
 .sync-now {
   display: inline-grid;
   place-items: center;
@@ -4509,8 +4262,6 @@ button.ctx-chip:hover {
 
 .members.compact .member {
   grid-template-columns: 0.5rem auto minmax(0, 1fr);
-  /* A message's replies take a column of their own on its line, as wide as
-     they need, rather than wrapping under it. */
   grid-auto-flow: column;
   gap: var(--space-2);
   min-height: 1.75rem;
@@ -4526,8 +4277,6 @@ button.ctx-chip:hover {
 .members.compact .member-title {
   color: var(--text-muted);
 }
-
-/* A review link's page: one card, nothing else. */
 
 .review {
   max-width: 40rem;
@@ -4576,7 +4325,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* What's wrong, if rejecting: a row of its own, above the name. */
 .name-field.reason {
   flex-basis: 100%;
 }
@@ -4599,15 +4347,12 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* The agent revised it since it was first proposed (OA-309). */
 .review-card .review-revised {
   margin: var(--space-1) 0 0;
   color: var(--text-faint);
   font-size: var(--text-sm);
 }
 
-/* The reviewer's decision was refused: the change was altered since the
-   page showed it (OA-309). */
 .review-card .review-altered {
   margin: var(--space-2) 0 0;
 }
@@ -4621,7 +4366,6 @@ button.ctx-chip:hover {
   font-weight: var(--weight-strong);
 }
 
-/* The reviewer's answer, a row of its own above the note and the name. */
 .review-answer {
   flex-basis: 100%;
   margin: 0;
@@ -4676,18 +4420,15 @@ button.ctx-chip:hover {
   color: var(--danger);
 }
 
-/* A narrow page, on a narrow screen or beside the panel: the rails move
-   inline, and rows wrap to two lines. The region moves under the chat before
-   the rows wrap, where a 1180px screen leaves the page beside the sidebar. */
+/* The region moves under the chat before the rows wrap, where a 1180px screen leaves the
+page beside the sidebar. */
 
 @container page (max-width: 932px) {
   .thread-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Where the rail isn't at the window's edge. */
   @media (max-width: 1279px) {
-    /* The region waits below the chat, with no top line to share. */
     .rail {
       position: static;
       max-height: none;
@@ -4730,11 +4471,8 @@ button.ctx-chip:hover {
   }
 }
 
-/* A wide screen keeps the rail at the window's edge, in the sidebar's
-   material, so the page column sits inset between the two, and the chat has
-   the column to itself. From where the column beside it stays wider than a
-   narrow page (760px), with the sidebar open. The item panel covers it while
-   it's open. */
+/* From here the column beside the rail stays wider than a narrow page (760px), with the
+sidebar open. */
 @media (min-width: 1280px) {
   .shell:has(.rail) {
     --beside: var(--rail-beside);
@@ -4752,8 +4490,6 @@ button.ctx-chip:hover {
     z-index: var(--layer-sticky);
     width: var(--rail-beside);
     max-height: none;
-    /* The sidebar's sides, mirrored: the band beside the column is part of
-       the rail's inner side. */
     padding: calc(var(--bar-height) + var(--inset-top)) var(--space-3) var(--space-3)
       calc(var(--space-3) - var(--frame-band));
     background: var(--frame);
@@ -4881,7 +4617,6 @@ button.ctx-chip:hover {
     padding-left: 2.25rem;
   }
 
-  /* A status gives way; a message's replies keep their place. */
   .member {
     grid-template-columns: 0.5rem auto minmax(0, 1fr) auto 1.5rem;
   }
@@ -4920,7 +4655,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* Dropping on a workstream or a thread: a veil over the view says where it goes. */
 .drop-page {
   min-height: calc(100vh - var(--bar-height));
 }
@@ -4949,10 +4683,6 @@ button.ctx-chip:hover {
   font-weight: var(--weight-strong);
 }
 
-/* Moving an item between workstreams (moving.ts): a workstream's item row
-   and a Browse row drag; a workstream in the sidebar, and the Workstreams
-   heading, take the drop, drawn as the veil is while one is over them. The
-   row's menu lays its cells out as the row does. */
 .member[data-movable],
 .item[draggable="true"],
 .panel-head[draggable="true"] {
@@ -4975,7 +4705,6 @@ button.ctx-chip:hover {
   color: inherit;
 }
 
-/* A context menu, such as a thread row's: in the top layer, where it opens. */
 .context-menu {
   inset: auto;
   min-width: 10rem;
@@ -4986,8 +4715,7 @@ button.ctx-chip:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   color: var(--text);
-  /* Leaving: a fade and a slight shrink, quicker than it came, and no
-     longer clickable. Its origin is where it opened (menu.tsx). */
+  /* Its origin is where it opened (menu.tsx). */
   opacity: 0;
   transform: scale(0.96);
   pointer-events: none;
@@ -4999,7 +4727,6 @@ button.ctx-chip:hover {
     display var(--exit) allow-discrete;
 }
 
-/* Opening: it grows from where it opened, the pointer or its control. */
 .context-menu:popover-open {
   opacity: 1;
   transform: none;
@@ -5014,9 +4741,7 @@ button.ctx-chip:hover {
   }
 }
 
-/* An item's card while it's dragged (drag-card.ts): its key and title,
-   lifted, leaning the way it's pulled. The script moves it by its
-   transform, one frame at a time, the pointer at its left edge. */
+/* drag-card.ts moves it by its transform, one frame at a time. */
 .drag-card {
   position: fixed;
   inset: 0 auto auto 0;
@@ -5059,8 +4784,6 @@ button.ctx-chip:hover {
     opacity calc(var(--duration-move) * 4 / 3) var(--ease-out);
 }
 
-/* Dropped nowhere: back toward its row, fading as it goes, in the 80ms a
-   menu leaves in, so a drop nowhere is over at once. */
 .drag-card[data-settle="back"] {
   transition:
     transform calc(var(--duration-quick) * 2 / 3) var(--ease-out),
@@ -5078,13 +4801,10 @@ button.ctx-chip:hover {
   pointer-events: none;
 }
 
-/* The row it was lifted from, while its card is away. */
 [data-lifted] {
   opacity: 0.45;
 }
 
-/* A control's tooltip: in the top layer, above the control or below it,
-   placed by the window. The pointer passes through it to what's under it. */
 .tooltip {
   position: fixed;
   inset: auto;
@@ -5140,7 +4860,6 @@ button.ctx-chip:hover {
   background: color-mix(in srgb, var(--danger) 88%, var(--text));
 }
 
-/* The one question a delete asks. */
 .confirm {
   width: min(26rem, calc(100vw - 2 * var(--space-4)));
   padding: var(--space-4);
@@ -5178,21 +4897,14 @@ button.ctx-chip:hover {
   gap: var(--space-2);
 }
 
-/* The bead (decision 0056, amended): the one stack of Undo notes, the
-   frame's own material grown down from the band at the top centre of the
-   page column, clear of the sidebar and of the panel or window chat over the
-   page. Only its shape is drawn (`.bead-shape`); its words sit still on
-   whole pixels at their rested size, and a clip reveals them as the shape
-   grows (undo-stack.tsx, bead-motion.ts). It never reaches past the
-   column's corners, and never a composer. */
+/* Only its shape is drawn: its words sit still on whole pixels at their rested size, and a
+clip reveals them as the shape grows (bead-motion.ts). */
 @media (min-width: 761px) {
   .shell[data-panel] {
     --bead-beside: var(--panel);
   }
 }
 
-/* As wide as what's left of the column, at the band's lower edge, with no
-   height: the bead hangs from it. */
 .bead-wrap {
   position: fixed;
   top: var(--frame-top);
@@ -5220,8 +4932,6 @@ button.ctx-chip:hover {
   flood-color: var(--frame-shade);
 }
 
-/* Its words, at their rested size, centred; the clip that reveals them is
-   set as the shape moves. */
 .bead {
   position: absolute;
   top: 0;
@@ -5236,13 +4946,10 @@ button.ctx-chip:hover {
   pointer-events: none;
 }
 
-/* Reduced motion: it only fades, shape and words together. */
 .bead-wrap[data-reduced] {
   opacity: var(--bead-shown, 0);
 }
 
-/* What it says, laid out at its own width, up to the room the column
-   leaves it. */
 .bead-layer {
   display: flex;
   align-items: center;
@@ -5271,8 +4978,7 @@ button.ctx-chip:hover {
   padding-right: var(--space-1);
 }
 
-/* One line; cut short with an ellipsis where the room is less, its whole
-   sentence still there to be read. Its action is never cut. */
+/* Its whole sentence stays there for a screen reader. Its action is never cut. */
 .bead-said {
   flex: 0 1 auto;
   min-width: 0;
@@ -5316,8 +5022,6 @@ button.ctx-chip:hover {
   font: var(--weight-regular) var(--text-xs) var(--font);
 }
 
-/* Secondary words go first where there's less room: the key, and why a
-   note can't be undone. */
 @media (hover: none), (max-width: 760px) {
   .bead-action kbd {
     display: none;
@@ -5344,7 +5048,6 @@ button.ctx-chip:hover {
   white-space: nowrap;
 }
 
-/* How many notes there are, popping as each arrives. */
 .bead-count {
   display: grid;
   flex: none;
@@ -5366,7 +5069,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* Held open: newest first, nearest the band, each with its Undo. */
 .bead-layer[data-list] {
   flex-direction: column;
   align-items: stretch;
@@ -5388,8 +5090,6 @@ button.ctx-chip:hover {
   color: var(--text-muted);
 }
 
-/* Its marks: an apply under way, breathing; applied, a check that draws
-   itself; what failed. */
 .bead-mark {
   display: grid;
   flex: none;
@@ -5441,8 +5141,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* All caught up, the one flourish: Oriel's mark draws, its three panes
-   light one by one, and one glint crosses the bead, in about 1.6s. */
 .bead-mark[data-mark="caught-up"] {
   width: 1.125rem;
   height: 1.125rem;
@@ -5507,7 +5205,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* A note's Undo beside the change it undoes (decision 0024). */
 .undo-action {
   flex: none;
   padding: 0.125rem var(--space-2);
@@ -5525,7 +5222,6 @@ button.ctx-chip:hover {
   background: var(--accent-soft);
 }
 
-/* A row that swipes left to show actions. Vertical pans stay the page's. */
 .swipe {
   position: relative;
   border-radius: var(--radius);
@@ -5553,7 +5249,6 @@ button.ctx-chip:hover {
   transition: width var(--duration-move) ease;
 }
 
-/* While a finger or the trackpad holds it, the row follows at once. */
 .swipe[data-dragging] :is(.swipe-row, .swipe-actions) {
   transition: none;
 }
@@ -5574,15 +5269,6 @@ button.ctx-chip:hover {
 .swipe-action[data-danger] {
   background: var(--danger);
 }
-
-/* The panel beside the page: one item in its source's own view. Screens with
-   room for a phone-width page beside it, laptops included, narrow the page at
-   once; narrower ones lay it over the page's right side, and a phone gives it
-   the whole screen. It arrives at once, with a quick slide and fade, showing
-   what the page knew of the item until its read arrives, and only moves:
-   nothing beside or inside it reflows. It is the sidebar's material, as
-   a thread's rail is: beside the page, the column sits inset between the
-   two; over it, it casts the shadow the drawer does. */
 
 .item-panel {
   position: fixed;
@@ -5613,7 +5299,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* Its contents fade in with it, and again for each item it shows. */
 .item-panel > * {
   animation: panel-fade var(--duration-quick) var(--ease-out);
 }
@@ -5624,10 +5309,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* Something that arrives in place, as a new thread's workstream, picked,
-   shows what it holds: a fade and a few pixels' rise. Among siblings that
-   arrive together, each starts a beat after the one before, up to the
-   sixth, so a long list is never slow to show. */
 .arrive {
   --beat: 0;
   animation: arrive var(--duration-move) var(--ease-out)
@@ -5671,7 +5352,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* A phone gives it the whole screen, over the bar, as a sheet. */
 @media (max-width: 760px) {
   .item-panel {
     --panel-top: var(--inset-top);
@@ -5683,11 +5363,6 @@ button.ctx-chip:hover {
   }
 }
 
-/* Below 1100, over a conversation, the panel carries that conversation's
-   composer in a dock at its foot (dock.tsx): the latest answer's first two
-   lines, "Chat" to give the conversation the screen, and the composer. It
-   sticks to the panel's foot whatever scrolls above it, edge to edge, and
-   rises a few pixels as it arrives with the panel. */
 .panel-dock {
   position: sticky;
   /* Into the panel's foot padding, which a sticky box otherwise keeps. */
@@ -5708,7 +5383,6 @@ button.ctx-chip:hover {
   gap: var(--space-3);
 }
 
-/* Two lines of the answer, whatever it holds: its blocks run on as one. */
 .panel-dock-latest {
   display: -webkit-box;
   flex: 1;
@@ -5746,8 +5420,6 @@ button.ctx-chip:hover {
   font-weight: var(--weight-medium);
 }
 
-/* The item folded to a line above the conversation's composer: Show puts
-   it back, × closes it. It arrives as the panel goes. */
 .panel-folded {
   display: flex;
   align-items: center;
@@ -5856,8 +5528,6 @@ button.ctx-chip:hover {
   flex-basis: 100%;
 }
 
-/* A stand-in's item, edited in its panel (decision 0059). */
-
 .panel-edit {
   display: grid;
   gap: var(--space-3);
@@ -5906,8 +5576,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* Previous and next in the list the item was opened from, beside Close; it
-   stays put while the item under it changes. */
 .panel-steps {
   position: absolute;
   top: var(--panel-top);
@@ -6040,8 +5708,6 @@ button.ctx-chip:hover {
   border-top: var(--border-thin) solid var(--line);
 }
 
-/* A person or a channel the source's text names, set apart from the words
-   around it. */
 .mention {
   padding: 0 0.2em;
   border-radius: var(--radius-sm);
@@ -6050,7 +5716,6 @@ button.ctx-chip:hover {
   font-weight: var(--weight-medium);
 }
 
-/* Who wrote it beside what they wrote, as a conversation reads. */
 .panel-message {
   display: grid;
   grid-template-columns: 1.75rem minmax(0, 1fr);
@@ -6078,7 +5743,6 @@ button.ctx-chip:hover {
   grid-column: 2;
 }
 
-/* One header for each day of a conversation. */
 .panel-day {
   display: flex;
   grid-column: 1 / -1;
@@ -6113,8 +5777,6 @@ button.ctx-chip:hover {
   font-size: var(--text-xs);
 }
 
-/* The source's words about a message, such as a reply also sent to the
-   channel. */
 .panel-label {
   padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
@@ -6148,8 +5810,6 @@ button.ctx-chip:hover {
   font-size: var(--text-xs);
 }
 
-/* A link to an item with no web page of its own, such as a file: a button
-   that reads as a link, and opens the item in the panel. */
 .item-link {
   padding: 0;
   border: 0;
@@ -6165,14 +5825,11 @@ button.ctx-chip:hover {
   text-decoration: underline;
 }
 
-/* The window's row keys are links now; they keep their faint look. */
 .item a.key,
 .item .key.item-link {
   color: var(--text-faint);
 }
 
-/* A message held for the user, from anyone else: set apart from what the
-   user and the agent said, since neither said it. */
 .held-message {
   display: flex;
   flex-direction: column;
@@ -6193,24 +5850,18 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* A message held for the person waits on them: tinted and edged as their
-   move, its state at the top. */
 .held-block[data-outcome="held"] > .held-message:not(.draft-card) {
   border: var(--border-thin) solid color-mix(in srgb, var(--accent) 35%, var(--line));
   border-inline-start: var(--border-thick) solid var(--accent);
   background: var(--accent-soft);
 }
 
-/* Where a request carried on by Continue in… came from (decision 0062):
-   one quiet line over the user's message, linking back. */
 .held-from {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
 
-/* Continue in…: one button under the window chat's reply, and once pressed,
-   a link to where the request went on. */
 .continue-block {
   display: flex;
   margin: var(--space-1) 0 var(--space-2);
@@ -6255,8 +5906,6 @@ button.ctx-chip:hover {
   gap: var(--space-2);
 }
 
-/* A draft of the agent's (decision 0051): each option it changes, as it is
-   and as drafted. A stale one is faded: it can only be discarded. */
 .draft-changes {
   display: grid;
   gap: var(--space-1);
@@ -6299,9 +5948,6 @@ button.ctx-chip:hover {
   gap: var(--space-3);
 }
 
-/* A draft of a connection's options, drawn from its source (decision
-   0051): the columns it reads stand out; the rest are content. */
-
 .review-tables {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -6330,9 +5976,6 @@ button.ctx-chip:hover {
   white-space: nowrap;
 }
 
-/* What the person changes of a table while they edit a review step
-   (OA-232), under it: whether it's read, each field's column, its header
-   row and where it ends. */
 .review-controls {
   display: grid;
   gap: var(--space-2);
@@ -6368,7 +6011,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* What applying a review does to the items a connection has, before Apply. */
 .connect-said {
   margin: 0;
   padding: var(--space-2) var(--space-3);
@@ -6400,14 +6042,6 @@ button.ctx-chip:hover {
   font-size: var(--text-sm);
 }
 
-/* The overview (decision 0027): the window's first view, as wide as the
-   page allows. The counts strip, the headlines, then two columns where
-   there is room: the workstreams, and beside them what no workstream holds
-   yet and who has work in progress, their heads on one line. The composer
-   is a thread's, in a thread's dock at the foot.
-   One rhythm: the page's parts are --space-6 apart, a section's head is
-   --space-2 over its list, and every list row pads by --row-pad. */
-
 .overview {
   display: flex;
   flex-direction: column;
@@ -6418,13 +6052,10 @@ button.ctx-chip:hover {
   container: overview / inline-size;
 }
 
-/* The composer: a thread's own, in a thread's dock, at the page's foot,
-   however short the page. */
 .overview-dock {
   margin-top: auto;
 }
 
-/* On Browse, with the chat hidden: the same dock, at the page's foot. */
 .shell-main > .overview-dock {
   padding-inline: var(--space-6);
 }
@@ -6515,8 +6146,6 @@ button.overview-stat:not(:disabled):hover {
   min-width: 0;
 }
 
-/* A section's head: the theme's rule above it gives the sections their
-   rank, and its colour is muted in every theme. */
 .overview-head {
   display: flex;
   align-items: baseline;
@@ -6606,10 +6235,6 @@ button.overview-title:hover {
   max-width: 40rem;
 }
 
-/* The headlines: one computed line per standing question. */
-/* Noticed (decision 0052): cards Oriel found unasked.
-   Oriel's parts (kind, subject, headline, block) sit as the overview's own
-   do; the agent's line sits on a derived tint, captioned as the agent's. */
 .noticed-by {
   margin-left: var(--space-2);
   color: var(--text-faint);
@@ -6733,8 +6358,6 @@ button.overview-title:hover {
   justify-self: stretch;
 }
 
-/* The headlines: cells side by side in one frame, each its label over its
-   line; the review links nobody has opened are the last. */
 .overview-headlines {
   display: grid;
   /* Fit, not fill: one headline takes the whole row, not a third of it. */
@@ -6756,10 +6379,6 @@ button.overview-title:hover {
   font-size: var(--text-md);
 }
 
-/* Without questions: one band that never wraps. The cells share the width
-   where all fit; where they don't, it scrolls sideways a headline at a
-   time, and while there's more to the right its end fades under a › that
-   shows the next. It ends with room for both, so the last scrolls clear. */
 .overview-band {
   position: relative;
   min-width: 0;
@@ -6808,15 +6427,12 @@ button.overview-title:hover {
   background: var(--surface-hover);
 }
 
-/* A phone swipes it. */
 @media (max-width: 760px) {
   .band-next {
     display: none;
   }
 }
 
-/* With questions to start from: a row each, one a line, its questions at
-   the row's end. The labels share one column, as wide as the longest. */
 .overview-headlines[data-questions] {
   grid-template-columns: max-content minmax(0, 1fr) auto;
 }
@@ -6854,11 +6470,7 @@ button.overview-title:hover {
   white-space: nowrap;
 }
 
-/* A narrow overview: a row is its label over its line, with its questions
-   beside both, stacked. */
 @container overview (max-width: 700px) {
-  /* Beside the rail the overview is this narrow too, so a long question
-     wraps in at most half the row, and a row with none takes it whole. */
   .overview-headlines[data-questions] {
     grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
   }
@@ -6891,8 +6503,6 @@ button.overview-title:hover {
   }
 }
 
-/* The review links nobody has opened: the oldest one's thread, and "N
-   more" opening the rest in place. */
 .review-links {
   display: flex;
   align-items: baseline;
@@ -6933,7 +6543,6 @@ button.overview-title:hover {
   text-overflow: ellipsis;
 }
 
-/* A workstream, a line each, and its detail under it. */
 .overview-workstream {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 3.5rem 5rem 7.5rem 4rem;
@@ -7004,7 +6613,6 @@ button.overview-title:hover {
   stroke: var(--line-strong);
 }
 
-/* In progress, by person: a short line each. */
 .overview-person {
   justify-content: space-between;
   flex-wrap: nowrap;
@@ -7027,7 +6635,6 @@ button.overview-title:hover {
   flex: none;
 }
 
-/* Not in a workstream yet: a line each, under the rule that found it. */
 .overview-candidates {
   display: block;
   overflow: hidden;
@@ -7074,9 +6681,8 @@ button.overview-title:hover {
   text-overflow: ellipsis;
 }
 
-/* Make a workstream shows on the row the pointer or focus is on, and
-   always where nothing hovers. It keeps its place while hidden, and no
-   padding above or below, so showing it never moves the rows. */
+/* It keeps its place while hidden, and no padding above or below, so showing it never moves
+the rows. */
 .overview-make {
   flex: none;
   margin-left: auto;
@@ -7100,8 +6706,6 @@ button.overview-title:hover {
   }
 }
 
-/* A narrow main column gives each workstream's name the row's first line,
-   with its spark, bar, what moved and when under it. */
 @container main (max-width: 560px) {
   .overview-workstream {
     grid-template-columns: 3.5rem 4rem minmax(0, 1fr) auto;
@@ -7118,8 +6722,6 @@ button.overview-title:hover {
     padding-inline: var(--space-3);
   }
 
-  /* A phone: the name on its own line, then its bar, what moved and when,
-     so a name never wraps to four lines. */
   .overview-main .overview-workstream {
     grid-template-columns: 4rem minmax(0, 1fr) auto;
   }
@@ -7128,8 +6730,6 @@ button.overview-title:hover {
     display: none;
   }
 
-  /* The headlines: one row of cells that scrolls sideways, each with its
-     questions under it. */
   .overview .overview-headlines {
     display: flex;
     gap: var(--space-6);
@@ -7171,8 +6771,6 @@ button.overview-title:hover {
     white-space: normal;
   }
 
-  /* The counts in a row of their own under the tabs, each count over its
-     words. */
   .overview-counts {
     display: grid;
     flex-basis: 100%;
@@ -7198,8 +6796,6 @@ button.overview-title:hover {
     font-size: var(--text-lg);
   }
 
-  /* Workstream names and titles wrap rather than truncate, in every
-     theme (decision 0034). */
   .overview-workstream-name,
   .overview-headline-body,
   .overview-moved-items .overview-title,
@@ -7209,9 +6805,6 @@ button.overview-title:hover {
   }
 }
 
-/* Questions to start from (decision 0030): beside the headline each comes
-   from, or in the composer's frame where none on screen holds it. A filled
-   button, so it never reads as a field. */
 .ask-starts {
   display: flex;
   flex-wrap: wrap;
@@ -7246,10 +6839,6 @@ button.overview-title:hover {
   background: var(--accent-soft);
 }
 
-/* The window chat (decisions 0027 and 0030): once asked, a rail at the
-   window's right edge, in the frame's material, as a thread's rail is; the
-   page column narrows for it (`--beside`) rather than lying under it. An
-   item opened takes its place, as wide, so the page keeps its width. */
 .window-chat {
   position: fixed;
   top: 0;
@@ -7278,7 +6867,6 @@ button.overview-title:hover {
   margin: 0;
 }
 
-/* The sidebar's fold button, mirrored, kept where the sidebar's goes. */
 .window-chat .window-chat-fold {
   display: inline-grid;
 }
@@ -7309,7 +6897,6 @@ button.overview-title:hover {
   font-size: var(--text-md);
 }
 
-/* Moved into its workstream: where it went, under the last entry. */
 .window-chat-moved {
   padding-top: var(--space-3);
   border-top: var(--border-thin) solid var(--line);
@@ -7332,10 +6919,6 @@ button.overview-title:hover {
   }
 }
 
-/* Under 1100 there's no room for a rail: a sheet rises from the page's
-   foot over the page column, 45vh, or 85vh with its grab bar, which leaves
-   the head, the headlines and the first workstream in view above it, live.
-   Nothing travels: the sheet rises, its composer where the foot's was. */
 @media (max-width: 1099px) {
   .window-chat {
     top: auto;
@@ -7365,7 +6948,6 @@ button.overview-title:hover {
     }
   }
 
-  /* The page scrolls clear of it. */
   .shell[data-chat] .shell-main {
     padding-bottom: 45vh;
   }
@@ -7394,7 +6976,6 @@ button.overview-title:hover {
   }
 }
 
-/* A phone: the sheet, edge to edge. */
 @media (max-width: 760px) {
   .window-chat {
     left: 0;
@@ -7403,8 +6984,6 @@ button.overview-title:hover {
   }
 }
 
-/* Settings (OA-181): its sections down the left, each a page, and the
-   section beside them. On a narrow screen the sections are tabs above. */
 .settings {
   display: grid;
   grid-template-columns: 10rem minmax(0, 1fr);
@@ -7412,7 +6991,6 @@ button.overview-title:hover {
   align-items: start;
 }
 
-/* It sticks below the frame's band, as the right rail does, not under it. */
 .settings-sections {
   position: sticky;
   top: calc(var(--bar-height) + var(--inset-top));
@@ -7438,9 +7016,8 @@ button.overview-title:hover {
   gap: var(--space-3);
 }
 
-/* Every section's title row is as tall as one with a button beside it,
-   as Providers' Check again, so moving between sections leaves the title
-   where it was. */
+/* As tall as one with a button beside it, so moving between sections leaves the title where
+it was. */
 .settings-title {
   display: flex;
   align-items: center;
@@ -7454,7 +7031,6 @@ button.overview-title:hover {
    either way, so the frame doesn't move sideways between them. */
 html:has(.settings-page) {
   scrollbar-gutter: stable;
-  /* The room kept is the frame's, beside its band. */
   background: var(--frame);
 }
 
@@ -7504,7 +7080,6 @@ html:has(.settings-page) {
   font-weight: var(--weight-strong);
 }
 
-/* Codex's row is a preview (decision 0048). */
 .provider-badge {
   margin-left: var(--space-2);
   padding: 0 var(--space-2);
@@ -7628,7 +7203,6 @@ html:has(.settings-page) {
   outline-offset: 0;
 }
 
-/* A switch: on is the accent, your choice made. */
 .switch {
   position: relative;
   flex: none;
@@ -7717,14 +7291,11 @@ html:has(.settings-page) {
   font-size: var(--text-sm);
 }
 
-/* A switch its source locks, as for a spreadsheet the person can only view. */
 .switch:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-/* Settings' Connections (decision 0049): what a person sets on each
-   connection, under it, and what its last sync left out. */
 .connection-options {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -7732,8 +7303,6 @@ html:has(.settings-page) {
   margin-top: var(--space-2);
 }
 
-/* A connection's mapping, in its review step (OA-232): a wide sheet
-   scrolls inside the row, never past it. */
 .connection-mapping,
 .connection-mapping .connect-review {
   grid-template-columns: minmax(0, 1fr);
@@ -7744,8 +7313,6 @@ html:has(.settings-page) {
   gap: var(--space-2);
 }
 
-/* Each table a connection reads, in a line, with Ask Oriel and Edit by
-   hand (OA-232); the editor opens under the one being edited. */
 .mapping-tabs,
 .folded-list ul {
   display: grid;
@@ -7786,7 +7353,6 @@ html:has(.settings-page) {
   gap: var(--space-3);
 }
 
-/* A long list folded into one line, which opens to its first few. */
 .folded-toggle {
   display: inline-flex;
   align-items: center;
@@ -7815,14 +7381,11 @@ html:has(.settings-page) {
   max-width: 20rem;
 }
 
-/* A row that grows, with a warning or a connection's options under it,
-   keeps its action or its pick beside the name, not halfway down. */
 .connection-row .provider-side,
 .setup-rows .provider-side {
   align-self: flex-start;
 }
 
-/* A name, or what a person finds in a pick's list, isn't a path. */
 .settings .connection-options .input {
   font-family: inherit;
 }
@@ -7872,7 +7435,6 @@ html:has(.settings-page) {
   accent-color: var(--accent);
 }
 
-/* A picked one the server's list doesn't give: its name, and why under it. */
 .choice-unlisted {
   align-items: start;
 }
@@ -7886,8 +7448,6 @@ html:has(.settings-page) {
   gap: 2px;
 }
 
-/* A server's list may be long: it scrolls, with Find above it and its
-   actions below, so Use these is never a scroll to the list's foot. */
 .pick-list {
   display: grid;
   gap: var(--space-2);
@@ -7899,8 +7459,6 @@ html:has(.settings-page) {
   overscroll-behavior: contain;
 }
 
-/* Listing asks the person's agent: the button stays pressed, at full
-   strength, with a spinner, until the list comes. */
 .pick-open[aria-pressed="true"] {
   display: inline-flex;
   align-items: center;
@@ -7916,7 +7474,6 @@ html:has(.settings-page) {
     gap: var(--space-4);
   }
 
-  /* Every section in sight, on two lines at a large text size. */
   .settings-sections {
     position: static;
     display: flex;
@@ -7924,8 +7481,6 @@ html:has(.settings-page) {
     gap: var(--space-1);
   }
 
-  /* An action too wide to sit beside the row's words, such as Install with
-     its size, goes beneath them, at the right. */
   .provider-row {
     flex-wrap: wrap;
     padding-inline: var(--space-3);
@@ -7940,11 +7495,6 @@ html:has(.settings-page) {
   }
 }
 
-/* The first run (decision 0038): its own page, a column of steps, each a few
-   rows and one way on. The rows are Settings' provider rows, with a mark,
-   whose plans each is for, and its state and actions beneath. */
-/* Framed as a narrow screen is, at any width: its brand's row is the
-   frame, with no bands beside the page. */
 .setup-page {
   --sidebar: 0rem;
   --beside: 0rem;
@@ -8094,7 +7644,6 @@ html:has(.settings-page) {
   font-family: var(--font-mono);
 }
 
-/* A link-shaped action, for a way on that isn't the step's own. */
 .link-action {
   padding: 0;
   border: 0;
@@ -8106,7 +7655,6 @@ html:has(.settings-page) {
   cursor: pointer;
 }
 
-/* An account's email, scrambled and blurred until clicked (hidden-email.tsx). */
 .hidden-email {
   padding: 0;
   border: 0;
@@ -8131,7 +7679,6 @@ html:has(.settings-page) {
   cursor: default;
 }
 
-/* A row's mark, whose plans it's for, what sits at its right, and picked. */
 .provider-icon {
   display: grid;
   flex: none;
@@ -8193,7 +7740,6 @@ html:has(.settings-page) {
   background: var(--on-accent);
 }
 
-/* The Claude Code row's state, what's running, and what went wrong. */
 .cli-line {
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -8327,7 +7873,6 @@ html:has(.settings-page) {
   }
 }
 
-/* A connector's steps, a review step, and a source that failed in Your work. */
 .input[aria-invalid] {
   border-color: var(--danger);
 }
@@ -8355,7 +7900,6 @@ html:has(.settings-page) {
   color: var(--text-muted);
 }
 
-/* The first run's one-time line on the overview. */
 .first-run-line {
   display: flex;
   align-items: flex-start;
@@ -8380,8 +7924,6 @@ a.button.primary {
   color: var(--on-accent);
 }
 
-/* How much of the plan Oriel has used, in Settings' Usage, one block a CLI
-   (decision 0046): today's counts, then each window of the plan as a meter. */
 .plan-usage {
   display: grid;
   flex: 1 0 100%;
@@ -8403,8 +7945,6 @@ a.button.primary {
   list-style: none;
 }
 
-/* The rows share the list's columns, so every meter is as long as the
-   others, whatever its label says. */
 .plan-window {
   display: grid;
   grid-column: 1 / -1;
@@ -8453,14 +7993,8 @@ a.button.primary {
   }
 }
 
-/* Motion A (OA-355, carry.ts): one View Transition carries the window's
-   composer from the page's foot into the window chat's rail, while the rail
-   slides in from the window's edge and the page column narrows; folding
-   reverses it. The names are set only while it runs. The page's old and
-   new snapshots cross-fade anchored top left, so nothing stretches. The
-   composer's box is drawn by its group, its own images hidden, and its
-   field, what it reads and its button each travel on their own, landing
-   just after the rail settles. */
+/* The names are set only while it runs. The page's old and new snapshots cross-fade anchored
+top left, so nothing stretches. */
 html[data-carrying] .shell-main {
   view-transition-name: window-page;
 }
@@ -8552,9 +8086,7 @@ html[data-carrying] :is(.overview-dock, .window-chat) .chat-input-foot > :last-c
   animation-timing-function: var(--ease-out);
 }
 
-/* Reduced motion, once for the window (decision 0034), last so it wins over
-   every rule above: every move and the pulse hold still, and the panel keeps
-   its fade. */
+/* Last, so it wins over every rule above. */
 @media (prefers-reduced-motion: reduce) {
   .shell,
   .sidebar,
@@ -8583,15 +8115,12 @@ html[data-carrying] :is(.overview-dock, .window-chat) .chat-input-foot > :last-c
     transform: none;
   }
 
-  /* Motion A carries nothing (carry.ts names no part): the whole window
-     cross-fades, quickly. */
   ::view-transition-group(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {
     animation-duration: var(--duration-quick);
   }
 
-  /* Arrivals fade, all at once, without the rise. */
   .arrive,
   .panel-dock,
   .panel-folded {
@@ -8612,8 +8141,6 @@ html[data-carrying] :is(.overview-dock, .window-chat) .chat-input-foot > :last-c
     animation: none;
   }
 
-  /* The bead only fades (bead-motion.ts): it arrives at its size, swaps
-     its words at once, shows its marks drawn, and goes as it is. */
   .change-set[data-closing] > :not(.change-set-head) {
     animation: none;
   }
