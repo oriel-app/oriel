@@ -1236,6 +1236,15 @@ const handlers = {
     };
   },
 
+  // Open as a thread: only the chat the window shows moves; one already
+  // moved, left or ended stays as it is.
+  "window.open-as-thread": async ({ thread: id }, _actor, deps) => {
+    const chat = deps.threads.windowChat(deps.workspaceId, deps.now());
+    if (chat?.id !== id) return { output: { moved: false }, undo: null, changed: null, events: [] };
+    deps.threads.moveWindowChat(id);
+    return { output: { moved: true }, undo: null, changed: { thread: id }, events: [] };
+  },
+
   // Continue in…: the user's request in the window chat goes on in a thread
   // on the item's open workstream, or on a new one named for it, held there
   // as from the window chat and sent as theirs, about what it was about and

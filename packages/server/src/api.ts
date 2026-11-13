@@ -268,6 +268,9 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
+// Open as a thread names the chat it opens, so a chat the window has moved
+// on from since isn't the one moved.
+const openBody = object({ thread: ulidValue });
 const setupCommand = object({
   command: union(
     literal("check"),
@@ -1320,6 +1323,17 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, tinyBody, emptyBody);
         const { left } = await deps.dispatch("window.new-chat", {}, user);
         return json(200, { left });
+      },
+    },
+    {
+      // Open as a thread: the window chat becomes its workstream's own
+      // thread, and the window starts a fresh one (OA-355).
+      method: "POST",
+      path: at("/window-chat/open"),
+      async run(_, request) {
+        const { thread } = await readJson(request, tinyBody, openBody);
+        const { moved } = await deps.dispatch("window.open-as-thread", { thread }, user);
+        return json(200, { moved });
       },
     },
     {

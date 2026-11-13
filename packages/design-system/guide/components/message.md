@@ -3,7 +3,7 @@ title: Thread messages
 status: stable
 group: Thread
 order: 60
-classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, about, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-from, continue-block, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
+classes: window-chat-moved, thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, about, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, run-meta, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, draft-card, held-by, held-from, continue-block, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
 summary: What a thread's conversation holds, entry by entry: the person's message, the agent's reply, its runs, Oriel's own lines, held messages and drafts, and "Working…".
 ---
 
@@ -642,14 +642,21 @@ In the thread it lands in, the request is a held message from the window chat, a
 
 ### The window chat's head
 
-The window chat draws its entries with the same renderer, in its own panel at the window's right (`aside.window-chat`, the item panel's width, on `--surface`). Its head (`.window-chat-head`) is one `--head-row` line: the title, **Ask about your window** (`h2.window-chat-title`, `--text-lg` at `--weight-strong`, taking the room), then **Open as a thread** once there's a chat to open, **New chat**, and the close (see [Icon button](/components/icon-button)). Open as a thread opens the window chat's own thread. It isn't **Continue in…** (SPEC §2, decision 0027), which carries the conversation to a workstream the person picks, as a held message, and starts the window chat afresh; that isn't built yet, so the link keeps the words for what it does. The entries follow in `ol.chat.window-chat-entries`, which scrolls; its composer is on [Chat input](/components/chat-input).
+The window chat draws its entries with the same renderer, in its own rail at the window's right (`aside.window-chat`, named "The window chat", `--chat-rail` wide, on `--frame`; see [Right rail](/components/right-rail#the-window-chat-s-rail)). Its head (`.window-chat-head`) is one `--head-row` line: the title, **Chat** (`h2.rail-title.window-chat-title`, small caps and faint as a thread's rail's title, taking the room), then **Open as a thread** once there's a chat to open, **New chat**, and the fold, **Hide the chat**: the sidebar's fold button with its icon mirrored (see [Icon button](/components/icon-button)). Hiding it puts the composer back at the page's foot, with its draft, and Back to the chat.
+
+**Open as a thread** hands the chat over: it makes the window chat its workstream's ordinary thread (`POST /api/window-chat/open`), folds the rail and goes to the thread, and the window shows a fresh chat after. It isn't **Continue in…** (SPEC §2, decision 0027), which carries the conversation to a workstream the person picks, as a held message. The entries follow in `ol.chat.window-chat-entries`, which scrolls; its composer is on [Chat input](/components/chat-input).
 
 ```html specimen id=window-chat-head title="The window chat, before the first question" width=390 height=260
-<aside class="window-chat" aria-label="Ask about your window">
+<aside class="window-chat" aria-label="The window chat">
   <header class="window-chat-head">
-    <h2 class="window-chat-title">Ask about your window</h2>
+    <h2 class="rail-title window-chat-title">Chat</h2>
     <button type="button" class="quiet-action" disabled>New chat</button>
-    <button type="button" class="window-chat-close" aria-label="Close the chat">×</button>
+    <button type="button" class="sidebar-fold window-chat-fold" aria-label="Hide the chat">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2.5" width="12" height="11" rx="2" />
+        <path d="M10 2.5v11" />
+      </svg>
+    </button>
   </header>
   <ol class="chat window-chat-entries">
     <li class="window-chat-empty">
@@ -660,13 +667,43 @@ The window chat draws its entries with the same renderer, in its own panel at th
 ```
 
 ```html specimen id=window-chat-head-open title="With a chat: Open as a thread, and New chat live" width=390 height=120
-<aside class="window-chat" aria-label="Ask about your window">
+<aside class="window-chat" aria-label="The window chat">
   <header class="window-chat-head">
-    <h2 class="window-chat-title">Ask about your window</h2>
+    <h2 class="rail-title window-chat-title">Chat</h2>
     <a href="/threads/t-41" class="quiet-action">Open as a thread</a>
     <button type="button" class="quiet-action">New chat</button>
-    <button type="button" class="window-chat-close" aria-label="Close the chat">×</button>
+    <button type="button" class="sidebar-fold window-chat-fold" aria-label="Hide the chat">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2.5" width="12" height="11" rx="2" />
+        <path d="M10 2.5v11" />
+      </svg>
+    </button>
   </header>
+</aside>
+```
+
+### Moved into its workstream
+
+Once the window chat's own workstream gains a member, as when the agent adds items to it or a plan's change set applies there, the chat is that workstream's thread (decision 0030, OA-347). The conversation stays in the rail, and its last entry says where it went (`li.window-chat-moved`, muted, ruled above): "Now a thread in" and the workstream's name, a link to the thread. The composer below is a fresh chat's at once ("Ask about your window"), and the next question starts it; words typed before the move stay in it.
+
+```html specimen id=window-chat-moved title="Moved: the conversation stays, with where it went" width=390 height=300
+<aside class="window-chat" aria-label="The window chat">
+  <header class="window-chat-head">
+    <h2 class="rail-title window-chat-title">Chat</h2>
+    <a href="/threads/t-41" class="quiet-action">Open as a thread</a>
+    <button type="button" class="quiet-action">New chat</button>
+    <button type="button" class="sidebar-fold window-chat-fold" aria-label="Hide the chat">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2.5" width="12" height="11" rx="2" />
+        <path d="M10 2.5v11" />
+      </svg>
+    </button>
+  </header>
+  <ol class="chat window-chat-entries">
+    <li class="user-message">Make a workstream for the gift card stories.</li>
+    <li class="reply"><p>I've added SYN-41, SYN-44 and SYN-52 to Gift cards.</p></li>
+    <li class="window-chat-moved">Now a thread in <a href="/threads/t-41">Gift cards</a></li>
+  </ol>
 </aside>
 ```
 
@@ -730,7 +767,7 @@ The window chat draws its entries with the same renderer, in its own panel at th
 
 ## Where the app uses it
 
-- `ChatEntryItem` in `packages/web/src/thread-page.tsx`. The thread page's chat and Working…: `ThreadPage` in `packages/web/src/thread-page.tsx`. The window chat's, with its head: `WindowChat` in `packages/web/src/window-chat-view.tsx`; CSS `.window-chat-head` and `.window-chat-title` in `window.css`.
+- `ChatEntryItem` in `packages/web/src/thread-page.tsx`. The thread page's chat and Working…: `ThreadPage` in `packages/web/src/thread-page.tsx`. The window chat's, with its head: `WindowChat` in `packages/web/src/window-chat-view.tsx`; CSS `.window-chat-head`, `.window-chat-title` and `.window-chat-moved` in `window.css`; whether it moved, `movedOut` in `packages/web/src/window-chat.ts`.
 - The thread's head: `ThreadPage` in `packages/web/src/thread-page.tsx`. CSS: `.thread-layout` and `.thread` in `window.css`; the head, `.thread-head`, `.crumb`, `.thread-title-row`, `.thread-title` and `.thread-title-row .quiet-action` in `window.css`.
 - `.chat` and `.user-message` in `window.css`, and `.user-message .about`, the line `ChatEntryItem` in `packages/web/src/thread-page.tsx` draws for what a message was about. `.reply` and its markdown: `.reply`, `.reply :is(p, ul, ol, blockquote, pre, hr)`, `.reply :is(h3, h4, h5, h6)`, `.reply :is(ul, ol)`, `.reply blockquote`, `.reply code`, `.reply pre`, `.reply a`, `.reply hr`, `.table-scroll` and `.reply table` in `window.css`; `Markdown` in `packages/web/src/parts.tsx`, its tables drawn by `block` in `packages/web/src/parts.tsx`.
 - `.quote-from`: `QuoteFrom` in `packages/web/src/parts.tsx`; CSS `.reply .quote-from` in `window.css`.

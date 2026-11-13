@@ -1,7 +1,7 @@
 ---
 title: Layout and density
 order: 70
-summary: The shell (a sidebar beside the page, with the panel or window chat over or beside it), its width tokens, one screen breakpoint at 760px, container queries for the page, and the narrow 390 view.
+summary: The shell (a sidebar beside the page, with the panel over or beside it, or the window chat in a rail or a sheet), its width tokens, one screen breakpoint at 760px, container queries for the page, and the narrow 390 view.
 ---
 
 # Layout and density
@@ -14,8 +14,10 @@ Oriel is one window: a sidebar, a page, and sometimes a panel. Its layout tokens
 
 - **The sidebar** is `--sidebar` wide: 15.5rem, or 3.25rem folded to icons (`.shell[data-folded]`, ⌘\ or Ctrl+\). It's sticky, and scrolls on its own. See [Sidebar](/components/sidebar).
 - **The page** (`.shell-main` in `window.css`) takes the rest. It's a size container called `page`, so what's on it lays out by the page's own width, not the screen's.
-- **The item panel and the window chat** are `--panel` (30rem) wide, fixed to the right. Below 1100px they float over the page with `--shadow`. At 1100px and up the shell sets `--beside: var(--panel)` and the page's right margin makes room, so the panel sits beside it (`.shell[data-panel]` in `window.css`). See [Item panel](/components/item-panel).
-- **The window chat beside an item.** At 1100px and up, an item opened while the window chat is open takes the window's edge, and the chat stands in the page column in the overview's place (`.shell[data-panel][data-chat]`), as a thread's page sits beside the panel. From 1100 to 1279px the item narrows so the chat keeps 28rem: `--panel` is `clamp(24rem, 100vw - var(--sidebar) - 28rem - var(--frame-band), 30rem)`. The app reads the same 1100px query (`besideChat` in `packages/web/src/app.tsx`); below it the item covers the chat, as before.
+- **The item panel** is `--panel` (30rem) wide, fixed to the right. Below 1100px it floats over the page with `--shadow`. At 1100px and up the shell sets `--beside: var(--panel)` and the page's right margin makes room, so the panel sits beside it (`.shell[data-panel]` in `window.css`). See [Item panel](/components/item-panel).
+- **The window chat's rail.** Once asked, on the window (the overview and Browse), the window chat is a rail at the window's right edge (`.window-chat` in `window.css`), `--chat-rail` wide: 24rem, or 22rem under 1280px, set on `html`. It's in the frame's material (`--frame`), as a thread's rail is, with no shadow. At 1100px and up `.shell[data-chat]` sets `--beside: var(--chat-rail)`, so the page column narrows for it rather than lying under it, and the overview stays whole beside the chat. See [Right rail](/components/right-rail#the-window-chat-s-rail).
+- **An item opened beside the chat** takes the rail's place, as wide: `.shell[data-chat]` also sets `--panel: var(--chat-rail)`, so the page keeps its width. The panel's dock carries the window chat's composer (see [Item panel](/components/item-panel#the-dock)); closing the item brings the rail back. The app reads the same 1100px query (`railRoom` in `packages/web/src/app.tsx`).
+- **The window chat's sheet.** Under 1100px there's no room for a rail: the chat is a sheet rising from the page's foot over the page column, from the sidebar's edge plus `--space-3`, on `--surface` with `--shadow`, its top corners `--radius-lg`, at `--layer-sheet`. It's 45vh tall, or 85vh with `[data-tall]`, set with its grab bar (`.window-chat-grab`). The page gets `padding-bottom: 45vh` so it scrolls clear of it (`.shell[data-chat] .shell-main` in `window.css`). On a phone it's edge to edge.
 
 Inside the page:
 
@@ -30,7 +32,7 @@ Inside the page:
 
 The page column sets its own `--inset-top`: `--frame-room`, the [frame](/components/frame)'s band, the bead's resting height and `--space-4` (`.shell-main` in `window.css`). So every page's first line starts below where [the bead](/components/bead) rests, and a resting bead covers no page head. A page that starts `--inset-top` down gets this for free.
 
-`--slide-panel` (0.375rem) is how far the panel and the chat slide as they arrive. See [Motion](/foundations/motion).
+`--slide-panel` (0.375rem) is how far the panel slides as it arrives. See [Motion](/foundations/motion).
 
 `--bar-height` is 0 on a wide screen, and 2.75rem under 760px, where the bar replaces the sidebar. Sticky things offset by it.
 
@@ -38,18 +40,18 @@ The page column sets its own `--inset-top`: `--frame-room`, the [frame](/compone
 tokens layout
 ```
 
-`--sidebar`, `--panel` and `--beside` are set on `.shell`, not on `html`, so the table says "set in a rule".
+`--sidebar`, `--panel` and `--beside` are set on `.shell`, not on `html`, so the table says "set in a rule". `--chat-rail` is on `html`, and narrower under 1280px.
 
 ## Breakpoints
 
 There's one screen breakpoint, 760px, and the rest are container queries, so the page reacts to the room it has, whether the screen is small or the panel is open.
 
-- **760px, the screen** (`@media (max-width: 760px)`): the sidebar becomes a drawer behind a bar, the panel goes full screen, the window chat becomes a bottom sheet, Settings' sections become tabs, and the overview's names wrap. The app reads the same query in its script: "Where the sidebar is a drawer; window.css says the same" (`narrow` in `packages/web/src/app.tsx`). The folded sidebar's rules are the other side of it, at `min-width: 761px`.
+- **760px, the screen** (`@media (max-width: 760px)`): the sidebar becomes a drawer behind a bar, the panel goes full screen, the window chat's sheet goes edge to edge, Settings' sections become tabs, and the overview's names wrap. The app reads the same query in its script: "Where the sidebar is a drawer; window.css says the same" (`narrow` in `packages/web/src/app.tsx`). The folded sidebar's rules are the other side of it, at `min-width: 761px`.
 - **932px, the page** (`@container page`): a thread's rail moves under the chat. This fires on a phone and on a laptop with the panel beside the page.
 - **760px, the page** (`@container page`): rows re-grid to two lines, side padding drops to `--space-3`, and less important columns hide.
 - **900px, the overview** (`@container overview (min-width: 900px)`): the overview goes to two columns.
-- **1100px, the screen**: the panel sits beside the page instead of over it, and the window chat stays beside an open item, in the page column.
-- **1280px, the screen**: below it, with the window chat beside an item, the item narrows to leave the chat 28rem.
+- **1100px, the screen**: the panel sits beside the page instead of over it, and the window chat is a rail the page narrows for, not a sheet over its foot.
+- **1280px, the screen**: below it, `--chat-rail` is 22rem, not 24rem, so the rail, and an item in its place, leave the page more room.
 - **`hover: none`**: on a touch screen, actions that show on hover (Make a workstream, a row's remove, Browse's pick) are always shown, some dimmed.
 - **600px**: only the plan usage meters stack. It's the one query under 760px, and it could be the page container.
 
@@ -67,7 +69,7 @@ At 390px, everything is one column, and a few things move:
 
 - **The bar.** `.bar` is a sticky line with the menu button and the brand. The menu button's name counts what's waiting: "Open the sidebar, 2 threads waiting on you", with the count shown on the button.
 - **The drawer.** The sidebar slides in from the left, `min(18rem, 86vw)` wide, over a scrim. Closed, it's `visibility: hidden`, so it's out of the tab order. Opening it moves focus into it. Escape closes it and gives focus back to the menu button.
-- **The rails move.** A thread's right rail goes under the chat. The panel is full screen. The window chat is a bottom sheet, 85% of the screen tall at most.
+- **The rails move.** A thread's right rail goes under the chat. The panel is full screen. The window chat is a sheet, edge to edge, 45% of the screen tall, or 85% with its grab bar.
 - **Names wrap instead of truncating.** Workstream names and the overview's titles wrap below 760px, in every theme (decision 0034, `.overview-workstream-name` in `window.css`). That's shared behaviour, not a theme option: a name cut to "Checkout v2: phone wal…" is no use on a phone. Browse's cluster and item titles wrap too, under the page container. The sidebar's names (`.nav-name` in `window.css`) still truncate in the drawer.
 
 ```html specimen id=narrow-bar title="The narrow screen's bar" width=390

@@ -76,6 +76,10 @@ const words: { [N in ActionName]: Words } = {
   // same.
   "window.new-chat": () => ["Started a fresh window chat", "start a fresh window chat"],
   "window.continue": () => ["Continued in a thread", "continue in a thread"],
+  "window.open-as-thread": () => [
+    "Opened the window chat as a thread",
+    "open the window chat as a thread",
+  ],
   "thread.open": (_, place) => [`Opened a thread on ${place}`, `open a thread on ${place}`],
   "thread.say": (_, place) => [`Said something in ${place}`, `say something in ${place}`],
   "thread.stop": (_, place) => [`Stopped the turn in ${place}`, `stop the turn in ${place}`],

@@ -4,7 +4,7 @@ status: stable
 group: Surfaces
 order: 61
 classes: thread-layout, thread, rail, rail-title, rail-sync, rail-sync-end, rail-note, sync-now, members, compact, member, member-title, gone, type, key, source-link, item-link, status, replies, icon
-summary: The column beside a thread's chat that lists the items the thread works on, at one version of its workstream, when it last synced with it, and Sync workstream now when the workstream has moved on.
+summary: The column beside a thread's chat that lists the items the thread works on, at one version of its workstream, when it last synced with it, and Sync workstream now when the workstream has moved on. The window chat's rail sits at the same edge, in the same material.
 ---
 
 # Right rail
@@ -230,6 +230,52 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 **Narrow.** Below 1280px: "A narrow page, on a narrow screen or beside the panel: the rails move inline, and rows wrap to two lines. The region moves under the chat before the rows wrap, where a 1180px screen leaves the page beside the sidebar" (`@container page (max-width: 932px)` in `window.css`). Under `@container page (max-width: 932px)` the layout is one column, the rail is no longer sticky, and its rows become a wrapping line of type marks and keys, titles hidden. The workshop's frames are `page` containers too, so any rail specimen narrower than 932px draws this form. The container is `.shell-main`, so opening the [item panel](/components/item-panel) beside the page can move the rail under the chat on a wide screen.
 
+## The window chat's rail
+
+The window chat is a rail too, at the same edge in the same material: once the person asks, on the window (the overview or Browse), it opens at the window's right edge (`.window-chat` in `window.css`, decision 0030), and the page column narrows for it rather than lying under it. It's a different rail from a thread's, holding a conversation rather than a region, but it's built to sit there the same way:
+
+- **Where:** `position: fixed`, the window's full height, `--chat-rail` wide (24rem; 22rem under 1280px). At 1100px and up `.shell[data-chat]` sets `--beside` to it, so the overview stays whole beside the chat, as a thread's page sits beside its rail.
+- **Material:** `--frame`, with no border and no shadow, as a thread's rail and the sidebar are. Its first line starts below the bead's resting place, as the page's does.
+- **Head:** **Chat** (`h2.rail-title.window-chat-title`, this rail's title look), Open as a thread, New chat, and the fold, Hide the chat. See [Thread messages](/components/message#the-window-chat-s-head).
+- **Entries**, which scroll, then the composer at its foot, raised. See [Chat input](/components/chat-input).
+- **An item opened** takes the rail's place, as wide (`--panel: var(--chat-rail)`), and carries the composer in its dock. Closing the item brings the rail back. See [Item panel](/components/item-panel#the-dock).
+- **Under 1100px** there's no rail: the chat is a sheet over the page's foot, 45vh, or 85vh with its grab bar (`button.window-chat-grab`, "Make the chat taller" or "Make the chat shorter"). A drag up makes it tall, down makes it short, and down from short hides it; a press, Enter or Space goes between the two. On a phone it's edge to edge. See [Layout](/foundations/layout#the-shell).
+- **Motion:** opening and folding with no item open carries the composer between the page's foot and the rail, while the rail comes in from the edge. See [Motion A](/foundations/motion#motion-a-the-composer-carried).
+
+```html specimen id=window-chat-rail screen height=520 title="The window chat's rail, on a 1280 screen (the rail only)"
+<aside class="window-chat" aria-label="The window chat">
+  <header class="window-chat-head">
+    <h2 class="rail-title window-chat-title">Chat</h2>
+    <a href="/threads/t-41" class="quiet-action">Open as a thread</a>
+    <button type="button" class="quiet-action">New chat</button>
+    <button type="button" class="sidebar-fold window-chat-fold" aria-label="Hide the chat">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2.5" width="12" height="11" rx="2" />
+        <path d="M10 2.5v11" />
+      </svg>
+    </button>
+  </header>
+  <ol class="chat window-chat-entries">
+    <li class="user-message">What changed in Checkout v2 this week?</li>
+    <li class="reply">
+      <p>Two stories moved to Done, and SYN-74 was reopened after a failed test.</p>
+    </li>
+  </ol>
+  <form class="chat-input" data-elevation="raised">
+    <textarea
+      class="chat-input-field"
+      rows="2"
+      placeholder="Ask a follow-up"
+      aria-label="Message"
+    ></textarea>
+    <div class="chat-input-foot">
+      <span class="chat-input-reads">Reads your whole window</span>
+      <button type="submit" class="button" disabled>Send</button>
+    </div>
+  </form>
+</aside>
+```
+
 ## States
 
 ```html specimen id=state-sync title="Sync workstream now: rest, hover, focus, waiting on a turn, and syncing" state=rest
@@ -358,6 +404,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 
 - `Region` in `packages/web/src/thread-page.tsx`, rendered by `ThreadPage`. The new thread's rail: `NewThreadPage` in `packages/web/src/thread-page.tsx`.
 - Rows: `Member` in `packages/web/src/parts.tsx`, without `onRemove`.
+- The window chat's rail: `WindowChat` in `packages/web/src/window-chat-view.tsx`, rendered by `App` in `packages/web/src/app.tsx` while the chat is open on the window and no item is open (or it's folded); CSS `.window-chat`, `.shell[data-chat]` and `.window-chat-grab` in `window.css`.
 - CSS: `.thread-layout`, `.rail`, `.rail > .rail-title`, `.rail-sync`, `.rail-sync-end`, `.rail-note` and `.sync-now` in `window.css`; the compact rows, `.members.compact` in `window.css`; the shared `.rail-title` in `window.css`; and the narrow form, under `@container page (max-width: 932px)` in `window.css`.
 
 Two small inconsistencies, neither worth a drift status of its own:

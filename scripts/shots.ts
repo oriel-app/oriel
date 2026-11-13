@@ -1700,7 +1700,7 @@ async function openSources(page: Page): Promise<void> {
 // A question asked from the overview's composer in a fresh window chat, waiting for its
 // block of `form` and the end of the turn.
 async function askInWindow(page: Page, question: string, form: string): Promise<void> {
-  await post("/api/window-chat/new", {}, historied);
+  await freshChat(page, historied);
   await page.locator(".overview-dock .chat-input-field").fill(question);
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   // The last scene's chat may still show its block until this one's
@@ -1843,15 +1843,21 @@ async function searchThreads(page: Page, text: string, found: string) {
   return field;
 }
 
-// Asks in a fresh window chat, and waits for the whole answer: the last
-// shot's chat gone first, until the page hears it's a new one, so its
-// blocks can't pass for this one's; then `answered`, with nothing working.
-async function askChat(page: Page, question: string, answered: string, on = server) {
+// New chat, made behind the page's back, and the overview loaded again so
+// it knows: its composer follows up in the chat it shows (OA-355), so a
+// question asked before then would go to the last scene's chat.
+async function freshChat(page: Page, on: Serving): Promise<void> {
   await post("/api/window-chat/new", {}, on);
-  await page
-    .locator(".window-chat .answer-block, .window-chat .quote-from, .window-chat .run")
-    .first()
-    .waitFor({ state: "detached" });
+  const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
+  await page.reload();
+  await loaded;
+  await overviewShown(page);
+}
+
+// Asks in a fresh window chat, and waits for the whole answer: `answered`,
+// with nothing working.
+async function askChat(page: Page, question: string, answered: string, on = server) {
+  await freshChat(page, on);
   await page.locator(".overview-dock .chat-input-field").fill(question);
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   await page.locator(answered).first().waitFor();
@@ -1871,8 +1877,8 @@ async function openFromAnswer(page: Page, on = server) {
 // The server the ask-panel-* scene running now made for itself.
 let docking = server;
 
-// Whether the window has room for the window chat beside an open item, as
-// app.tsx's `besideChat` says.
+// Whether the window has room for a thread's page beside an open item, and
+// for the window chat's rail, as app.tsx's `railRoom` says.
 const beside = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1100;
 
 // A check: there are `count` of what's found, now.
@@ -2315,7 +2321,7 @@ const scenes: Scene[] = [
         "Chart my workstreams by size",
         '.window-chat .answer-block[data-form="bars"]',
       );
-      await page.getByRole("button", { name: "Close the chat" }).click();
+      await page.getByRole("button", { name: "Hide the chat" }).click();
       await page.getByRole("button", { name: "Back to the chat" }).waitFor();
     },
   },
@@ -2335,10 +2341,10 @@ const scenes: Scene[] = [
       );
     },
   },
-  // An item opened from the window chat's answer: with room, the chat
-  // stays, in the page column beside the item, its chip marked, and the
-  // panel steps through what the answer named; narrower, the item covers it,
-  // as before. "‹ Window" puts the overview back, the item still open.
+  // An item opened from the window chat's answer takes the rail's place and
+  // carries the chat in its dock, at every width; the overview stays, as
+  // wide as beside the rail, and the panel steps through what the answer
+  // named. Closing the item brings the rail back.
   ...(
     [
       ["ask-panel-beside", 1],
@@ -2346,7 +2352,7 @@ const scenes: Scene[] = [
     ] as const
   ).map(([name, at]): Scene => ({
     name,
-    test: "an item opened from the window chat's answer stands beside the chat, its chip the one marked open",
+    test: "an item opened from the window chat's answer takes the rail's place with the chat in its dock, the overview still in view beside it",
     path: "/",
     window: true,
     act: async (page) => {
@@ -2357,20 +2363,9 @@ const scenes: Scene[] = [
         await page.locator(".panel-place", { hasText: "2 of 2" }).waitFor();
         await page.locator(".item-panel .panel-facts").waitFor();
       }
-      if (!beside(page)) {
-        await page.locator(".window-chat").waitFor({ state: "detached" });
-        return;
-      }
-      const open = page.locator(".window-chat .chip[data-open]");
-      await open.waitFor();
-      await expectCount(open, 1);
-      await page
-        .locator(".window-chat .chip[data-open] .chip-key", {
-          hasText: at === 1 ? "SYN-99" : "SYN-104",
-        })
-        .waitFor();
-      await page.locator(".shell[data-panel][data-chat] .window-chat").waitFor();
-      await page.locator(".overview").waitFor({ state: "hidden" });
+      await page.locator(".window-chat").waitFor({ state: "detached" });
+      await page.locator(".shell[data-panel][data-chat] .item-panel .panel-dock").waitFor();
+      if (beside(page)) await page.locator(".overview").waitFor();
     },
   })),
   {
@@ -2380,12 +2375,10 @@ const scenes: Scene[] = [
     act: async (page) => {
       await overviewShown(page);
       await openFromAnswer(page);
-      if (!beside(page)) return;
-      await page.getByRole("button", { name: "‹ Window" }).click();
-      await page.locator(".window-chat").waitFor({ state: "detached" });
-      await page.getByRole("button", { name: "Back to the chat" }).waitFor();
+      await page.getByRole("button", { name: "Close the panel" }).click();
+      await page.locator(".item-panel").waitFor({ state: "detached" });
+      await page.locator(".window-chat .reply .chip").first().waitFor();
       await page.locator(".overview").waitFor();
-      await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
   {
@@ -4325,9 +4318,9 @@ const scenes: Scene[] = [
       });
     },
   },
-  // In the window chat, beside the item (OA-333): opened from the answer, the
-  // item is offered, read as the window reads it, never read-only, and the
-  // follow-up keeps its about line. Narrower, the item covers the chat.
+  // In the window chat, under the item (OA-333): opened from the answer, the
+  // item is offered in the panel's dock, read as the window reads it, never
+  // read-only, and the follow-up keeps its about line.
   {
     name: "looking-window",
     test: "an item opened from the window chat's answer is offered in its composer, never read-only, and the follow-up keeps its about line",
@@ -4342,8 +4335,7 @@ const scenes: Scene[] = [
       await page.locator(".working").first().waitFor({ state: "detached" });
       await page.locator(".window-chat .reply .chip-link").first().click();
       await page.locator(".item-panel .panel-facts").waitFor();
-      if (!beside(page)) return;
-      const chat = page.locator(".window-chat");
+      const chat = page.locator(".item-panel .panel-dock");
       await chat
         .locator(".ctx-chip", { hasText: "Looking at" })
         .filter({ hasText: "SYN-99" })
@@ -4354,20 +4346,22 @@ const scenes: Scene[] = [
         .waitFor();
       await chat.getByRole("textbox", { name: "Message" }).fill("Is this blocked on legal?");
       await chat.getByRole("button", { name: "Send" }).click();
-      await chat.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
+      await chat.locator(".panel-dock-working").waitFor({ state: "detached" });
+      await chat.getByRole("button", { name: "Chat" }).click();
+      const shown = page.locator(".window-chat");
+      await shown.locator(".user-message .about", { hasText: "SYN-99" }).waitFor();
       await page.locator(".working").first().waitFor({ state: "detached" });
-      await expectCount(chat.locator(".user-message .about", { hasText: "read-only" }), 0);
+      await expectCount(shown.locator(".user-message .about", { hasText: "read-only" }), 0);
     },
   },
-  // Below 1100 the item lies over the conversation and carries its
-  // composer in a dock at its foot (OA-335): the latest answer's first
-  // lines, "Chat", and the composer looking at the item. Sending keeps the
-  // item open, and the dock shows the answer; "Chat" folds the item to a
-  // line above the chat's composer. With room, the chat stands beside it
-  // and there's no dock.
+  // The item takes the window chat's place and carries its composer in a
+  // dock at its foot, at every width (OA-335, OA-355): the latest answer's
+  // first lines, "Chat", and the composer looking at the item. Sending keeps
+  // the item open, and the dock shows the answer; "Chat" folds the item to a
+  // line above the chat's composer.
   ...(["dock", "sending", "folded"] as const).map((step): Scene => ({
     name: `ask-panel-${step}`,
-    test: "with room, the chat stands beside an open item; narrower, the item's dock carries the composer, sends from it and folds to the chat",
+    test: "at every width the item's dock carries the window chat's composer, sends from it and folds to the chat",
     testAt: [390],
     path: "/",
     window: true,
@@ -4376,10 +4370,6 @@ const scenes: Scene[] = [
       await overviewShown(page);
       await openFromAnswer(page, docking);
       const dock = page.locator(".item-panel .panel-dock");
-      if (beside(page)) {
-        await expectCount(dock, 0);
-        return;
-      }
       await page.locator(".window-chat").waitFor({ state: "detached" });
       await dock.locator(".panel-dock-latest", { hasText: "saved cards" }).waitFor();
       await dock
@@ -4454,7 +4444,6 @@ const scenes: Scene[] = [
     act: async (page) => {
       await overviewShown(page);
       await openFromAnswer(page, docking);
-      if (beside(page)) return;
       const dock = page.locator(".item-panel .panel-dock");
       await dock.getByRole("button", { name: "Chat" }).click();
       await page.getByRole("button", { name: "New chat" }).click();
@@ -4511,31 +4500,77 @@ const scenes: Scene[] = [
       await page.locator(".review-card .review-altered").waitFor();
     },
   },
-  // The window chat moved into its workstream (OA-347): the window starts a
-  // fresh chat, and the thread is the user's turn in the sidebar.
+  // The window chat moved into its workstream (OA-347, OA-355): at once,
+  // with no reload, the rail's composer asks a fresh chat, the conversation
+  // stays above it, saying where it went, and the thread is the user's turn
+  // in the sidebar.
   {
     name: "window-moved",
+    test: "the window chat moved into its workstream leaves a fresh chat at once, with no reload, the moved one Your turn",
     path: "/",
     window: true,
     make: async () => (await writing()).serving,
-    act: async (page) => {
-      await overviewShown(page);
-      await page
-        .locator(".overview-dock .chat-input-field")
-        .fill("Gather the vehicle stories into a workstream");
-      await page.getByRole("button", { name: "Ask", exact: true }).click();
-      await page
-        .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
-        .waitFor({ state: "attached" });
-      // On screen until the overview loads again, which shows a fresh chat.
-      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
-      await page.reload();
-      await loaded;
-      await overviewShown(page);
-      await page.getByRole("button", { name: "Back to the chat" }).waitFor({ state: "detached" });
-    },
+    act: (page) => movedChat(page, "gathered"),
   },
 ];
+
+// The window chat moving into its workstream, each way in (OA-355), with no
+// reload: the agent gathering items into it; Open as a thread; Continue in….
+// What it leaves is checked as the page has it: a fresh chat, whose first
+// question makes a thread other than the moved one.
+async function movedChat(page: Page, way: "gathered" | "asked-again" | "opened") {
+  await overviewShown(page);
+  const composer = page.locator(".overview-dock .chat-input-field");
+  const ask =
+    way === "opened"
+      ? "What's holding up saved cards?"
+      : "Gather the vehicle stories into a workstream";
+  await composer.fill(ask);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  const rail = page.locator(".window-chat");
+  await rail.locator(".reply").first().waitFor();
+  await page.locator(".working").first().waitFor({ state: "detached" });
+  const moved = await chatShown(page);
+  if (way === "opened") {
+    await rail.getByRole("link", { name: "Open as a thread" }).click();
+    await page.waitForURL((url) => url.pathname === `/threads/${moved}`);
+    await page.locator(".thread .reply").first().waitFor();
+    const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
+    await page.goBack();
+    await loaded;
+    await overviewShown(page);
+    await page.locator(".overview-dock .chat-input-field").waitFor();
+    await page.getByRole("button", { name: "Back to the chat" }).waitFor({ state: "detached" });
+    return;
+  }
+  await rail.locator(".window-chat-moved").waitFor();
+  await page
+    .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
+    .waitFor({ state: "attached" });
+  const fresh = rail.getByRole("textbox", { name: "Message" });
+  await check(async () => {
+    if ((await fresh.getAttribute("placeholder")) !== "Ask about your window")
+      throw new Error("The moved chat's composer should ask a fresh chat");
+  });
+  if (way !== "asked-again") return;
+  await fresh.fill("Which workstreams are quiet?");
+  await rail.getByRole("button", { name: "Send" }).click();
+  await rail.locator(".window-chat-moved").waitFor({ state: "detached" });
+  await rail.locator(".reply").first().waitFor();
+  await page.locator(".working").first().waitFor({ state: "detached" });
+  await check(async () => {
+    if ((await chatShown(page)) === moved)
+      throw new Error("The next question went to the moved chat");
+  });
+}
+
+// The thread the window chat shows, as its Open as a thread link names it,
+// or the moved one's, as its line does.
+async function chatShown(page: Page): Promise<string> {
+  const link = page.locator(".window-chat .window-chat-head a, .window-chat-moved a").first();
+  const href = (await link.getAttribute("href")) ?? "";
+  return href.split("/").at(-1) ?? "";
+}
 
 // The desktop app's first run (decision 0038): each screen on a server of
 // its own, made afresh for each scheme and width, since each shot moves it:
@@ -5705,7 +5740,7 @@ scenes.push(
   },
   ...(["this", "ongoing", "asked"] as const).map((step): Scene => ({
     name: `ask-about-${step}`,
-    test: "Ask about this takes an item from Browse to the window chat, still open and offered, keeping words typed while the chat loads",
+    test: "Ask about this on Browse opens the window chat there, in the item's dock, the item still open and offered, keeping words typed while the chat loads",
     testAt: [390],
     window: true,
     path: "/browse?grouping=epic",
@@ -5732,14 +5767,15 @@ scenes.push(
         });
       }
       await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
-      await page.waitForURL((url) => url.pathname === "/" && url.searchParams.has("item"));
+      // Browse is the window too: the chat opens there, in the item's dock.
+      const composer = page.locator(".item-panel .panel-dock");
+      await composer.waitFor();
+      await check(() => {
+        if (new URL(page.url()).pathname !== "/browse")
+          throw new Error(`Ask about this left Browse for ${page.url()}`);
+      });
       await page.locator(".item-panel .panel-facts").waitFor();
       await expectCount(page.getByRole("button", { name: "Ask about this" }), 0);
-      // The composer that offers the item: the chat's beside it, or the
-      // one the item's dock carries.
-      const composer = beside(page)
-        ? page.locator(".window-chat > .chat-input")
-        : page.locator(".item-panel .panel-dock");
       await composer
         .locator(".ctx-chip", { hasText: "Looking at" })
         .filter({ hasText: key })
@@ -5748,8 +5784,10 @@ scenes.push(
       if (step === "ongoing") {
         await page.keyboard.type("Who owns this?");
         release();
-        const said = beside(page) ? ".window-chat .reply" : ".item-panel .panel-dock-latest";
-        await page.locator(said, { hasText: "saved cards" }).first().waitFor();
+        await page
+          .locator(".item-panel .panel-dock-latest", { hasText: "saved cards" })
+          .first()
+          .waitFor();
         await check(async () => {
           const typed = composer.getByRole("textbox", { name: "Message" });
           if ((await typed.inputValue()) !== "Who owns this?")
@@ -5760,23 +5798,19 @@ scenes.push(
           .filter({ hasText: key })
           .waitFor();
       }
-      if (step === "this" && beside(page)) await page.locator(".window-chat-empty").waitFor();
       if (step === "asked") {
         await composer.getByRole("textbox", { name: "Message" }).fill("Who is this waiting on?");
         await composer.getByRole("button", { name: "Send" }).click();
         await page.locator(".working").first().waitFor({ state: "detached" });
-        if (beside(page))
-          await page.locator(".window-chat .user-message .about", { hasText: key }).waitFor();
         // Answered once the dock shows words that aren't the message sent.
-        else
-          await page
-            .locator(
-              ".item-panel .panel-dock-latest:not(:has(.panel-dock-you, .panel-dock-working))",
-              {
-                hasText: /\S/,
-              },
-            )
-            .waitFor();
+        await page
+          .locator(
+            ".item-panel .panel-dock-latest:not(:has(.panel-dock-you, .panel-dock-working))",
+            {
+              hasText: /\S/,
+            },
+          )
+          .waitFor();
         await page.locator(".item-panel .panel-facts").waitFor();
       }
     },
@@ -5793,15 +5827,12 @@ const continued = async (page: Page, press: boolean) => {
   await page.locator(".item-panel").getByRole("button", { name: "Ask about this" }).click();
   await page.waitForURL((url) => url.pathname === "/" && url.searchParams.has("item"));
   await page.locator(".item-panel .panel-facts").waitFor();
-  const composer = beside(page)
-    ? page.locator(".window-chat > .chat-input")
-    : page.locator(".item-panel .panel-dock");
+  const composer = page.locator(".item-panel .panel-dock");
   await composer.locator(".ctx-chip", { hasText: "Looking at" }).waitFor();
   await composer.getByRole("textbox", { name: "Message" }).fill("Estimate it at 3 points");
   await composer.getByRole("button", { name: /^(Send|Ask)$/ }).click();
   await page.locator(".working").first().waitFor({ state: "detached" });
-  if (!beside(page))
-    await page.locator(".item-panel").getByRole("button", { name: "Chat" }).click();
+  await page.locator(".item-panel").getByRole("button", { name: "Chat" }).click();
   const offer = page.locator(".window-chat .continue-block button");
   await offer.waitFor();
   if (!press) return;
@@ -5864,7 +5895,12 @@ scenes.push(
       make: () => longChat(chat),
       act: async (page) => {
         if (chat === "thread") await page.goto(new URL(`/threads/${following}`, page.url()).href);
-        else await page.getByRole("button", { name: "Back to the chat" }).click();
+        else {
+          await page.getByRole("button", { name: "Back to the chat" }).click();
+          // The rail carried in (motion A, OA-355): while it moves, a click
+          // lands on the transition, not the page.
+          await until(page, `!document.documentElement.hasAttribute("data-carrying")`);
+        }
         await page.locator(".reply").first().waitFor();
         const { at, below, top } = chatScroll[chat];
         // Read from the top, once the chat has shown its end.
@@ -5917,6 +5953,83 @@ scenes.push(
       },
     })),
   ),
+);
+
+scenes.push(
+  // The window chat moved into its workstream, each way in (OA-355).
+  ...(["asked-again", "opened"] as const).map((way): Scene => ({
+    name: `window-moved-${way}`,
+    test:
+      way === "opened"
+        ? "Open as a thread leaves the window a fresh chat"
+        : "after the chat moved into its workstream, the next question starts a new thread",
+    path: "/",
+    window: true,
+    make: async () => (await writing()).serving,
+    act: (page) => movedChat(page, way),
+  })),
+  // Asked at 1280, the overview stays whole beside the chat's rail, and the
+  // chat goes on in Browse, the same conversation, still watched (OA-355).
+  // Under 1100 it's a sheet over the page's foot.
+  {
+    name: "window-rail-browse",
+    test: "asked at 1280, the overview stays whole beside the rail; Browse keeps the same chat; hidden there, its draft stays at the foot and Back to the chat reopens it",
+    testAt: [390],
+    path: "/",
+    window: true,
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".overview-dock .chat-input-field").fill("What's holding up saved cards?");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      const rail = page.locator(".window-chat");
+      await rail.locator(".reply").first().waitFor();
+      await page.locator(".working").first().waitFor({ state: "detached" });
+      await check(async () => {
+        if (!beside(page)) return;
+        const chat = await rail.boundingBox();
+        const overview = await page.locator(".overview").boundingBox();
+        if (!chat || !overview || overview.x + overview.width > chat.x + 1 || overview.width < 400)
+          throw new Error(`The overview should stay whole beside the chat: ${overview?.width}`);
+      });
+      const asked = await chatShown(page);
+      await page.getByRole("link", { name: "Browse" }).first().click();
+      await page.locator("main.window").waitFor();
+      await rail.locator(".reply").first().waitFor();
+      await check(async () => {
+        if ((await chatShown(page)) !== asked) throw new Error("Browse showed another chat");
+      });
+      // Hidden, the chat's draft goes on at the page's foot, which opens it
+      // again; then the rail shows, as the shot does.
+      await rail.getByRole("textbox", { name: "Message" }).fill("Who owns the consent copy?");
+      await page.getByRole("button", { name: "Hide the chat" }).click();
+      await rail.waitFor({ state: "detached" });
+      const foot = page.locator(".overview-dock").getByRole("textbox", { name: "Message" });
+      await check(async () => {
+        if ((await foot.inputValue()) !== "Who owns the consent copy?")
+          throw new Error("Hiding the chat lost its draft");
+      });
+      await page.getByRole("button", { name: "Back to the chat" }).click();
+      await rail.getByRole("textbox", { name: "Message" }).fill("");
+    },
+  },
+  // Continue in…: back on the window, a fresh chat.
+  {
+    name: "window-moved-continued",
+    test: "after Continue in…, the window shows a fresh chat",
+    window: true,
+    path: `/${outsideItem}`,
+    make: async () => (await writing()).serving,
+    act: async (page) => {
+      await continued(page, true);
+      const loaded = page.waitForResponse((reply) => reply.url().endsWith("/api/window-chat"));
+      await page.goBack();
+      await loaded;
+      await overviewShown(page);
+      await page.locator(".overview-dock .chat-input-field").waitFor();
+      await page.getByRole("button", { name: "Back to the chat" }).waitFor({ state: "detached" });
+    },
+  },
 );
 
 // A chat taller than the window, on a server of its own: a thread's, or the

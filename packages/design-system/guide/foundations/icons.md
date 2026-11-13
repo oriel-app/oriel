@@ -10,7 +10,7 @@ Oriel has few icons, on purpose. A word says more than a picture to someone who 
 
 ## How an icon is drawn
 
-Every icon is an inline `<svg>` in the component that uses it, with no icon font, sprite or module. Each is one small function, defined beside its user. `SearchIcon`, `Chevron`, `Mark` and `MenuIcon` are exported, the rest are local.
+Every icon is an inline `<svg>` in the component that uses it, with no icon font, sprite or module. Each is one small function, defined beside its user. `SearchIcon`, `Chevron`, `Mark`, `MenuIcon` and `PanelIcon` are exported, the rest are local. `PanelIcon` in `packages/web/src/sidebar.tsx` is a panel at the window's edge: the sidebar's fold draws it with its line on the left, and the window chat's fold draws it mirrored, with `right`.
 
 The convention:
 
@@ -145,7 +145,7 @@ The convention:
 
 ## Every icon in the app
 
-Read from Oriel's `.tsx` files now: every inline `<svg>` whose markup is fixed. Four aren't listed because their markup is computed: `ChipIcon` in `packages/web/src/parts.tsx`, `StepIcon` in `packages/web/src/item-panel.tsx`, the item panel's previous and next, `WarningIcon` in `packages/web/src/sidebar.tsx` and the overview's `Spark` in `packages/web/src/overview-page.tsx`.
+Read from Oriel's `.tsx` files now: every inline `<svg>` whose markup is fixed. Five aren't listed because their markup is computed: `ChipIcon` in `packages/web/src/parts.tsx`, `StepIcon` in `packages/web/src/item-panel.tsx`, the item panel's previous and next, `PanelIcon` in `packages/web/src/sidebar.tsx`, `WarningIcon` in `packages/web/src/sidebar.tsx` and the overview's `Spark` in `packages/web/src/overview-page.tsx`.
 
 ```live
 icons
@@ -153,7 +153,7 @@ icons
 
 ## Closes are a character
 
-The panel's close, the window chat's close, a member's remove and a change set line's remove are the character × (U+00D7) in a button, at `--text-xl`, not an SVG (`.panel-close` in `window.css`). Each has an `aria-label` that says what it closes or removes: "Close the panel", "Close the chat", "Remove SYN-23", "Leave this change out". A screen reader would otherwise say "times".
+The panel's close, a member's remove and a change set line's remove are the character × (U+00D7) in a button, at `--text-xl`, not an SVG (`.panel-close` in `window.css`). Each has an `aria-label` that says what it closes or removes: "Close the panel", "Remove SYN-23", "Leave this change out". A screen reader would otherwise say "times".
 
 ```html specimen id=close title="× as a close, named by its label"
 <header class="panel-head">
@@ -187,8 +187,7 @@ Most icons are decoration: the button's name is in its words or its `aria-label`
 
 - **Four stroke styles.** `.icon` strokes at 1.4 in `currentColor`. `.chevron` at 1.75 in `--text-faint`. `.mark` at 1.6 in the accent, with butt caps (no linecap set). `.chip-icon` at 1.4 in `--text-muted`, sized in em. Copy `.icon` for anything new.
 - **The chevron's turn is written three times**: `[aria-expanded="true"] > .chevron` in `window.css`, and again for the sidebar's disclosure (`.nav-disclose[aria-expanded="true"] .chevron` in `window.css`) and folding heads (`.fold-toggle[aria-expanded="true"] .chevron` in `window.css`).
-- **Two closes differ.** The panel's close has a tooltip, "Close (Esc)". The window chat's has none. Both are ×.
-- **No icon module.** Icons are defined beside their one user, so the same shape could be drawn twice and differ. None is today. A shared `icons.tsx` would be the place once a second user appears. See [Icon button](/components/icon-button) for the proposed `CloseIcon`.
+- **No icon module.** Icons are defined beside their one user, so the same shape could be drawn twice and differ. None is today. `PanelIcon` has a second user, the window chat's fold, which imports it from `sidebar.tsx` rather than drawing it again. A shared `icons.tsx` would be the place once more do. See [Icon button](/components/icon-button) for the proposed `CloseIcon`.
 
 ## Rules
 

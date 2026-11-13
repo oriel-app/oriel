@@ -133,6 +133,7 @@ export const groups: Record<string, string[]> = {
     "--page",
     "--rail",
     "--chat",
+    "--chat-rail",
     "--sidebar",
     "--panel",
     "--beside",

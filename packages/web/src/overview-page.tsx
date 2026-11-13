@@ -7,7 +7,8 @@
 // count of them points to (OA-185). Every number and line is the server's,
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
-import { useContext, useState } from "preact/hooks";
+import { useContext, useEffect, useRef, useState } from "preact/hooks";
+import { Tooltip } from "./tooltip.tsx";
 import type { OverviewSection } from "@oriel/core/overview";
 import { WindowUndos } from "./end-workstream.tsx";
 import type { EndingModel } from "./ending.ts";
@@ -42,6 +43,7 @@ import { StatusBar } from "./window-page.tsx";
 import { OverviewComposer, QuestionButton } from "./window-chat-view.tsx";
 import { NoticedStrip, PinnedStrip } from "./noticed-strip.tsx";
 import { type Question, questionsFrom, type WindowChatModel } from "./window-chat.ts";
+import type { ThreadModel } from "./thread.ts";
 
 export function OverviewPage(props: {
   model: OverviewModel;
@@ -55,6 +57,7 @@ export function OverviewPage(props: {
   // Browse as the user last left it.
   browse: Route;
   chat: WindowChatModel;
+  thread: ThreadModel | null;
   // Whether the window chat has a conversation.
   ongoing: boolean;
   // The first run's overview (decision 0038): its one-time line, and its
@@ -163,6 +166,7 @@ export function OverviewPage(props: {
       />
       <OverviewComposer
         chat={props.chat}
+        thread={props.thread}
         ongoing={props.ongoing}
         questions={questions.filter((q) => !beside.includes(q))}
         noAi={props.noAi}
@@ -396,26 +400,84 @@ function Headlines(props: {
   const items = view.headlines.flatMap((line) =>
     line.subject.kind === "item" ? [line.subject.item.id] : [],
   );
-  return (
-    <section
-      class="overview-headlines"
-      data-questions={questions.length > 0 || undefined}
-      data-section="headlines"
-      aria-label="Headlines"
-    >
-      <ItemListContext.Provider value={items}>
-        {view.headlines.map((line) => (
-          <Headline
-            key={line.id}
-            line={line}
-            questions={questions.filter((question) => question.headline === line.id)}
-            chat={chat}
-            dispatch={dispatch}
-          />
-        ))}
-      </ItemListContext.Provider>
+  const lines = (
+    <ItemListContext.Provider value={items}>
+      {view.headlines.map((line) => (
+        <Headline
+          key={line.id}
+          line={line}
+          questions={questions.filter((question) => question.headline === line.id)}
+          chat={chat}
+          dispatch={dispatch}
+        />
+      ))}
+    </ItemListContext.Provider>
+  );
+  const all = (
+    <>
+      {lines}
       {unopened.length > 0 && <Unopened view={view} dispatch={dispatch} />}
-    </section>
+    </>
+  );
+  if (questions.length > 0)
+    return (
+      <section
+        class="overview-headlines"
+        data-questions
+        data-section="headlines"
+        aria-label="Headlines"
+      >
+        {all}
+      </section>
+    );
+  return <Band>{all}</Band>;
+}
+
+// The headlines without questions: one band that never wraps. Where they
+// don't all fit, it scrolls sideways a headline at a time, and while there's
+// more to the right its end fades under a › that shows the next.
+function Band(props: { children: ComponentChildren }) {
+  const track = useRef<HTMLElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const band = track.current;
+    if (!band) return;
+    const measure = () => setMore(band.scrollLeft + band.clientWidth < band.scrollWidth - 1);
+    measure();
+    band.addEventListener("scroll", measure, { passive: true });
+    const sized = new ResizeObserver(measure);
+    sized.observe(band);
+    return () => {
+      band.removeEventListener("scroll", measure);
+      sized.disconnect();
+    };
+  }, []);
+  const next = () => {
+    const band = track.current;
+    if (!band) return;
+    const edge = band.getBoundingClientRect().right;
+    const cut = [...band.children].find((cell) => cell.getBoundingClientRect().right > edge + 1);
+    const left = cut ? cut.getBoundingClientRect().left - band.getBoundingClientRect().left : 0;
+    band.scrollBy({ left: left || band.clientWidth, behavior: "smooth" });
+  };
+  return (
+    <div class="overview-band" data-more={more || undefined}>
+      <section
+        class="overview-headlines band-track"
+        data-section="headlines"
+        aria-label="Headlines"
+        ref={track}
+      >
+        {props.children}
+      </section>
+      {more && (
+        <Tooltip text="More headlines">
+          <button type="button" class="band-next" aria-label="More headlines" onClick={next}>
+            <span aria-hidden="true">›</span>
+          </button>
+        </Tooltip>
+      )}
+    </div>
   );
 }
 

@@ -3,7 +3,7 @@ title: Icon button
 status: drifting
 group: Actions
 order: 11
-classes: head-action, panel-step, panel-close, window-chat-close, remove-member, remove-line, sync-now, sidebar-fold, bar-menu, nav-disclose, sidebar-new
+classes: head-action, panel-step, panel-close, window-chat-fold, band-next, remove-member, remove-line, sync-now, sidebar-fold, bar-menu, nav-disclose, sidebar-new
 summary: A square button that shows only an icon or a ×, named by its aria-label and explained by a tooltip. Nine classes today and no shared one; copy .head-action.
 ---
 
@@ -20,10 +20,11 @@ Oriel has no shared icon-button class. Each place wrote its own:
 | `.head-action`                   | A workstream's header: Mark done or Reopen, and Delete… | `--head-row` (2rem)       | SVG `.icon`          |
 | `.panel-step`                    | The item panel: Previous item, Next item                | `--head-row`              | SVG `.icon`          |
 | `.panel-close`                   | The item panel: Close the panel                         | `--head-row`              | `×` at `--text-xl`   |
-| `.window-chat-close`             | The window chat: Close the chat                         | 1.75rem                   | `×` at `--text-xl`   |
 | `.remove-member`, `.remove-line` | A workstream's item row; a change set's line            | 1.5rem                    | `×` at `--text-lg`   |
 | `.sync-now`                      | A thread's right rail: Sync workstream now              | 1.5rem                    | SVG `.icon`, 1.125em |
 | `.sidebar-fold`, `.bar-menu`     | The sidebar's head; the narrow bar's menu               | 1.75rem; `.bar-menu` 2rem | SVG `.icon`          |
+| `.sidebar-fold.window-chat-fold` | The window chat's rail: Hide the chat                   | 1.75rem                   | SVG `.icon`          |
+| `.band-next`                     | The overview's headlines band: More headlines           | 2rem, round, bordered     | `›` at `--text-lg`   |
 | `.nav-disclose`                  | A sidebar workstream: Show or Hide its threads          | 1.25 × 1.875rem           | `.chevron`           |
 | `.nav-link.sidebar-new` (a link) | The sidebar, beside search: New thread                  | 1.875rem                  | SVG `.icon`          |
 
@@ -39,7 +40,7 @@ Oriel has no shared icon-button class. Each place wrote its own:
 
 - Not where a word fits. A thread's Mark done is a word (`.quiet-action`, see [Button](/components/button)), and so is New chat in the window chat. Words are clearer than icons, and most actions read better as words.
 - Not for an action the person has to discover. An icon with no word works for close, back and forward; it doesn't work for Share review link.
-- Not without a tooltip. Every icon button but the window chat's close and the bar's menu has one, and those two are gaps, not a pattern.
+- Not without a tooltip. Every icon button but the bar's menu has one, and that's a gap, not a pattern.
 - Not for the first step of a destructive action that can't be undone without asking. The header's Delete… icon opens the one question a delete asks; it doesn't delete. See [Destructive actions and undo](/patterns/destructive-actions).
 - Not as a link styled as a button, except `.sidebar-new`, which goes to a page (New thread) and so is a link that looks like an icon button.
 
@@ -114,8 +115,8 @@ A button with no border and no fill, an icon centred in it (`display: inline-gri
     <button type="button" class="panel-close" aria-label="Close the panel">×</button>
   </div>
   <p class="ws-note">
-    1.75rem: the sidebar's fold, the window chat's close; the bar's menu, 2rem; Sync workstream now,
-    1.5rem, its icon at the line's size
+    1.75rem: the sidebar's fold, the window chat's (mirrored); the bar's menu, 2rem; Sync workstream
+    now, 1.5rem, its icon at the line's size
   </p>
   <div class="ws-row">
     <button type="button" class="sync-now" aria-label="Sync workstream now">
@@ -133,7 +134,12 @@ A button with no border and no fill, an icon centred in it (`display: inline-gri
       </svg>
       <span class="visually-hidden">Hide sidebar</span>
     </button>
-    <button type="button" class="window-chat-close" aria-label="Close the chat">×</button>
+    <button type="button" class="sidebar-fold window-chat-fold" aria-label="Hide the chat">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2.5" width="12" height="11" rx="2" />
+        <path d="M10 2.5v11" />
+      </svg>
+    </button>
     <button type="button" class="bar-menu" aria-controls="sidebar" aria-expanded="false">
       <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
         <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
@@ -224,7 +230,7 @@ The two removes are hidden until their row is hovered or they have keyboard focu
 
 Hover and focus here are forced with `ws-hover` and `ws-focus-visible`, which carry window.css's own `:hover` and `:focus-visible` rules. Tab into any specimen to see the real ones, and rest the pointer on a button that has a tooltip.
 
-```html specimen id=state-hover title="Hover: most fill and darken; the window chat's close only fills; the disclosure only darkens" state=hover
+```html specimen id=state-hover title="Hover: most fill and darken; the disclosure only darkens" state=hover
 <div class="ws-row">
   <button type="button" class="head-action ws-hover" aria-label="Mark done: Gift cards">
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -245,7 +251,12 @@ Hover and focus here are forced with `ws-hover` and `ws-focus-visible`, which ca
     </svg>
   </button>
   <button type="button" class="panel-close ws-hover" aria-label="Close the panel">×</button>
-  <button type="button" class="window-chat-close ws-hover" aria-label="Close the chat">×</button>
+  <button type="button" class="sidebar-fold window-chat-fold ws-hover" aria-label="Hide the chat">
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="2.5" width="12" height="11" rx="2" />
+      <path d="M10 2.5v11" />
+    </svg>
+  </button>
   <button type="button" class="sync-now ws-hover" aria-label="Sync workstream now">
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5" />
@@ -389,10 +400,10 @@ Hover and focus here are forced with `ws-hover` and `ws-focus-visible`, which ca
 ```
 
 - **Rest:** transparent, `--text-muted` (`--text-faint` for the fold, the bar's menu before its own override, the disclosure and the removes).
-- **Hover:** `--surface-hover` fill and `--text`, on most. The window chat's close fills but keeps its colour (`.window-chat-close:hover` in `window.css`). The disclosure only darkens (`button.nav-disclose:hover` in `window.css`). The removes and the header's Delete turn `--danger`, the removes on a `--danger-soft` fill.
+- **Hover:** `--surface-hover` fill and `--text`, on most. More headlines fills and keeps its colour, already `--text` (`.band-next:hover` in `window.css`). The disclosure only darkens (`button.nav-disclose:hover` in `window.css`). The removes and the header's Delete turn `--danger`, the removes on a `--danger-soft` fill.
 - **Focus visible:** the global ring, `--border-thick` in `--focus`, 2px out (`:focus-visible` in `window.css`). A remove shows when it has focus, so the keyboard reaches it.
 - **Active:** not styled, as nowhere in window.css.
-- **Disabled:** three looks. `.head-action` 0.5, `.panel-step` 0.35 (`.panel-step:disabled` in `window.css`), `.sync-now` 0.5 through `aria-disabled`, which keeps it focusable so its tooltip says why. `.remove-line` can be disabled (`Diff` in `packages/web/src/thread-page.tsx`) but has no disabled rule, and its hover isn't guarded: it looks live (last specimen above). `.panel-close`, `.window-chat-close` and the sidebar's are never disabled.
+- **Disabled:** three looks. `.head-action` 0.5, `.panel-step` 0.35 (`.panel-step:disabled` in `window.css`), `.sync-now` 0.5 through `aria-disabled`, which keeps it focusable so its tooltip says why. `.remove-line` can be disabled (`Diff` in `packages/web/src/thread-page.tsx`) but has no disabled rule, and its hover isn't guarded: it looks live (last specimen above). `.panel-close`, `.band-next` and the two folds are never disabled.
 - **Busy:** only `.sync-now`, which sets `aria-busy` and pulses its icon (`.sync-now[aria-busy] .icon` in `window.css`), held still under reduced motion (`@media (prefers-reduced-motion: reduce)` in `window.css`).
 - **Expanded:** `.sidebar-fold`, `.bar-menu` and `.nav-disclose` set `aria-expanded`. Only the disclosure shows it, by turning its chevron (`.nav-disclose[aria-expanded="true"] .chevron` in `window.css`).
 - **Error** and **empty** don't apply.
@@ -402,7 +413,7 @@ Hover and focus here are forced with `ws-hover` and `ws-focus-visible`, which ca
 - A native `<button type="button">`, in the tab order; Enter and Space press it. `.sidebar-new` is an `<a>` and follows on Enter.
 - **Name:** `aria-label`, written as the action and its object: "Remove SYN-23", "Close the panel", "Mark done: Checkout v2: phone wallets and saved cards". The fold and the bar's menu use a `.visually-hidden` span instead, so they can add ", 3 threads waiting on you" while the visible count stays `aria-hidden`. Either works; pick `aria-label` for a new one.
 - **Tooltip:** wrap it in `Tooltip` in `packages/web/src/tooltip.tsx`. Where the tip says more than the name ("Close (Esc)" beside "Close the panel"), it becomes the button's description; where it repeats the name, it's hidden from screen readers. See [Tooltip](/components/tooltip).
-- **Shortcuts:** Esc closes the item panel, and ↑ and ↓ step through its list; the tooltips say so ("Previous (↑)", "Close (Esc)"). ⌘\ (Ctrl+\ off a Mac) folds the sidebar. None of them sets `aria-keyshortcuts`. The window chat's close looks the same as the panel's but doesn't answer Esc.
+- **Shortcuts:** Esc closes the item panel, and ↑ and ↓ step through its list; the tooltips say so ("Previous (↑)", "Close (Esc)"). ⌘\ (Ctrl+\ off a Mac) folds the sidebar. None of them sets `aria-keyshortcuts`. The window chat's fold doesn't answer Esc.
 - **Disabled but focusable:** prefer `aria-disabled="true"` with a guarded click, as Sync workstream now does (`Region` in `packages/web/src/thread-page.tsx`), when the tooltip explains why it can't be pressed. A `disabled` button leaves the tab order, and its tooltip with it.
 - **Disclosure:** `.nav-disclose`, `.sidebar-fold` and `.bar-menu` carry `aria-expanded` and `aria-controls`.
 - The icon is `aria-hidden="true"`, always.
@@ -419,10 +430,11 @@ Hover and focus here are forced with `ws-hover` and `ws-focus-visible`, which ca
 - `.head-action` in `window.css`, drawn by `EndButtons` in `packages/web/src/end-workstream.tsx`.
 - `.panel-step` in `window.css`, drawn by `ItemPanel` in `packages/web/src/item-panel.tsx`.
 - `.panel-close` in `window.css`, drawn by `ItemPanel` in `packages/web/src/item-panel.tsx`.
-- `.window-chat-close` in `window.css`, drawn by `WindowChat` in `packages/web/src/window-chat-view.tsx`.
 - `.remove-member` and `.remove-line` in `window.css`, which share one rule and are each placed by their own; drawn by `Member` in `packages/web/src/parts.tsx` and `Diff` in `packages/web/src/thread-page.tsx`.
 - `.sync-now` in `window.css`, drawn by `Region` in `packages/web/src/thread-page.tsx`.
 - `.sidebar-fold` and `.bar-menu` in `window.css`, which share one rule; the menu is resized by its own. The fold hides at 760px and narrower (`@media (max-width: 760px)` in `window.css`), where the bar and its menu show instead, so a narrow view of this page shows no fold. Drawn by `Sidebar` in `packages/web/src/sidebar.tsx` and `Bar` in `packages/web/src/app.tsx`.
+- The window chat's fold is the sidebar's, `.sidebar-fold` with its icon mirrored (`PanelIcon` in `packages/web/src/sidebar.tsx`, with `right`), aria-label "Hide the chat", in a `Tooltip`; `.window-chat .window-chat-fold` in `window.css` keeps it shown under 760px, where the sidebar's hides. Drawn by `WindowChat` in `packages/web/src/window-chat-view.tsx`.
+- `.band-next` in `window.css`, drawn by `Band` in `packages/web/src/overview-page.tsx`; hidden on a phone, which swipes the band. See [Overview section](/components/overview-section).
 - `.nav-disclose` in `window.css`, drawn by `WorkstreamEntry` in `packages/web/src/sidebar.tsx`.
 - `.sidebar-new`, on a `.nav-link`: `.nav-link.sidebar-new` and `.nav-link` in `window.css`, drawn by `ThreadSearch` in `packages/web/src/sidebar.tsx`.
 
@@ -430,12 +442,12 @@ Hover and focus here are forced with `ws-hover` and `ws-focus-visible`, which ca
 
 Status **drifting**: nine classes for one control, about 145 lines of CSS.
 
-- **Four sizes:** 1.5rem, 1.75rem, 2rem and `--head-row`. The item panel's close and the window chat's close both sit on a `--head-row` line, but one is 2rem and the other 1.75rem.
-- **Three hovers:** fill and darken, fill only (`.window-chat-close`), darken only (`.nav-disclose`, written `button.nav-disclose:hover`).
+- **Four sizes:** 1.5rem, 1.75rem, 2rem and `--head-row`. The item panel's close and the window chat's fold both sit on a `--head-row` line, but one is 2rem and the other 1.75rem.
+- **Three hovers:** fill and darken, fill only (`.band-next`), darken only (`.nav-disclose`, written `button.nav-disclose:hover`).
 - **Three disabled looks**, and one missing: `.remove-line` looks live while its change set is busy.
-- **Two glyphs:** SVG icons, and the `×` text glyph at two sizes, `line-height: 1` on one close and not the other.
+- **Three glyphs:** SVG icons, the `×` text glyph at two sizes, and More headlines' `›`, a text glyph at `--text-lg`.
 - **Two ways to name:** `aria-label`, or a `.visually-hidden` span.
-- **Two tooltips missing:** the window chat's close and the bar's menu.
+- **One tooltip missing:** the bar's menu.
 - `.bar-menu` is sized twice: 1.75rem with the fold, then 2rem on its own.
 
 **Until it's consolidated, copy `.head-action`** with a `Tooltip`, and `aria-disabled` if the button can wait. Don't copy the `×` glyph for a new close: draw an SVG `.icon`.

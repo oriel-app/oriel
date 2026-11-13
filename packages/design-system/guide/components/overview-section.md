@@ -3,7 +3,7 @@ title: Overview sections
 status: drifting
 group: Layout
 order: 74
-classes: overview, overview-columns, overview-main, overview-side, overview-section, overview-head, overview-count, overview-head-more, overview-rows, overview-row, overview-title, overview-sub, overview-more, overview-headlines, overview-headline, overview-headline-label, overview-headline-body, headline-asks, review-links, overview-changed, overview-quiet, overview-loading, overview-problem, first-run-line, key, section, section-head, section-title, quiet-action
+classes: overview, overview-columns, overview-main, overview-side, overview-section, overview-head, overview-count, overview-head-more, overview-rows, overview-row, overview-title, overview-sub, overview-more, overview-headlines, overview-band, band-track, band-next, overview-headline, overview-headline-label, overview-headline-body, headline-asks, review-links, overview-changed, overview-quiet, overview-loading, overview-problem, first-run-line, key, section, section-head, section-title, quiet-action
 summary: How the overview is laid out and headed: its one spacing rule, its two columns and their container queries, each section's head with its count and "N more", the list frame, the headlines with their questions to start from, and the notes. Section heads and list frames change with the theme.
 ---
 
@@ -406,8 +406,59 @@ Flip the theme in the workshop's bar to see the same markup become a ruled, open
 ```
 
 - Up to four, each only when it has an answer: "Moved most" (the counts strip says since when), "Quiet longest", "Named most in chat this week", "Top not in a workstream" (`headlines` in `packages/server/src/overview.ts`).
-- An auto-fit grid of `minmax(10rem, 1fr)`: "Fit, not fill: one headline takes the whole row, not a third of it." (`.overview-headlines` in `window.css`). It wears the list frame.
+- It wears the list frame. Without questions to start from, the overview draws it as a band, below; `.overview-headlines` alone is an auto-fit grid of `minmax(10rem, 1fr)`: "Fit, not fill: one headline takes the whole row, not a third of it." (`.overview-headlines` in `window.css`).
+- **Without questions, one band that never wraps** (`Band` in `packages/web/src/overview-page.tsx`): `div.overview-band` around `section.overview-headlines.band-track`. Each cell is `flex: 1 0 10rem`, so they share the width where all fit. Where they don't, the track scrolls sideways, snapping a headline at a time. While there's more to the right (`.overview-band[data-more]`, measured on scroll and on resize), its end fades (a mask) under a round **›** (`button.band-next`, "More headlines", in a tooltip), which scrolls to the first headline cut off. The track ends with room for both, so the last headline scrolls clear and the fade and › go. A phone has no ›: it swipes, and the narrow rules below take over.
 - With questions to start from (`[data-questions]`), each headline is a row, one a line: the labels share a column as wide as the longest (a subgrid), and the row's questions (`.headline-asks`) sit at its end. Each question's button names itself with its own words and is described by its headline's line (`aria-describedby`). Under a 700px overview a row is its label over its line, with its questions stacked beside both.
+
+```html specimen id=headlines-band title="Without questions: the band, with more to the right"
+<div style="max-width: 36rem">
+  <div class="overview-band" data-more>
+    <section class="overview-headlines band-track" data-section="headlines" aria-label="Headlines">
+      <p class="overview-headline" data-headline="moved">
+        <span
+          class="overview-headline-label"
+          title="Oriel rule: The workstream with the most members changed since you last left the overview"
+          >Moved most</span
+        >
+        <span class="overview-headline-body"
+          ><a class="overview-title" href="/workstreams/ws-checkout"
+            >Checkout v2: phone wallets and saved cards</a
+          >
+          <span class="overview-sub">4 items moved, 1 to done</span></span
+        >
+      </p>
+      <p class="overview-headline" data-headline="quiet">
+        <span
+          class="overview-headline-label"
+          title="Oriel rule: The open workstream whose latest member update or thread activity is oldest"
+          >Quiet longest</span
+        >
+        <span class="overview-headline-body"
+          ><a class="overview-title" href="/workstreams/ws-weather"
+            >Weather disruptions and rebooking</a
+          >
+          <span class="overview-sub">nothing moved in 16 days</span></span
+        >
+      </p>
+      <p class="overview-headline" data-headline="top">
+        <span class="overview-headline-label" title="Oriel rule: An epic no workstream holds"
+          >Top not in a workstream</span
+        >
+        <span class="overview-headline-body"
+          ><a class="overview-title" href="https://ferrowick.atlassian.net/browse/SYN-4"
+            ><span class="key">SYN-4</span> Vehicle and freight reservations</a
+          >
+          <span class="overview-sub">Jira · 2 changed this week</span></span
+        >
+      </p>
+    </section>
+    <button type="button" class="band-next" aria-label="More headlines">
+      <span aria-hidden="true">›</span>
+    </button>
+  </div>
+</div>
+```
+
 - The last is the review links sent and not opened (`data-headline="unopened"`, `.review-links`): the oldest one's thread, and "N more" opening the rest in place, each its own link. Their threads wait on others, so they aren't in Needs you.
 - The label is `--text-xs`, uppercase and faint, with `cursor: help` and "Oriel rule: …" as its title. The body is one line, ellipsised; under 760px it wraps.
 - An item headline opens the item in the [item panel](/components/item-panel); with no title it reads "Not in the window".
@@ -609,7 +660,7 @@ Decision 0027 says: 'N more' opens the rest of a short list in place (Needs you,
 - Section and head: `Section` in `packages/web/src/overview-page.tsx`. CSS `.overview-section`, `.overview-head`, `.overview-count` and `.overview-head-more` in `window.css`. Theme tokens, Graphite then Broadsheet: `:root` and `:root[data-theme="broadsheet"]` in `window.css`.
 - The list frame: `.overview-rows` in `window.css`.
 - "N more": in place `More` in `packages/web/src/overview-page.tsx`; into Browse `Candidates` and `People` in `packages/web/src/overview-page.tsx`. CSS `.overview-more` in `window.css`.
-- Headlines: `Headlines`, `Headline` and `Unopened` in `packages/web/src/overview-page.tsx`; computed by `headlines` in `packages/server/src/overview.ts`; their questions by `questionsFrom` in `packages/web/src/window-chat.ts`. CSS `.overview-headlines`, `.overview-headline`, `.overview-headline-label`, `.overview-headline-body`, `.headline-asks` and `.review-links` in `window.css`.
+- Headlines: `Headlines`, `Band`, `Headline` and `Unopened` in `packages/web/src/overview-page.tsx`; computed by `headlines` in `packages/server/src/overview.ts`; their questions by `questionsFrom` in `packages/web/src/window-chat.ts`. CSS `.overview-headlines`, `.overview-band`, `.band-track`, `.overview-band[data-more] .band-track`, `.band-next`, `.overview-headline`, `.overview-headline-label`, `.overview-headline-body`, `.headline-asks` and `.review-links` in `window.css`.
 - Notes: what changed `Changed` in `packages/web/src/overview-page.tsx`, CSS `.overview-sub` and `.overview-changed .overview-rows` in `window.css`. The first run's line `FirstRunLine` in `packages/web/src/overview-page.tsx`, CSS `.first-run-line` in `window.css`.
 - Loading, problem and empty: `OverviewPage` in `packages/web/src/overview-page.tsx`; CSS `.overview-loading`, `.overview-problem` and `.overview-quiet` in `window.css`.
 - Narrow: `@media (max-width: 760px)` in `window.css` (padding, the counts, the headlines' sideways row, the workstream rows, wrapping titles).

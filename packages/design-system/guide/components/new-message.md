@@ -25,7 +25,7 @@ One rule for every chat, in the thread's model (`packages/web/src/thread.ts`): `
 
 ## When to use it
 
-- Over a chat's composer: a thread's page, beside an item or not, and the window chat, beside the overview, beside an item, or as a sheet.
+- Over a chat's composer: a thread's page, beside an item or not, and the window chat, in its rail beside the window or as a sheet.
 
 ## When not to
 
