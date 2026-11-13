@@ -113,13 +113,11 @@ export type Composer = Parameters<typeof ChatInput>[0];
 // 0062): the item open beside it, "Looking at", with × to leave it out;
 // left out, dashed, "Not sending", with Add back; and the item opened since
 // beside a draft that keeps its own, dashed, which + adds. One outside the
-// thread's region says read-only, with Cite beside it, which adds it to the
-// workstream as the panel's Add does: looking alone never does.
+// thread's region says read-only; looking never adds it to the workstream.
 export type Looking = {
   lookingAt: LookingAt;
   readOnly(id: string): boolean;
   onLooking(msg: LookingMsg): void;
-  onCite?(item: LookItem): void;
 };
 
 function LookingChips(props: Looking) {
@@ -167,15 +165,6 @@ function LookingChips(props: Looking) {
           >
             Add back
           </button>
-        ) : props.onCite && props.readOnly(item.id) ? (
-          <button
-            type="button"
-            class="quiet-action ctx-action"
-            key={`cite-${item.id}`}
-            onClick={() => props.onCite?.(item)}
-          >
-            Cite
-          </button>
         ) : null,
       )}
       {offered && (
@@ -195,16 +184,10 @@ function LookingChips(props: Looking) {
 }
 
 // The foot's line with what the message is about: "Reads your whole
-// window, and SYN-99", saying which are read-only.
-export function readsWith(
-  reads: string | null,
-  lookingAt: LookingAt,
-  readOnly: (id: string) => boolean,
-): string | null {
+// window, and SYN-99". Its chip says which are read-only.
+export function readsWith(reads: string | null, lookingAt: LookingAt): string | null {
   const on = lookingAt.chips.filter((chip) => chip.on).map((chip) => chip.item);
   if (on.length === 0) return reads;
-  const named = on
-    .map((item) => (readOnly(item.id) ? `${item.key} (read-only)` : item.key))
-    .join(", ");
+  const named = on.map((item) => item.key).join(", ");
   return reads ? `${reads}, and ${named}` : `Reads ${named}`;
 }

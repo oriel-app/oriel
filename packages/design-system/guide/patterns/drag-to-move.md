@@ -91,7 +91,7 @@ The keyboard, and a phone where the sidebar is a drawer, move it with the row's 
 
 ## Onto a composer
 
-An item dropped on a composer (the window chat's, a thread's, a workstream's Ask box, or the item panel's dock) goes in what the next message is about, "Looking at", as its + puts it, and moves nothing (see [Chat input](/components/chat-input#what-it-s-about-looking-at)). An item outside the thread's region is read-only, with Cite beside it; nothing joins the workstream. The composer takes it through the same `useMoveDrop`, inside `ChatInput`, so every composer does; it's drawn as a workstream is while one is over it. One already going, or a fifth, isn't taken. A thread isn't taken. The keyboard's way is the + chip.
+An item dropped on a composer (the window chat's, a thread's, a workstream's Ask box, or the item panel's dock) goes in what the next message is about, "Looking at", as its + puts it, and moves nothing (see [Chat input](/components/chat-input#what-it-s-about-looking-at)). An item outside the thread's region is read-only; nothing joins the workstream. The composer takes it through the same `useMoveDrop`, inside `ChatInput`, so every composer does; it's drawn as a workstream is while one is over it. One already going, or a fifth, isn't taken. A thread isn't taken. The keyboard's way is the + chip.
 
 ```html specimen id=composer title="An item over a thread's composer" bg=surface
 <form class="chat-input" data-lines="grow" data-drop-over>
@@ -102,7 +102,7 @@ An item dropped on a composer (the window chat's, a thread's, a workstream's Ask
     aria-label="Message"
   ></textarea>
   <div class="chat-input-foot">
-    <span class="chat-input-reads">Reads 14 items · v1</span>
+    <span class="chat-input-reads">Reads 14 items</span>
     <button type="submit" class="button" disabled>Send</button>
   </div>
 </form>

@@ -265,22 +265,13 @@ export function threadComposer(model: ThreadModel, view: ThreadView, dispatch: D
     notice: model.notice,
     placeholder:
       view.members.length === 0 ? planPrompt : `Ask about ${plural(view.members.length, "item")}…`,
-    reads: readsWith(readsOf(view), looking, readOnlyIn(view)),
+    reads: readsWith(readsOf(view), looking),
     looking: model.composing
       ? undefined
       : {
           lookingAt: looking,
           readOnly: readOnlyIn(view),
           onLooking: (msg) => send({ type: "looking", msg }),
-          onCite: (item) =>
-            dispatch({
-              type: "panelAdd",
-              msg: {
-                type: "addClicked",
-                item: { id: item.id, key: item.key },
-                workstream: { id: view.workstream.id, name: view.workstream.name },
-              },
-            }),
         },
     onDraft: (text) => send({ type: "draftChanged", text }),
     onSubmit: () => send({ type: "sendClicked" }),
@@ -373,7 +364,7 @@ export function NewThreadPage({
             placeholder={
               picked && picked.size > 0 ? `Ask about ${plural(picked.size, "item")}…` : planPrompt
             }
-            reads={readsWith(null, model.lookingAt, readOnly)}
+            reads={readsWith(null, model.lookingAt)}
             looking={{
               lookingAt: model.lookingAt,
               readOnly,
@@ -1789,14 +1780,13 @@ function Dock({ children }: { children: ComponentChildren }) {
   );
 }
 
-// What the agent will read, for the composer's foot: the thread's items at
-// the version it works in; behind its workstream, the workstream as it is
-// now, which the next message catches up with.
+// What the agent will read, for the composer's foot: the thread's items;
+// behind its workstream, the workstream as it is now, which the next message
+// catches up with. The rail says the version.
 export function readsOf(view: ThreadView): string | null {
-  if (view.regionVersion < view.workstream.version)
-    return `Reads its workstream at v${view.workstream.version}`;
+  if (view.regionVersion < view.workstream.version) return "Reads its workstream as it is now";
   if (view.members.length === 0) return null;
-  return `Reads ${plural(view.members.length, "item")} · v${view.regionVersion}`;
+  return `Reads ${plural(view.members.length, "item")}`;
 }
 
 // The region the thread works in: its workstream at one version, and when

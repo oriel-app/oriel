@@ -317,7 +317,7 @@ export function windowChatComposer(
       running: view.running,
       notice: thread.notice ?? chat.problem,
       placeholder: "Ask a follow-up",
-      reads: readsWith("Reads your whole window", followUp, noneReadOnly),
+      reads: readsWith("Reads your whole window", followUp),
       looking: thread.composing
         ? undefined
         : {
@@ -337,7 +337,7 @@ export function windowChatComposer(
     busy: chat.asking,
     notice: chat.problem,
     placeholder: "Ask about your window",
-    reads: readsWith("Reads your whole window", chat.lookingAt, noneReadOnly),
+    reads: readsWith("Reads your whole window", chat.lookingAt),
     looking: {
       lookingAt: chat.lookingAt,
       readOnly: noneReadOnly,

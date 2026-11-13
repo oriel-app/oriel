@@ -146,7 +146,7 @@ export function WorkstreamPage(props: {
     });
   };
   // An item open beside the Ask box that the workstream doesn't hold is
-  // read-only to the thread it starts, which Cite adds it to (decision 0062).
+  // read-only to the thread it starts (decision 0062).
   const readOnly = (id: string) => !members.some((member) => member.ref.id === id);
   return (
     <DropZone
@@ -203,24 +203,11 @@ export function WorkstreamPage(props: {
           busy={model.pending}
           notice={model.notice}
           placeholder={askPrompt(workstream.size)}
-          reads={readsWith(
-            `Reads ${plural(workstream.size, "item")} · v${workstream.version}`,
-            model.lookingAt,
-            readOnly,
-          )}
+          reads={readsWith(`Reads ${plural(workstream.size, "item")}`, model.lookingAt)}
           looking={{
             lookingAt: model.lookingAt,
             readOnly,
             onLooking: (msg) => send({ type: "looking", msg }),
-            onCite: (item) =>
-              dispatch({
-                type: "panelAdd",
-                msg: {
-                  type: "addClicked",
-                  item: { id: item.id, key: item.key },
-                  workstream: { id: workstream.id, name: workstream.name },
-                },
-              }),
           }}
           onDraft={(text) => send({ type: "draftChanged", text })}
           onSubmit={() => send({ type: "askClicked" })}

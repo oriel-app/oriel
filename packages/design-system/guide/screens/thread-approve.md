@@ -531,7 +531,7 @@ for (const story of stories) await jira.update(story.key, { points: 3 });</pre>
               aria-label="Message"
             ></textarea>
             <div class="chat-input-foot">
-              <span class="chat-input-reads">Reads 17 items · v3</span>
+              <span class="chat-input-reads">Reads 17 items</span>
               <button type="submit" class="button" disabled>Send</button>
             </div>
           </form>

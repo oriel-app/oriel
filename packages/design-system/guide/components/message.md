@@ -145,7 +145,7 @@ The page is `.thread-layout`: the thread in the middle (`main.thread`, at most `
         aria-label="Message"
       ></textarea>
       <div class="chat-input-foot">
-        <span class="chat-input-reads">Reads 17 items · v3</span>
+        <span class="chat-input-reads">Reads 17 items</span>
         <button type="submit" class="button" disabled>Send</button>
       </div>
     </form>
