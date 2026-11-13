@@ -50,7 +50,7 @@ import type {
 import { chipIds, quoteKey } from "@oriel/web/markdown";
 import { waitingOn, waitsOnUser } from "@oriel/web/view";
 import { actionLineView } from "./action-lines.ts";
-import { agentEvent, type AgentEvent } from "./agent.ts";
+import { agentEvent, type AgentEvent, failedTurn } from "./agent.ts";
 import { listedWorkstreams } from "./window-chat.ts";
 
 export type ViewDeps = {
@@ -862,9 +862,13 @@ export function views(deps: ViewDeps) {
         versions.set(at, known);
         return known;
       };
+      const failed = deps.running(id) ? null : failedTurn(messages);
       const entries = messages.flatMap((m) => {
         if (m.role === "marker") version = m.to;
-        return entry(m, { thread: id, workstream: thread.workstreamId }, idsAt(version)) ?? [];
+        const shown = entry(m, { thread: id, workstream: thread.workstreamId }, idsAt(version));
+        if (shown?.kind === "error" && m.seq === failed?.error)
+          return { ...shown, tryAgain: true as const };
+        return shown ?? [];
       });
       // Each undecided change set's second look, or null for one the person
       // may still ask for; its quotes are drawn under their items' chips.

@@ -95,6 +95,22 @@ export class ProviderError extends Error {
   }
 }
 
+// fetch's own "fetch failed" leaves out what failed; its cause says.
+export function errorText(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = causeOf(error);
+  return cause ? `${error.message} (${cause})` : error.message;
+}
+
+export function causeOf(error: unknown): string | null {
+  const cause: unknown = error instanceof Error ? error.cause : undefined;
+  if (cause === undefined || cause === null) return null;
+  if (typeof cause === "object" && "code" in cause && typeof cause.code === "string")
+    return cause.code;
+  if (cause instanceof Error) return cause.message || cause.name;
+  return typeof cause === "string" ? cause : null;
+}
+
 export const noUsage: Usage = {
   inputTokens: 0,
   outputTokens: 0,

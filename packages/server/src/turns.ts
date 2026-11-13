@@ -25,7 +25,7 @@ import {
   type Thread,
   type Ulid,
 } from "@oriel/core";
-import { actionsText, capturedRules, type Titler } from "@oriel/agent";
+import { actionsText, capturedRules, errorText, type Titler } from "@oriel/agent";
 import { chipIds } from "@oriel/web/markdown";
 import type { Chips } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
@@ -36,6 +36,8 @@ import {
   type AgentEvent,
   type AgentLimits,
   type ChatMessage,
+  failedTurn,
+  stoppedText,
 } from "./agent.ts";
 
 export type ThreadEvent =
@@ -80,6 +82,13 @@ function endedOnLimit(messages: readonly Message[]): boolean {
 
 // A held message the user was to send or discard is gone: they already did
 // one or the other, or there never was one.
+export class NothingFailed extends Error {
+  constructor() {
+    super("The thread's last turn didn't fail, so there's nothing to try again.");
+    this.name = "NothingFailed";
+  }
+}
+
 export class NothingHeld extends Error {
   constructor() {
     super("That message was already sent or discarded.");
@@ -279,6 +288,7 @@ export function turns(deps: TurnDeps) {
   const everyWatchers = new Set<(threadId: Ulid) => void>();
   // Titles being written, which outlive a stopped turn; closing stops them.
   const titling = new Set<Promise<void>>();
+  const untitled = new Map<Ulid, string>();
   const closing = new AbortController();
 
   // Tells the pages watching a thread; `broadcast`, every page watching the
@@ -371,8 +381,9 @@ export function turns(deps: TurnDeps) {
         landed(threadId, written);
       })
       .catch((error: unknown) => {
-        if (!signal.aborted)
-          log("title: failed", { error: error instanceof Error ? error.message : String(error) });
+        if (signal.aborted) return;
+        log("title: failed", { error: errorText(error) });
+        untitled.set(threadId, text);
       });
     titling.add(done);
     void done.finally(() => titling.delete(done));
@@ -390,6 +401,7 @@ export function turns(deps: TurnDeps) {
   ) => {
     const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: thread.id });
     let done = false;
+    let failed = false;
     try {
       const region = workstreams.region(thread.workstreamId, thread.regionVersion);
       if (!region) throw new Error(`no version ${thread.regionVersion} of the thread's workstream`);
@@ -411,9 +423,11 @@ export function turns(deps: TurnDeps) {
       for await (const event of deps.agent.turn(input, { signal, log })) {
         record(thread.id, event);
         if (event.kind === "done") done = true;
+        if (event.kind === "error") failed = true;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      failed = true;
+      const message = errorText(error);
       log("turn: failed", { error: message });
       if (!signal.aborted)
         record(thread.id, {
@@ -422,17 +436,20 @@ export function turns(deps: TurnDeps) {
         });
       if (!done) record(thread.id, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
     }
-    if (signal.aborted) record(thread.id, { kind: "error", message: "Stopped." });
+    if (signal.aborted) record(thread.id, { kind: "error", message: stoppedText });
+    const first = untitled.get(thread.id);
+    if (first !== undefined && !failed && !signal.aborted) {
+      untitled.delete(thread.id);
+      title(thread.id, first);
+    }
     const answers = history(
       threads.messages(thread.id).filter((message) => message.seq > seq),
       () => "",
     ).flatMap((message) => (message.role === "assistant" ? [message.text] : []));
-    const failed = (what: string) => (error: unknown) =>
-      log(`turn: ${what} unchecked`, {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    await unknownChips(thread, answers).catch(failed("chips"));
-    await quotes(thread, answers).catch(failed("quotes"));
+    const unchecked = (what: string) => (error: unknown) =>
+      log(`turn: ${what} unchecked`, { error: errorText(error) });
+    await unknownChips(thread, answers).catch(unchecked("chips"));
+    await quotes(thread, answers).catch(unchecked("quotes"));
   };
 
   // The chips the turn's answer named that Oriel can't resolve, which the
@@ -479,15 +496,8 @@ export function turns(deps: TurnDeps) {
       return looking.map(({ id, under }) => ({ id, outside: !members.has(id), under }));
     };
 
-  const start = (
-    threadId: Ulid,
-    text: string,
-    by: Actor,
-    looking?: LookingAt,
-  ): { seq: number; at: Instant; workspaceId: Ulid } => {
-    if (running.has(threadId)) throw new ThreadBusy();
-    // The per-thread caps hold whatever agent is plugged in (SPEC §9).
-    const earlier = threads.messages(threadId);
+  // The per-thread caps hold whatever agent is plugged in (SPEC §9).
+  const capped = (threadId: Ulid, earlier: readonly Message[]) => {
     const reason = capReached(earlier, deps.caps, deps.alsoSpent?.(threadId));
     if (reason !== null) {
       const last = earlier.at(-1);
@@ -496,6 +506,32 @@ export function turns(deps: TurnDeps) {
         record(threadId, { kind: "limit", reason });
       throw new ThreadLimit(reason);
     }
+  };
+
+  const launch = (
+    thread: Thread,
+    said: { text: string; about: About | null },
+    seq: number,
+    by: Actor,
+  ) => {
+    const controller = new AbortController();
+    const done = run(thread, said, seq, controller.signal).finally(() => {
+      running.delete(thread.id);
+      publish(thread.id, { type: "status", running: false });
+    });
+    running.set(thread.id, { controller, done, by });
+    publish(thread.id, { type: "status", running: true });
+  };
+
+  const start = (
+    threadId: Ulid,
+    text: string,
+    by: Actor,
+    looking?: LookingAt,
+  ): { seq: number; at: Instant; workspaceId: Ulid } => {
+    if (running.has(threadId)) throw new ThreadBusy();
+    const earlier = threads.messages(threadId);
+    capped(threadId, earlier);
     const first = !earlier.some((m) => m.role === "user");
     const now = deps.now();
     const ids = { marker: deps.newId(), message: deps.newId() };
@@ -504,15 +540,9 @@ export function turns(deps: TurnDeps) {
     published(threadId, said.seq);
     const thread = threads.get(threadId, now);
     if (!thread) throw new RangeError(`no thread ${threadId}`);
-    const controller = new AbortController();
     const stored = threads.messages(threadId, said.seq - 1).find((m) => m.seq === said.seq);
     const about = stored?.role === "user" ? (stored.about ?? null) : null;
-    const done = run(thread, { text, about }, said.seq, controller.signal).finally(() => {
-      running.delete(threadId);
-      publish(threadId, { type: "status", running: false });
-    });
-    running.set(threadId, { controller, done, by });
-    publish(threadId, { type: "status", running: true });
+    launch(thread, { text, about }, said.seq, by);
     if (first && threads.title(threadId) === null) title(threadId, text);
     return { seq: said.seq, at: now, workspaceId: thread.workspaceId };
   };
@@ -751,10 +781,27 @@ export function turns(deps: TurnDeps) {
       broadcast(null);
     },
 
+    retry(threadId: Ulid): { seq: number } {
+      if (running.has(threadId)) throw new ThreadBusy();
+      const earlier = threads.messages(threadId);
+      const failed = failedTurn(earlier);
+      if (!failed) throw new NothingFailed();
+      // The question is asked already: only what came before it counts.
+      capped(
+        threadId,
+        earlier.filter((message) => message.seq < failed.said.seq),
+      );
+      const thread = threads.get(threadId, deps.now());
+      if (!thread) throw new RangeError(`no thread ${threadId}`);
+      const { text, about, seq } = failed.said;
+      launch(thread, { text, about: about ?? null }, seq, { kind: "user" });
+      return { seq };
+    },
+
     // Stops the thread's turn, if one is running.
     stop(threadId: Ulid): boolean {
       const turn = running.get(threadId);
-      turn?.controller.abort(new Error("Stopped."));
+      turn?.controller.abort(new Error(stoppedText));
       return turn !== undefined;
     },
 

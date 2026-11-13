@@ -2,6 +2,7 @@
 // turn emits and streams it to the window; what comes back from the database
 // is checked here on the way out.
 import type { AgentDeps, AgentEvent } from "@oriel/agent";
+import type { Message } from "@oriel/db";
 import {
   type ActionLine,
   type ActionName,
@@ -156,3 +157,26 @@ export const agentEvent: Validator<AgentEvent> = union(
     usage: object({ inputTokens: number, outputTokens: number }),
   }),
 );
+
+export const stoppedText = "Stopped.";
+
+// A turn that did anything before it failed offers no Try again: asking
+// again would repeat what it did.
+export function failedTurn(
+  messages: readonly Message[],
+): { said: Extract<Message, { role: "user" }>; error: number } | null {
+  const at = messages.findLastIndex((message) => message.role === "user");
+  const said = messages[at];
+  if (said?.role !== "user") return null;
+  let error: number | null = null;
+  for (const message of messages.slice(at + 1)) {
+    if (message.role !== "agent") continue;
+    const event = agentEvent(message.event);
+    if (!event.ok) return null;
+    const { value } = event;
+    if (value.kind === "done") continue;
+    if (value.kind !== "error" || value.message === stoppedText) return null;
+    error = message.seq;
+  }
+  return error === null ? null : { said, error };
+}

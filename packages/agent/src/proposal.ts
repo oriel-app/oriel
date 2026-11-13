@@ -25,6 +25,7 @@ import {
   type Ulid,
 } from "@oriel/core";
 import type { AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
+import { errorText } from "./provider.ts";
 
 // What a run's bindings get in a second look (decision 0054): its
 // `challenge`, which records under the run's ID. Any other turn's get none.
@@ -38,8 +39,6 @@ export const challengeOf = (
   if (!challenge) return undefined;
   return { challenge: { diff: challenge.diff, record: (f) => challenge.record(runId, f) } };
 };
-
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 // What a finished run replaced of an earlier run's proposal in the turn.
 export type Replaced = { mutations: number; intents: number; drafts: number };

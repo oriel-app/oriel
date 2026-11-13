@@ -36,6 +36,7 @@ export type Tag =
   // asked for, when any had.
   | { kind: "thread"; id: string; statuses?: number }
   | { kind: "sent"; threadId: string }
+  | { kind: "retried"; threadId: string }
   | { kind: "threadAction"; threadId: string }
   // `statuses`, as a thread's load has it.
   | { kind: "synced"; threadId: string; statuses: number }

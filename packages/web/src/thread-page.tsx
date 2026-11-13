@@ -600,6 +600,16 @@ function EntryBody(props: EntryProps) {
             <strong>This thread has hit its limit, so the agent stopped here. </strong>
           )}
           {entry.text}
+          {entry.tryAgain && !props.view.running && (
+            <button
+              type="button"
+              class="button"
+              disabled={props.model.sending}
+              onClick={() => props.send({ type: "tryAgainClicked" })}
+            >
+              Try again
+            </button>
+          )}
         </li>
       );
   }

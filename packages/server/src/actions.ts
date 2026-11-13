@@ -98,7 +98,7 @@ export type ActionDeps = {
   // turn; a message held in it, whoever it is from; and its running turn.
   turns: Pick<
     Turns,
-    "say" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld" | "carry"
+    "say" | "retry" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld" | "carry"
   >;
   changeSets: ChangeSets;
   // Second looks at change sets (decision 0054): one taken when the person
@@ -862,6 +862,11 @@ const handlers = {
     const thread = mustThread(deps, id);
     const { seq } = deps.turns.say(thread.id, text, about);
     return { output: { seq }, undo: null, changed: null, events: "counted" };
+  },
+
+  "thread.retry": async ({ thread: id }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    return { output: deps.turns.retry(thread.id), undo: null, changed: null, events: [] };
   },
 
   "thread.stop": async ({ thread: id }, _actor, deps) => {

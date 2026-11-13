@@ -43,6 +43,7 @@ test("a refused or failed request rejects with no key in it", async () => {
 
   const unreachable = anthropicTitler({
     apiKey: key,
+    wait: async () => {},
     fetch: async () => {
       throw new Error(`connect failed for ${key}`);
     },
