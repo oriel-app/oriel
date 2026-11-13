@@ -36,7 +36,7 @@ Specimens are hand-written HTML with Oriel's real class names, styled by Oriel's
 
 - **It needs a build.** The components are `.tsx` that Oriel compiles with `tsc` into `dist/` (packages/web/dist). The workshop would either run that build in someone else's checkout, which the maintainer's checkout forbids, or depend on a `dist/` that may be stale.
 - **It needs the app around it.** Most components read contexts (`ItemLinksContext`, `ChipsContext`, `SendKeyContext`…), dispatch messages into the root model, and import page files. A fixture harness for them is a second app to keep in step.
-- **It can't show what isn't one component.** The drift report is about four hand-copied versions of one control. A specimen per version shows them side by side; one component can't.
+- **It can't show what isn't one component.** A page often shows four hand-copied versions of one control. A specimen per version shows them side by side; one component can't.
 - **The styles are what drifts, and those are live.** The CSS is the part with one source of truth, and the workshop reads it directly. The markup is kept honest by `pnpm check`: every class a specimen uses must exist in Oriel's window.css (or in a marked proposal), every name a page cites must still be in the file it names, and every class a page documents must still exist. When Oriel renames a class, the check fails here.
 
 The cost: a specimen's markup can fall behind a component's. Each page names the component that renders it, so it's one comparison to bring it back.
@@ -104,7 +104,7 @@ Oriel's, in `pnpm check` and `pnpm ui-check`:
 - **classes**: every documented and used class exists in window.css or a proposal; screens use only documented, non-proposed classes.
 - **coverage**, the other way: every class window.css styles and every component packages/web/src exports is on a guide page (in a specimen, a page's `classes`, or a code span naming it), or listed with a reason in [UNDOCUMENTED.md](UNDOCUMENTED.md). A new surface in Oriel fails here until someone documents it or lists it, and a listed name fails once a page covers it or Oriel drops it. That list is the next round's to-do.
 - **proposals**: no class collides with window.css's; no literal colour, size, weight, radius, border width, shadow or duration (Oriel's own rule); every rule scoped to a class.
-- **references**: every name a page cites is in its file today (as many times as it says), every file it names exists, and no page cites a line. The dated reports, `DRIFT.md` and `CONTROLS.md`, say which Oriel commit they surveyed (`surveyed:` in their front matter) and keep that commit's lines; the check skips them, and their line links open the file as it was then.
+- **references**: every name a page cites is in its file today (as many times as it says), every file it names exists, and no page cites a line.
 - **contrast**: every claimed token pair, in every theme and scheme, by Oriel's own contrast code: text 4.5:1, the focus ring and the accent 3:1 against every background, and Oriel's own theme check.
 - **accessibility**, in headless Chrome, in `pnpm ui-check` only: in every specimen, in Graphite light and Broadsheet dark, every button, link, field, checkbox, radio, switch and menu item has an accessible name, and every tab stop draws a visible focus. Problems are grouped by element: one missing `:focus-visible` rule is one line, with how many places it shows.
 

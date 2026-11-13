@@ -17,6 +17,7 @@ Tokens, type, space, motion, focus, icons and layout.
 - [Focus](guide/foundations/focus.md): One focus ring, in the accent, 2px out. Where Oriel overrides it today, the five looks its fields have, and the one field-frame focus proposed.
 - [Icons](guide/foundations/icons.md): A small set of 16px outline icons drawn inline, stroked in the text's colour. Words first; an icon that's the only label needs an aria-label.
 - [Layout and density](guide/foundations/layout.md): The shell (a sidebar beside the page, with the panel over or beside it, or the window chat in a rail or a sheet), its width tokens, one screen breakpoint at 760px, container queries for the page, and the narrow 390 view.
+- [Counts](guide/foundations/counts.md): What window.css still writes by hand where a token or one shared rule could hold it, counted from today's file.
 
 ## Content
 
@@ -103,8 +104,6 @@ Proposed form controls in modern CSS, beside today's.
 
 ## Reports
 
-The drift report, the controls report, and what no page covers yet.
+What no page covers yet.
 
-- [Drift report](DRIFT.md):
-- [Custom form controls in modern CSS](CONTROLS.md):
 - [Undocumented](UNDOCUMENTED.md):

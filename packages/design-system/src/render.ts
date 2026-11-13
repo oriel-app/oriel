@@ -186,7 +186,7 @@ function isOriels(c: string): boolean {
 }
 
 export function guidePage(p: Page, v: View): string {
-  const render = { fence: renderFence(p, v), at: p.front["surveyed"] };
+  const render = { fence: renderFence(p, v) };
   const body = p.nodes.filter((n) => !(n.kind === "heading" && n.level === 1));
   const toc = body
     .filter((n): n is Extract<Node, { kind: "heading" }> => n.kind === "heading" && n.level === 2)
@@ -277,7 +277,7 @@ export function indexPage(v: View): string {
   const main = `<article class="ws-page ws-index">
 <header class="ws-page-head"><h1>Oriel design system</h1>
 <p class="ws-lede">What Oriel draws, when to use each piece, and the rules it follows. Every specimen here is styled by Oriel's own <code>window.css</code>, read live from the checkout, so what you see is what the app ships today. Proposals are marked, and sit beside today's.</p>
-<p>Builders: every page is plain text too. In an Oriel worktree, read <code>COMPONENTS.md</code> here, or a page's file, such as <a href="/components/button.md"><code>guide/components/button.md</code></a>. Start with the <a href="/drift">drift report</a> and the <a href="/controls">controls report</a>.</p>
+<p>Builders: every page is plain text too. In an Oriel worktree, read <code>COMPONENTS.md</code> here, or a page's file, such as <a href="/components/button.md"><code>guide/components/button.md</code></a>.</p>
 </header>
 ${blocks}
 </article>`;
@@ -299,7 +299,7 @@ export function searchIndex(): unknown[] {
   }));
 }
 
-export function sourcePage(path: string, text: string, v: View, at?: string): string {
+export function sourcePage(path: string, text: string, v: View): string {
   const lines = text.split("\n");
   const width = String(lines.length).length;
   const body = lines
@@ -308,7 +308,7 @@ export function sourcePage(path: string, text: string, v: View, at?: string): st
         `<span class="ws-line" id="L${i + 1}"><a href="#L${i + 1}" class="ws-ln" aria-label="Line ${i + 1}">${String(i + 1).padStart(width, " ")}</a>${escape(l)}</span>`,
     )
     .join("\n");
-  const main = `<article class="ws-page ws-source"><header class="ws-page-head"><p class="ws-eyebrow">${at ? `Oriel source at <code>${escape(at)}</code>, as the report was written` : "Oriel source, read live"}</p><h1><code>${escape(path)}</code></h1></header><pre class="ws-code ws-listing"><code>${body}</code></pre></article>`;
+  const main = `<article class="ws-page ws-source"><header class="ws-page-head"><p class="ws-eyebrow">Oriel source, read live</p><h1><code>${escape(path)}</code></h1></header><pre class="ws-code ws-listing"><code>${body}</code></pre></article>`;
   return shell(v, path, main);
 }
 

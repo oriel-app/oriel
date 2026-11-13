@@ -191,7 +191,6 @@ export const checks: Check[] = [
     run(problems) {
       let n = 0;
       for (const p of all) {
-        if (p.front["surveyed"] !== undefined) continue;
         for (const m of p.text.matchAll(/[\w-]+\.(?:css|tsx?|md|json):\d+/g))
           problems.push(
             `${p.file} cites ${m[0]}: cite the selector or name instead (pnpm -s ds where finds it)`,

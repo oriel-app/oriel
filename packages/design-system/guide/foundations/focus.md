@@ -42,13 +42,13 @@ The ring needs 3:1 against whatever it sits on (WCAG 1.4.11). The workshop claim
 
 ## Every override today
 
-These rules change the ring. Each was written for a reason, but together they give Oriel's fields four focus looks. The chat inputs share one since ChatInput (DRIFT D3), the field-frame look proposed below.
+These rules change the ring. Each was written for a reason, but together they give Oriel's fields four focus looks. The chat inputs share one through `ChatInput`, the field-frame look proposed below.
 
 | Rule                                                                                   | What it does                                                                                           |
 | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `.cluster-toggle:focus-visible` in `window.css`                                        | The ring 2px **inside**, since the row fills the clipped list                                          |
 | `.settings :is(.input, .select):focus-visible` in `window.css`                         | Offset 0: the ring on the field's edge                                                                 |
-| `.chat-input:focus-within` and `.chat-input-field:focus-visible` in `window.css`       | Every chat input (DRIFT D3): the frame's border in `--focus`, plus a 1px ring; the field's outline off |
+| `.chat-input:focus-within` and `.chat-input-field:focus-visible` in `window.css`       | Every chat input: the frame's border in `--focus`, plus a 1px ring; the field's outline off            |
 | `.workstream-title:focus` in `window.css`                                              | No ring. The name's border turns `--line-strong` and it fills with `--surface`                         |
 | `.sidebar-search-field:focus-within` and `.filter-search:focus-within` in `window.css` | The frame's border in `--focus`, plus a 1px ring; the input's own outline off. Written twice, the same |
 | `.context-menu-item:is(:hover, :focus-visible)` in `window.css`                        | No ring. A `--surface-hover` fill, the same as hover                                                   |
@@ -150,7 +150,7 @@ Each, forced on (the workshop's `ws-focus-visible`, `ws-focus` and `ws-focus-wit
 
 ## Proposed: one field-frame focus
 
-In Oriel for the chat inputs (DRIFT D3); proposed for the rest. A field that's a frame round an input (the composers, the two searches) shows focus on the frame: its border in `--focus` and a 1px ring outside it, on `:focus-within`. That's the look the sidebar's search already has, so it's one look extended, not a new one. A plain text field shows the same on itself. The inner input turns its own outline off, because the frame carries it.
+In Oriel for the chat inputs; proposed for the rest. A field that's a frame round an input (the composers, the two searches) shows focus on the frame: its border in `--focus` and a 1px ring outside it, on `:focus-within`. That's the look the sidebar's search already has, so it's one look extended, not a new one. A plain text field shows the same on itself. The inner input turns its own outline off, because the frame carries it.
 
 The chat inputs have it: `.chat-input:focus-within` in `window.css`. The rest is in this workshop's proposals: `.text-field-input:focus-visible` and `.search-field:focus-within` in `assets/proposals/field.css`. See [Chat input](/components/chat-input) and the [text field lab](/lab/text-field).
 
@@ -158,7 +158,7 @@ Everything that isn't a field keeps the window's ring. Two more changes go with 
 
 - `.context-menu-item` keeps its fill on hover, but takes an inset ring on `:focus-visible` (offset `calc(-1 * var(--border-thick))`), as `.cluster-toggle` does.
 
-The drift report also suggests naming the ring's parts on `html`: `--focus-ring: var(--border-thick) solid var(--focus)`, `--focus-offset: 2px` and `--focus-inset`, so the inset rings share one value. That's the maintainer's call.
+The ring's parts could be named on `html`: `--focus-ring: var(--border-thick) solid var(--focus)`, `--focus-offset: 2px` and `--focus-inset`, so the inset rings share one value. That's the maintainer's call.
 
 ```html specimen id=proposed-frames title="Proposed: the frame shows focus, for every field" side=proposed state=focus-within
 <div class="ws-stack">

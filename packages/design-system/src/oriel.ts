@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { readAt, readIn, readShown } from "./files.ts";
+import { readIn, readShown } from "./files.ts";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // pnpm sets INIT_CWD to where the command ran, even with --dir, so a relative ORIEL is from
@@ -64,8 +64,6 @@ const checkout = realpathSync.native(oriel);
 export const source = (path: string) => readIn(checkout, path);
 
 export const shownSource = (path: string) => readShown(checkout, path);
-
-export const sourceAt = (path: string, commit: string) => readAt(checkout, path, commit);
 
 export function textSizes(css: string): string[] {
   const sizes = themes

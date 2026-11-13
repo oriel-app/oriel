@@ -34,7 +34,7 @@ export const sections: { id: Section; title: string; blurb: string }[] = [
   {
     id: "docs",
     title: "Reports",
-    blurb: "The drift report, the controls report, and what no page covers yet.",
+    blurb: "What no page covers yet.",
   },
 ];
 
@@ -62,8 +62,6 @@ export type Page = {
 };
 
 const docs: { slug: string; file: string; url: string }[] = [
-  { slug: "drift", file: "DRIFT.md", url: "/drift" },
-  { slug: "controls", file: "CONTROLS.md", url: "/controls" },
   { slug: "undocumented", file: "UNDOCUMENTED.md", url: "/undocumented" },
   { slug: "readme", file: "README.md", url: "/readme" },
 ];

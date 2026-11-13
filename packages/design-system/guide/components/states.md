@@ -344,5 +344,3 @@ Status **drifting**.
 - **An error beside a control:** `<p class="notice" data-tone="error" role="alert">`, the one error line whose name isn't tied to a page. Inside a connect step, Settings or a change set, use that place's own `*-problem` class.
 - **A page that didn't load:** Browse's `div.failed` with a `.button` Try again (`Body` in `packages/web/src/window-page.tsx`), the only load failure with both a retry and an alert.
 - **A boxed error at the top of a page:** `.settings-problem`.
-
-The [drift report](/drift) has the proposals.

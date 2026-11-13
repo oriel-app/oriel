@@ -143,7 +143,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 ```
 
 - **Rest, hover, focus-visible, disabled** are styled. Hover is guarded by `:not(:disabled)` on `.button` and `.quiet-action`.
-- **Active** isn't styled anywhere in window.css. A press shows nothing beyond hover. That's acceptable for a dense tool, but see the drift report.
+- **Active** isn't styled anywhere in window.css. A press shows nothing beyond hover. That's acceptable for a dense tool.
 - **Disabled** is `opacity: 0.5` on `.button`, `.quiet-action` and `.link-action`. The `.undo-action` has no disabled look, so a disabled Undo looks live (last specimen in its row above).
 - **Busy** is a disabled button whose label becomes the verb with "…": Delete → Deleting…, Add → Reading…, Check again → Checking…. No button sets `aria-busy`; the region that's busy does (a change set, a thread).
 - **Error** and **empty** don't apply to a button. A failed action says so in the line under it (see [Empty, loading and error](/components/states)).
@@ -162,7 +162,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 - Name the object when the button is alone: **Add to workstream**, **Open in Jira**. Inside a card that already names it, the verb is enough: **Reject**.
 - Busy labels are the verb's -ing form plus "…" (U+2026): **Deleting…**, **Checking…**. Never "Loading".
 - A button that opens a question ends in "…": **Delete…** in a menu (the dialog asks before anything happens).
-- Approving says what it does: **Approve and apply** in a thread. The review link page says **Approve**; see the drift report.
+- Approving says what it does: **Approve and apply**, in a thread and on the review link page (`stepLabel` in `packages/web/src/thread.ts`).
 
 ## Where the app uses it
 
@@ -182,4 +182,4 @@ Status **drifting**. The kinds are sound; what drifts is which kind an action ge
 - `.undo-action` has no disabled look, and its hover isn't guarded.
 - `cli-row.tsx` has a helper called `quiet()` that draws a `.link-action`, twice over (once each in `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`).
 
-Rule of thumb, until a `Button` component settles it: **retry is a `.button`** beside the error that caused it (primary only when it's the step's own way on); **Cancel is a `.button`** in a form or dialog and a `.quiet-action` elsewhere; **Dismiss is a `.quiet-action`**. See [the drift report](/drift#d2-one-disabled-look-and-one-button-kind-rule).
+Rule of thumb, until a `Button` component settles it: **retry is a `.button`** beside the error that caused it (primary only when it's the step's own way on); **Cancel is a `.button`** in a form or dialog and a `.quiet-action` elsewhere; **Dismiss is a `.quiet-action`**.

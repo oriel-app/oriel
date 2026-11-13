@@ -4,12 +4,10 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { readAt, readIn, readShown } from "./files.ts";
+import { readIn, readShown } from "./files.ts";
 
 let outside = "";
 let checkout = "";
-let commit = "";
-let leaked = "";
 
 const git = (...args: string[]) =>
   execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8" }).trim();
@@ -30,12 +28,6 @@ before(() => {
   git("init", "-q");
   git("add", ".gitignore", "packages", "out-link", "env-link");
   git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "one");
-  commit = git("rev-parse", "HEAD");
-  git("add", "-f", ".env");
-  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a mistake");
-  leaked = git("rev-parse", "HEAD");
-  git("rm", "-q", "--cached", ".env");
-  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "undone");
 });
 
 after(() => rmSync(join(checkout, ".."), { recursive: true, force: true }));
@@ -50,17 +42,4 @@ test("never shows a file outside the checkout, by a path or a link", () => {
     assert.equal(readShown(checkout, path), null, path);
   assert.equal(readIn(checkout, "out-link"), null);
   assert.equal(readIn(checkout, "../outside.txt"), null);
-});
-
-test("never reads what git ignores today, even at a commit that has it", () => {
-  assert.equal(readAt(checkout, ".env", leaked), null);
-  assert.equal(readAt(checkout, "secrets/jira", leaked), null);
-  assert.equal(readShown(checkout, ".env"), null);
-});
-
-test("refuses any commit that isn't hex, and any path that leaves the tree", () => {
-  for (const at of ["HEAD", "--output=/tmp/x", "-p", `${commit}~1`, `${commit.slice(0, 7)}..HEAD`])
-    assert.equal(readAt(checkout, "packages/web/window.css", at), null, at);
-  for (const path of ["../outside.txt", "/etc/hosts", "packages/./web/window.css", "a:b", " x"])
-    assert.equal(readAt(checkout, path, commit), null, path);
 });

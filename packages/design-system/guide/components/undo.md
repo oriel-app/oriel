@@ -192,4 +192,4 @@ Status **drifting**. The bead fixed the stack's own drift: a disabled Undo in th
 - A reply's and a draft's Undo are hand-written buttons with no label, not `UndoButton`.
 - Note copy: "Removed SYN-8" has no full stop and doesn't quote; the others do. Undo's label is "Undo removing X" for removals, "Undo: {sentence}" for the rest.
 
-**Copy `UndoButton`**: for a note, give it to the page's bead through `undos.ts`, as an `UndoNote` with `said`, `label` and `onUndo`; beside its change, render `UndoButton` with its `label`. Put a failure in the bead's `problem`, not a box of its own. See [the drift report](/drift#d2-one-disabled-look-and-one-button-kind-rule).
+**Copy `UndoButton`**: for a note, give it to the page's bead through `undos.ts`, as an `UndoNote` with `said`, `label` and `onUndo`; beside its change, render `UndoButton` with its `label`. Put a failure in the bead's `problem`, not a box of its own.
