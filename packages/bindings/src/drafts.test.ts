@@ -1,5 +1,3 @@
-// A waiting connection's drafts (decision 0051): checked by its connector's
-// validator over the options it has, and held as that validator reads them.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { array, object, string } from "@oriel/core";

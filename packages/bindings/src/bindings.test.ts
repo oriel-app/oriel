@@ -61,7 +61,6 @@ test("without an anchor, a create's epic must be one of the region's epics, or n
   assert.deepEqual(inside.args, { summary: "A", epic: "jira:SYN-1" });
   const loose = bindings.capture("jira.createStory", [{ summary: "B", points: 2 }], "new:2");
   assert.deepEqual(loose.args, { summary: "B", points: 2, epic: null });
-  // A story in the region, and an epic outside it.
   for (const [ref, epic] of [
     ["new:3", "jira:SYN-13"],
     ["new:4", "jira:SYN-2"],
@@ -85,8 +84,6 @@ test("only search() reaches outside the region, and other reads refuse what's ou
   await assert.rejects(bindings.read("jira.setEstimate", ["jira:SYN-13", 1]));
 });
 
-// Decision 0062: an item a message was about, outside the region, is read
-// and never written.
 test("an item the user looked at outside the region reads, read-only", async () => {
   const bindings = bindingsFor(fixtureRegion("boarding-epic"), {
     reader: base,
@@ -99,12 +96,9 @@ test("an item the user looked at outside the region reads, read-only", async () 
   await assert.rejects(bindings.read("items.read", ["jira:SYN-54"]));
   assert.throws(() => bindings.capture("jira.setEstimate", ["jira:SYN-80", 3], null));
   assert.throws(() => bindings.capture("jira.setSummary", ["jira:SYN-80", "x"], null));
-  // Only the one outside the region is declared as looked at.
   assert.match(bindings.dts, /type LookedId =\n {2}\| "jira:SYN-80";/);
 });
 
-// Continue in… (decision 0062) carries a request about an item the user
-// chose, never one a read found, which synced text could steer it to.
 test("the window chat drafts Continue in… only for an item the user's message was about", async () => {
   const bindings = bindingsFor(fixtureRegion("boarding-epic"), {
     reader: base,
@@ -115,7 +109,6 @@ test("the window chat drafts Continue in… only for an item the user's message 
   });
   const drafted = bindings.draft("window.continue", [{ item: "jira:SYN-80" }]);
   assert.deepEqual(drafted.input, { thread: "01JC0THREAD000000000000000", item: "jira:SYN-80" });
-  // Found by a search, outside the region, it may be read, never continued.
   const hits = (await bindings.read("search", ["Cancellation alert", 5])).value as { id: string }[];
   assert.ok(hits.some((hit) => hit.id === "jira:SYN-54"));
   await bindings.read("items.read", ["jira:SYN-54"]);
@@ -133,7 +126,6 @@ test("an item that moved project is followed and keeps its region handle", async
 
 test("an epic that moved projects is still the anchor, by stable ID, under its new handle", () => {
   const checkout = fixtureRegion("checkout-epic");
-  // SYN-1 moved and was added back as OPS-1; the origin still names SYN-1.
   const region: Region = {
     ...checkout,
     items: checkout.items.map((item) =>

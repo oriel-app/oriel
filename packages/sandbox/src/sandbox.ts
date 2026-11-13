@@ -1,6 +1,5 @@
-// The sandbox host: each run is a fresh, deny-all `deno run` process that
-// reaches the host only through JSON lines on stdio (decision 0006). Every
-// cap is enforced here, outside the guest.
+// Each run is a fresh, deny-all `deno run` process that reaches the host only through JSON lines on stdio.
+// Every cap is enforced here, outside the guest.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -32,26 +31,16 @@ import { sanitize } from "./errors.ts";
 import { watchMemory } from "./memory.ts";
 
 export type SandboxOptions = {
-  // The Deno binary. Default: the one on PATH (mise.toml pins it).
   deno?: string;
-  // V8's old-space cap, in MB.
   heapMb?: number;
-  // The whole process's resident memory cap, in MB, sampled every
-  // `memoryPollMs` (see memory.ts). It also covers what the heap cap can't
-  // see.
   maxRssMb?: number;
   memoryPollMs?: number;
-  // The longest guest line the host will buffer. It is raised to fit
-  // `maxResultBytes` when that is larger.
   maxLineBytes?: number;
   maxStderrBytes?: number;
   tmpDir?: string;
   // Milliseconds from an arbitrary origin; only differences are used.
   now?: () => number;
-  // The host's user ID. Default: the process's.
   uid?: number;
-  // A cap on the compile step (typecheck and guestStart), however long the
-  // wall time. Default 10 s.
   typecheckMs?: number;
 };
 
@@ -85,8 +74,6 @@ const maxDepth = 64;
 
 type Ending = { outcome: RunResult["outcome"]; last: TranscriptEntry };
 
-// A read passed to the source, as it stands: answered or failed as it
-// settles, unanswered until then.
 type ReadRecord = ProxiedRead & { startedAt: number };
 
 export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
@@ -119,7 +106,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     // The wall clock starts when the compile does: compile and execution
     // share one `wallMs`. A wait in the compile queue isn't counted.
     let started = now();
-    // A script that is too big or doesn't compile never reaches Deno.
     const refuse = (last: TranscriptEntry, outcome: Exclude<RunResult["outcome"], "ok">) =>
       finished(
         { reads: [], mutations: [], intents: [], drafts: [], transcript: [last], outcome },
@@ -132,9 +118,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       const text = `the script is ${scriptBytes} bytes; the limit is ${limits.maxScriptBytes}`;
       return refuse(errorEntry("limit", text, [], hints.script), "limit");
     }
-    // The typecheck, then the reply that starts the guest: in a worker, see
-    // compiler.ts. Its own cap is the smaller of the wall time and
-    // `typecheckMs`.
     const compileMs = Math.min(limits.wallMs, typecheckMs);
     const prepared = await compiler.prepare({
       script,
@@ -164,11 +147,8 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     try {
       const work = join(dir, "work");
       await mkdir(work);
-      // An addition to decision 0006 (see 0017): Cache API and localStorage
-      // data, which no permission gates, would go under location_data.
-      // Read-only, those writes fail instead of filling the disk. Root
-      // ignores the mode, hence the uid check in createSandbox. (A read-only
-      // DENO_DIR would also do it, but costs about 180 ms of cold start.)
+      // Cache API and localStorage data, which no permission gates, go under location_data: read-only, those writes fail instead
+      // of filling the disk. Root ignores the mode, hence the uid check. (A read-only DENO_DIR also works, but costs ~180 ms of cold start.)
       const denoDir = join(dir, "deno");
       await mkdir(denoDir);
       await mkdir(join(denoDir, "location_data"), { mode: 0o500 });
@@ -207,7 +187,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     entryPath: string;
     clean: (text: string) => string;
     started: number;
-    // What is left of the wall time after the compile.
     remainingMs: number;
     bindings: Bindings;
     limits: RunLimits;
@@ -228,8 +207,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       const reads: ReadRecord[] = [];
       const mutations: CapturedMutation[] = [];
       const intents: Intent[] = [];
-      // The user's actions it drafted (decision 0051), capped with its
-      // intents, as Oriel's actions all.
       const drafts: Draft[] = [];
       const transcript: TranscriptEntry[] = [];
       const logs: string[] = [];
@@ -248,10 +225,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         ending = { outcome, last };
         child.kill("SIGKILL");
       };
-      // An addition to decision 0006 (see 0017): there is no in-guest
-      // deadline. The host kills the process at the wall-time cap, less what
-      // the compile used, and reports it itself, as a clean "limit" error that
-      // names the cap.
+      // No in-guest deadline: the host kills the process at the wall-time cap, less what the compile used, and reports it itself.
       const wall = setTimeout(
         () =>
           end(
@@ -283,13 +257,10 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         child.kill("SIGKILL");
       };
       signal.addEventListener("abort", onAbort, { once: true });
-      // Aborted while the entry file was being written.
       if (signal.aborted) onAbort();
 
-      // Every read passed to the source is logged once, before the run's
-      // `sandbox.run` line: answered or failed as it settles, and unanswered
-      // when the run ends first. One that answers after that is ignored. The
-      // log and the record keep a sketch's size, never its HTML.
+      // Every read is logged once, before the run's `sandbox.run` line; one that answers after the run ends is ignored.
+      // The log and the record keep a sketch's size, never its HTML.
       const proxyRead = async (id: number, fn: string, args: unknown[]) => {
         const record: ReadRecord = {
           fn,
@@ -363,8 +334,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
               end("threw", fail("runtime", `${fn}: ${ref} was already created in this run`));
               return;
             }
-            // The bindings' refusal names the function already, as a failed
-            // read's does.
             try {
               mutations.push(bindings.capture(fn, args, ref));
             } catch (error) {
@@ -381,9 +350,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
               end("limit", fail("limit", text, hints.intents));
               return;
             }
-            // Recorded, never applied here: the turn applies intents when it
-            // ends, and holds drafts for the user. The bindings' refusal
-            // names the function.
+            // Recorded, never applied here: the turn applies intents when it ends, and holds drafts for the user.
             try {
               if (message.kind === "intent")
                 intents.push(bindings.intend(message.fn, message.args));
@@ -496,8 +463,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         stderr += chunk;
       });
 
-      // A guest that ended on its own without `done` or `threw`: out of
-      // memory, or a runtime error, whatever its exit code.
       const exited = (code: number | null, killedBy: NodeJS.Signals | null): Ending => {
         const text = clean(stderr.trim());
         if (/out of memory|reached heap limit/i.test(stderr)) {
@@ -580,7 +545,6 @@ function finished(
     cold_start_ms: coldStartMs,
     reads: result.reads.length,
     mutations: result.mutations.length,
-    // Only a run that recorded any of Oriel's actions says so.
     ...(result.intents.length ? { intents: result.intents.length } : {}),
     ...(result.drafts.length ? { drafts: result.drafts.length } : {}),
   });
@@ -598,8 +562,7 @@ function errorEntry(
   return { kind: "error", error };
 }
 
-// Splits a byte stream on "\n" without ever buffering more than `cap` bytes of
-// one line.
+// Splits on newlines without ever buffering more than `cap` bytes of one line.
 function splitLines(cap: number, onLine: (line: Buffer) => void, oversize: () => void) {
   let parts: Buffer[] = [];
   let size = 0;
@@ -626,8 +589,7 @@ function splitLines(cap: number, onLine: (line: Buffer) => void, oversize: () =>
   };
 }
 
-// Whether arrays and objects in `value` nest deeper than `max`. Iterative, so
-// a hostile value can't overflow the stack here either.
+// Iterative, so a hostile value can't overflow the stack here either.
 function nestsDeeper(value: unknown, max: number): boolean {
   const stack: [unknown, number][] = [[value, 0]];
   for (let next = stack.pop(); next !== undefined; next = stack.pop()) {

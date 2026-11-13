@@ -1,5 +1,4 @@
-// The typecheck's deadline, apart from sandbox.test.ts: the test waits it
-// out, so it waits in parallel with that file's.
+// Apart from sandbox.test.ts: this test waits out the deadline, so it waits in parallel with that file's.
 import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

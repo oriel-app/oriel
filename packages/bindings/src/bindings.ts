@@ -33,18 +33,8 @@ const notShown = (what: string) =>
 const defined = (args: object) =>
   Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined));
 
-// A region's bindings for one run. Reads proxy to `reader`. Writes are
-// captured, never sent: a write must target a region item from its own source
-// or a story an earlier create in this run made, and its arguments must pass
-// that source's op catalogue. `namespaces` are the sources' own namespaces,
-// and `items` what each source's items are, as their adapters declare them;
-// `oriel` reads the workspace's own threads, for Oriel's namespaces, and
-// without it the workspace has none. Oriel's actions are recorded as
-// intents, each checked against its declaration, with the region's
-// workstream and `thread` as the agent's own, and each item a workstream
-// gains in the region or found by this run's search(). `shown` builds a
-// block from a read the turn ran (decision 0030) and shows a sketch
-// (decision 0033). The composition root passes them in.
+// Writes are captured, never sent: a write must target a region item from its own source or a story an earlier
+// create in this run made, and its arguments must pass that source's op catalogue.
 export function bindingsFor(
   region: Region,
   options: {
@@ -54,26 +44,13 @@ export function bindingsFor(
     oriel?: OrielReads;
     thread?: Ulid;
     shown?: Shown;
-    // The window chat's overview, with the items it shows as the index has
-    // them; its thread's module gets `window` only with it (decision 0027).
-    // `reachable`: the IDs of the items each cluster it names holds, which
-    // an action in the run may take, as Make a workstream does, though the
-    // read shows none of them, so none can be read (decision 0044).
+    // `reachable`: items an action in the run may take, as Make a workstream does, though none of them can be read.
     overview?: () => Promise<{ view: unknown; items: SearchHit[]; reachable?: readonly string[] }>;
-    // The window chat's connections that wait for their options; its
-    // thread's module gets `source` only with it (decision 0051).
     waiting?: Waiting;
-    // What the thread's messages were about (decision 0062): any outside the
-    // region a run may read, read-only, as it may what its search() found.
+    // Items the messages were about outside the region: a run may read them, read-only.
     looking?: readonly string[];
-    // Items with what the change log saw of them, from the index alone.
     history?: (of: string | null) => Promise<unknown>;
-    // A run Oriel started for a second look at a change set: its module is
-    // the region's reads and writes, `challenge` and search() (decision
-    // 0054).
     challenge?: ChallengeRun;
-    // A thread's turn: makes this run's writes revise one of the thread's
-    // change sets instead of making a new one (OA-309).
     revise?: (id: string) => Promise<string>;
   },
 ): Bindings {
@@ -88,15 +65,11 @@ export function bindingsFor(
   const members = new Set<string>(scope.ids);
   const created = new Map<NewRef, string>();
   const { reader } = options;
-  // What creates items here, for messages: the namespaces' own names for it.
   const creates = fns.flatMap((fn) => (fn.kind === "write" && fn.creates ? [pathOf(fn)] : []));
   const makers = creates.length ? creates.join(" or ") : "a create";
-  // IDs this run's search() returned. A namespace may read those too, and
-  // nothing else outside the region: the host refuses before any adapter
+  // A namespace may read these too, and nothing else outside the region: the host refuses before any adapter
   // code sees the ID, whatever the adapter checks itself.
   const found = new Set<string>(scope.looked);
-  // IDs an action in this run may take though no read showed them: the items
-  // of the clusters the overview named, as Make a workstream copies them.
   // Never read through: reading one still takes a search() that shows it.
   const joinable = new Set<string>();
   const host: Host = {
@@ -119,7 +92,6 @@ export function bindingsFor(
     ...(options.challenge ? { challenge: options.challenge } : {}),
     ...(options.revise ? { revise: options.revise } : {}),
     reaches: (id) => members.has(id) || found.has(id),
-    // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");
     },
@@ -131,8 +103,7 @@ export function bindingsFor(
       return options.history(of);
     },
   };
-  // The ref the next create must carry. Every correctly numbered create uses
-  // one up, so a rejected create can't shift the numbering of later ones.
+  // Every correctly numbered create uses one up, so a rejected create can't shift the numbering of later ones.
   let nextRef = 1;
 
   return {
@@ -142,12 +113,9 @@ export function bindingsFor(
     async read(fn, args) {
       const entry = byPath.get(fn);
       if (entry?.kind !== "read") throw new Error(`${JSON.stringify(fn)} isn't a read here`);
-      // A read that reached any item outside the region, as a namespace read
-      // of what search() found can, is the escape hatch too.
+      // A namespace read that reached outside the region, as one of what search() found can, is the escape hatch too.
       let outsideRegion = entry.outsideRegion;
-      // What it reached outside the region, for the escape-hatch block.
       const reached: SearchHit[] = [];
-      // What a waiting connection's preview showed, for its block.
       const previewed: PreviewTable[] = [];
       const own: Host = {
         ...host,
@@ -250,18 +218,14 @@ export function bindingsFor(
       if (entry?.kind !== "draft" || (entry.space === "source" && !waiting))
         throw new Error(`${JSON.stringify(fn)} isn't a draft here`);
       try {
-        // Checked as an intent is, against the action's own declaration,
-        // then a source's by the connector's validator, as the composition
-        // root has it.
         const drafted = intended(entry, args, {
           workstream: region.workstreamId,
           thread: options.thread ?? null,
           reaches: () => false,
         });
         if (waiting && entry.space === "source") return waiting.check(drafted);
-        // Continue in… carries on a request about an item the user chose:
-        // one their messages were about, or one in the region, never one a
-        // read found, which synced text could have steered it to.
+        // Only an item the user chose: one their messages were about, or one in the region, never one a read found,
+        // which synced text could have steered it to.
         const item = drafted.input["item"];
         if (
           typeof item !== "string" ||

@@ -1,10 +1,8 @@
-// How a run's Deno process is started (decision 0006).
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, realpathSync } from "node:fs";
 import { basename, delimiter, join } from "node:path";
 
-// No `--allow-*` anywhere: everything not listed is denied too, and
-// `--no-prompt` makes a permission check throw instead of asking.
+// No `--allow-*` anywhere: everything not listed is denied too, and `--no-prompt` makes a permission check throw instead of asking.
 export const denyAll = [
   "--no-prompt",
   "--no-remote",
@@ -30,27 +28,19 @@ export function denoArgs(run: { entry: string; importMap: string; heapMb: number
   ];
 }
 
-// An addition to decision 0006 (see 0017). `--deny-read` doesn't cover the
-// module graph: Deno loads every import whose
-// specifier is a literal in module source, static or dynamic, before anything
-// runs and without asking for read permission (see deno.test.ts). The script
-// never becomes module source, so only the runtime and the shim could do this.
-// As a second line, this map sends every `file:` specifier but the entry's own
-// to a scheme Deno refuses.
+// `--deny-read` doesn't cover the module graph: Deno loads every literal import before anything runs, without asking
+// (deno.test.ts). As a second line, this map sends every `file:` specifier but the entry's own to a scheme Deno refuses.
 export function importMap(entryUrl: string): string {
   return JSON.stringify({ imports: { "file:///": "no-imports:/", [entryUrl]: entryUrl } });
 }
 
-// The child's whole environment. `DENO_NO_UPDATE_CHECK` is an addition to
-// decision 0006, which allows only `DENO_DIR` (see 0017): without it, the Deno
-// CLI itself (not the guest) calls the network for its update check once per
-// fresh `DENO_DIR`, so once per run.
+// The child's whole environment. Without `DENO_NO_UPDATE_CHECK`, the Deno CLI calls the network for its update check
+// once per fresh `DENO_DIR`, so once per run.
 export function denoEnv(denoDir: string): Record<string, string> {
   return { DENO_DIR: denoDir, DENO_NO_UPDATE_CHECK: "1" };
 }
 
-// The real Deno binary on PATH. A mise shim is resolved through mise, since a
-// shim run with an empty environment can't find its config.
+// A mise shim is resolved through mise, since a shim run with an empty environment can't find its config.
 export function findDeno(path: string = process.env.PATH ?? ""): string {
   for (const dir of path.split(delimiter)) {
     if (!dir) continue;

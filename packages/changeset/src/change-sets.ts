@@ -64,41 +64,25 @@ import {
   type LinkRow,
 } from "./store.ts";
 
-// The read side a diff needs, as core has it.
 export type { FieldReader };
 
 export type ChangeSetDeps = {
   db: DatabaseSync;
-  // The connections that may propose changes, and what each one's writer is
-  // built from. Change sets build the writers from it (writers.ts): nothing
-  // passes a writer in, so none exists outside this package (decision 0003).
-  // A connection with no config is read-only.
+  // Change sets build the writers: nothing passes a writer in, so none exists outside this package.
   writerConfig: WriterConfig;
-  // What a person calls an ID an op names, such as an account, for a diff
-  // line, by connection prefix; null when unknown. A writer that names its own IDs
-  // (`SourceWriter.name`) needs none.
   names?: { [K in SourceKind]?: (id: string) => Promise<string | null> };
-  // How a connection with no writer config, by prefix, reads its current values, so its
-  // change sets can still be captured and diffed. They can't be approved
-  // until writing to the source is configured.
   readers?: { [K in SourceKind]?: FieldReader<K> };
-  // How each writable source's ops are checked, shown, applied and reverted,
-  // as its adapter declares them.
   specs: Specs;
-  // A review link is this URL with the token appended as a last path segment.
   reviewBase: URL;
   now: () => Instant;
   emit: (event: TelemetryEvent) => void;
   log: Log;
 };
 
-// Each source's writer, null when writing to it isn't configured, and the
-// field reader its diffs use.
 export type Sources = {
   [K in SourceKind]?: { writer: SourceWriter<K> | null; reader: FieldReader<K> };
 };
 
-// What the engine runs on: the deps, with the writers built.
 export type EngineDeps = Omit<ChangeSetDeps, "writerConfig" | "names" | "readers" | "log"> & {
   sources: Sources;
 };
@@ -111,7 +95,6 @@ export type ChangeSetErrorCode =
   | "not-approved"
   | "busy"
   | "not-revertible"
-  // Writing to the source isn't configured, so nothing can be approved.
   | "read-only";
 
 export class ChangeSetError extends Error {
@@ -123,9 +106,7 @@ export class ChangeSetError extends Error {
   }
 }
 
-// The registry: how change sets treat each writable source's ops, by source
-// kind, as each adapter declares them over its own `OpCatalogue`. A source
-// with no entry is read-only: no change set can touch its items.
+// A source with no entry is read-only: no change set can touch its items.
 export type Specs = Partial<Record<SourceKind, OpSpecs>>;
 
 function catalogueFor(specs: Specs, kind: SourceKind): OpSpecs {
@@ -140,31 +121,20 @@ function hasOp(specs: Specs, kind: SourceKind, op: string): boolean {
 }
 
 const linkLifetimeMs = 7 * 24 * 60 * 60 * 1000;
-// How long an unanswered send is taken to be still on its way. Until then no
-// other apply sends that row again, so a slow write can't land after a later
-// one. A crashed send blocks its row this long.
+// Until then no other apply sends that row again, so a slow write can't land after a later one.
+// A crashed send blocks its row this long.
 export const sendLeaseMs = 5 * 60 * 1000;
-// How long a write may take, every request of it and every wait between, by
-// when it gives up, unanswered or unsent: well inside a send's lease, so the
-// apply ends, and with it Try again and Dismiss show, before the window
-// would see it stalled, and no send of it is still going after (OA-172).
+// Well inside a send's lease, so the apply ends, and Try again and Dismiss show, before the window would see it
+// stalled, and no send of it is still going after.
 export const writeLimitMs = 2 * 60 * 1000;
-// A send's mark ends with when it was sent.
 const sendMark = / \(sent (\S+)\)$/;
 const tokenShape = /^[A-Za-z0-9_-]{43}$/;
 const maxErrorChars = 500;
-// The preview of a line whose item was gone when the diff was shown. No
-// catalogue field starts with "$".
+// No catalogue field starts with "$".
 const goneMark = "$gone";
-// The preview of a line its source said, when the diff was shown, it wouldn't
-// take as it stands, with why.
 const refusedMark = "$refused";
-// For a mutation whose stored arguments no longer pass its source's catalogue,
-// as one captured before the catalogue tightened.
 const staleArgs = "This change's stored arguments are no longer valid";
 
-// Boundary validators for what callers pass in. Each is typed against core's
-// contract, so the two can't drift.
 const runRef: Validator<RunRef> = object({
   id: ulidValue,
   threadId: ulidValue,
@@ -218,18 +188,13 @@ function catalogueOf(specs: Specs, item: ItemId): OpSpecs {
   return catalogueFor(specs, kind);
 }
 
-// The one place an `Approved` value is made (decision 0003). Callers mint right
-// before `writer.apply`, from rows whose hash the latest approval matches.
+// The one place an `Approved` value is made. Callers mint right before `writer.apply`, from rows whose hash the
+// latest approval matches.
 function mint<K extends SourceKind>(request: WriteRequest<K>): Approved<WriteRequest<K>> {
   return Object.freeze(request) as Approved<WriteRequest<K>>;
 }
 
-// What a mutation writes to: its kind, whose catalogue checks it, and its
-// connection's prefix, whose writer sends it. Its target's; for a new item,
-// that of the create naming it; for a create, the kind it was captured for,
-// through its first connection. One captured before two kinds' catalogues
-// shared an op has none: it is the first kind's, in declared order, whose
-// catalogue has its op, which was the only one then.
+// One captured before two kinds' catalogues shared an op has no kind: it is the first declared kind whose catalogue has its op.
 type Owner = { kind: SourceKind; prefix: string };
 
 function ownerOf(specs: Specs, m: Draft, all: readonly Draft[]): Owner | null {
@@ -261,13 +226,8 @@ function mustSpec(specs: Specs, m: Draft, all: readonly Draft[]): Owner & { spec
   return found;
 }
 
-// Validates each mutation's arguments and its refs, in seq order: only a create
-// names a new item, each name once, and a target, or an item among the
-// arguments, may name only an item that an earlier create in the same change
-// set names. Returns the validated arguments, which are what gets stored and
-// replayed.
+// Returns the validated arguments: they are what gets stored and replayed.
 function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
-  // Each new item's ref, with the op that creates it.
   const named = new Map<NewRef, string>();
   return drafts.map((m, i) => {
     const where = `mutation ${i + 1} (${m.op})`;
@@ -322,9 +282,6 @@ function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
   });
 }
 
-// What in these mutations lies outside the region: a target (when `targets`),
-// or an item ID among the arguments. `member` decides by stable ID. A NewRef,
-// as a target or among the arguments, was checked by `check`.
 function outsideRegion(
   checked: readonly { m: Checked; seq: number }[],
   member: (handle: string) => boolean,
@@ -340,18 +297,13 @@ function outsideRegion(
   return null;
 }
 
-// What a sent row was approved from: its preview's values, without whether
-// its item could be read since. Null when it has none.
 function approvedFrom(preview: FieldValues | null): FieldValues | null {
   if (preview === null) return null;
   const values = Object.fromEntries(Object.entries(preview).filter(([f]) => !f.startsWith("$")));
   return Object.keys(values).length > 0 ? values : null;
 }
 
-// Conflicts in plain words, for the thread and the review page. An `expected`
-// of undefined means Oriel is missing a value it recorded at apply (before or
-// after), so it can't revert that field safely. A source that words its own
-// (`OpSpecs.explain`) gets the item's title from `title`, where Oriel knows it.
+// An `expected` of undefined means Oriel is missing a value it recorded at apply, so it can't revert that field safely.
 export function explainConflicts(
   conflicts: readonly Conflict[],
   specs: Specs,
@@ -374,14 +326,7 @@ export function explainConflicts(
   return `Stopped, so nothing was overwritten: ${parts.join("; ")}.`;
 }
 
-// What a change set made, or proposes, one line per change, in its diff's own
-// words, from its rows and what Oriel already knows, never from a source: so
-// listing or searching every change set costs no source a request. A value a
-// diff reads live is as the change set recorded it: what applied found, or
-// what the person approved it from. `known` gives what a person calls an ID
-// an op names (a person, a channel) and an item's title, where Oriel knows
-// them. Each line has the source it writes to, as a person knows it, and the
-// text it writes there.
+// Never from a source, so listing or searching every change set costs no source a request.
 export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Promise<ChangeRead[]> {
   const titles = new Map<string, string | null>();
   const lines: ChangeRead[] = [];
@@ -418,9 +363,7 @@ export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Pro
       title: async (id) => title(id),
     });
     if (m.ref !== null) titles.set(m.ref, text(after[catalogue.titleField]));
-    // Words it writes: text values, and a link's title, never an ID of a
-    // writable kind's. Text that only looks like one, such as "fix:login",
-    // is words.
+    // Text that only looks like an ID, such as "fix:login", is words.
     const written = Object.entries(after).flatMap(([field, value]) => {
       if (catalogue.fields[field] === "item") return [];
       const words =
@@ -438,16 +381,9 @@ export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Pro
   return lines;
 }
 
-// What a workspace's connections give change sets: what each writable one's
-// writer is built from, and how the others read and name.
 export type Wiring = Pick<ChangeSetDeps, "writerConfig" | "names" | "readers">;
 
-// Change sets over the writers built from `deps.writerConfig`. A diff reads a
-// source's current values through its writer, which knows its field names.
-// A source with no writer config reads through `deps.readers`, if it has one
-// there: its diffs work, and approving its change sets is refused.
-// `rewire` builds them again from a connection made or replaced, in place,
-// so an apply running then keeps its writer and its place.
+// `rewire` builds them again in place, so an apply running then keeps its writer and its place.
 export function changeSets(deps: ChangeSetDeps): ChangeSets & { rewire(next: Wiring): void } {
   const sources: Sources = {};
   const rewire = (next: Wiring) => {
@@ -458,7 +394,6 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets & { rewire(next: Wir
       [...prefixes].flatMap(
         (prefix): [string, { writer: SourceWriter | null; reader: unknown }][] => {
           const writer = writers[prefix];
-          // A writer that names its own IDs knows best.
           const name = writer?.name?.bind(writer) ?? next.names?.[prefix] ?? unknown;
           if (writer) return [[prefix, { writer, reader: { current: writer.current, name } }]];
           const reader = next.readers?.[prefix];
@@ -473,16 +408,12 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets & { rewire(next: Wir
   return { ...changeSetsOver({ ...deps, sources }), rewire };
 }
 
-// The engine, over writers and readers already built. Only `changeSets` and
-// tests (with a source in memory) call it; the package entry doesn't export
-// it, so production code can't pass a writer in.
+// The package entry doesn't export it, so production code can't pass a writer in.
 export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const { db, specs } = deps;
   const rows = store(db);
-  // Change sets this instance is applying, each with when its apply last
-  // sent a change or heard back, or started. Until an apply returns, every action on its
-  // change set is refused as busy (see `busy`), so no mutation is sent twice
-  // at once and no edit races the one in flight.
+  // Until an apply returns, every action on its change set is refused as busy, so no mutation is sent twice at once
+  // and no edit races the one in flight.
   const applying = new Map<string, { ms: number }>();
 
   const at = (): { now: Instant; ms: number } => {
@@ -496,8 +427,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return set;
   };
 
-  // The approval apply may write under: the latest decision, an approval, whose
-  // hash matches the hash derived from the rows as they are now.
+  // The latest decision, an approval, whose hash matches the hash derived from the rows as they are now.
   const approvalOf = (set: ChangeSet): void => {
     if (set.decision?.kind === "approved") return;
     throw new ChangeSetError(
@@ -506,9 +436,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     );
   };
 
-  // A token's link while it lives: found by its hash, not revoked, and younger
-  // than 7 days. Deciding a change set revokes its link, so a decided change
-  // set has none.
   const liveLink = (token: unknown): LinkRow | null => {
     if (typeof token !== "string" || !tokenShape.test(token)) return null;
     const hash = sha256(token);
@@ -522,15 +449,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return link;
   };
 
-  // Each connection's writer and reader, by its prefix.
   const sourceOf = (prefix: string): { writer: SourceWriter | null; reader: FieldReader } => {
     const found = deps.sources[prefix];
     if (!found) throw new Error(`${prefix} items are read-only`);
     return found;
   };
   const reader = (prefix: string): FieldReader => sourceOf(prefix).reader;
-  // Why a change set can't be approved or applied here: a source it writes
-  // to has no writer configured. Null when every one has.
   const unwritable = (set: ChangeSet): string | null => {
     const names = new Set<string>();
     for (const m of set.mutations) {
@@ -552,10 +476,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return writer;
   };
 
-  // Lines for the rows of `set` as loaded, so `set.hash` is the hash of exactly
-  // what is rendered. Applied lines show what the source reported; pending
-  // ones read live values, carried forward through earlier lines. Also returns
-  // the mutations whose item was gone.
+  // So `set.hash` is the hash of exactly what is rendered.
   const render = async (set: ChangeSet): Promise<{ diff: Diff; gone: Set<Ulid> }> => {
     const creates = new Map<string, MutationRecord>();
     for (const m of set.mutations) if (m.ref !== null) creates.set(m.ref, m);
@@ -566,14 +487,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return creates.get(m.target)?.applied?.item.id ?? null;
     };
 
-    // The fields a pending line shows, with the values it leaves them at: a
-    // delete empties every field the source lists.
     const shows = (spec: OpSpec, kind: SourceKind, args: unknown): FieldValues =>
       spec.deletes
         ? Object.fromEntries(Object.keys(catalogueFor(specs, kind).fields).map((f) => [f, null]))
         : spec.after(args);
-    // Each item's title as the change set leaves it, where an unapplied line
-    // sets it; an applied one is in the source already.
     const titles = new Map<string, string | null>();
     for (const m of set.mutations) {
       const { kind, spec } = mustSpec(specs, m, set.mutations);
@@ -584,7 +501,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (carry !== null && Object.hasOwn(after, field)) titles.set(carry, text(after[field]));
     }
 
-    // Each item's fields, and the stable ID it should have, where known.
     const wanted = new Map<
       ItemId,
       { prefix: string; fields: Set<string>; stableId: string | null }
@@ -603,11 +519,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         for (const field of Object.keys(shows(spec, kind, m.args))) entry.fields.add(field);
       wanted.set(item, entry);
     }
-    // Read through the writer where there is one, so an item whose handle
-    // names another item now shows as gone: it isn't the item to change. So
-    // does one Oriel can't say which item it should be (its handle names no
-    // member of the run's region now, as once sync indexes another item
-    // under a reused key): reading the handle would show another item.
+    // Read through the writer, so an item whose handle names another item now shows as gone: it isn't the item to change.
+    // So does one whose handle names no member of the run's region now, as after a reused key.
     const readLive = async (
       item: ItemId,
       {
@@ -622,8 +535,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const found = await writer.read(item, [...fields]);
       return found === "gone" || found.stableId !== stableId ? "gone" : found.values;
     };
-    // An item that can't be read is "unread": the diff still shows, and a
-    // change to it can't be approved until it's read again.
+    // A change to an item that can't be read can't be approved until it's read again.
     const live = new Map(
       await Promise.all(
         [...wanted].map(
@@ -632,9 +544,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         ),
       ),
     );
-    // Before a decision, whether the source would take each change it can
-    // check ahead, as a status move against the item's workflow: why not, or
-    // that it's only checked when sent, since Oriel couldn't check it now.
     const undecided = set.decision === null;
     const checked = new Map<Ulid, { refused: string } | { later: string }>();
     await Promise.all(
@@ -670,10 +579,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         else if (why !== null) checked.set(m.id, { refused: why });
       }),
     );
-    // Field values per item (or new item's ref) as earlier lines leave them.
     const state = new Map<string, Record<string, unknown>>();
-    // An item's title as the change set leaves it. A new item's is the
-    // item's once its create applied.
     const title = async (id: ItemId | NewRef): Promise<string | null> => {
       if (isNewRef(id)) {
         const create = set.mutations.find((m) => m.ref === id);
@@ -706,7 +612,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       });
       const item = itemOf(m);
       const lineKind = spec.creates ? "create" : spec.deletes ? "delete" : "change";
-      // On a field whose values name items, their titles.
       const titled = async (field: string, before: unknown, after: unknown) => {
         if (catalogue.fields[field] !== "item") return {};
         const named = async (value: unknown) =>
@@ -714,7 +619,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         return { titles: { before: await named(before), after: await named(after) } };
       };
 
-      // A line Oriel can't describe, and a change it won't send or revert.
       if (!spec.args(m.args).ok) {
         if (!m.applied) gone.add(m.id);
         lines.push({
@@ -732,7 +636,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (m.applied && item !== null) {
         const { before, after } = m.applied;
         const now = live.get(item);
-        // As the change set leaves it, where an unapplied line renames it.
         const later =
           !Object.hasOwn(spec.after(m.args), catalogue.titleField) && titles.has(item)
             ? (titles.get(item) ?? null)
@@ -766,7 +669,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       }
 
       const after = shows(spec, kind, m.args);
-      // Named as the change set leaves it, unless this line renames it.
       const renames = Object.hasOwn(after, catalogue.titleField);
       let subject: Subject = null;
       let values: Record<string, unknown> = {};
@@ -846,13 +748,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { diff: { changeSetId: set.id, hash: set.hash, lines }, gone };
   };
 
-  // Records what the latest diff showed against each unapplied mutation: the
-  // before values, or that the item couldn't be read. Approval requires a diff
-  // since the last edit and none of its lines gone; a later render that reads
-  // the item again replaces a gone line. Not while the change set is approved
-  // (a rejection reopens it), and not if its rows changed while the diff was
-  // rendering. A sent row keeps the values it was approved from, since what
-  // landed may show now; only whether its item can be read changes.
+  // Approval requires a diff since the last edit with none of its lines gone. Not while approved, nor if the rows changed
+  // while rendering; a sent row keeps the values it was approved from, since what landed may show now.
   const keepPreview = (set: ChangeSet, rendered: { diff: Diff; gone: Set<Ulid> }): void =>
     transaction(db, () => {
       const now = rows.load(set.id);
@@ -882,15 +779,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return rendered.diff;
   };
 
-  // Conflicts between the source now and what each field was left at after
-  // apply: per item and field, the last applied mutation's `after`. The update
-  // time is skipped, since any write moves it. A set op whose `before` or
-  // `after` lacks the field it set is a conflict (expected undefined), as is
-  // one recorded without a `before` because it was in place or re-sent: Oriel
-  // either can't tell whether anyone changed it or can't put it back. Once a
-  // field is unknown, a later mutation on it doesn't hide that. A gone item is
-  // one conflict on its field "item", against the last mutation that touched
-  // it.
+  // The update time is skipped: any write moves it. A field whose `before` or `after` is missing is a conflict: Oriel
+  // can't tell whether anyone changed it, or can't put it back. Once unknown, a later mutation doesn't hide that.
   const conflictsWith = async (applied: readonly MutationRecord[]): Promise<Conflict[]> => {
     type Expected = { last: Ulid; fields: Map<string, { value: unknown; mutationId: Ulid }> };
     const expected = new Map<ItemId, Expected>();
@@ -904,7 +794,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const spec = Object.hasOwn(catalogue.ops, m.op) ? catalogue.ops[m.op] : undefined;
       const writes = new Set(spec?.idempotent ? Object.keys(spec.after(m.args)) : []);
       for (const field of writes) {
-        // Without both values, a revert can't tell or can't put the field back.
         const known =
           Object.hasOwn(m.applied.before, field) && Object.hasOwn(m.applied.after, field);
         if (!known && !unknown.has(`${item}\u0000${field}`))
@@ -945,10 +834,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return conflicts;
   };
 
-  // An item a change set created may be deleted only if nobody touched it
-  // since: its update time must still be the one the last of `onItem` (that
-  // change set's applied mutations on it, in seq order) recorded. A missing
-  // update time is a conflict too, with `expected` undefined or null.
+  // An item a change set created may be deleted only if nobody touched it since: its update time must be the one recorded.
   const touched = async (
     item: ItemId,
     onItem: readonly MutationRecord[],
@@ -973,8 +859,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { mutationId: last.id, target: item, field, expected, actual };
   };
 
-  // Rechecks, just before a reverse mutation is sent, the mutation it undoes:
-  // the source may have changed since the revert was built.
+  // The source may have changed since the revert was built.
   const recheck = async (reverts: Ulid): Promise<Conflict[]> => {
     const original = rows.mutation(reverts);
     if (!original?.applied)
@@ -990,8 +875,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return conflict ? [conflict] : [];
   };
 
-  // Where a mutation writes: its target, or the item an earlier create in the
-  // same change set made, as that create's stored result says.
   const resolve = (
     m: MutationRecord,
     set: ChangeSet,
@@ -1003,9 +886,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { target: create.applied.item.id };
   };
 
-  // A mutation's arguments as sent: one the op lets name an item an earlier
-  // create in the same change set made becomes that item's ID, as the
-  // create's stored result says.
   const resolveArgs = (
     m: MutationRecord,
     set: ChangeSet,
@@ -1021,18 +901,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { args };
   };
 
-  // The change set as its rows are now, under a live approval, and one of its
-  // mutations. Throws once an edit or a later decision voids the approval.
+  // Throws once an edit or a later decision voids the approval.
   const approved = (id: string, mutationId: Ulid) => {
     const set = mustLoad(id);
     approvalOf(set);
     return { set, m: set.mutations.find((r) => r.id === mutationId) ?? null };
   };
 
-  // The stable ID of the item a mutation writes to: from the result that made
-  // it or that the mutation undoes, or else as the region its run used
-  // resolves the handle, as capture did. Null when the handle names no member
-  // of that region any more, such as a key another item has taken since.
+  // Null when the handle names no member of that region any more, such as a key another item has taken since.
   const stableIdFor = (m: MutationRecord, set: ChangeSet, target: ItemId): string | null => {
     if (m.target !== null && isNewRef(m.target)) {
       const ref = m.target;
@@ -1043,10 +919,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return region.has(target) ? region.stableId(target) : null;
   };
 
-  // Why a mutation's target may no longer be written: it left the thread's
-  // workstream after the change was captured (decision 0018). A revert may target
-  // anything the change set it reverts touched, and an item this change set
-  // created is its own, so neither is checked.
+  // A revert may target anything the change set it reverts touched, and an item this change set created is its own,
+  // so neither is checked.
   const leftWorkstream = (
     m: MutationRecord,
     set: ChangeSet,
@@ -1061,13 +935,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return `${key(target)} was removed from the workstream after this was captured, so it wasn't sent.`;
   };
 
-  // Whether a set op's value is already in place, as when an earlier send
-  // landed but its answer was lost: the result to record without sending;
-  // "absent" when its own item was read and holds something else; "unknown"
-  // when Oriel couldn't tell (the item can't be read, or its handle names
-  // another item now, or Oriel doesn't know which item it should be). The
-  // result's `before` leaves the field out. Oriel can't know whether the
-  // value is its own write or someone else's, so a revert can't put it back.
+  // As when an earlier send landed but its answer was lost. Oriel can't know whether the value is its own write
+  // or someone else's, so the result's `before` leaves the field out and a revert can't put it back.
   const inPlace = async (
     m: MutationRecord,
     set: ChangeSet,
@@ -1081,8 +950,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     const stableId = stableIdFor(m, set, target);
     if (stableId === null)
       return { unknown: `${key(target)} no longer names an item in the region it was made in` };
-    // A read that fails tells nothing either, and says why. A bug in Oriel
-    // (a RangeError, say) isn't the source's answer, and throws.
+    // A read that fails tells nothing either. A bug in Oriel (a RangeError, say) isn't the source's answer, and throws.
     const found = await writerOf(prefix)
       .read(target, [...fields, updated])
       .catch((error: unknown) => {
@@ -1107,8 +975,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     };
   };
 
-  // Once every change in a set has applied, by whichever path, records when
-  // and says so, once.
   const complete = (id: string): void => {
     const { now } = at();
     if (!rows.markCompleted(id as Ulid, now)) return;
@@ -1128,37 +994,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
   const hasWriter = (prefix: string) => Boolean(deps.sources[prefix]?.writer);
 
-  // Guards. Each action has one: whether it may run on the change set as it
-  // stands now, and if not, why. The action calls its own guard first, and
-  // `nextSteps` offers exactly the actions whose guard passes, so nothing it
-  // offers is refused and nothing refused is offered.
+  // `nextSteps` offers exactly the actions whose guard passes, so nothing it offers is refused and nothing refused is offered.
   type Refusal = {
     code: ChangeSetErrorCode;
     message: string;
-    // The row apply stopped at, when the row's own record doesn't say why
-    // already: apply records the message on it.
     stop?: Ulid;
-    // That row was sent before, and has just been found not in place: it is
-    // unsent again.
     unsent?: true;
-    // A revert refused because a writer can't send what would undo it: its
-    // message is the writer's line, for a person.
     unsendable?: true;
   };
   const refuse = (refusal: Refusal): never => {
     throw new ChangeSetError(refusal.code, refusal.message);
   };
 
-  // While this instance applies a change set, every action on it waits: no
-  // edit can race the row in flight, and the apply records completion.
+  // No edit can race the row in flight, and the apply records completion.
   const busy = (set: ChangeSet): Refusal | null =>
     applying.has(set.id)
       ? { code: "busy", message: "this change set is being applied; try again once that ends" }
       : null;
 
-  // A rejected or dismissed change set is decided for good: nothing more of
-  // it applies and its rows don't change. Only reverting what it applied is
-  // left.
   const decided = (set: ChangeSet): Refusal | null =>
     set.decision?.kind === "rejected"
       ? {
@@ -1175,10 +1028,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const mayHaveLanded = (source: string) =>
     `This may already be in ${source}: check, then dismiss what is left of this change set.`;
 
-  // Why a row that was sent can't be sent again yet, or null: a create or a
-  // link may have landed and is never sent twice, and a set op's send may
-  // still be on its way until its lease runs out. The row's own record (a
-  // send's mark) already says so, so nothing is recorded over it.
+  // A create or a link may have landed and is never sent twice; a set op's send may still be on its way until its lease ends.
   const sentAndWaiting = (m: MutationRecord, set: ChangeSet): Refusal | null => {
     if (m.status !== "failed") return null;
     const { kind, spec } = mustSpec(specs, m, set.mutations);
@@ -1192,12 +1042,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     };
   };
 
-  // Where apply would send a row now, or why it wouldn't, short of reading
-  // the source. Apply checks each row with this before sending it, and its
-  // guard checks the first unapplied one. A set op sent before may have
-  // landed: apply first checks whether it is in place (`checked`), and
-  // records it if so, whatever the workstream or region holds now. Only then do
-  // those stop it; and it is unsent again only if it was found absent.
+  // A set op sent before may have landed: apply first checks whether it is in place and records it if so, whatever the
+  // workstream or region holds now. It is unsent again only if found absent.
   const sendPlan = (
     m: MutationRecord,
     set: ChangeSet,
@@ -1225,7 +1071,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     // Arguments stored before the source's catalogue tightened may no longer
     // pass it; nothing is sent on them.
     if (!spec.args(m.args).ok) return stop(`${staleArgs}, so it wasn't sent.`);
-    // Approval records what the diff showed; apply needs it.
     if (m.preview === null)
       return stop(
         "This hasn't been shown in a diff since the last edit, so it wasn't sent. Review the diff, then approve it.",
@@ -1251,8 +1096,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { target: where.target, stableId, args: args.args };
   };
 
-  // Apply, and retry: approved as it stands, writable, something left to
-  // apply, and its next change can be sent.
   const applyRefusal = (set: ChangeSet): Refusal | null => {
     const first = set.mutations.find((m) => m.status !== "applied");
     const refusal =
@@ -1276,9 +1119,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return "refusal" in plan ? plan.refusal : null;
   };
 
-  // Approve, and approve the rest: undecided, writable, every change still to
-  // apply shown in a diff since the last edit and none of them shown as gone
-  // or stale, and the next one not waiting on an earlier send.
   const approveRefusal = (set: ChangeSet): Refusal | null => {
     const open = set.mutations.filter((m) => m.status !== "applied");
     const [first] = open;
@@ -1315,7 +1155,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return sentAndWaiting(first, set);
   };
 
-  // Reject: declines a change set before anything of it landed, or may have.
   const rejectRefusal = (set: ChangeSet): Refusal | null => {
     const refused = (message: string): Refusal => ({ code: "refused", message });
     return (
@@ -1330,9 +1169,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     );
   };
 
-  // Edit, and remove: rows left out or given new arguments. Returns the
-  // validated arguments of the rows edited, or why not. Leaving rows out of
-  // a change set that is approved and hasn't stopped waits until it has.
+  // Leaving rows out of a change set that is approved and hasn't stopped waits until it has.
   const editGuard = (
     set: ChangeSet,
     remove: ReadonlySet<Ulid>,
@@ -1348,8 +1185,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (!m) return refused("not-found", `no mutation ${mutationId} in this change set`);
       if (m.status === "applied")
         return refused("refused", `mutation ${m.seq} is already applied and can't be edited`);
-      // A revert puts back what was there; changing a row of it would write
-      // something else under that name. Rows can only be removed.
+      // A revert puts back what was there; changing one of its rows would write something else under that name.
       if (m.reverts !== null && changes.has(mutationId))
         return refused(
           "refused",
@@ -1383,8 +1219,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (error instanceof ChangeSetError) return refused(error.code, error.message);
       throw error;
     }
-    // Targets don't change in an edit, and a revert's may be items it
-    // created, so only the edited arguments are held to the region.
+    // Targets don't change in an edit, and a revert's may be items it created, so only the edited arguments are held to the region.
     const edited = kept.flatMap((row, i) => {
       const m = checked[i];
       return m && changes.has(row.id) ? [{ id: row.id, seq: row.seq, m }] : [];
@@ -1397,10 +1232,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { edited: edited.map(({ id, m }) => ({ id, args: m.args })) };
   };
 
-  // Dismiss: ends a change set that started landing, or may have. One that
-  // nothing landed from is rejected instead.
-  // A set already rejected or dismissed is "done": dismissing it again
-  // changes nothing, and it isn't offered.
   const dismissRefusal = (set: ChangeSet): Refusal | "done" | null => {
     const refused = (message: string): Refusal => ({ code: "refused", message });
     return (
@@ -1415,11 +1246,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     );
   };
 
-  // Revert: something applied and each applied change can be undone; nothing
-  // sent and unanswered, unless the rest was dismissed, since then the revert
-  // covers exactly what applied; and no revert of it already, whether under
-  // way or one that undid part of it before it was dismissed (the items no
-  // longer hold what this applied, so a second revert could only conflict).
+  // Nothing sent and unanswered unless the rest was dismissed, so the revert covers exactly what applied; and no revert
+  // of it already: the items no longer hold what this applied, so a second could only conflict.
   const revertRefusal = (set: ChangeSet, reverts: readonly ChangeSet[]): Refusal | null => {
     const pre = busy(set);
     if (pre) return pre;
@@ -1439,7 +1267,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       )
     )
       return { code: "refused", message: "this change set has been reverted already" };
-    // Items it created: everything it did to one is undone by deleting it.
     const created = new Map<ItemId, MutationRecord>();
     for (const m of applied) {
       const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
@@ -1462,9 +1289,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const step = spec.undo(m.args, m.applied);
       if ("refused" in step)
         return refused(`mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`);
-      // What its writer says up front it can't send, such as a delete its
-      // source server has no tool for, is never offered, rather than
-      // stalling once sent.
+      // What its writer says up front it can't send is never offered, rather than stalling once sent.
       const cannot = deps.sources[prefix]?.writer?.unsendable?.[step.op];
       if (cannot !== undefined) return { ...refused(cannot), unsendable: true };
       // What it would put back must pass the catalogue as it is now.
@@ -1479,8 +1304,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return null;
   };
 
-  // A change that was sent and got no answer may be in its source already.
-  // Each warning names where to look.
   const warningsOf = (set: ChangeSet): string[] =>
     set.mutations.flatMap((m) => {
       if (m.status !== "failed") return [];
@@ -1498,7 +1321,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return [`This may already be in ${catalogue.name}: check ${what}`];
     });
 
-  // Exactly the actions whose guards pass, in the order a person reads them.
   const stepsOf = (set: ChangeSet, reverts: readonly ChangeSet[]): NextStep[] => {
     const steps: NextStep[] = [];
     if (!approveRefusal(set))
@@ -1520,28 +1342,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const revertsOf = (set: ChangeSet): ChangeSet[] =>
     rows.revertsOf(set.id).flatMap((id) => rows.load(id) ?? []);
 
-  // Sends unapplied mutations in seq order and stops at the first failure, so
-  // a retry can't land a later mutation before an earlier one. Every write is
-  // marked sent (failed, until its result is recorded) before it goes out, so
-  // a crash mid-send leaves that on record. Every write to a row compares the
-  // row's version it read, so of two instances only one can mark or record a
-  // send, and a conclusion drawn before an await is dropped if anything wrote
-  // to the row meanwhile. A stop before sending
-  // leaves the row's status as it was, says why, and is checked again next
-  // time. A sent set op is retried once its lease runs out, since it is
-  // idempotent and one already in place is recorded without sending; a sent
-  // create or link is never sent again. A row already sent when the pass
-  // began never records a `before` for the fields it writes: an earlier send
-  // may have landed, so the source's "before" may be Oriel's own value, and a
-  // revert must report that rather than restore it. The caller has checked
-  // `applyRefusal`.
+  // Stops at the first failure, so a retry can't land a later mutation first. Each write is marked sent before it goes out and
+  // compares the row's version it read: a crash leaves that on record, and of two instances on one row version only one sends.
   const applyOnce = async (id: string, run: { ms: number }): Promise<ApplyReport> => {
     const first = mustLoad(id);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
-    // Stops before sending, recording why on the row (over the version
-    // `from`) unless its own record says so already. A row found absent goes
-    // back to unsent only if nothing wrote to it since the read that found it
-    // so: `from` is the row as that read began.
+    // A row found absent goes back to unsent only if nothing wrote to it since the read that found it so.
     const stopAt = (mutationId: Ulid, refusal: Refusal, from: { version: number }): ApplyReport => {
       if (refusal.stop && refusal.unsent)
         rows.markRefused(refusal.stop, from, "pending", refusal.message);
@@ -1558,7 +1364,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         report.skipped.push(mutationId);
         continue;
       }
-      // The row as this pass first read it, before any await.
       const seen = { version: m.version };
       const wasSent = m.status === "failed";
       const owner = mustSpec(specs, m, set.mutations);
@@ -1567,9 +1372,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       let plan = sendPlan(m, set);
       if ("refusal" in plan) return stopAt(mutationId, plan.refusal, seen);
       const writes = Object.keys(spec.after(m.args));
-      // A write that already landed is recorded. Found absent from its own
-      // item, an earlier send of it is known not to have landed; if Oriel
-      // couldn't tell, it may have, so it isn't sent again.
+      // Found absent, an earlier send is known not to have landed; if Oriel couldn't tell, it may have, so it isn't sent again.
       let inPlaceFound: "no" | "absent" | "unknown" = "no";
       if (spec.idempotent && plan.target !== null) {
         const result = await inPlace(m, set, owner, spec, plan.target);
@@ -1633,8 +1436,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         target: plan.target,
         expectedStableId: plan.stableId,
         args: plan.args,
-        // What the diff showed it against, for a writer that checks the
-        // source still holds it before writing (decision 0050).
+        // For a writer that checks the source still holds what the diff showed before it writes.
         seen: approvedFrom(m.preview) ?? {},
       });
       const uncertain = mayHaveLanded(source);
@@ -1654,7 +1456,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         });
         return report;
       }
-      // The row as marking it left it: recording the send's result compares it.
       const sent = { version: sentVersion };
       const unanswered = (error: string): ApplyReport => {
         rows.markFailed(mutationId, sent, error);
@@ -1668,9 +1469,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         result = await writerOf(owner.prefix).apply(request, { left: () => until - at().ms });
       } catch (error) {
         const said = `${message(error).replace(/\.$/, "")}.`;
-        // Nothing landed: the source changed nothing, or the write was never
-        // sent. The row is unsent again, unless an earlier send of it went
-        // unchecked and may still be there.
+        // Nothing landed. The row is unsent again, unless an earlier send of it went unchecked and may still be there.
         if (error instanceof SourceRefused) {
           const why = `${error.final ? finalMark : ""}${error.sent ? said : `${notSent}${said}`}`;
           rows.markRefused(
@@ -1691,6 +1490,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${unsure}`,
         );
       }
+      // A row already sent when the pass began keeps no `before` for the fields it writes: an earlier send may have
+      // landed, so the source's "before" may be Oriel's own value, which a revert must report rather than restore.
       const before = wasSent
         ? Object.fromEntries(
             Object.entries(checked.value.before).filter(([f]) => !writes.includes(f)),
@@ -1704,8 +1505,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return report;
   };
 
-  // The live link a review-link decision comes through, checked: minted for
-  // this change set, and with a typed name. Null for one in the thread.
+  // Checked: minted for this change set, with a typed name.
   const linkOf = (id: string, who: Approver, by: string): LinkRow | null => {
     if (who.via !== "review-link") return null;
     const link = liveLink(who.token);
@@ -1724,7 +1524,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return url;
   };
 
-  // A run's reference, checked, of a run in that thread.
   const ranIn = (run: unknown): RunRef => {
     const owner = runRef(run, "$.run");
     if (!owner.ok) throw invalid("run", owner.issues);
@@ -1733,11 +1532,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return owner.value;
   };
 
-  // What a run captured, checked as every path that takes it in checks it
-  // (a capture, a second look's suggestion added, the agent's revision):
-  // each against its source's catalogue, after `before`, the rows it
-  // follows, none an op that only reverts, and every item it names in the
-  // region run `runId` used. Numbered after `before`.
+  // Every path that takes a capture in checks it here: a capture, a second look's suggestion, the agent's revision.
   const captured = (
     mutations: unknown,
     before: readonly Draft[],
@@ -1763,10 +1558,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return added;
   };
 
-  // Rewrites an undecided change set's rows, as adding a second look's
-  // suggestions and the agent's revision do: `drop` leaves, `add` joins
-  // after the rows that stay, and the diff shown before no longer stands
-  // for what is left. The caller holds the transaction and has checked both.
+  // The caller holds the transaction and has checked both.
   const rewrite = (
     current: ChangeSet,
     drop: readonly MutationRecord[],
@@ -1790,10 +1582,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     rows.clearPreviews(current.id);
   };
 
-  // Why the agent in thread `threadId` may not revise `set`, or null
-  // (OA-309): only a change set its own thread's agent proposed, not a
-  // revert or a proposal of Oriel's own, that nobody has decided on and
-  // nothing of has been sent.
   const unrevisable = (set: ChangeSet | null, threadId: Ulid): string | null => {
     if (
       !set ||
@@ -1812,7 +1600,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return null;
   };
 
-  // Inserts a change set and its mutations; the caller holds the transaction.
+  // The caller holds the transaction.
   const insertAll = (
     set: { id: Ulid; workspaceId: Ulid; threadId: Ulid; runId: Ulid | null; revertOf: Ulid | null },
     mutations: readonly (Draft & { reverts: Ulid | null })[],
@@ -1913,8 +1701,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         if (pre) refuse(pre);
         const why = unrevisable(current, owner.threadId);
         if (why !== null) throw new ChangeSetError("refused", why);
-        // Checked as a capture is, against the region the revising run used,
-        // which its rows resolve in from now on.
         const checked = captured(mutations, [], owner.id, owner.workspaceId);
         rewrite(current, current.mutations, checked);
         rows.markRevised(current.id, owner.id, at().now);
@@ -1945,9 +1731,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         for (const mutationId of remove) rows.remove(current.id, mutationId);
         for (const { id: mutationId, args } of guarded.edited)
           rows.setArgs(current.id, mutationId, args);
-        // An edit that changes nothing changes nothing: the approval and what
-        // the diff showed both stand. Otherwise the earlier diff no longer
-        // stands for these rows, and the new hash voids the approval.
+        // An edit that changes nothing leaves the approval and the diff standing; otherwise the new hash voids the approval.
         const unchanged = mustLoad(current.id).hash === current.hash;
         if (!unchanged) rows.clearPreviews(current.id);
         return { current, unchanged };
@@ -1996,7 +1780,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           hash: reviewed,
           at: now,
         });
-        // A decided change set's link dies.
         rows.revokeLinks(current.id, now);
         return current;
       });
@@ -2043,7 +1826,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const set = mustLoad(id);
       const refusal = applyRefusal(set);
       if (refusal) {
-        // A stop says why on the row, as one partway through would.
         const row = set.mutations.find((m) => m.id === refusal.stop);
         if (row) rows.markStopped(row.id, row, refusal.message);
         refuse(refusal);
@@ -2076,19 +1858,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return refusal?.unsendable ? refusal.message : null;
     },
 
-    // Reverses exactly what has been applied (see `revertRefusal`). A partly
-    // applied change set that wasn't dismissed loses its unsent rows in the
-    // same transaction, so nothing more of it can land; that voids its
-    // approval. A dismissed one keeps its rows, and with them what its
-    // dismissal said may have landed.
+    // A partly applied change set that wasn't dismissed loses its unsent rows in the same transaction, so nothing more
+    // of it can land. A dismissed one keeps its rows, and with them what its dismissal said may have landed.
     async revert(id) {
       const set = mustLoad(id);
       const refusal = revertRefusal(set, revertsOf(set));
       if (refusal) refuse(refusal);
       const applied = set.mutations.filter((m) => m.applied !== null);
 
-      // Items this change set created. Everything it did to one is undone by
-      // deleting it, once.
       const created = new Map<ItemId, MutationRecord>();
       for (const m of applied)
         if (m.applied && mustSpec(specs, m, set.mutations).spec.creates)
@@ -2125,7 +1902,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         const create = created.get(item);
         if (create && create !== m) continue;
         const step = mustSpec(specs, m, set.mutations).spec.undo(m.args, m.applied);
-        // The guard found every one undoable.
         if ("refused" in step) throw new Error(`mutation ${m.id} can't be undone: ${step.refused}`);
         undo.push({ reverts: m.id, op: step.op, target: item, ref: null, args: step.args });
       }
@@ -2201,10 +1977,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return rows.revokeAllLinks(workspaceId, at().now);
     },
 
-    // The review route sends `Referrer-Policy: no-referrer` and
-    // `Cache-Control: no-store`, and calls this only on an explicit POST,
-    // never on the GET a link unfurler makes: it reads the source and records
-    // previews.
+    // Called only on an explicit POST, never on the GET a link unfurler makes: it reads the source and records previews.
     async openReview(token) {
       const link = liveLink(token);
       if (!link) return null;
@@ -2218,9 +1991,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return stepsOf(set, revertsOf(set));
     },
 
-    // Rejects what hasn't applied, as the set stands, and says what may have
-    // landed anyway. What did apply stays, and a revert covers exactly that.
-    // Dismissing a change set already rejected or dismissed changes nothing.
     async dismiss(id, approver = { via: "thread", by: "user" }, reviewed) {
       const who = approverValue(approver, "$.approver");
       if (!who.ok) throw invalid("approver", who.issues);
@@ -2268,24 +2038,16 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   };
 }
 
-// How fetch says a request got no answer: the connection failed or timed out.
 const unheard =
   /^(?:fetch failed|The operation was aborted due to timeout|This operation was aborted)\.?(?: ([\s\S]*))?$/;
 
-// How apply stores a write that was never sent: a read or a check before it
-// failed.
 const notSent = "Nothing was sent: ";
-// How apply marks a refusal its source would give again, whenever it was
-// sent as approved (`SourceRefused.final`): trying again can't help.
 const finalMark = "Refused as it stands: ";
-// A row its source refused for good, which nothing has sent since.
 const refusedForGood = (m: { status: string; error: string | null }): boolean =>
   m.status === "pending" && m.error?.startsWith(finalMark) === true;
-// A request and how the source answered it, as the writer reports one.
 const answer =
   /^(GET|PUT|POST|DELETE) \S+: (?:(\d{3})|unexpected response \([^)]*\))\.?(?: ([\s\S]*))?$/;
 
-// Why a write that was never sent failed, as a person reads it.
 function plainUnsent(why: string): string {
   if (unheard.test(why))
     return "Oriel couldn't reach the source before sending this, so nothing was sent.";
@@ -2297,12 +2059,6 @@ function plainUnsent(why: string): string {
   return said.trim() ? `${first}: ${said.trim()}` : `${first} (the source answered ${status}).`;
 }
 
-// A reason a change stopped, as a person reads it. A source's answer, as
-// apply stores it ("PUT /rest/…: 400 What it said."), loses its request line
-// and status code and keeps what the source said; a send that got no answer
-// says so; a write never sent says so, and why; a send's mark (when it was
-// sent, and its nonce) is Oriel's bookkeeping and goes. Oriel's own reasons
-// are already plain.
 export function plainError(error: string): string {
   if (error.startsWith(finalMark)) return plainError(error.slice(finalMark.length));
   const bare = error.replace(sendMark, "");

@@ -126,6 +126,5 @@ test("revoking every link kills each live one in the workspace, and counts them"
   assert.equal(await changeSets.openReview(otherToken), null);
   await assert.rejects(byLink("Sam Ortiz"), { code: "refused" });
   assert.equal(await changeSets.revokeAllReviewLinks(workspaceId), 0);
-  // A new link still works.
   assert.notEqual(await changeSets.openReview(tokenOf(await changeSets.reviewLink(set.id))), null);
 });

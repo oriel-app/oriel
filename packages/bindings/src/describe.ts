@@ -1,14 +1,4 @@
-// The one description of a region's module. The declarations (`dts.ts`), the
-// guest stubs (`shim.ts`) and the host side (`bindings.ts`) are all generated
-// from the list `describe` returns, so they can't disagree about what exists.
-//
-// The module has `items.*` for every item in the region, whatever its source;
-// a namespace for each source whose adapter declares one (a writable source:
-// its read helpers and a write per op it lets a run capture) and that the
-// region holds items from; Oriel's own namespaces, `workstream` and
-// `thread`, the same in every region (decision 0024); and `search()`. A
-// source without a namespace still gets `items.*` (decision 0019). The composition root passes the
-// namespaces in; bindings know no source.
+// The declarations, the guest stubs and the host side are all generated from this list, so they can't disagree.
 import {
   type ItemId,
   itemOrder,
@@ -32,22 +22,15 @@ import { challengeFns } from "./challenge.ts";
 export type { Fn } from "./fn.ts";
 export { pathOf } from "./fn.ts";
 
-// Each source's namespace, as its adapter declares it.
 export type Namespaces = Partial<Record<SourceKind, NamespaceSpec>>;
 
-// What each source's items are, as `items.*` reads them, as its adapter
-// declares it: one line on what kind of item it is, what its title and text
-// hold, and how to name it to the user. Shape only, never source text. The
-// declarations hold a source's line only when the region holds its items, so
-// a source costs a region without them nothing.
+// Shape only, never source text; declared only where the region holds the source's items.
 export type ItemDocs = Partial<Record<SourceKind, string>>;
 
-// The global functions, parameters of the script's function, which it
-// can't redeclare.
+// Parameters of the script's function, which it can't redeclare.
 export const parameters: readonly string[] = ["search", "history", "show", "sketch"];
 
-// Oriel's own names in every module, which no source's kind may take
-// (decision 0049).
+// Oriel's own names in every module, which no source's kind may take.
 export const orielNames: readonly string[] = [
   "items",
   ...orielSpaces,
@@ -57,14 +40,8 @@ export const orielNames: readonly string[] = [
   ...parameters,
 ];
 
-// The names the script sees: `items`, a namespace per kind, Oriel's own,
-// then the global functions. The list is fixed, whatever the region holds,
-// because the guest compiles the script before it knows the region: a
-// namespace the region has no functions in is empty, and the declarations
-// don't name it. The kinds are every source the composition root declares,
-// so it is fixed for the life of the server. Namespaces are read-only
-// globals a script may shadow, so a script can still name its own `items`
-// or `folder`.
+// Fixed, whatever the region holds: the guest compiles the script before it knows the region.
+// Namespaces are read-only globals a script may shadow.
 export const spacesOf = (kinds: readonly SourceKind[]): string[] => [
   "items",
   ...kinds,
@@ -75,14 +52,9 @@ export const spacesOf = (kinds: readonly SourceKind[]): string[] => [
 ];
 export const globalsOf = (spaces: readonly string[]): string[] => [...spaces, ...parameters];
 
-// A region as the module sees it: every name the script sees, its IDs,
-// sorted, the item docs of the sources it holds items from, and each source
-// namespace it gets, with the items that namespace binds.
 export type Scope = {
   spaces: readonly string[];
   ids: readonly ItemId[];
-  // Items the thread's messages were about that aren't in the region, which
-  // `items.read()` reads too, read-only (decision 0062).
   looked: readonly ItemId[];
   docs: readonly string[];
   sources: { kind: SourceKind; spec: NamespaceSpec; scope: NamespaceScope }[];
@@ -94,9 +66,7 @@ function checkedDoc(kind: SourceKind, doc: string): void {
     throw new Error(`${kind}: an item doc is one line of plain text, with no */`);
 }
 
-// IDs reach generated code, so each must have the shape core checks. The
-// kinds are those the item docs and namespaces are given under, in that
-// order. `looking`: what the thread's messages were about.
+// IDs reach generated code, so each must have the shape core checks.
 export function scopeOf(
   region: Region,
   namespaces: Namespaces,
@@ -121,9 +91,7 @@ export function scopeOf(
     if (!ids.includes(checked) && !looked.includes(checked)) looked.push(checked);
   }
   looked.sort(itemOrder(kinds));
-  // A region whose anchor has left it is a region without one.
   const named = region.origin.kind === "cluster" ? region.origin.anchor : null;
-  // By source and stable ID, under the handle the region has for it.
   const held =
     named &&
     region.items.find(
@@ -138,11 +106,9 @@ export function scopeOf(
     checkedDoc(kind, doc);
     return ids.some((id) => parseItemId(id)?.kind === kind) ? [doc] : [];
   });
-  // A namespace is per kind: it binds the kind's items from every connection.
   const sources = kinds.flatMap((kind) => {
     const spec = namespaces[kind];
     const members = ids.filter((id) => parseItemId(id)?.kind === kind);
-    // A region with no items yet gets the namespaces that can start one.
     if (!spec || (!members.length && (ids.length || !spec.blank))) return [];
     const own = anchor !== null && members.includes(anchor) ? anchor : null;
     return [{ kind, spec, scope: { ids: members, anchor: own } }];
@@ -150,17 +116,8 @@ export function scopeOf(
   return { spaces: spacesOf(kinds), ids, looked, docs, sources };
 }
 
-// `items`, then each namespace in source order, then Oriel's own (its reads,
-// then its actions, in registry order), the window chat's `window` and
-// `source.off` if the thread is one, and the rest of `source` while a
-// connection waits for its options (decision 0051), then the escape hatch, blocks and sketches. The order is
-// the order of the declarations, so it is part of the byte-stable output. A
-// namespace's write must name an op in its catalogue that a run may capture;
-// revert-only ops are never offered.
-// A second look's module (`challenge`) is the region's reads and writes, its
-// own two functions and the escape hatch: none of Oriel's own namespaces,
-// no blocks and no sketches, since nothing it says is shown as an answer
-// and it may not act on Oriel's data.
+// The order is the declarations' order, part of the byte-stable output. Revert-only ops are never offered.
+// A second look's module has none of Oriel's namespaces, blocks or sketches: it may not act on Oriel's data.
 export function describe(
   scope: Scope,
   options: { window?: boolean; waiting?: Waiting; challenge?: boolean } = {},

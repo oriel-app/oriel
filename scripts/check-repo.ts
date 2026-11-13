@@ -364,6 +364,9 @@ export const commentsCleaned = [
   "packages/desktop/shell/",
   "packages/desktop/src/",
   "packages/design-system/",
+  "packages/changeset/",
+  "packages/bindings/",
+  "packages/sandbox/",
 ];
 export const commentsCleanedLater = ["packages/core/src/telemetry.ts"];
 

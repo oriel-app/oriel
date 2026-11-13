@@ -1,8 +1,3 @@
-// Adding a second look's suggested change to a change set (the challenger
-// spike): checked as a capture is, against the region its run used, only
-// while nobody has decided on it and nothing of it has applied, never past
-// the most changes a change set may hold, and voiding nothing a person saw:
-// the hash changes, so approval needs the new diff.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ChangeSetError } from "./change-sets.ts";
@@ -27,7 +22,6 @@ test("a suggestion joins an undecided change set after its rows, and changes its
     ],
   );
   assert.notEqual(extended.hash, set.hash);
-  // A diff shown before is no longer what the person would approve.
   await assert.rejects(
     changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, set.hash),
     { code: "stale" },
@@ -59,7 +53,6 @@ test("a look at the diff records nothing a person would approve from", async () 
   const set = await changeSets.capture(run, [estimate("SYN-8", 3)]);
   const looked = await changeSets.look(set.id);
   assert.equal(looked.lines.length, 1);
-  // Approval still needs a diff the person was shown.
   await assert.rejects(
     changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, looked.hash),
   );

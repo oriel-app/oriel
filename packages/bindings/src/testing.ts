@@ -1,6 +1,3 @@
-// Test helpers: regions, issue types and a reader built from the frozen SYN
-// fixtures, and a small guest host that runs the shim under Node and speaks
-// the guest protocol, as the sandbox will under Deno.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
@@ -26,8 +23,6 @@ import { guestStart } from "./shim.ts";
 export const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
 
-// Jira's namespace, as the composition root hands it over, with each fixture
-// item's kind as the index would give it.
 export const namespaces: Namespaces = {
   jira: jiraNamespace(
     new Map(
@@ -36,8 +31,6 @@ export const namespaces: Namespaces = {
   ),
 };
 
-// The source as the base state left it (0) or after the first `edited` source
-// edits.
 export const snapshotAfter = (edited: number): FixtureSnapshot =>
   fixtureSnapshot(fixture, site, edited);
 
@@ -56,14 +49,11 @@ export function fixtureRegion(name: string): Region {
   };
 }
 
-// The picked fixture region plus one epic, SYN-1, picked by hand: a region
-// with an epic but no anchor.
 export function pickedWithEpic(): Region {
   const region = fixtureRegion("picked");
   return { ...region, items: [...region.items, { id: "jira:SYN-1", stableId: "10001" }] };
 }
 
-// Every term must appear in the item's key or title.
 export function fixtureReader(snapshot: FixtureSnapshot): Reader {
   const contentOf = (id: ItemId) =>
     parseItemId(id)?.kind === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
@@ -106,7 +96,6 @@ export type GuestRun = {
   mutations: CapturedMutation[];
   intents: Intent[];
   drafts: Draft[];
-  // Capture errors, one per rejected write or intent.
   rejected: string[];
   reads: { fn: string; args: unknown[]; outsideRegion: boolean }[];
   logs: string[];
@@ -114,9 +103,7 @@ export type GuestRun = {
   stderr: string;
 };
 
-// Runs the shim in a Node child with an empty environment, sends the script
-// as reply 0, answers reads with `bindings.read`, captures writes with
-// `bindings.capture` and records intents with `bindings.intend`. A script `guestStart` refuses never starts a child.
+// Runs the shim in a Node child with an empty environment.
 export async function runGuest(bindings: Bindings, script: string): Promise<GuestRun> {
   const start = guestStart(script);
   if (!start.ok) throw new Error(start.error.message);

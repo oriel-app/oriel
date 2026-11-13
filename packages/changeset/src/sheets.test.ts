@@ -1,8 +1,3 @@
-// Google Sheets through change sets (decision 0050), its writer built from
-// its line in writers.ts over the fixture's stand-in for Google: an edit and
-// a new row are shown, approved, applied and reverted; a cell someone
-// changed after the person approved is a conflict, never an overwrite; and a
-// read-only connection builds no writer.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, type ItemId, itemId, ulid, unknown } from "@oriel/core";

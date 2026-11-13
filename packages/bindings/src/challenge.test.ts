@@ -1,7 +1,3 @@
-// A second look's module (decision 0054): the region's reads and
-// writes, `challenge` and search(), with none of Oriel's own namespaces, no
-// blocks and no sketches. Its `items.read()` takes this run's search() hits
-// too, read-only; every other module is as it was.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
@@ -24,14 +20,12 @@ test("a second look reads the diff, records once per call, and reads a search hi
   assert.equal((diff.value as unknown[]).length, 1);
   assert.equal((await bindings.read("challenge.record", [[]])).value, "kept");
   assert.deepEqual(recorded.at(-1), []);
-  // Outside the region, unsearched: refused before any read.
   await assert.rejects(bindings.read("items.read", ["jira:SYN-1"]));
   const hits = (await bindings.read("search", ["checkout"])).value as { id: string }[];
   assert.ok(hits.some((hit) => hit.id === "jira:SYN-1"));
   const found = await bindings.read("items.read", ["jira:SYN-1"]);
   assert.equal((found.value as { id: string }).id, "jira:SYN-1");
   assert.equal(found.outsideRegion, true);
-  // Without a second look, `challenge` isn't there to call.
   const usual = bindingsFor(region, { reader, namespaces });
   await assert.rejects(usual.read("challenge.diff", []));
 });

@@ -1,7 +1,3 @@
-// `items.*` reads any item in the region, whatever its source; a source's own
-// namespace exists only for a writable source the region holds items from,
-// and takes only those items (decision 0019), or, to start a plan, for a
-// region with no items yet, where it may only create.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -31,7 +27,6 @@ const files = new Map<string, { name: string; text: string }>([
 ]);
 
 const jira = fixtureReader(snapshotAfter(0));
-// Jira items from the fixture, folder items from `files`; anything else gone.
 const reader: Reader = {
   read: async (ids) => {
     const fromJira = await jira.read(ids.filter((id) => id.startsWith("jira:")));
@@ -141,11 +136,9 @@ test("a namespace reads only the region's items and what this run's search() fou
     found.map((hit) => hit.id),
     ["jira:SYN-1"],
   );
-  // Logged as the escape hatch, since it reached outside the region.
   assert.equal((await bindings.read("jira.peek", ["jira:SYN-1"])).outsideRegion, true);
   assert.deepEqual(asked, ["jira:SYN-1"]);
   assert.equal((await bindings.read("jira.peek", [plan])).outsideRegion, false);
-  // Jira's own read still takes only the region's items.
   await assert.rejects(bindings.read("jira.getItem", ["jira:SYN-1"]));
 });
 

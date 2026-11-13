@@ -1,8 +1,5 @@
-// An addition to decision 0006 (see 0017). The heap cap
-// (`--max-old-space-size`) doesn't bound memory outside the V8 heap: array
-// buffers, WebAssembly memories and each worker's own heap. So the host also
-// samples the process's resident memory and stops it when over. Sampling
-// can overshoot the cap by whatever the guest allocates in one interval.
+// The heap cap doesn't bound memory outside the V8 heap (array buffers, WebAssembly memories, workers' heaps), so the host
+// also samples resident memory and stops the process when over; it can overshoot by one interval's allocation.
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
@@ -20,8 +17,6 @@ export async function residentBytes(pid: number): Promise<number | null> {
   });
 }
 
-// Samples every `everyMs` until stopped, and calls `over` once if the process
-// passes `limitBytes`. Returns the stop function.
 export function watchMemory(
   pid: number,
   limitBytes: number,

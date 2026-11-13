@@ -1,6 +1,3 @@
-// What a region's module is described with: functions in namespaces, and the
-// host state a run gives them. Core's `NamespaceSpec` describes a source's
-// namespace; this adds where each function lives and what the host knows.
 import {
   type ActionName,
   type ChallengeRun,
@@ -20,44 +17,23 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// Per-run host state: what a namespace's functions get, plus every item in
-// the region and the index, for `items` and `search()`, and Oriel's own
-// data, for its namespaces.
 export type Host = NamespaceHost &
   Shown & {
     ids: readonly ItemId[];
     search(query: string, limit: number): Promise<Searched[]>;
     oriel: OrielReads;
-    // The overview, in a window chat's module only (decision 0027). Its items
-    // count as this run's search() hits.
+    // Its items count as this run's search() hits.
     overview(): Promise<unknown>;
-    // The waiting connections' previews, in a window chat's module only
-    // while one waits (decision 0051).
     preview(): Promise<unknown>;
-    // Items with what the change log saw of them (`history()`): an epic's
-    // or a workstream's, by its ID, or every item.
     history(of: string | null): Promise<unknown>;
-    // A second look's diff and record, in its module only (decision 0054).
     challenge?: ChallengeRun;
-    // Whether this run may read an item: it is in the region, or this run's
-    // search() found it.
     reaches(id: string): boolean;
-    // Makes this run's writes revise the thread's change set `id`, in a
-    // thread's turn only (OA-309): says whether it will, and if not why.
     revise?(id: string): Promise<string>;
   };
 
-// Oriel's own namespaces, in every region's module (decision 0024), named
-// for the registry's actions: `workstream.*` and `thread.*`.
 export const orielSpaces = ["workstream", "thread"] as const;
 export type OrielSpace = (typeof orielSpaces)[number];
 
-// The namespace a function lives in: `items` for any item, one per source
-// that declares one, one of Oriel's own, or null for a global.
-// `window`: the window chat's own (decision 0027). `source`: turning a kind
-// off (decision 0059), and a waiting connection's preview and drafts
-// (decision 0051), in the window chat only.
-// `challenge`: a second look's, in a run Oriel starts for one only.
 export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | "challenge" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
@@ -68,15 +44,9 @@ export type ReadFn = Omit<NamespaceRead, "run"> & {
 
 export type WriteFn = NamespaceWrite & {
   space: Space;
-  // The op's entry in its source's catalogue, which checks its arguments.
   spec: { args: Validator<unknown>; revertOnly: boolean };
 };
 
-// One of Oriel's own actions, generated from the registry (decision 0024).
-// It takes one `input` object, typed as the agent's door has it, and a run
-// only records it, as an intent that applies when the turn ends, or, an
-// addition to the thread's own workstream, as the run ends (OA-312). `source`:
-// turning a kind off, in the window chat only (decision 0059).
 export type IntentFn = {
   kind: "intent";
   space: OrielSpace | "source";
@@ -86,10 +56,6 @@ export type IntentFn = {
   params: readonly Param<unknown>[];
 };
 
-// A draft of one of the user's actions, closed to the agent but declared
-// draftable (decision 0051), generated from the registry as an intent's
-// function is. A run only records it; when the turn ends it is held in the
-// thread for the user to apply, edit or discard.
 export type DraftFn = Omit<IntentFn, "kind" | "space"> & {
   kind: "draft";
   space: "source" | "window";
@@ -100,8 +66,6 @@ export type Fn = ReadFn | WriteFn | IntentFn | DraftFn;
 export const pathOf = (fn: Fn): string => (fn.space ? `${fn.space}.${fn.name}` : fn.name);
 
 // IDs reach generated code, so each must have the shape core checks.
-// `names` are the sources' names as a person knows them, by kind, where
-// declared.
 export function checkedId(id: string, names: Partial<Record<SourceKind, string>>): ItemId {
   if (parseItemId(id)) return id as ItemId;
   const source = Object.keys(names).find(
@@ -127,9 +91,7 @@ async function answers(reader: Reader, ids: readonly ItemId[]) {
   };
 }
 
-// Reads region items live under their region handles, each shaped by `view`.
-// A missing item is a tombstone, never a throw. A moved item is followed once:
-// its identity is the source's stable ID, so it is still the region's item.
+// A missing item is a tombstone, never a throw. A moved item is followed once, by its stable ID.
 export async function live<V>(
   reader: Reader,
   ids: readonly ItemId[],

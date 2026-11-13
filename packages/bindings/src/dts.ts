@@ -1,6 +1,5 @@
-// The region's declarations: what the agent codes against, and what reaches
-// its prompt. IDs and types only, never source text. The same scope gives the
-// same bytes, since a hash of the output goes in the run record.
+// What the agent codes against and what reaches its prompt: IDs and types only, never source text.
+// The same scope gives the same bytes, since a hash of the output goes in the run record.
 import { idUnion } from "@oriel/core";
 import type { Scope } from "./describe.ts";
 import type { Fn } from "./fn.ts";
@@ -40,8 +39,7 @@ function namespace(name: string, fns: readonly Fn[]): string[] {
   ];
 }
 
-// Each type once, as two sources' namespaces may both declare `NewRef`:
-// a second `type X =` line goes, with the doc line above it.
+// Each type once: two sources' namespaces may both declare `NewRef`.
 function once(lines: readonly string[]): string[] {
   const named = new Set<string>();
   const kept: string[] = [];
@@ -58,10 +56,7 @@ function once(lines: readonly string[]): string[] {
 }
 
 export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting): string {
-  // A second look's module has none of Oriel's own namespaces.
   const hasOriel = fns.some((fn) => fn.space === "workstream" || fn.space === "thread");
-  // The window chat changes no item; a thread may add one to change it
-  // (decision 0062).
   const window = fns.some((fn) => fn.space === "window");
   return [
     ...(hasOriel ? header : header.filter((line) => !line.includes("`workstream`"))),

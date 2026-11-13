@@ -1,10 +1,3 @@
-// Oriel's own actions in the agent's module (decision 0024), generated from
-// the registry, never written per action: one function for each direct
-// action open to the agent, in the namespace its name starts with, with the
-// registry's one-line doc. Each takes one `input` object, as the action's
-// declaration types it, less what only the user gives in the window. A
-// workstream or thread the agent leaves out is its own. A run only records
-// the call, checked here, as an intent; the turn applies it when it ends.
 import {
   type ActionDeclaration,
   type ActionName,
@@ -25,14 +18,11 @@ type ObjectShape = Extract<Shape, { kind: "object" }>;
 const isIntentSpace = (space: string): space is IntentFn["space"] =>
   (orielSpaces as readonly string[]).includes(space) || space === "source";
 
-// An alternative's `kind`, when the union tells its alternatives apart by one.
 const kindOf = (shape: ObjectShape): string | null => {
   const kind = shape.fields["kind"];
   return kind?.kind === "literal" && typeof kind.value === "string" ? kind.value : null;
 };
 
-// What of the action's input the agent, or an outside tool, gives: each
-// alternative it may use, with only the fields it may set.
 export function agentShapes(
   name: ActionName,
 ): { kind: string | null; fields: Record<string, Shape> }[] {
@@ -48,10 +38,6 @@ export function agentShapes(
   });
 }
 
-// An input type as the agent writes it: its own workstream or thread may be
-// left out, as may an optional field. `given`: type text for fields the
-// registry leaves open, as the composition root knows them, such as a
-// connection's options (decision 0051).
 export function agentType(
   name: ActionName,
   given: Readonly<Record<string, string>> = {},
@@ -72,8 +58,6 @@ export function agentType(
   };
 }
 
-// Each direct action not closed to the agent, in registry order, whose
-// namespace is one of `spaces`.
 const intentsIn = (spaces: readonly IntentFn["space"][]): IntentFn[] =>
   (Object.keys(actions) as ActionName[]).flatMap((action) => {
     const declared: ActionDeclaration = actions[action];
@@ -95,14 +79,10 @@ const intentsIn = (spaces: readonly IntentFn["space"][]): IntentFn[] =>
     ];
   });
 
-// Those of Oriel's own namespaces, in every module.
 export const intentFns: readonly IntentFn[] = intentsIn(orielSpaces);
 
-// A source's, `source.off`, in the window chat's module only, where the
-// agent answers about the window (decision 0059).
 export const windowIntentFns: readonly IntentFn[] = intentsIn(["source"]);
 
-// What the actions are, and the types their inputs name.
 export const actionTypes = [
   "/** Workstream and thread actions skip review. Use one only when the user asks. */",
   "/** Only the user deletes a workstream, with Delete on its page. */",
@@ -115,9 +95,7 @@ export const actionTypes = [
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// An action's input as anyone but the user may give it, the agent or an
-// outside tool: an object, with nothing only the user gives in the window,
-// and nothing its input doesn't have. The declaration checks the rest.
+// Refuses what only the user gives in the window, and anything the input doesn't have.
 export function notTheUsers(action: ActionName, given: unknown): Record<string, unknown> {
   const declared: ActionDeclaration = actions[action];
   if (!isPlainObject(given)) throw new TypeError("$: expected an object");
@@ -134,9 +112,7 @@ export function notTheUsers(action: ActionName, given: unknown): Record<string, 
   return { ...given };
 }
 
-// What the host checks a recorded call against, before any of it applies:
-// the action's own declaration, with the agent's workstream and thread where
-// it left them out, and every item a workstream gains within reach.
+// Checked before any of it applies, with every item a workstream gains within the run's reach.
 export function intended(
   fn: Pick<IntentFn, "action">,
   args: readonly unknown[],

@@ -153,13 +153,10 @@ test("tsc over the memory cap is killed from the host", async (t) => {
   assert.deepEqual(readdirSync(tmp), []);
 });
 
-// One field of `ps` for a process, or "" once it's gone.
 const ps = (pid: number, field: "comm" | "pgid" | "stat") =>
   spawnSync("/bin/ps", ["-o", `${field}=`, "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
 
 test("tsc is the native compiler in the host's process group, and the host's exit kills it", async () => {
-  // A child Node process is the host: it prints tsc's pid as tsc starts, and
-  // exits mid-compile when told to.
   const host = `
     import { createSandbox } from ${JSON.stringify(new URL("./sandbox.ts", import.meta.url).href)};
     import { fakeBindings } from ${JSON.stringify(new URL("./fake-bindings.ts", import.meta.url).href)};

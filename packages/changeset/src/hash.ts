@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-// JSON with object keys sorted, so equal values always serialize the same way.
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (typeof value === "object" && value !== null) {
@@ -20,9 +19,7 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-// The hash a person approves: each mutation's seq, op, target, ref and args,
-// and the kind a create writes into where it has one, in seq order. Status and results are
-// left out, so applying doesn't change it.
+// Status and results are left out, so applying doesn't change it.
 export function changeSetHash(
   rows: readonly {
     seq: number;

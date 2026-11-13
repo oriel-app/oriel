@@ -1,14 +1,5 @@
-// Oriel's own namespaces (decision 0024): what the agent reads of the user's
-// workspace, the same in every region. `workstream.*` reads its workstreams
-// with their members; `thread.*` reads its threads and what their change sets
-// wrote where, and finds them, through the one read layer the window's
-// search uses too. What they return is the
-// model's, the user's or the sources' words, so it reaches the agent only as
-// a run's result; the declarations hold types and fixed text only. What
-// change sets wrote and what was said in other threads is content from
-// outside the region, so reading it is reaching outside, on the record as
-// search() is; names and IDs, which decision 0024 lets the agent read, are
-// not.
+// What these return is the model's, the user's or the sources' words, so it reaches the agent only as a run's result.
+// What other threads said or wrote is content from outside the region, so reading it is on the record as search() is.
 import {
   changeSetStates,
   isUlid,
@@ -68,10 +59,8 @@ const changeSets: Fn = {
   }),
 };
 
-// The agent's revision of its own change set (OA-309): this run's writes
-// replace its changes when the turn ends, instead of making a new one. The
-// host checks the set now and the engine again then.
 const changeSetId = refine(string, isUlid, "expected a change set's id");
+// The host checks the set now and the engine again when the turn ends.
 const reviseChangeSet: Fn = {
   space: "thread",
   outsideRegion: false,
@@ -106,11 +95,9 @@ export const orielFns: readonly Fn[] = [
   findThreads,
 ];
 
-// A union of string literals, as TypeScript writes one.
 const union = (values: readonly string[]) => values.map((v) => JSON.stringify(v)).join(" | ");
 
-// What the namespaces' reads return, under one doc. Fixed, whatever the
-// workspace holds.
+// Fixed, whatever the workspace holds.
 export const orielTypes = [
   "type OrielWorkstream = { id: string; name: string; items: string[]; threads: number; done: boolean };",
   `type OrielThread = { id: string; name: string | null; state: ${union(threadStates)}; workstream: { id: string; name: string }; activityAt: string };`,
