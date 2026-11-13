@@ -1,6 +1,3 @@
-// Test support: the SYN fixture as regions with real bindings, a provider
-// that plays scripted model responses, in-memory run and change-set records,
-// and a fixed clock and IDs. Every test builds its own with `harness()`.
 import { bindingsFor, type Namespaces, type Waiting } from "@oriel/bindings";
 import {
   type CapturedMutation,
@@ -48,7 +45,6 @@ const namespaces: Namespaces = {
   jira: jiraNamespace(new Map(snapshot.records.map((record) => [record.id, record.facets.kind]))),
 };
 
-// The SYN project as the fixture's base state has it, read live.
 const reader: Reader = {
   read: async (ids) =>
     ids.map((id): ReadResult => {
@@ -64,7 +60,6 @@ const reader: Reader = {
   },
 };
 
-// IDs that sort in the order they were made.
 export function counter(): () => Ulid {
   let n = 0;
   return () => {
@@ -88,7 +83,6 @@ export const thread: Thread = {
   createdAt: t0,
 };
 
-// A frozen fixture region as version 1 of the thread's workstream.
 export function fixtureRegion(name: string): Region {
   const frozen = fixture.regions.find((region) => region.name === name);
   if (!frozen) throw new RangeError(`no fixture region ${name}`);
@@ -135,11 +129,6 @@ export const limits: AgentLimits = {
   maxMutationsPerChangeSet: 20,
 };
 
-// One scripted model response: its input usage as a stream reports it first,
-// text in deltas, then calls (each a script for `run`, or any tool name and
-// input), then the stop with the full usage. `fail` breaks the stream after
-// the text instead. `before` runs when the response is asked for, with the
-// results the loop sent.
 export type Step = {
   text?: string[];
   scripts?: string[];
@@ -158,10 +147,6 @@ export const tokens = (inputTokens: number, outputTokens: number): Usage => ({
   cacheWriteTokens: 0,
 });
 
-// Plays `steps` in order across every conversation, and keeps what each
-// conversation was asked: its request, the results sent with each response
-// (none with the first), and each response's output bound. It honours the
-// abort signal as a stream would.
 export function scriptedProvider(steps: Step[]) {
   const queue = [...steps];
   const conversations: {
@@ -222,14 +207,10 @@ export function scriptedProvider(steps: Step[]) {
   return { provider, conversations, unplayed: () => queue.length };
 }
 
-// Runs, change sets and the turns' intents in memory. As the real
-// change-set engine does, a capture needs its run recorded first. Every
-// intent applies, with no Undo.
 export function memoryRecords(newId: () => Ulid) {
   const runs: { run: Run; reads: ProxiedRead[] }[] = [];
   const changeSets: { changeSet: ChangeSet; mutations: CapturedMutation[] }[] = [];
   const applied: { changeSetId: Ulid | null; intents: Intent[] }[] = [];
-  // Each turn's drafts, as the host held them.
   const held: Draft[][] = [];
   const deps: Pick<AgentDeps, "runs" | "changeSets" | "actions" | "drafts"> = {
     drafts: { hold: (_thread, drafts) => void held.push([...drafts]) },
@@ -243,7 +224,6 @@ export function memoryRecords(newId: () => Ulid) {
           undo: null,
         }));
       },
-      // No workstream to follow: the turn keeps the region it started in.
       region: () => null,
     },
     runs: { record: (run, reads) => void runs.push({ run, reads }) },
@@ -282,12 +262,10 @@ export function memoryRecords(newId: () => Ulid) {
         changeSets.push({ changeSet, mutations: [...mutations] });
         return changeSet;
       },
-      // Any change set it captured in that thread, as the engine's would allow.
       async revisable(id, threadId) {
         const found = changeSets.findLast(({ changeSet }) => changeSet.id === id)?.changeSet;
         return found?.threadId === threadId ? null : "not this thread's";
       },
-      // A revision is recorded as one more capture under the same ID.
       async revise(id, ref, mutations) {
         const before = changeSets.findLast(({ changeSet }) => changeSet.id === id);
         if (!before) throw new Error(`no change set ${id}`);
@@ -300,13 +278,11 @@ export function memoryRecords(newId: () => Ulid) {
   return { runs, changeSets, applied, held, deps };
 }
 
-// Time is passed in: every sandbox duration comes out as 0.
 let shared: Sandbox | null = null;
 export const sandbox = (): Sandbox => (shared ??= createSandbox({ now: () => 0 }));
 
 export type Logged = { message: string; fields: Record<string, unknown> };
 
-// An agent over the real sandbox and the SYN fixture, with a scripted model.
 export function harness(
   steps: Step[],
   options: { limits?: Partial<AgentLimits>; bindings?: AgentDeps["bindingsFor"] } = {},
@@ -329,8 +305,6 @@ export function harness(
     newId,
   };
   const logged: Logged[] = [];
-  // Collects the turn's events. `onEvent` and `onLog` see each as it comes,
-  // with the turn's controller, so a test can abort at a given point.
   const turn = async (
     input: Partial<TurnInput> & { region: Region },
     hooks: {
@@ -363,7 +337,6 @@ export function harness(
   return { deps, model, records, logged, turn };
 }
 
-// What a run returned, from its `run.finished` event.
 export function returned(events: AgentEvent[], runIndex = 0): unknown {
   const finished = events.filter((e) => e.kind === "run.finished")[runIndex];
   const last = finished?.result.transcript.at(-1);

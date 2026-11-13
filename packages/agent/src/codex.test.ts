@@ -1,8 +1,3 @@
-// The Codex harness against a stand-in for `codex app-server` that speaks its
-// JSON-RPC over stdin and stdout: how it is started and locked down, what
-// the thread start is checked for, how a turn's `run` calls are answered,
-// and that every other request is declined. The real Codex is only in
-// codex.live.test.ts, behind an opt-in flag.
 import assert from "node:assert/strict";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
@@ -31,9 +26,6 @@ type Message = Record<string, unknown>;
 const cli = { path: "/opt/codex", version: "0.166.0" };
 const home = "/Users/maya/.codex";
 
-// One step of a turn as Codex plays it: text the model streams, a `run` call
-// it waits on, a request of Oriel's it waits on, an item it starts, or its
-// running token count.
 type Step =
   | { text: string }
   | { call: string; script: string }
@@ -43,12 +35,8 @@ type Step =
 
 type FakeOptions = {
   steps?: Step[];
-  // How the turn ends.
   status?: "completed" | "failed";
-  // What `thread/start` reports, over a good report.
   started?: Message;
-  // The person's MCP servers and skills, as `config/read` and `skills/list`
-  // say; `live`: a server the thread left on anyway.
   servers?: string[];
   skills?: string[];
   live?: boolean;
@@ -61,9 +49,7 @@ type Spawned = {
   args: readonly string[];
   env: Record<string, string>;
   cwd: string;
-  // Every request Oriel sent, by method.
   requests: Map<string, Message>;
-  // Oriel's answer to each request of Codex's, by its method and ID.
   answers: { method: string; answer: Message }[];
   killed: boolean;
 };
@@ -196,7 +182,7 @@ function fakeCodex(options: FakeOptions = {}) {
         for (const line of String(chunk).split("\n").filter(Boolean)) {
           const message = JSON.parse(line) as Message;
           if (typeof message.method === "string") {
-            if (message.id === undefined) continue; // A notification.
+            if (message.id === undefined) continue;
             run.requests.set(message.method, (message.params ?? {}) as Message);
             emit({
               id: message.id,
@@ -273,7 +259,6 @@ test("the command line turns off every feature that gives a tool, and the person
     assert.ok(codexFeaturesOff.includes(feature as never), feature);
   for (const feature of codexFeaturesOff)
     assert.ok(args.join(" ").includes(`--disable ${feature}`));
-  // Code mode's host stays: today's models reach `run` only through it.
   assert.ok(!args.includes("code_mode_host"));
   for (const setting of [
     'web_search="disabled"',
@@ -284,8 +269,6 @@ test("the command line turns off every feature that gives a tool, and the person
     'developer_instructions=""',
     'history.persistence="none"',
     'shell_environment_policy.inherit="none"',
-    // Nothing of the run goes to OpenAI beyond the model's own requests: no
-    // analytics, and no `/feedback` submissions.
     "analytics.enabled=false",
     "feedback.enabled=false",
   ])
@@ -384,7 +367,6 @@ test("Codex's own file changes and questions are declined, and the turn goes on"
       ["item/tool/requestUserInput", "error"],
     ],
   );
-  // Oriel's own API key never reaches the Codex it starts.
   assert.equal(run?.env.OPENAI_API_KEY, undefined);
 });
 
@@ -427,11 +409,9 @@ test("a thread start that isn't what Oriel asked for is stopped before the model
       (error: unknown) => error instanceof ProviderError,
       why,
     );
-    // No turn was ever started.
     assert.equal(fake.spawned[0]?.requests.has("turn/start"), false, why);
     await closed(fake.spawned[0]);
   }
-  // The person's own AGENTS.md, in Codex's home, is theirs to keep.
   assert.equal(
     checkStarted(
       {
@@ -447,7 +427,6 @@ test("a thread start that isn't what Oriel asked for is stopped before the model
     null,
   );
   assert.equal(checkLoaded({ data: [] }, { data: [{ hooks: [] }] }), null);
-  // A Codex that doesn't say what it loaded is refused.
   assert.notEqual(checkLoaded({}, { data: [] }), null);
 });
 

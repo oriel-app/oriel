@@ -1,14 +1,3 @@
-// A climb: a hill-climb's pre-registered plan, as the CLI enforces it. Its
-// file, `climbs/<name>.json`, freezes the cases (each by its content hash,
-// with the group a comparison guards it in), the trials a case each round,
-// and a cap on what its rounds may spend. A climb frozen over some of the
-// cases (`subset`) runs only those, and a case added later isn't its. Its ledger,
-// `climbs/<name>.ledger.jsonl`, books each round twice: its estimate as it
-// starts, then what it cost as it ends, so a round stopped partway stays
-// booked at its estimate. Both are committed: the plan
-// before the first round, the ledger as it grows. The plan's prose (the
-// changes to try, in order, and any later change to the plan, with why) is
-// `climbs/<name>.md`.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   type Infer,
@@ -41,7 +30,6 @@ const text = refine(string, (value) => value.trim() !== "", "expected non-empty 
 export const isClimbName = (value: string) => name(value).ok;
 
 const climbShape = object({
-  // Dollars of live model calls, across every round.
   cap: positive,
   reps: count,
   cases: record(object({ hash: string, group: text })),
@@ -58,13 +46,10 @@ const ledgerEntry = object({
   split: roundSplit,
   trials: count,
   usd: refine(number, (n) => Number.isFinite(n) && n >= 0, "expected dollars"),
-  // The line booked as the round starts; the round's last line counts.
   estimated: optional(literal(true)),
 });
 export type LedgerEntry = Omit<Infer<typeof ledgerEntry>, "estimated"> & { estimated?: true };
 
-// What a trial costs before any round has ended: on the high side, so the
-// first round can't overshoot by much.
 export const firstTrialEstimate = 0.05;
 
 const fileOf = (dir: URL, climb: string, suffix: string) => new URL(`${climb}${suffix}`, dir);
@@ -93,9 +78,6 @@ export function loadClimb(
   return { climb: parsed.value, ledger };
 }
 
-// A new climb over the cases as they are now, or the ones `plan.cases`
-// names, each in the group of its eval kind until the plan says otherwise.
-// It never overwrites one.
 export function freezeClimb(
   dir: URL,
   climb: string,
@@ -122,12 +104,9 @@ export function freezeClimb(
   return null;
 }
 
-// The cases a climb's round runs: every case, or a subset's own.
 export const climbCases = (climb: Climb, cases: readonly LoadedCase[]) =>
   climb.subset ? cases.filter((c) => Object.hasOwn(climb.cases, c.case.id)) : cases;
 
-// What keeps a round from running: a case added, removed or edited since the
-// plan froze it.
 export function unfrozen(climb: Climb, cases: readonly LoadedCase[]): string[] {
   const problems: string[] = [];
   const running = new Set(cases.map((c) => c.case.id));
@@ -142,7 +121,6 @@ export function unfrozen(climb: Climb, cases: readonly LoadedCase[]): string[] {
   return problems;
 }
 
-// Each round's last line: its cost once it ended, else its estimate.
 const rounds = (ledger: readonly LedgerEntry[]) => [
   ...new Map(ledger.map((e) => [e.round, e])).values(),
 ];
@@ -150,8 +128,6 @@ const rounds = (ledger: readonly LedgerEntry[]) => [
 export const spent = (ledger: readonly LedgerEntry[]) =>
   rounds(ledger).reduce((n, e) => n + e.usd, 0);
 
-// A round's cost before it runs: its trials at the mean cost of a trial in
-// the rounds that ended.
 export function estimate(ledger: readonly LedgerEntry[], trials: number): number {
   const ended = rounds(ledger).filter((e) => !e.estimated);
   const done = ended.reduce((n, e) => n + e.trials, 0);

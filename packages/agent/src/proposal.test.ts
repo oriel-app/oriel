@@ -1,6 +1,3 @@
-// One proposal per turn, for Oriel's actions as for writes (decision 0024):
-// the last finished run that recorded intents gives them, after the change
-// set is captured, and a stopped turn applies none.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentEvent } from "./contract.ts";
@@ -19,7 +16,6 @@ test("the last run that asked for actions gives the turn's, after the change set
     { text: ["Asked Oriel to take SYN-29 out, and proposed an estimate."] },
   ]);
   const events = await turn({ region: weather, text: "Tidy up." });
-  // The change set first, then what became of the actions, before the end.
   assert.deepEqual(kinds(events).slice(-3), ["change-set", "actions", "done"]);
   const [changeSet] = records.changeSets;
   assert.deepEqual(records.applied, [

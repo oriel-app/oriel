@@ -1,14 +1,5 @@
-// A case's world: its sources as the case finds them, its region, and how a
-// run reads them. Each is a declared connector's fixture (decision 0049),
-// connected after the case's edits to it: in every case for a fixture that
-// says so, as Jira's and the folder's do, so search() reaches their items as
-// in a workspace with both; otherwise only in a case whose region holds its
-// items, or that asks in the window chat, so cases recorded before it was a
-// source see the index they were recorded with. A kind on only through its
-// source server is on in a window chat only where the case says so.
-//
-// Everything the agent can see must be the same on every run and every disk,
-// or cassettes won't replay, and each fixture's connection is.
+// Everything the agent sees must be the same on every run and disk, or cassettes won't replay.
+// A fixture not on in every case connects only where one needs it, so older cases still replay.
 import {
   type ItemDocs,
   type Namespaces,
@@ -54,36 +45,22 @@ import type { EvalCase, OrielWorkspace } from "./case.ts";
 import { fixtureOf, type Fixtures, regionNamed } from "./fixtures.ts";
 import { throughPreviews, throughServers } from "./through.ts";
 
-// Every case's workspace and workstream.
 export const fixedId: Ulid = ulid(0, new Uint8Array(10));
 
 export type WorldInput = {
   fixtures: Fixtures;
-  // The fixture region the region holds, if any.
   region: FixtureRegion | null;
-  // The items it also holds, by ID.
   items: readonly ItemId[];
-  // How many of each fixture's edits are applied, by kind; absent, none.
   edited: Readonly<Partial<Record<string, number>>>;
-  // Oriel's own threads and change sets in the workspace, if any.
   oriel?: OrielWorkspace;
-  // A window chat's: the overview's workstreams, by fixture region, and the
-  // eval clock the overview counts back from (decision 0027).
   window?: { workstreams: readonly { name: string; region: string }[]; now: Instant };
-  // A window chat's connections that wait for their options, by kind, with
-  // the options each has (decision 0051).
   unfit?: Readonly<Record<string, Record<string, unknown>>>;
-  // The eval clock, which history() counts back from, and whether the
-  // change log holds eight weeks of past (past-weeks.ts).
   now?: Instant;
   past?: true;
-  // The kinds the case's window hasn't connected (decision 0059).
   off?: readonly string[];
-  // The kinds it has on through their source server (through.ts).
   servers?: readonly string[];
 };
 
-// A loaded case's world, as `buildWorld` takes it, at the eval clock `now`.
 export function caseWorld(
   loaded: { case: EvalCase; region: FixtureRegion | null; items: readonly ItemId[] },
   fixtures: Fixtures,
@@ -107,35 +84,22 @@ export function caseWorld(
   };
 }
 
-// The ID of a case's waiting connection of `kind`, fixed so its drafts replay.
 export const waitingConnectionId = (kind: string): Ulid =>
   ulid(0, new Uint8Array(10).fill(kind.charCodeAt(0)));
 
 export type World = {
-  // Version 1 of a workstream holding the fixture region's items, then the
-  // case's own.
   region: Region;
   reader: Reader;
   namespaces: Namespaces;
   items: ItemDocs;
-  // Oriel's own data, as the agent's namespaces read it.
   oriel: OrielReads;
-  // A window chat's overview, as window.overview() reads it, with the items
-  // it shows; absent for any other thread.
   overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
-  // A window chat's connections that wait for their options, as its module
-  // offers them; absent when none waits.
   waiting?: Waiting;
-  // history(), from the fixtures' index and change log.
   history: (of: string | null) => Promise<unknown>;
-  // Each region item as its source holds it, for the judge, with what its
-  // fixture says of it, and anything gone saying so.
   evidence(): Promise<unknown[]>;
-  // Removes what the fixtures' connections made.
   close(): void;
 };
 
-// A workstream member, with its stable ID as its fixture keeps it.
 export const member = (fixtures: Fixtures, id: ItemId): WorkstreamMember => ({
   id,
   stableId: fixtureOf(fixtures, id)?.stableId?.(id) ?? parseItemId(id)?.key ?? "",
@@ -157,12 +121,6 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   for (const kind of held)
     if (kind === undefined || !fixtures.has(kind))
       throw new Error(`the region holds ${kind ?? "unknown"} items, but no ${kind} fixture`);
-  // A kind connects unless the case's window hasn't connected it; a
-  // stand-in, in every case, while nothing it stands in for does, as the
-  // server opens it (decision 0059). A kind on only through its source
-  // server, with no connection of its own, as Linear, is on in a window
-  // chat only where the case says it's on through its server (`servers`),
-  // as a person turns it on.
   const off = new Set(input.off ?? []);
   const ownConnection = (declaration: SourceDeclaration) =>
     declaration.connect !== undefined || declaration.fixture.windowCase === true;
@@ -199,7 +157,6 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     throw error;
   }
   const records = [...connections.values()].flatMap((c) => c.records);
-  // As the app has them, each with what only the composition root knows.
   const namespaces: Namespaces = Object.fromEntries(
     [...connections].flatMap(([kind, connection]) => {
       const namespace = fixtures.get(kind)?.declaration.namespace;
@@ -209,8 +166,6 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const items: ItemDocs = Object.fromEntries(
     [...fixtures].map(([kind, { declaration }]) => [kind, declaration.itemDoc]),
   );
-  // Each item's text as the index keeps it, in an index of its own, made
-  // on the first search.
   const texts = new Map([...connections.values()].flatMap((c) => [...c.texts]));
   let index: ReturnType<typeof searchOnly> | undefined;
 
@@ -224,7 +179,6 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       const byId = new Map<string, ReadResult>(read.map((r) => [r.id, r]));
       return ids.map((id): ReadResult => byId.get(id) ?? { id, status: "gone", reason: "deleted" });
     },
-    // As the app's index searches, by key, title or text, title hits first.
     async search(query, limit) {
       index ??= searchOnly(records, texts);
       return index.search(query, limit).map(searchedOf);
@@ -267,7 +221,6 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     async evidence() {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {
-        // What a read can't give, such as a gone file's path.
         const about = fixtureOf(fixtures, result.id)?.about?.(result.id) ?? {};
         if (result.status === "ok") return { id: result.id, ...about, ...result.content };
         if (result.status === "gone" && result.reason === "deleted")
@@ -286,8 +239,6 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   };
 }
 
-// A case's workspace as the agent's namespaces read it, searched by the same
-// code the server's is. Its workstreams are the ones its threads name.
 export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
   if (!workspace) return noThreads;
   const threads = workspace.threads
@@ -311,14 +262,6 @@ export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
   };
 }
 
-// The case's waiting connections, each its kind's fixture connection with
-// the options the case gives, as the server builds them (decision 0051):
-// why each waits is what opening it says, and its preview is read through
-// the fixture's stand-in. Then, as the server has them too, each other
-// connected kind whose connector drafts in its own form, which reads with
-// its fixture's options, and whose options the person may ask to change
-// (OA-232). A kind the case has on through its server (`servers`) is
-// previewed through it, where the server previews it (OA-279).
 async function waitingIn(
   fixtures: Fixtures,
   unfit: Readonly<Record<string, Record<string, unknown>>>,
@@ -343,8 +286,6 @@ async function waitingIn(
         prefix: kind,
         options,
       };
-      // A new connection with no options yet waits, as the server has it;
-      // otherwise opening it says why its options don't fit.
       const why =
         !declaration.options(options).ok || declaration.review?.waits(options)
           ? noOptionsYet
@@ -373,7 +314,6 @@ async function waitingIn(
   return waitingOf([...waiting, ...reading]);
 }
 
-// One connection whose options the agent may draft, over its fixture.
 function waitingOne(
   declaration: SourceDeclaration,
   connection: ToOpen,
@@ -398,14 +338,9 @@ function waitingOne(
   };
 }
 
-// The ID of a window chat case's `i`th workstream.
 export const windowWorkstreamId = (now: Instant, i: number): Ulid =>
   ulid(Date.parse(now), new Uint8Array(10).fill(i + 1));
 
-// The window chat's overview over the case's world, built by the server's
-// own `overviewView` (decision 0027), so it is the page's. What changed
-// since the user last looked is what the case's edits changed, logged as a
-// sync would log them; they last looked before any fixture's first edit.
 function windowOverview(
   fixtures: Fixtures,
   connections: ReadonlyMap<string, FixtureConnection>,
@@ -458,7 +393,6 @@ function windowOverview(
   return { view, items };
 }
 
-// Just before any fixture's first edit: when the user last looked.
 function lastLooked(fixtures: Fixtures): Instant | null {
   const first = [...fixtures.values()]
     .flatMap(({ loaded }) => (loaded.firstEdit ? [loaded.firstEdit] : []))
@@ -466,9 +400,6 @@ function lastLooked(fixtures: Fixtures): Instant | null {
   return first ? (new Date(Date.parse(first) - 1).toISOString() as Instant) : null;
 }
 
-// Eight weeks of past as change log entries, each week's synced a week apart
-// up to the day before `now`: what a team's change log would hold, ending
-// with the items as their fixture has them.
 function pastChanges(records: readonly IndexRecord[], now: Instant): Omit<ChangeLogEntry, "seq">[] {
   const byKey = new Map(
     records.flatMap((r) => (r.facets.state ? [[parseItemId(r.id)?.key ?? "", r]] : [])),

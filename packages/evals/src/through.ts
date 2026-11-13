@@ -1,8 +1,4 @@
-// A fixture connected through its kind's source server (decision 0059,
-// OA-276, OA-277, OA-278, OA-279), as a case asks with `servers`: a stand-in of the server answers
-// in memory, from the fixture after the case's edits, and the connector's
-// own parser syncs and reads through it, as the app does. Its index must be
-// the fixture's, item for item, or the case's world isn't the one its
+// Its index must be the fixture's, item for item, or the case's world isn't the one its
 // cassettes were recorded in.
 import { readFileSync } from "node:fs";
 import {
@@ -29,8 +25,6 @@ const connection: ToOpen = {
   options: { project: "SYN" },
 };
 
-// Jira through Atlassian's server, a stand-in of it on SYN after `edited`
-// edits, with what `connect` gives beside it: its context and its changes.
 async function jira(edited: number, plain: FixtureConnection): Promise<FixtureConnection> {
   const fixture = loadJiraFixture();
   const site = memorySite({ ...fixture, edits: fixture.edits.slice(0, edited) }, frozenAt(fixture));
@@ -55,7 +49,6 @@ async function jira(edited: number, plain: FixtureConnection): Promise<FixtureCo
     },
   });
   const { records, texts } = await listed(opened.source.sync(null));
-  // In the fixture's order, as its own connection gives them.
   const order = new Map(plain.records.map((record, i) => [record.id, i]));
   return {
     ...plain,
@@ -65,8 +58,6 @@ async function jira(edited: number, plain: FixtureConnection): Promise<FixtureCo
   };
 }
 
-// Slack through Slack's server, a stand-in of it on Ferrowick, in the
-// channels the fixture picked. Its fixture has no edits.
 async function slack(_edited: number, plain: FixtureConnection): Promise<FixtureConnection> {
   const fixture = loadSlackFixture();
   const opened = await openSlack(
@@ -106,15 +97,10 @@ async function slack(_edited: number, plain: FixtureConnection): Promise<Fixture
   };
 }
 
-// Linear, which is on only through Linear's server: its fixture already
-// connects through a stand-in of it (@oriel/linear's declared fixture).
 const linear = async (_edited: number, plain: FixtureConnection) => plain;
 
-// Sheets through packages/sheets-mcp, which Oriel never imports: its
-// answers on the fixture, as it serves it, recorded by
-// scripts/record-source-mcp.ts. Its tools give each cell as it shows, the
-// rows hidden by hand, each cell's note and the comments, so its items read
-// as the direct read's do; its previews are the fixture's own.
+// Oriel never imports packages/sheets-mcp: its answers on the fixture are recorded by
+// scripts/record-source-mcp.ts.
 export function sheetsThrough(): ThroughServer {
   const known = sources.sheets.servers?.[0];
   if (!known) throw new Error("Sheets declares no source server");
@@ -156,14 +142,10 @@ async function sheets(edited: number, plain: FixtureConnection): Promise<Fixture
   };
 }
 
-// The kinds a case may have on through their source server, each as its
-// stand-in connects it.
 export const throughServers: Readonly<
   Record<string, (edited: number, plain: FixtureConnection) => Promise<FixtureConnection>>
 > = { jira, slack, linear, sheets };
 
-// The kinds whose waiting connections a case on through their server
-// previews through it, as the server previews them (OA-279).
 export const throughPreviews: Readonly<Record<string, () => ThroughServer>> = {
   sheets: sheetsThrough,
 };

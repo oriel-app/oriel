@@ -1,5 +1,3 @@
-// JSON with object keys sorted at every depth, so two values that differ only
-// in key order serialize the same. Cassette keys and golden-diff matching use it.
 export function canonicalJson(value: unknown): string {
   return JSON.stringify(sorted(value));
 }

@@ -1,7 +1,5 @@
-// The Anthropic Messages API as a provider: plain fetch, a streamed response
-// (server-sent events), and prompt caching on the system prompt, the tool and
-// the turn's growing tail. The API key stays in this closure: it is sent as a
-// header and never logged, put in an error or kept on an object.
+// The API key stays in this closure: sent as a header, never logged, put in an error or kept
+// on an object.
 import type { Log } from "@oriel/core";
 import { parseEnv } from "node:util";
 import {
@@ -24,15 +22,10 @@ export const messagesUrl = "https://api.anthropic.com/v1/messages";
 // refused; this provider sends none.
 export const apiVersion = "2026-10-21";
 export const defaultModel = "claude-opus-5-5";
-// With `fallbacks: "default"`, a response a safety classifier declines is
-// retried on the model Anthropic recommends for that category.
 export const fallbackBeta = "server-side-fallback-2026-07-01";
 
-// The model key from a `.env`'s text: ANTHROPIC_API_KEY and nothing else,
-// for the server and the evals alike. Callers never print its value. A key
-// with whitespace or anything but printable ASCII is refused, not trimmed: a
-// header can't hold it, and the error saying so would quote it. parseEnv
-// already drops an unquoted value's line ending and trailing spaces.
+// A key with whitespace or non-printable ASCII is refused, not trimmed: a header can't hold it,
+// and the error saying so would quote it.
 export function anthropicKey(envFile: string | null): string | null {
   const key = envFile ? parseEnv(envFile).ANTHROPIC_API_KEY : undefined;
   return key && /^[!-~]+$/.test(key) ? key : null;
@@ -42,18 +35,10 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type AnthropicOptions = {
   apiKey: string;
-  // Default `claude-opus-5-5`.
   model?: string;
-  // The most output one response may use, thinking included. Default 64000.
-  // Each response gets the smaller of this and what the loop allows.
   maxTokens?: number;
-  // How much the model thinks, its main latency and cost control. Default
-  // "medium", the model's own default, sent explicitly.
   effort?: Effort;
-  // Retry a classifier refusal on a fallback model, a beta. Default false:
-  // opt in once the beta is confirmed for the instance's key.
   fallbacks?: boolean;
-  // Default: the global fetch. Evals pass their cassettes'.
   fetch?: typeof fetch;
   wait?: Wait;
 };
@@ -61,8 +46,6 @@ export type AnthropicOptions = {
 type Block = Record<string, unknown> & { type: string };
 type ApiMessage = { role: "user" | "assistant"; content: Block[] };
 
-// One response, read to its end: what goes back on the next request, the tool
-// calls it made, and why it stopped.
 export type Reply = {
   content: Block[];
   calls: ToolCall[];
@@ -82,9 +65,8 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 const malformed = (what: string) =>
   new ProviderError(`The model provider sent a response Oriel can't read: ${what}.`);
 
-// The API takes a conversation that opens with the user. One that opens
-// with Oriel's note, as a thread's first message about an open item does
-// (decision 0062), gets a fixed line of Oriel's before it.
+// The API takes a conversation that opens with the user; one that opens with Oriel's note gets
+// this line before it.
 export const threadOpens = "(Oriel: the thread starts here.)";
 
 function toApi(messages: readonly ModelMessage[]): ApiMessage[] {
@@ -114,8 +96,6 @@ function result(r: ToolResult): Block {
   return block;
 }
 
-// Server-sent events: each event's `data` lines, joined and parsed as JSON.
-// Leaving early cancels the body, which stops the download.
 async function* serverEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<unknown> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -195,11 +175,8 @@ const parseInput = (json: string): { ok: true; value: unknown } | { ok: false } 
   }
 };
 
-// Reads one streamed response, yielding its text as it arrives. Each block is
-// rebuilt exactly as it came, so a thinking block goes back with its signature
-// unchanged. After a fallback, only text from before the last fallback block
-// goes back, and only calls after it run. The local harness reads the same
-// events, relayed by the command-line agent.
+// A thinking block goes back with its signature unchanged. After a fallback, only text from
+// before the last fallback block goes back, and only calls after it run.
 export async function* readResponse(
   events: AsyncIterable<unknown>,
   requested: string,
@@ -216,7 +193,6 @@ export async function* readResponse(
       const message = isObject(event.message) ? event.message : {};
       if (typeof message.model === "string") model = message.model;
       usage = isObject(message.usage) ? { ...message.usage } : {};
-      // The input is billed from here on, whatever happens to the stream.
       yield { kind: "usage", usage: usageOf(usage) };
     } else if (event.type === "content_block_start") {
       const block = event.content_block;
@@ -256,7 +232,6 @@ export async function* readResponse(
       const why = text(error.message) || text(error.type) || "an unknown error";
       throw new ProviderError(`The model provider stopped its response: ${why}.`);
     }
-    // Anything else, such as `ping` or an event added later, changes nothing.
   }
   if (!stopped) throw new ProviderError("The model provider's response ended early.");
 
@@ -266,7 +241,6 @@ export async function* readResponse(
   const calls: ToolCall[] = [];
   ordered.forEach(({ block, json }, i) => {
     if (block.type === "fallback" || (i < boundary && block.type !== "text")) return;
-    // The API refuses an empty or whitespace-only text block on the way back.
     if (block.type === "text" && !text(block.text).trim()) return;
     if (block.type === "tool_use") {
       if (typeof block.id !== "string" || typeof block.name !== "string")
@@ -333,7 +307,6 @@ export function messagesSender(options: MessagesOptions) {
     "anthropic-version": apiVersion,
   };
   if (options.beta) headers["anthropic-beta"] = options.beta;
-  // Whatever an error carries, it never shows the key.
   const scrub = (message: string) => (apiKey ? message.replaceAll(apiKey, "[key]") : message);
 
   const refused = async (response: Response, what: string) => {
@@ -408,9 +381,7 @@ export function anthropicProvider(options: AnthropicOptions): Provider {
     converse(request: ConversationRequest): Conversation {
       const { signal, log } = request;
       const messages = toApi(request.messages);
-      // The same bytes on every request of the turn, so the cache holds: the
-      // tool, then the system prompt, each marked, then the conversation's
-      // tail, which the top-level marker follows as it grows.
+      // The same bytes on every request of the turn, so the prompt cache holds.
       const fixed = {
         model,
         stream: true,

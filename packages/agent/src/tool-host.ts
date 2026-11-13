@@ -1,22 +1,5 @@
-// The tool host (decision 0060): a Claude Code process that calls the
-// person's MCP servers' tools with its `mcp_call` control request, with no
-// model. Oriel never sends it a user message, so no model runs and none of
-// the person's plan is spent, and with `result_not_for_model` the CLI hands
-// each answer to Oriel alone, copying nothing under the person's
-// `~/.claude`. It loads the person's own MCP configuration, so the CLI
-// starts a local server from their own entry, environment and all, which
-// Oriel never reads, and reaches a remote one with its own sign-in; its
-// `allowedMcpServers` names only the servers it may call, so no other
-// starts.
-//
-// Before any call it checks what the CLI loaded: a version that has
-// `mcp_call`, exactly the servers granted, each where its grant says, and
-// every hook off. While it runs, it declines every request the CLI sends,
-// such as a permission prompt or an elicitation. It makes one call at a
-// time, refuses any tool not on its list before anything is sent, gives
-// each call its own deadline, and fails a call whose run ended: one queued
-// is never sent, and one already out closes the process, the only way to
-// stop it.
+// With `result_not_for_model` the CLI hands each answer to Oriel alone, copying nothing under the
+// person's `~/.claude`.
 import { createInterface } from "node:readline";
 import { type Log, type ToolAnswer, WriteStalled } from "@oriel/core";
 import {
@@ -36,49 +19,34 @@ const isObject = (value: unknown): value is Message =>
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-// A server the host may call: its name in the person's Claude Code, and
-// where the agent reported it, by its URL, or its command and arguments.
-// The CLI must report it at exactly that address.
 export type Grant =
   | { name: string; url: string }
   | { name: string; command: string; args: readonly string[] };
 
-// One tool a caller may send, by its server's name and its name there.
 export type Listed = { server: string; tool: string };
 export type HostCall = Listed & { args: Readonly<Record<string, unknown>> };
 
 export type ToolHostOptions = {
-  // The CLI, and its arguments: `toolHostArgs`, or a fake's in tests.
   command: string;
   args: readonly string[];
   env: Record<string, string>;
   grants: readonly Grant[];
-  // The caller's list: the only tools it sends.
   tools: readonly Listed[];
   log: Log;
-  // How long the start checks may take, each call may take, and the process
-  // has between SIGTERM and SIGKILL.
   startMs?: number;
   callMs?: number;
   graceMs?: number;
 };
 
 export type ToolHost = {
-  // A refusal before anything was sent is a `WriteStalled`; a failure once
-  // the call may have reached the server is a `ProviderError`. Aborting
-  // `signal` (its run ended) fails the call: unsent while it waits, and
-  // with the process closed once it's out.
+  // A refusal before anything was sent is a `WriteStalled`; a failure once the call may have
+  // reached the server is a `ProviderError`.
   call(call: HostCall, signal?: AbortSignal): Promise<ToolAnswer>;
-  // Ends the process and its group, then removes its folder. Safe to call
-  // twice.
   close(): Promise<void>;
-  // For tests.
   pid: number;
   dir: string;
 };
 
-// The host didn't start, or refused what the CLI reported: nothing was
-// sent. Its message says what to do, such as to update Claude Code.
 export class HostRefused extends WriteStalled {
   constructor(message: string) {
     super(message);
@@ -88,12 +56,8 @@ export class HostRefused extends WriteStalled {
 
 export const capability = "mcp_call_result_not_for_model_v1";
 
-// A server's or tool's name as Claude Code names it whole, splitting
-// `mcp__<server>__<tool>` at the first `__` after its prefix, and changing
-// anything outside `[A-Za-z0-9_-]` to `_`. Null when the pair wouldn't
-// survive that: a name it would change, a server's with `__` or a trailing
-// `_`, or a tool's with a leading `_`, any of which would parse back to a
-// different pair.
+// Claude Code names a tool `mcp__<server>__<tool>`, splitting at the first `__` after `mcp__` and
+// changing anything outside `[A-Za-z0-9_-]` to `_`: null for a pair that wouldn't parse back.
 export function fullName(server: string, tool: string): string | null {
   const plain = /^[A-Za-z0-9_-]+$/;
   if (!plain.test(server) || !plain.test(tool)) return null;
@@ -101,11 +65,6 @@ export function fullName(server: string, tool: string): string | null {
   return `mcp__${server}__${tool}`;
 }
 
-// The CLI's command line: no tool of its own, no slash command, no session
-// kept, every hook off, the person's own user-level settings (and with
-// them their MCP servers), only the granted ones allowed to start, and dev
-// stand-ins beside them on the command line, never in the person's
-// configuration.
 export function toolHostArgs(grants: readonly Grant[], dev: readonly DevServer[] = []): string[] {
   const standIns = dev.filter((each) => grants.some((grant) => grant.name === each.name));
   return [
@@ -131,7 +90,6 @@ export function toolHostArgs(grants: readonly Grant[], dev: readonly DevServer[]
   ];
 }
 
-// Whether a server the CLI reports is where its grant says.
 const placed = (grant: Grant, config: Message): boolean => {
   if ("url" in grant) return text(config.url) === grant.url;
   const args = Array.isArray(config.args) ? config.args.map(text) : null;
@@ -143,9 +101,6 @@ const placed = (grant: Grant, config: Message): boolean => {
   );
 };
 
-// Why what the CLI reported at start isn't what Oriel asked for, or null:
-// its version and `mcp_call`, its servers, then its hooks. Of the hooks it
-// reads only whether each is off, never what one runs.
 export function checkStart(
   init: Message,
   status: Message,
@@ -176,7 +131,6 @@ export function checkStart(
   return null;
 }
 
-// Oriel's answer to every request the CLI sends: declined.
 const declined = (request: Message): Message => ({
   type: "control_response",
   response: {
@@ -186,8 +140,7 @@ const declined = (request: Message): Message => ({
   },
 });
 
-// What `mcp_call` answers when the CLI itself refused before the server
-// was asked, by the words it says it in: nothing was sent.
+// The CLI's words when it refused before the server was asked: nothing was sent.
 const unsentSaid = [
   /^MCP server not connected: /,
   /^Not a fully-qualified MCP tool name/,
@@ -196,8 +149,7 @@ const unsentSaid = [
   /^staged mcp_call is disabled/,
   / requires authentication /,
 ];
-// What it answers when the call went out and stopped without an answer: it
-// may have landed, and isn't the tool's own failure.
+// The CLI's words when the call went out and stopped without an answer: it may have landed.
 const lostSaid = [
   /^mcp_call cancelled by client/,
   /^MCP session expired for /,
@@ -205,9 +157,6 @@ const lostSaid = [
   /^MCP server .* (sent a response over|sent a message that was too large)/,
 ];
 
-// A server's answer, or the CLI's error for a call, as the caller gets it.
-// A tool's own failure comes as an error carrying its words, which a
-// connector reads as the answer it is.
 function answerOf(response: Message): ToolAnswer {
   const answer = isObject(response.response) ? response.response : {};
   return {
@@ -232,7 +181,6 @@ const endedSaid = (ended: Ended) =>
     ? `Oriel couldn't start Claude Code: ${ended.error}`
     : `Claude Code stopped (${ended.signal ?? `exit code ${ended.code}`})`;
 
-// `work`, failed after `ms` or once `signal` aborts, whichever comes first.
 function bounded<T>(
   work: Promise<T>,
   ms: number,
@@ -332,8 +280,6 @@ export async function openToolHost(
     const why = await bounded(
       (async () => {
         const init = await success({ subtype: "initialize" });
-        // A server still connecting is asked about again, until the start's
-        // deadline.
         let status = await success({ subtype: "mcp_status" });
         const connecting = () =>
           Array.isArray(status.mcpServers) &&
@@ -356,7 +302,6 @@ export async function openToolHost(
     throw error instanceof HostRefused ? error : new HostRefused(messageOf(error));
   }
 
-  // One call at a time: `queue` settles once the call ahead has.
   let queue: Promise<unknown> = Promise.resolve();
   const unsent = (why: string) => new WriteStalled(why);
 
@@ -419,8 +364,6 @@ export async function openToolHost(
   };
 }
 
-// A tool host on the person's Claude Code, with 0037's allowlisted
-// environment.
 export const claudeCodeToolHost = (
   cli: ClaudeCode,
   given: {

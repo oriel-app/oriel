@@ -1,7 +1,3 @@
-// The hillclimb's bookkeeping (SPEC §8, decision 0031), as the hill-climb
-// skill describes it: each case runs several times in each arm, a fix must be
-// better beyond noise, a trim no worse within a stated margin, and no group of
-// cases may get worse.
 import { readFileSync } from "node:fs";
 import { type Split, evalKinds, splits } from "./case.ts";
 import { type CaseResult, caseResult } from "./runner.ts";
@@ -15,7 +11,6 @@ import {
   wilson,
 } from "./stats.ts";
 
-// A round's `results.jsonl`, validated line by line.
 export function readResults(round: URL): CaseResult[] {
   const file = new URL("results.jsonl", round);
   return readFileSync(file, "utf8")
@@ -32,15 +27,9 @@ export function readResults(round: URL): CaseResult[] {
     });
 }
 
-// A fix must be better beyond noise; a trim, which isn't meant to improve
-// anything, must be no worse than the baseline within the margin.
 export type Mode = "better" | "no-worse";
 
-// The method's settings, stated before any round uses them. `alpha` is the
-// one-sided level of the stratified test a fix must pass; `guard` the level
-// at which a group counts as worse, looser because a guard should err towards
-// revert; `margin` the drop in pass rate a trim may not be shown to exceed,
-// at the one-sided 95% bound, stratified by case, that `z` gives.
+// `guard` is looser than `alpha` because a guard should err towards revert.
 export const method = { alpha: 0.05, guard: 0.1, margin: 0.08, z: 1.645 } as const;
 
 export type GroupChange = {
@@ -48,7 +37,6 @@ export type GroupChange = {
   cases: number;
   baseline: Rate;
   candidate: Rate;
-  // The chance of a drop at least this large with no change.
   worse: number;
 };
 
@@ -57,35 +45,23 @@ export type SplitChange = {
   cases: number;
   baseline: Rate;
   candidate: Rate;
-  // The chance of a gain at least this large with no change.
   better: number;
-  // The lower end of the one-sided bound on candidate minus baseline,
-  // stratified by case, and what it would be if every candidate trial passed:
-  // when that can't clear the margin, the arms are too small to show a trim
-  // no worse, whatever it does.
   low: number;
   best: number;
   groups: GroupChange[];
-  // Cases whose pass rate moved, as baseline and candidate tallies.
   moved: { id: string; baseline: Tally; candidate: Tally }[];
 };
 
 export type Change = {
   mode: Mode;
   splits: SplitChange[];
-  // Case IDs only one arm ran, whose split or content changed, or with no
-  // finished trial in an arm.
   unpaired: string[];
-  // Trials that errored, left out of every count: an error says nothing about
-  // the change.
   errored: number;
-  // Why to revert; empty to keep.
   reasons: string[];
 };
 
 export const keeps = (change: Change) => change.reasons.length === 0;
 
-// A case's group: its climb group, or else its eval kind.
 const groupOf = (r: CaseResult) =>
   r.group ?? evalKinds[r.kind as keyof typeof evalKinds] ?? `kind ${r.kind}`;
 
@@ -100,9 +76,6 @@ const gain = (cases: readonly { baseline: Tally; candidate: Tally }[]) =>
     0,
   );
 
-// Each arm is every trial of one state of the agent, from one round or several
-// pooled. Only the splits both arms ran are compared, and a case only when
-// both arms ran it with the same content and finished a trial.
 export function compareChange(
   baseline: readonly CaseResult[],
   candidate: readonly CaseResult[],
@@ -244,18 +217,13 @@ export function formatChange(change: Change): string {
   return lines.join("\n");
 }
 
-// An A/A check: every way to split trials of one unchanged agent into two
-// arms as equal as can be, by trial slot (a round and a trial within it), each judged
-// both ways as if it were a change. A fix kept is a false keep; a trim
-// reverted, a false revert; a group flagged worse, a false guard.
 export type NoChange = { judged: number; better: number; noWorse: number; guarded: number };
 
 export function noChange(trials: readonly { slot: string; result: CaseResult }[]): NoChange {
   const slots = [...new Set(trials.map((r) => r.slot))];
   if (slots.length < 2 || slots.length > 16)
     throw new Error(`an A/A check needs 2 to 16 trial slots, not ${slots.length}`);
-  // With an even count, subsets holding the first slot, so each split is
-  // drawn once; with an odd count, every subset of the smaller size.
+  // With an even count, only subsets holding the first slot, so each split is drawn once.
   const even = slots.length % 2 === 0;
   const [first, ...others] = slots;
   const rest = even ? others : slots;

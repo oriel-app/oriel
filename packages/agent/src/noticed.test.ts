@@ -33,7 +33,6 @@ const evidence: Evidence[] = [
 ];
 const usage = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
-// A model that streams `chunks` as text, ticking the clock before each.
 function standIn(chunks: string[], seen: ConversationRequest[], tick: () => void): Provider {
   return {
     converse(request) {

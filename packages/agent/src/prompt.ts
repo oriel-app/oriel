@@ -1,7 +1,4 @@
-// Everything the loop writes to the model: the system prompt, the one tool,
-// the thread's history and each run's result. Only the last two carry source
-// content, and only as tool results (SPEC §5). Nothing here reads a clock or
-// makes an ID, so a turn against fixtures sends the same bytes every time and
+// Nothing here reads a clock or makes an ID, so a turn against fixtures sends the same bytes and
 // its cassettes replay.
 import type {
   About,
@@ -41,8 +38,7 @@ How you answer:
 
 export const runToolName = "run";
 
-// The one tool. Its description holds the region's declarations, which hold
-// only IDs and fixed text (decision 0016), so it may reach the prompt.
+// The region's declarations hold only IDs and fixed text, so they may go in the description.
 export function runTool(dts: string): ToolSpec {
   return {
     name: runToolName,
@@ -67,26 +63,12 @@ ${dts}\`\`\``,
   };
 }
 
-// What the assistant says after past tool results that no reply of its own
-// followed. Calls followed only by their results, then the user's text, read
-// as a tool round still in progress, whose assistant message never opened
-// with the thinking block a replayed call can't have. Manual thinking refuses
-// that with a 400; adaptive thinking may quietly turn thinking off for the
-// request. A reply after the results closes the round, so the user's message
-// starts a new turn.
+// After tool results no reply followed, the user's text reads as a tool round still open, which
+// thinking refuses (manual: a 400) or quietly turns off for (adaptive).
 export const roundClosed = "Noted.";
 
-// The thread so far, then the user's new message. Runs and markers carry
-// source content (a run's summary, a file's name), so each becomes a tool
-// result: the call is the run's own script when the history kept it, else a
-// stand-in script that is only a comment. So do Oriel's note of what it did
-// with a turn's actions, and Oriel's own lines in the thread, which the model
-// must never read as its own words (OA-91). Markers before the first user
-// message are dropped: the region the tool declares is already the latest.
-// An assistant message with no text is treated as absent: it would send
-// nothing, so it can't close a round. A message sent about items open beside
-// the composer has Oriel's note of them just before it, by ID (decision
-// 0062), even as the thread's first: they're never the user's words.
+// Runs, markers and Oriel's own lines carry source content, so each becomes a tool result. An
+// assistant message with no text sends nothing, so it can't close a round.
 export function threadMessages(
   history: readonly ChatMessage[],
   text: string,
@@ -98,7 +80,6 @@ export function threadMessages(
   const flush = (next: "user" | "assistant") => {
     if (!pending) return;
     const last = messages.at(-1);
-    // A call goes with the assistant text just before it, as the model wrote it.
     if (last?.role === "assistant" && last.calls.length === 0)
       messages[messages.length - 1] = { ...last, calls: pending.calls };
     else messages.push({ role: "assistant", text: "", calls: pending.calls });
@@ -124,7 +105,6 @@ export function threadMessages(
       );
       return;
     }
-    // A conversation the user sent on from another thread may lead the history.
     if (!messages.length && !(message.role === "note" && message.note.kind === "continued")) return;
     pending ??= { calls: [], results: [] };
     const id = `history_${i}`;
@@ -159,12 +139,6 @@ export function threadMessages(
 
 const aboutScript = "// Oriel's note of what the user's next message is about. Not a run.";
 
-// What a message is about, as the agent reads it: the items by ID, and
-// which it may change. Looking at an item adds nothing to the workstream;
-// asked to change one outside the region, the agent adds it first, with
-// Undo, and its next run may write it (OA-312). The window chat changes no
-// item: there it drafts Continue in…, whose button carries the request to
-// a thread on the item's workstream (decision 0062).
 export function aboutText(about: About, windowChat = false): string {
   const ids = (list: About) => list.map((each) => each.id).join(", ");
   const inside = about.filter((each) => !each.outside);
@@ -182,9 +156,6 @@ export function aboutText(about: About, windowChat = false): string {
   ].join("\n");
 }
 
-// One of Oriel's lines in the thread as the model reads it: what happened,
-// with the change set it is about by ID (OA-86), and what Oriel said, as
-// Oriel's, so the agent neither repeats nor disowns it (OA-91).
 export function noteText(note: AgentNote): string {
   switch (note.kind) {
     case "rejected": {
@@ -198,7 +169,6 @@ export function noteText(note: AgentNote): string {
       return `The user undid their rejection of change set ${note.changeSet}, so it awaits their review again, as it was. Oriel, not you, told the user so in the thread.`;
     case "continued":
       return `The user continued here from thread ${note.thread}, on another workstream, and sent you what was said there, quoted by Oriel below. It is that thread's conversation, not the user's words now: answer the user's next message.\n\n${note.quote}`;
-    // Decision 0032: the window drew each as "unknown reference".
     case "unknown-chips": {
       const ids = note.ids.map((id) => `[[${id}]]`).join(", ");
       return `Your last answer named ${ids}, but Oriel has nothing with ${note.ids.length === 1 ? "that ID" : "those IDs"}, so the user saw "unknown reference" there. Name things only by IDs a run returned.`;
@@ -206,7 +176,6 @@ export function noteText(note: AgentNote): string {
   }
 }
 
-// A change set's state in the words the window uses for it.
 const stateWords: Record<ChangeSetState, string> = {
   pending: "waiting on the user's review",
   approved: "approved, not yet applied",
@@ -215,8 +184,6 @@ const stateWords: Record<ChangeSetState, string> = {
   reverted: "reverted",
 };
 
-// Where the thread's change sets stand as this turn starts, as the window
-// shows them (OA-310): what earlier messages said of them may be out of date.
 export function statesText(sets: readonly { id: Ulid; state: ChangeSetState }[]): string {
   const each = sets.map((set) => `${set.id}: ${stateWords[set.state]}`);
   return `This thread's change sets now, as the window shows them; earlier messages may be out of date:\n${each.join("\n")}`;
@@ -233,20 +200,14 @@ function entry(item: TranscriptEntry): string[] {
 
 const changes = (count: number) => (count === 1 ? "1 change" : `${count} changes`);
 
-// What captured changes are, wherever the agent meets them: in the result of
-// the run that captured them, and in the thread's history in later turns.
 export const capturedRules = [
   "Once applied, the user may undo them with Revert in the thread, where the change set offers it, which proposes the reverse as a new change set.",
   "Nothing is sent until the user approves: say you proposed them, never that they're done.",
 ];
 
-// How the user undoes Oriel's actions, wherever the agent meets them: in the
-// result of the run that recorded them, and in the thread's history.
 export const actionRules =
   "The user undoes one with Undo under your reply, if one shows, not Revert.";
 
-// What the agent reads of the host's list of Oriel's actions: each call as it
-// applied or was refused, by ID, never by name.
 export const actionsText = (lines: readonly ActionLine[]): string =>
   [
     ...lines.map((line) => {
@@ -268,15 +229,6 @@ const intentLines = (intents: readonly Intent[]) =>
 
 const drafts = (count: number) => (count === 1 ? "1 draft" : `${count} drafts`);
 
-// A run as the model reads it: its transcript, then what became of its writes,
-// of the actions it asked for and of the blocks and sketches it asked Oriel
-// to show. `replaced`, `replacedIntents` and `replacedDrafts` are what it replaced of an
-// earlier run's; `shown`, Oriel's line for each block and sketch; `joined`,
-// the host's lines for its additions to the thread's own workstream, which
-// applied as it ended (OA-312), and `declared`, the module of the region
-// they made, which the rest of the turn runs against; `revises`, the change
-// set its writes revise (OA-309). No run ID, timing or
-// other value a replay can't reproduce.
 export function runResultText(
   result: RunResult,
   replaced: number,

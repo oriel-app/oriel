@@ -1,7 +1,3 @@
-// The tool host (decision 0060) against a fake Claude Code that is a real
-// child process (fake-claude.ts), so "kill it mid-call" kills something. The
-// journal is what reached the fake's server. Keep rule 1: these are the
-// replay guards, the only things between Oriel and a source's write tools.
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,8 +15,6 @@ const grant = { name: "teams", url: "https://teams.example/mcp" };
 function setup(fake: Record<string, unknown> = {}, over: Partial<ToolHostOptions> = {}) {
   const folder = mkdtempSync(join(tmpdir(), "oriel-host-test-"));
   const journal = join(folder, "journal");
-  // Resolves when Oriel declines the fake's question, which the fake's
-  // `hang` asks once its call has reached the server.
   const out = Promise.withResolvers<void>();
   const options: ToolHostOptions = {
     command: process.execPath,
@@ -66,9 +60,7 @@ const failed = async (work: Promise<unknown>) => {
   assert.fail("expected a failure");
 };
 
-// Nothing reached the server: a replay may send it again.
 const unsent = (error: unknown) => error instanceof WriteStalled;
-// It may have: a replay never sends it again.
 const mayHaveLanded = (error: unknown) =>
   error instanceof ProviderError && !(error instanceof WriteStalled);
 
@@ -78,7 +70,6 @@ test("calls a tool on the list for Oriel alone, and declines what the CLI asks",
   const answer = await host.call({ server: "teams", tool: "echo", args: { q: 1 } });
   assert.deepEqual(answer.content, [{ type: "text", text: '{"q":1}' }]);
   assert.deepEqual(t.calls(), ["call echo not-for-model"]);
-  // `slow` answers only once the fake has Oriel's answer to its question.
   const slow = await host.call({ server: "teams", tool: "slow", args: {} });
   assert.deepEqual(slow.content, [{ type: "text", text: "slow" }]);
   assert.ok(t.lines().includes("answered error"), "Oriel declined the CLI's question");
@@ -144,8 +135,6 @@ test("a run that ends mid-call: the call fails as sent, the one queued is never 
   );
   assert.ok(descendant > 0);
   const outlived = alive(descendant);
-  // Should the close have missed it, it's ended here, so the test fails
-  // rather than waits on it.
   if (outlived) process.kill(descendant, "SIGKILL");
   assert.equal(alive(host.pid), false);
   assert.equal(outlived, false, "the CLI's own child is gone too");
@@ -158,8 +147,6 @@ test("a run that ends mid-call: the call fails as sent, the one queued is never 
 
 test("a queued call whose own run ends is never sent, while the call ahead, and the host, go on", async () => {
   const t = setup();
-  // Through the caller sync and replay use, which keeps a host its calls
-  // share.
   const calls = reopening("teams", () => openToolHost(t.options));
   const ahead = calls.call({ tool: "slow", args: {} });
   const run = new AbortController();

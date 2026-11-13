@@ -1,14 +1,5 @@
-// A process's life, and only that (decision 0060; 0062's supervisor): a
-// child in its own process group, in an empty folder made for it, or in one
-// the caller lends it. Closing it, however many ask, sends SIGTERM to the
-// whole group, then SIGKILL to whatever of it is left after a grace, then
-// removes the folder it made; a lent folder is never removed. Oriel's own
-// exit kills every group still running, as being in their own groups they'd
-// outlive it. `ended` says why the child ended, from its exit, so a
-// descendant holding the child's stdio open can't hide it.
-//
-// The tool host runs on it. Claude Code's session and Codex's app server
-// move onto it later (OA-249).
+// Oriel's exit kills every group still running: in their own groups, they'd outlive it. `ended`
+// comes from the exit, so a descendant holding the child's stdio open can't hide it.
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,12 +9,8 @@ export type Ended = { code: number | null; signal: NodeJS.Signals | null } | { e
 
 export type Supervised = {
   child: ChildProcessWithoutNullStreams;
-  // Its folder: the one made for it, or the one lent.
   dir: string;
-  // Once the child has exited, or couldn't start.
   ended: Promise<Ended>;
-  // Ends the whole group, then removes the folder made for it. Settles once
-  // the child has exited and nothing of its group is left.
   close(): Promise<void>;
 };
 
@@ -31,15 +18,11 @@ export type SuperviseOptions = {
   command: string;
   args: readonly string[];
   env: Record<string, string>;
-  // A folder to run in, which stays; else an empty one, made and removed.
   lent?: string;
-  // Between SIGTERM and SIGKILL. Default 2 s.
   graceMs?: number;
-  // Closes it when aborted.
   signal?: AbortSignal;
 };
 
-// Every group still running, killed outright when Oriel exits.
 const live = new Set<number>();
 let listening = false;
 const killAll = () => {
@@ -48,7 +31,6 @@ const killAll = () => {
 
 const grouped = process.platform !== "win32";
 
-// Sends `name` to a group; false when none of it is left.
 function signalGroup(pid: number, name: NodeJS.Signals | 0): boolean {
   try {
     process.kill(grouped ? -pid : pid, name);

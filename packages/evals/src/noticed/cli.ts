@@ -1,8 +1,4 @@
-// `pnpm evals:noticed`: Noticed's rounds, by 0031's method, beside the
-// agent's. A round runs a climb's frozen cases, each `reps` times, through
-// one arm, and books its cost in the climb's ledger, refused past its cap.
-// Rounds live in `.evals/noticed/<round>/`; comparisons use the agent's own
-// `compareChange`.
+// `pnpm evals:noticed`: Noticed's rounds, beside the agent's, in `.evals/noticed/<round>/`.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { ulid } from "@oriel/core";
@@ -68,8 +64,6 @@ const readExtras = (round: string): TrialExtra[] =>
     .filter(Boolean)
     .map((line) => JSON.parse(line) as TrialExtra);
 
-// One line a round: its arm, pass rates by grade, the time to the first
-// card and to the end, tokens and dollars a run.
 function report(round: string): string {
   const results = readResults(new URL(`${round}/`, rounds));
   const extras = readExtras(round);

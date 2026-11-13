@@ -1,6 +1,3 @@
-// Sketches (decision 0033): sketch() hands Oriel HTML and a height; Oriel
-// checks it and shows it under the reply with the blocks, in the order
-// asked, or refuses it with what to change, and the run goes on.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { noThreads, type Ulid } from "@oriel/core";
@@ -34,7 +31,6 @@ test("a sketch that isn't allowed is refused with the names to change, shows not
             call('<IFRAME SRC="http://x.test/"></IFRAME><a href="#top">top</a>'),
             call('<svg><use href="http://x.test/u.svg#a"/></svg>'),
             call("a < b"),
-            // Past the types, as a script that casts can be.
             `await sketch("<p>fine</p>", 300 as number as 240);`,
             "return 'went on';",
           ].join("\n"),

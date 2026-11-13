@@ -1,12 +1,5 @@
-// Calls to one of the person's own MCP servers, a source server (decision
-// 0059), through the agent that lists it: for a kind's sync, with only its
-// read tools, and for a change set's replay, with only its write tools,
-// never both in one process. No other server of the person's is loaded, and
-// none of Oriel's tools is. Oriel calls each tool itself, with no model
-// (decision 0060): on Claude Code through a tool host's `mcp_call`
-// (tool-host.ts), and on Codex through the app server's
-// `mcpServer/tool/call`, on a thread that runs no turn. Each tool's answer
-// goes to its connector's parser, never to a model.
+// Read tools for a sync, write tools for a replay, never both in one process; each answer goes to
+// its connector's parser, never to a model.
 import { type Log, type ToolCaller, WriteStalled } from "@oriel/core";
 import type { ClaudeCode, Spawn } from "./claude-code.ts";
 import {
@@ -23,32 +16,21 @@ import {
 import { ProviderError } from "./provider.ts";
 import { claudeCodeToolHost, type Grant, type ToolHost } from "./tool-host.ts";
 
-// One process's calls, until it's closed.
 export type ServerCalls = {
   call: ToolCaller;
   close(): void;
 };
 
-// The server a process loads, alone: its name in the person's agent, and how
-// it's reached, as the agent's own listing gave it. A remote one by its
-// transport and URL; a dev stand-in by its command; a local one by its
-// command and arguments, which Claude Code starts from the person's own
-// entry, environment and all. No header, environment or secret of its
-// configuration is ever read, or passed.
 export type CalledServer =
   | { name: string; url: string; transport: "http" | "sse" }
   | { name: string; dev: DevServer }
   | { name: string; local: { command: string; args: readonly string[] } }
-  // By name alone, as Codex loads it from the person's own configuration;
-  // Claude Code has no address to check it against.
   | { name: string };
 
 export type ServerCallsOptions = {
   server: CalledServer;
-  // The tools this process may call, by their names on the server.
   tools: readonly string[];
   env?: Readonly<Record<string, string | undefined>>;
-  // Codex's, in tests.
   spawn?: Spawn;
   log: Log;
 };
@@ -57,7 +39,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-// What a tool host checks the server against: where the agent reported it.
 export function grantOf(server: CalledServer): Grant {
   if ("url" in server) return { name: server.name, url: server.url };
   if ("dev" in server)
@@ -69,11 +50,8 @@ export function grantOf(server: CalledServer): Grant {
   );
 }
 
-// Calls to one server through a tool host that `open` starts on the first
-// call. One that failed a call is closed, and the next call opens another,
-// which checks again before it sends anything; but a call whose own run
-// ended before it was sent leaves the host as it was, so the calls of other
-// runs on it go on. The host's start is no run's, so no run's end stops it.
+// A host that failed a call is closed and the next call opens another; a call whose run ended
+// before it was sent leaves the host, which other runs share, as it was.
 export function reopening(server: string, open: () => Promise<ToolHost>): ServerCalls {
   let opened: Promise<ToolHost> | null = null;
   const drop = (at: Promise<ToolHost>) => {
@@ -105,7 +83,6 @@ export function reopening(server: string, open: () => Promise<ToolHost>): Server
   };
 }
 
-// The person's Claude Code's tool host, for one server and `tools`.
 export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptions): ServerCalls {
   const { server } = options;
   return reopening(server.name, () =>
@@ -119,8 +96,6 @@ export function claudeCodeServerCalls(cli: ClaudeCode, options: ServerCallsOptio
   );
 }
 
-// What Codex reports of a thread's servers: only the one Oriel named is on,
-// and it offers no tool Oriel didn't name. Null when so.
 export function checkCodexServers(listed: unknown, options: ServerCallsOptions): string | null {
   const data = isObject(listed) && Array.isArray(listed.data) ? listed.data.filter(isObject) : null;
   if (!data) return "it didn't say which MCP servers it loaded";
@@ -150,7 +125,6 @@ export function codexServerCalls(cli: Codex, options: ServerCallsOptions): Serve
     });
     try {
       await initialize(server);
-      // Codex's requests of Oriel, answered as a turn's are: none allowed.
       void (async () => {
         for (;;) {
           const message = await server.take();

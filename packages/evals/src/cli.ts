@@ -37,7 +37,6 @@ import { system } from "./system.ts";
 // Recording and replaying use the same models, or replays miss.
 export const defaults = { model: "claude-opus-5-5", judge: "claude-sonnet-5-5" };
 
-// The eval clock: fixed, after the fixtures' last source edit.
 export const evalNow: Instant = instant(new Date("2026-10-29T09:00:00.000Z"));
 
 export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baseline <round>] [--env <path>]
@@ -99,7 +98,6 @@ function parse(args: readonly string[]) {
   }
 }
 
-// Rounds joined with +, each a ULID, none twice.
 const isRounds = (value: string) => {
   const ids = value.split("+");
   return ids.every(isUlid) && new Set(ids).size === ids.length;
@@ -181,8 +179,7 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   return { error: usage };
 }
 
-// The model key for a live round, from the .env `--env` names, or else the
-// repo root's. Only ANTHROPIC_API_KEY is kept, and no problem quotes a value.
+// Only ANTHROPIC_API_KEY is kept, and no problem quotes a value.
 export async function modelKey(
   env: string | undefined,
   rootEnv: URL,
@@ -200,25 +197,16 @@ export async function modelKey(
   };
 }
 
-// What a round reads, writes and reaches. Tests pass their own, so none reads
-// the clock, the network or the repo's .env.
 export type Io = {
   cases: URL;
-  // Where climbs' plans and ledgers are; the repo's when absent.
   climbs?: URL;
   cassettes: URL;
   rounds: URL;
   envFile: URL;
-  // While it exists, a replay passes a case whose cassettes its requests no
-  // longer match: they wait for the night's recording. Absent: none.
   stale?: URL;
-  // Cases whose committed cassettes a live round leaves byte for byte: it
-  // draws them but records nothing. Absent: none.
   keep?: ReadonlySet<string>;
   network: Fetch;
-  // Milliseconds since the epoch, naming the round.
   now: () => number;
-  // Milliseconds, read only to time each case.
   clock: () => number;
   log: (line: string) => void;
   error: (line: string) => void;
@@ -289,7 +277,6 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     io.log("no cases to run in packages/evals/cases/; add one with the add-eval skill.");
     return 0;
   }
-  // What the round books as it starts, before it has cost anything.
   let booked = 0;
   if (plan) {
     const changed = unfrozen(plan.climb, runnable);
@@ -347,8 +334,6 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     system,
     model: command.model,
     judgeModel: command.judge,
-    // A case's first trial records its cassettes, unless they are kept; the
-    // others only spend.
     transport: (caseId, rep) => {
       const dir = cassetteDir(io.cassettes, caseId, command.model, command.judge);
       if (live && (rep > 0 || io.keep?.has(caseId))) return { fetch: live, commit: () => null };
@@ -368,7 +353,6 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
   );
   io.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
   if (reps > 1) io.log(`${reps} trials a case; each split counts trials`);
-  // Only a missing cassette is stale; any other error still fails.
   const waitsForNight =
     command.command === "replay" && io.stale !== undefined && existsSync(io.stale);
   const stale = waitsForNight ? ran.results.filter((r) => isMissingCassette(r.error)) : [];

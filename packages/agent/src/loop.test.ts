@@ -1,5 +1,3 @@
-// The loop against the real sandbox, real bindings over the SYN fixture, and
-// a scripted model.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentEvent, ChatMessage } from "./contract.ts";
@@ -96,8 +94,6 @@ test("a call that isn't a run gets an error result and starts no run", async () 
   assert.equal(resultOf(results[2]).isError, true);
 });
 
-// Caps (SPEC §9).
-
 test("the mutation cap: a run that captures more than a change set may hold captures nothing", async () => {
   const { turn, records } = harness(
     [
@@ -133,10 +129,6 @@ test("the token cap bounds each response by what's left after the input it alrea
   );
   const events = await turn({ region: weather, spent: { inputTokens: 1_500, outputTokens: 500 } });
 
-  // 20000 - 2000 spent = 18000 for the first. Then 20000 - 2000 - 5000 used -
-  // 5000 the next request sends again = 8000. Then 20000 - 2000 - 11500 -
-  // 6500 = 0: no response could read the second run's result, so that run
-  // never starts and the turn stops.
   assert.deepEqual(model.conversations[0]?.maxOutputTokens, [18_000, 8_000]);
   assert.equal(model.unplayed(), 1);
   assert.deepEqual(kinds(events), ["run.started", "run.finished", "limit", "done"]);
@@ -146,8 +138,6 @@ test("the token cap bounds each response by what's left after the input it alrea
     usage: { inputTokens: 10_000, outputTokens: 1_500 },
   });
 });
-
-// Abort.
 
 test("an abort while the model streams proposes no change set", async () => {
   const { turn, records } = harness([
@@ -162,8 +152,6 @@ test("an abort while the model streams proposes no change set", async () => {
   assert.deepEqual(kinds(events), ["run.started", "run.finished", "text", "done"]);
   assert.deepEqual(records.changeSets, []);
 });
-
-// Source content is data (SPEC §5, eval #3).
 
 const injection = /ignore all previous instructions/i;
 
@@ -191,7 +179,6 @@ test("injection text in a read item reaches the model only in a tool result", as
     results.some((r) => injection.test(r.content)),
     "the item's text reached the model",
   );
-  // Nothing was proposed, and the item asked for every estimate to be zeroed.
   assert.deepEqual(only(events, "change-set"), []);
   assert.deepEqual(records.changeSets, []);
   assert.ok(records.runs.every(({ run }) => run.outcome === "ok"));

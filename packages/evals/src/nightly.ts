@@ -1,13 +1,5 @@
-// The night's recording (decision 0061): every eval case once against the
-// live model; a case whose draw would fail CI's replay drawn again, up to
-// twice; then CI's own replay, strict. scripts/nightly-evals.ts runs it on
-// main.
-//
-// A case keeps its committed cassettes when they still replay: its requests
-// didn't change, so tonight's draw would only swap one answer for another
-// and grow the repo's history. It is still drawn, and its draw still counts
-// in the pass rates. A case is recorded again when a request changed, its
-// cassettes are missing, or packages/evals/stale.md names it.
+// A case whose requests didn't change keeps its cassettes: a new draw would only swap one
+// answer for another and grow the repo's history.
 import {
   copyFileSync,
   existsSync,
@@ -26,16 +18,13 @@ import { type Command, defaults, type Io, main } from "./cli.ts";
 import { readResults } from "./compare.ts";
 import { type CaseResult, exitCode, type Failing } from "./runner.ts";
 
-// Draws after the first, for a case whose draw would fail the replay.
 const redraws = 2;
 
 export type Night = {
   date: string;
   commit: string;
-  // Each split's first draws, which are the agent's real rate.
+  // First draws only: redraws of failing cases would flatter the rate.
   firstDraw: Record<Split, { passed: number; of: number }>;
-  // Every case's first draw, its last if it was drawn again, and whether
-  // tonight recorded its cassettes or kept the committed ones.
   cases: Record<
     string,
     { first: CaseResult["outcome"]; last: CaseResult["outcome"]; draws: number; kept: boolean }
@@ -44,25 +33,17 @@ export type Night = {
   replay: "pass" | "fail";
 };
 
-// What the night reads and writes. The script passes the repo's; tests pass
-// their own, with a fake network.
 export type NightIo = Io & {
   stale: URL;
-  // The last night's summary, which tonight replaces.
   nightly: URL;
-  // The .env holding the model key.
   env: string;
   date: string;
   commit: string;
 };
 
-// What leaves a case's cassettes unfit for CI: a draw that saved none, or
-// one CI's replay would fail, as CI decides it. A judged case's verdict never
-// fails it, so it is never drawn again for that.
 const breaksReplay = (r: CaseResult, failing: Failing) =>
   r.error !== null || r.unrecorded !== null || exitCode([r], "replay", failing) === 1;
 
-// Each case's file name and `failing` grader, by its ID.
 function caseFiles(cases: URL): Map<string, { file: string; failing?: GraderName }> {
   const found = new Map<string, { file: string; failing?: GraderName }>();
   for (const file of readdirSync(cases).filter((name) => name.endsWith(".json"))) {
@@ -78,13 +59,11 @@ function caseFiles(cases: URL): Map<string, { file: string; failing?: GraderName
   return found;
 }
 
-// The case IDs stale.md names, as words of its text.
 function namedStale(stale: URL): Set<string> {
   if (!existsSync(stale)) return new Set();
   return new Set(readFileSync(stale, "utf8").split(/[^A-Za-z0-9_-]+/));
 }
 
-// Runs one round into its own directory under `step` and reads it back.
 async function round(
   command: Command,
   io: Io,
@@ -128,8 +107,6 @@ function report(
   const redrawn = ids.filter((id) => (tonight.cases[id]?.draws ?? 1) > 1);
   const added = before ? ids.filter((id) => before.cases[id] === undefined) : [];
   const kept = ids.filter((id) => tonight.cases[id]?.kept);
-  // A kept case's failing draw isn't in its cassettes, so the replay still
-  // passes it; the line says so.
   const failed = (id: string) =>
     `\`${id}\` (${tonight.cases[id]?.first}${tonight.cases[id]?.kept ? ", cassettes kept" : ""})`;
   lines.push("", `**Newly failing:** ${newly.length ? newly.map(failed).join(", ") : "none"}`);
@@ -148,8 +125,6 @@ function report(
   return `${lines.join("\n")}\n`;
 }
 
-// Runs the night, writes `io.nightly`, and returns the summary to paste into
-// the PR, with 0 when the replay passes and 1 when it doesn't.
 export async function recordNight(io: NightIo): Promise<{ code: number; text: string }> {
   const before = existsSync(io.nightly)
     ? (JSON.parse(readFileSync(io.nightly, "utf8")) as Night)
@@ -170,8 +145,7 @@ export async function recordNight(io: NightIo): Promise<{ code: number; text: st
   };
   const notes: string[] = [];
 
-  // Which committed cassettes still replay, offline, with no case let off
-  // as stale: a request that changed has none.
+  // No case let off as stale: a case whose request changed must show as not replaying.
   const named = namedStale(io.stale);
   const check = await round(replay, { ...io, stale: undefined }, new URL("kept/", night));
   const kept = new Set(
@@ -182,16 +156,12 @@ export async function recordNight(io: NightIo): Promise<{ code: number; text: st
   if (!first.results.length) return { code: 1, text: "the live round ran no case\n" };
   const last = new Map(first.results.map((r) => [r.id, r]));
   const draws = new Map(first.results.map((r) => [r.id, 1]));
-  // The check replays and spends nothing; its tokens are old draws'.
   let usd = first.usd;
   for (let n = 1; n <= redraws; n++) {
-    // A kept case's cassettes replay already; drawing it again records nothing.
     const again = [...last.values()]
       .filter((r) => !kept.has(r.id) && breaksReplay(r, failing))
       .map((r) => r.id);
     if (!again.length) break;
-    // Only those cases, from a directory of their own; goldens and
-    // cassettes are the repo's.
     const only = mkdtempSync(join(tmpdir(), "oriel-nightly-cases-"));
     try {
       for (const id of again) {
@@ -212,8 +182,6 @@ export async function recordNight(io: NightIo): Promise<{ code: number; text: st
       rmSync(only, { recursive: true, force: true });
     }
   }
-  // A case whose last draw saved no cassettes keeps its old ones, which
-  // may be stale, so stale.md stays and the night fails.
   const unrecorded = [...last.values()]
     .filter((r) => !kept.has(r.id) && (r.error !== null || r.unrecorded !== null))
     .map((r) => r.id);
