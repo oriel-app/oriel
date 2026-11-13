@@ -119,10 +119,6 @@ export function OverviewComposer(props: {
   );
 }
 
-// A question to start from, as a button: its label shows, and its fixed
-// wording is what's sent. `about`: the ID of the headline line it sits
-// beside, which describes it; there it shows its short form, which names
-// nothing that line names. Its accessible name is its visible words.
 export function QuestionButton(props: {
   question: Question;
   chat: WindowChatModel;
@@ -150,7 +146,6 @@ const noneReadOnly = () => false;
 export function WindowChat(props: {
   chat: WindowChatModel;
   thread: ThreadModel | null;
-  // Its empty state: every question to start from, in its whole wording.
   questions: Question[];
   dispatch: Dispatch;
 }) {

@@ -7250,8 +7250,6 @@ button.overview-title:hover {
   padding-right: var(--space-1);
 }
 
-/* A new chat's empty state: every question to start from, whole, stacked
-   over the composer. */
 .window-chat-entries:has(> .rail-starts) {
   display: flex;
   flex-direction: column;

@@ -60,10 +60,7 @@ export function OverviewPage(props: {
   thread: ThreadModel | null;
   // Whether the window chat has a conversation.
   ongoing: boolean;
-  // The questions to start from (`startQuestions`).
   questions: Question[];
-  // The first run's overview (decision 0038): its one-time line; and whether
-  // any AI is set up.
   firstRun: { line: boolean };
   noAi: boolean;
   // Shows the sidebar's list of the threads waiting on the user.
@@ -73,9 +70,6 @@ export function OverviewPage(props: {
   const { model, ending, added, connections, connectors, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
-  // Before a chat starts, each question sits beside the headline it comes
-  // from; one whose headline isn't on screen sits in the composer's frame.
-  // Once one has, none stays here: the rail's empty state holds them.
   const started = props.ongoing || props.chat.open || props.chat.asking;
   const questions = started ? [] : props.questions;
   const shownHere = new Set(view?.headlines.map((line) => line.id));

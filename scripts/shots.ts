@@ -1714,9 +1714,8 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
-// A server of the questions-* scene's own, with three epics' workstreams
-// made two days ago and one story of checkout's moved since, so the
-// overview has a headline for each question to start from.
+// Memory mode, as the fixture pins the clock and nothing would go quiet;
+// two days on, with one story moved, the overview has every headline.
 let questioning = server;
 const questioned = async () => {
   let ahead = 0;
@@ -1745,9 +1744,6 @@ const questioned = async () => {
   return questioning;
 };
 
-// Each question beside the headline it comes from, its words naming
-// nothing that line names, and, when `checked`, the line describing it: by
-// kind, the whole label a thread it starts is titled with.
 async function questionsBeside(page: Page, checked: boolean): Promise<Record<string, string>> {
   const named = (line: string) =>
     page.locator(`[data-headline="${line}"] .overview-title`).first().innerText();
@@ -4585,10 +4581,6 @@ const scenes: Scene[] = [
     make: async () => (await writing()).serving,
     act: (page) => movedChat(page, "gathered"),
   },
-  // The questions to start from (OA-354): each beside its headline before a
-  // chat starts, in a short form; none on the overview once one has; and
-  // New chat shows them all, whole, in the chat itself. A thread started
-  // from a short one is titled with its whole label.
   // Only the last checks: its steps pass through the other two's states.
   ...(["questions-beside", "questions-asked", "questions-new-chat"] as const).map((name): Scene => {
     const checked = name === "questions-new-chat";

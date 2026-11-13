@@ -349,9 +349,6 @@ function writeFolded(folded: boolean) {
   }
 }
 
-// The window chat's questions to start from (decision 0030), from the
-// overview's headlines: beside them before a chat starts, and in the rail's
-// empty state after. The first run's top one is an instruction (0038).
 function startQuestions(model: Model): Question[] {
   const view = model.overview?.view;
   if (!view || noAi(model.settings)) return [];

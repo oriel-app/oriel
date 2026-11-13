@@ -63,7 +63,6 @@ export type WindowChatMsg =
 export type Question = {
   kind: StartQuestion;
   label: string;
-  // Its words beside its headline, which name nothing the headline does.
   short?: string;
   text: string;
   subject?: string;
