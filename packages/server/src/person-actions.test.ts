@@ -1,5 +1,3 @@
-// Who may take which window action through the dispatcher (OA-70): a
-// person's actions, a review link's holder's, and none of them the agent's.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -26,8 +24,6 @@ const id = (n: number) => ulid(n, new Uint8Array(10));
 const user: Actor = { kind: "user" };
 const holder: Actor = { kind: "review-link", by: "Ana" };
 
-// A workstream with a thread on it, and a change set (id 50) of that thread,
-// which the engine stand-in only finds.
 function world() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -50,8 +46,6 @@ function world() {
       decided.push(`${kind} via ${approver.via}`);
       return set;
     },
-    // An edit that changes nothing, and a dismissal of one dismissed already,
-    // which the engine doesn't count.
     edit: async () => set,
     dismiss: async () => ({ changeSet: set, warnings: [] }),
   });
@@ -101,16 +95,12 @@ test("a review link's holder may decide or dismiss a change set and nothing else
     "review-link.revoke",
   ] as const)
     assert.notEqual(refusal(action, agent), null);
-  // Connecting and disconnecting are a person's whatever door, and setting
-  // a connection's options is closed to outside tools as well as the agent
-  // (decision 0049).
   const tool: Actor = { kind: "tool", name: "a coding agent" };
   for (const action of ["source.connect", "source.disconnect"] as const)
     assert.notEqual(refusal(action, tool), null);
   assert.notEqual(refusal("source.configure", agent), null);
   assert.notEqual(refusal("source.configure", tool), null);
   assert.equal(refusal("source.configure", { kind: "user" }), null);
-  // Direct, but closed to the agent.
   for (const action of [
     "thread.open",
     "thread.say",
@@ -119,7 +109,6 @@ test("a review link's holder may decide or dismiss a change set and nothing else
     "source.sync",
   ] as const)
     assert.notEqual(refusal(action, agent), null);
-  // A sync renames a workstream after its anchor, as a change set may.
   assert.equal(refusal("workstream.rename", { kind: "sync", source: "jira" }), null);
 });
 
@@ -129,7 +118,6 @@ test("only a review link's holder gives its token, and they must", async () => {
   const decision = { changeSet: w.changeSetId, hash: "h" };
   await assert.rejects(w.dispatch("changeset.reject", { ...decision, token: "t" }, user), invalid);
   await assert.rejects(w.dispatch("changeset.reject", decision, holder), invalid);
-  // A holder's reason waits for the user, and is shorter than the user's.
   await assert.rejects(
     w.dispatch("changeset.reject", { ...decision, token: "t", reason: "x".repeat(2001) }, holder),
     invalid,

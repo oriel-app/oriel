@@ -1,5 +1,3 @@
-// Settings through the server (OA-181): never a key in a reply, and nothing
-// another site can start.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +12,6 @@ import { json, testApp } from "./testing.ts";
 const key = "sk-ant-settings-test-value";
 const cli = { path: "/usr/local/bin/claude", version: "2.1.314" };
 
-// Each reply and each title names the instance and model that ran it.
 const naming = (said: string): Provider => ({
   converse() {
     return {
@@ -62,9 +59,7 @@ test("Claude Code's usage is read only by a POST, so another site can't start th
   assert.equal((await app.post("/api/settings/usage")).status, 200);
 });
 
-// OA-315: no screen names the Mac's user. Settings › Providers shows a CLI's
-// path from `~`, and a `~/…` saved is kept as the real path; Connections
-// shows a folder from `~`.
+// No screen names the Mac's user: paths show from `~`, and a `~/…` saved is kept as the real path.
 test("Connections and Settings › Providers show paths from ~, never the home folder", async (t) => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "oriel-home-")));
   t.after(() => rmSync(home, { recursive: true, force: true }));

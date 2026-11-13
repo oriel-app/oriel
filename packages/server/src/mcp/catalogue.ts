@@ -1,8 +1,3 @@
-// The MCP door's tools (decisions 0024, 0058), generated, never written per action:
-// one for each of Oriel's direct actions open to outside tools, from the
-// registry, as the agent's module is; one for each of Oriel's own reads the
-// agent's module has; and the two reads of items only this door needs, as
-// it has no region. A tool connected to read only lists and calls the reads.
 // A person's actions are never offered, as tools or as anything else.
 import {
   type ActionDeclaration,
@@ -30,13 +25,10 @@ export type Tool = {
     idempotentHint: boolean;
     openWorldHint: false;
   };
-  // Whether it changes Oriel's data, which only a tool connected to read
-  // and act may.
   acts: boolean;
   call(args: Record<string, unknown>, by: ConnectedTool, outside: Outside): Promise<unknown>;
 };
 
-// Who a tool is to the dispatcher and every record: the name the user gave it.
 export const actorOf = (tool: ConnectedTool): Actor => ({ kind: "tool", name: tool.name });
 
 // An MCP tool's name for an action: `workstream.remove` is `workstream_remove`,
@@ -46,8 +38,6 @@ export const toolNameOf = (action: string) => action.replace(".", "_");
 const objectSchema = (fields: Record<string, Shape>): JsonSchema =>
   jsonSchema({ kind: "object", fields });
 
-// Each direct action open to outside tools, in registry order: the
-// dispatcher refuses no tool its class or doors.
 const actionTools: Tool[] = (Object.keys(actions) as ActionName[]).flatMap((action) => {
   if (refusal(action, { kind: "tool", name: "any" }) !== null) return [];
   const declared: ActionDeclaration = actions[action];
@@ -79,12 +69,9 @@ const actionTools: Tool[] = (Object.keys(actions) as ActionName[]).flatMap((acti
   ];
 });
 
-// A read's parameters as one object's fields, by name.
 const paramsSchema = (fn: ReadFn): JsonSchema =>
   objectSchema(Object.fromEntries(fn.params.map((p) => [p.name, shapeOf(p.check)])));
 
-// Oriel's own reads, as the agent's module has them. They reach only
-// Oriel's reads, never a region, so they take a host of those alone.
 const readTools: Tool[] = orielFns.flatMap((fn) =>
   fn.kind === "read" && fn.space !== null
     ? [
@@ -113,9 +100,7 @@ const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true 
 const searchLimit = (limit: unknown) =>
   Math.min(Math.max(Math.trunc(typeof limit === "number" ? limit : 10), 1), 50);
 
-// What the window holds, from every source: found by key, title or text, and
-// one item read live. Only an item the window has is read, never one its
-// source has that the user didn't connect Oriel to.
+// Only an item the window has is read, never one its source has that the user didn't connect Oriel to.
 const itemTools: Tool[] = [
   {
     name: "item_search",
@@ -162,6 +147,5 @@ for (const tool of tools) {
   named.add(tool.name);
 }
 
-// The tools a connected tool may list and call.
 export const toolsFor = (by: ConnectedTool): readonly Tool[] =>
   by.mode === "act" ? tools : tools.filter((tool) => !tool.acts);

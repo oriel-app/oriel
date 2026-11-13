@@ -1,10 +1,3 @@
-// The agent drafts a connection's options, and the user applies them
-// (decision 0051): against the Sheets fixture through sheets-mcp (decision
-// 0059), a connection whose spreadsheet was just picked waits for its
-// mapping; the window chat reads its preview, shown as a block, and drafts
-// how to read a tab, held under the reply. The thread stays in Needs you
-// until the user applies it, edits it or discards it; only the user can, in
-// the window.
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,8 +13,6 @@ const tracker = loadSheetsFixture().spreadsheets.find((s) => s.slug === "tracker
 
 type Waiting = { connection: string; why: string; tables: { at?: string }[] };
 
-// How the tracker's first tab reads, by letter, with `title` its title's
-// column.
 const tab = (title: string) => ({
   at: `${tracker}/1100`,
   header: 1,
@@ -33,8 +24,6 @@ const tab = (title: string) => ({
   states: { todo: ["To do"], "in-progress": ["In progress", "Blocked"], done: ["Done"] },
 });
 
-// Reads the preview, and drafts the tracker's first tab, for the first
-// connection that waits.
 const drafting =
   (title: string): Script =>
   async (bindings) => {
@@ -56,7 +45,6 @@ async function waitingSheets(t: TestContext) {
   });
   assert.equal((await it.turnOn("sheets")).status, 200);
   const id = (await it.connection("sheets"))?.id ?? "";
-  // The tracker picked through sheets-mcp, with no tab mapped yet.
   const picked = await it.post(`/api/connections/${id}/options`, {
     options: { spreadsheets: [tracker] },
   });
@@ -91,12 +79,10 @@ test("only the user applies a draft: no review link, outside tool or agent", () 
 
 test("an edit applies as the user's, keeping its connection; a stale draft can only go", async (t) => {
   const it = await waitingSheets(t);
-  // Two turns of the window chat, each with its draft.
   const first = await it.ask("Draft how the tracker reads.");
   const second = await it.ask("Draft it again.");
   assert.equal(first, second);
   const [one, two] = it.drafts(await it.thread(first));
-  // An edit keeps what the draft acts on.
   const moved = await it.post(`/api/threads/${first}/held/${one?.seq}/apply`, {
     edit: { connection: ulid(1, new Uint8Array(10)) },
   });
@@ -111,12 +97,9 @@ test("an edit applies as the user's, keeping its connection; a stale draft can o
   assert.deepEqual(it.events("draft.applied"), [
     { threadId: first, action: "source.configure", edited: true },
   ]);
-  // The card says what applied: the edit, settled into the options.
   const [change] = it.drafts(await it.thread(first))[0]?.changes ?? [];
   assert.equal(change?.option, "spreadsheets");
   assert.match(JSON.stringify(change?.drafted), /"title":"Epic"/);
-  // The other was drafted over options that moved since: stale, it can't
-  // apply, and the user discards it.
   assert.equal(it.drafts(await it.thread(second))[1]?.stale, true);
   assert.equal((await it.post(`/api/threads/${second}/held/${two?.seq}/apply`)).status, 409);
   assert.equal((await it.post(`/api/threads/${second}/held/${two?.seq}/discard`)).status, 200);
@@ -132,14 +115,12 @@ test("a Sheets connection kept waiting while its server isn't on isn't one the a
   const before = await testApp(t, { jira: false, sheetsMcp: true, db });
   assert.equal((await before.turnOn("sheets")).status, 200);
   const id = (await before.connection("sheets"))?.id ?? "";
-  // The tracker picked through sheets-mcp, with no tab mapped yet.
   const picked = await before.post(`/api/connections/${id}/options`, {
     options: { spreadsheets: [tracker] },
   });
   assert.equal(picked.status, 200);
   await before.app.settled();
   await before.app.close();
-  // Started again with no Sheets server, the kind is off: nothing waits.
   let dts = "";
   const it = await testApp(t, {
     jira: false,
@@ -155,9 +136,6 @@ test("a Sheets connection kept waiting while its server isn't on isn't one the a
   assert.equal(await it.connection("sheets"), null);
   assert.equal((await it.post("/api/window-chat/messages", { text: "Hi" })).status, 201);
   await it.app.settled();
-  // No preview is offered of it, so none fails to open it (Sol S1 on #232:
-  // the preview was offered, and threw, as the connection opens only
-  // through its server).
   assert.ok(dts.length > 0);
   assert.doesNotMatch(dts, /WaitingConnection/);
 });

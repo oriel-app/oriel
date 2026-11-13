@@ -1,5 +1,3 @@
-// Each of the window's workstream actions answers with the call that undoes it,
-// and the window sends that call back as it is (decision 0024).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { WorkstreamSummary, WorkstreamView, Undoable, UndoView } from "@oriel/web/view";
@@ -49,7 +47,6 @@ test("removing, adding, dropping and renaming each undo through the call they an
   assert.equal(renamed.name, "Beta");
   const redo = await undo(renamed.undo);
   assert.equal((await view()).workstream.name, "Launch");
-  // An undo answers with its own: undoing it again is a redo.
   await undo(redo);
   assert.equal((await view()).workstream.name, "Beta");
 });

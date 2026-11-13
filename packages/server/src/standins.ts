@@ -1,11 +1,5 @@
-// Stand-in source servers for dev only (OA-276, OA-277, OA-278, OA-279):
-// `ORIEL_DEV_STANDINS=atlassian,slack,linear,sheets pnpm dev` gives every
-// process of the person's agent Oriel starts one more MCP server for each,
-// packages/standin-mcp's stand-in for Atlassian's, Slack's or Linear's, or
-// packages/sheets-mcp in its fixture mode, on a copy of its shipped
-// fixture, on its command line only, never in the person's configuration,
-// and has the connector's entry for the real server know it at that
-// command in place of its own. The desktop app never names one.
+// Dev only: each stand-in is on the agent's command line only, never in the person's configuration, and the desktop app
+// never names one.
 import { copyFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,10 +12,7 @@ const main = fileURLToPath(new URL("../../standin-mcp/src/main.ts", import.meta.
 const sheetsMain = fileURLToPath(new URL("../../sheets-mcp/src/main.ts", import.meta.url));
 const backlog = fileURLToPath(new URL("../../sheets-mcp/fixture/backlog.json", import.meta.url));
 
-// Each stand-in, by its name on the command line: the real server's entry
-// it stands in for, by the name that entry reports, and its arguments to
-// `node`, given the file this start keeps its writes in. Every process of
-// one start shares that file, so a sync reads what a replay wrote.
+// Every process of one start shares that file, so a sync reads what a replay wrote.
 const standIns: Record<string, { reports: string; args: (kept: string) => string[] }> = {
   atlassian: {
     reports: "atlassian-mcp-server",
@@ -51,8 +42,6 @@ export function devStandIns(asked: string | undefined): {
   );
   if (unmatched)
     throw new Error(`ORIEL_DEV_STANDINS: the ${unmatched} stand-in matches no server Oriel knows`);
-  // One file for this start, which every process's stand-in shares: a
-  // journal, or a copy of sheets-mcp's fixture.
   const kept = (name: string) => {
     if (name !== "sheets") return join(tmpdir(), `oriel-standin-${name}-${process.pid}.jsonl`);
     // In a folder of its own, which no one else can have made first.

@@ -1,9 +1,4 @@
-// The server's desktop mode (decision 0036): the server as the desktop
-// shell's child. It reads the launch secret and talks to the shell over
-// stdin and stdout (PROTOCOL.md), keeps its database and port in the data
-// folder the shell names, reaches the OS secret store through the shell,
-// and quits when the shell is gone (its
-// stdin ends, on every OS) or sends SIGTERM.
+// It quits when the shell is gone (its stdin ends, on every OS) or sends SIGTERM.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
@@ -17,32 +12,15 @@ import { doorPorts, keepPort, keptPort, portsFrom } from "./port.ts";
 import { launchCookie } from "./protocol.ts";
 
 export type DesktopOptions = {
-  // The data folder: the database, `oriel.db`, and the kept port.
   data: string;
-  // The server's stdin, from the shell.
   input: Readable;
-  // Writes one line, with its newline, to the shell: the channel alone.
   write: (line: string) => void;
-  // Every log line, to stderr.
   log: Log;
-  // Where SIGTERM and SIGINT arrive: the process.
   signals: { once(signal: "SIGTERM" | "SIGINT", listener: () => void): unknown };
-  // The port the first launch tries; 0 lets the OS pick, as tests do.
   firstPort: number;
-  // The MCP door's, the same way.
   firstDoorPort: number;
-  // The agent, the titler and, for tests, the sandbox and the clock: as
-  // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now" | "sources">;
-  // Finds the models the agent can run on, with the person's settings and
-  // the shell's secret store, which holds nothing the server uses since
-  // decision 0059 retired the API key: it runs once the secret is in, and a
-  // stop meanwhile doesn't wait for it. The shell answers nothing until the
-  // server listens, so it mustn't wait on the store.
-  // `looked`, when given, holds every request until the first look ends, as
-  // it did when the look came first, so no page shows it unfinished.
-  // `setup`: the first run and its commands for the person's CLI (decision
-  // 0038), which bring the window to the front through the shell.
+  // The shell answers nothing until the server listens, so this mustn't wait on the store.
   model?: (secrets: Secrets) => Promise<
     Pick<AppOptions, "agent" | "titler" | "models" | "settings"> & {
       looked?: Promise<unknown>;
@@ -52,7 +30,6 @@ export type DesktopOptions = {
 };
 
 export class Stopped extends Error {
-  // Resolves once whatever was starting has closed again.
   readonly closed: Promise<void>;
   constructor(why: string, closed: Promise<void>) {
     super(why);
@@ -62,13 +39,9 @@ export class Stopped extends Error {
 
 export type Desktop = {
   serving: Serving;
-  // Resolves to the exit status once the server has quit.
   exited: Promise<number>;
 };
 
-// Rejects when the launch secret is missing or malformed, or the server
-// can't start, with nothing listening; or with `Stopped` when asked to stop
-// before it started.
 export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
   const { data, log } = options;
   const lines = channel(options.input, options.write, log);
@@ -113,18 +86,13 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
             },
           }
         : {}),
-      // Every source turns on through the person's own agent's servers
-      // (decision 0059), and the folder is connected in the window; tests
-      // give a fixture.
       sources: options.app?.sources ?? {},
       log,
     },
     {
       launch: { cookie: launchCookie, secret },
-      // The MCP door for outside tools, with its port kept beside the
-      // window's. Once kept, it never moves: a client keeps sending its
-      // token to the port its config names, so a door that moved would leave
-      // it with whoever took the old one (decision 0058).
+      // Once kept, the door's port never moves: a client keeps sending its token to the port its config names, so a door
+      // that moved would leave it with whoever took the old one.
       door: {
         ports: doorPorts(keptPort(data, "mcp-port"), options.firstDoorPort),
         listening: (at) => {
@@ -135,11 +103,8 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
         port = Number(new URL(url).port);
         lines.ready(url);
       },
-      // A desktop review link lives only while the app runs (decision 0036).
-      // Any still live now outlived a launch that didn't quit cleanly, or
-      // names a port this server may no longer hold, which whoever holds it
-      // now could use to take their tokens. So they die before any request
-      // is answered.
+      // Any link still live outlived a launch that didn't quit cleanly, or names a port this server may no longer hold,
+      // which whoever holds it now could use to take their tokens. So they die before any request is answered.
       async beforeRequests(app) {
         await looked;
         const left = await app.revokeReviewLinks();
@@ -151,10 +116,7 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
       },
     },
   );
-  // Asked to stop while starting, as when the shell quits at once or a saved
-  // connection's check is slow, it stops now: nothing has been served, and
-  // links still live are revoked at the next start. Whatever finishes
-  // starting is closed again.
+  // Nothing has been served yet, and links still live are revoked at the next start.
   const started = await Promise.race([starting, stop.promise]);
   if (typeof started === "string") {
     log("desktop: quitting before it started", { why: started });
@@ -188,7 +150,6 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
   return { serving, exited };
 }
 
-// The OS's store for secrets, which the shell reaches for the server.
 function secretsOf(shell: Shell): Secrets {
   return {
     get: (name) => shell.ask({ kind: "secret.get", name }),
@@ -201,9 +162,7 @@ function secretsOf(shell: Shell): Secrets {
   };
 }
 
-// Points `stdout.write` at stderr, so a stray `console.log` or a dependency's
-// write never lands in the channel, and returns the one writer the channel
-// uses. Call it before anything else writes.
+// So a stray `console.log` or a dependency's write never lands in the channel. Call it before anything else writes.
 export function takeStdout(
   stdout: Pick<NodeJS.WriteStream, "write">,
   stderr: Pick<NodeJS.WriteStream, "write">,

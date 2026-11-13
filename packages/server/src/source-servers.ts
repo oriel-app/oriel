@@ -1,14 +1,5 @@
-// Which kinds are on (decision 0059), and what Oriel found in the person's
-// agent to turn one on with. Oriel asks the agent picked in Settings for
-// its MCP servers, never its files, when Oriel opens, when the person
-// presses sync, every so often if they set that, and when they pick another
-// agent; it looks each one up among the source servers the connectors know.
-// A kind is on while a person turned it on and a server Oriel knows for it is
-// still found, or while it has a connection of its own, until its
-// connector's REST connection goes (OA-280), unless a person or the agent
-// turned it off. Only a person turns one on. A look that fails says so,
-// naming the agent, and leaves what's on as it was. A look that finds no AI
-// to ask says that instead of what an AI listed before (`noAgent`).
+// Oriel asks the agent picked in Settings for its MCP servers, never its files. Only a person turns a kind on;
+// a look that fails says so, naming the agent, and leaves what's on as it was.
 import {
   type FoundServer,
   type Instant,
@@ -23,16 +14,11 @@ import { ActionError } from "./actions.ts";
 import type { Models } from "./model.ts";
 import type { Settings } from "./settings.ts";
 
-// What a look at the agent's servers came to: the agent asked, by its
-// Settings ID and name, and what it listed, or why it couldn't. Null when
-// no agent runs, or only `pnpm dev --agent api`'s key, which has no servers
-// to bring.
 export type Discovery =
   | { agent: { id: string; name: string }; found: readonly FoundServer[] }
   | { agent: { id: string; name: string }; problem: string }
   | null;
 
-// How the composition root asks: the CLI Settings' models run threads on.
 export const discoverWith =
   (models: Models | undefined) =>
   (settings: Settings): Promise<Discovery> =>
@@ -41,23 +27,13 @@ export const discoverWith =
 export type SourceServersDeps = {
   store: SourceKindStore;
   workspaceId: Ulid;
-  // The servers the connectors know, by kind.
   known: readonly { kind: string; server: SourceServer }[];
-  // Each kind that may be on or off, with its name as a person knows it:
-  // every declared kind but a stand-in, which is on by its own rule.
   kinds: readonly { kind: string; name: string }[];
-  // Whether a kind has a connection of its own: a flag's, or one the window
-  // made, open or shut.
   connected(kind: string): boolean;
-  // Asks the agent picked in Settings now.
   discover(): Promise<Discovery>;
-  // What's on changed: the composition root opens what turned on, closes
-  // what turned off, and tells the pages.
   changed(): Promise<void>;
-  // A look ended: every page hears, as what it found may have changed.
   heard(): void;
-  // How often sync runs, in minutes, or null for when Oriel opens and when
-  // the person presses sync.
+  // Minutes; null for when Oriel opens and when the person presses sync.
   sync(): { every: number | null };
   now(): Instant;
   log(message: string, fields: Record<string, unknown>): void;
@@ -74,8 +50,6 @@ const minus = (a: readonly FoundKind[], b: readonly FoundKind[]) =>
 
 export function sourceServers(deps: SourceServersDeps) {
   const { store, workspaceId } = deps;
-  // What the last look found that Oriel knows, with each entry it matched;
-  // until a look ends, what the one before this start found, as kept.
   let recognized: Recognized[] | null = null;
   let agent: string | null = store.finds(workspaceId)?.agent ?? null;
   let problem: string | null = null;
@@ -95,9 +69,7 @@ export function sourceServers(deps: SourceServersDeps) {
       : (store.finds(workspaceId)?.found ?? []);
   const choice = (kind: string): KindChoice | undefined => store.choices(workspaceId).get(kind);
 
-  // The server a kind is on through: the one the person picked, while the
-  // agent still lists it for that kind. Never another found for the kind,
-  // though it report the same name: it would feed the kind unasked.
+  // Never another found for the kind, though it report the same name: it would feed the kind unasked.
   const through = (kind: string): string | null => {
     const chosen = choice(kind);
     if (chosen?.state !== "on" || chosen.server === null) return null;
@@ -105,32 +77,24 @@ export function sourceServers(deps: SourceServersDeps) {
       ? chosen.server
       : null;
   };
-  // Whether a kind is on now.
   const on = (kind: string): boolean => {
     const chosen = choice(kind);
     if (chosen?.state === "off") return false;
     if (deps.connected(kind)) return true;
     return through(kind) !== null;
   };
-  // The kinds on now, in declared order.
   const onKinds = () => deps.kinds.filter(({ kind }) => on(kind)).map(({ kind }) => kind);
-  // Kinds a person or the agent turned off, whose surfaces don't show.
   const turnedOff = () =>
     deps.kinds.filter(({ kind }) => choice(kind)?.state === "off").map(({ kind }) => kind);
 
   const nameOf = (kind: string) => deps.kinds.find((each) => each.kind === kind)?.name ?? kind;
   const knows = (kind: string) => deps.kinds.some((each) => each.kind === kind);
 
-  // The server a kind is on through, as the last look found it, with the
-  // entry it matched: what its sync and replay start, and nothing else.
-  // Null while it's on through a connection, or before a look ends.
+  // What its sync and replay start, and nothing else.
   function serverFor(kind: string): Recognized | null {
     const name = through(kind);
     return recognized?.find((each) => each.kind === kind && each.found.name === name) ?? null;
   }
-  // What's on, and through which server as the last look found it: when it
-  // changes, the composition root opens or closes what it must, as when the
-  // first look since Oriel opened finds the server a kind is on through.
   const state = () =>
     JSON.stringify(
       onKinds().map((kind) => {
@@ -201,21 +165,12 @@ export function sourceServers(deps: SourceServersDeps) {
     onKinds,
     serverFor,
     turnedOff,
-    // A kind a person turned on whose source server went: off until it's
-    // back.
     went: (kind: string) => choice(kind)?.state === "on" && !on(kind),
-    // Looks again, or joins the look running now.
-    // One asked while another runs, as when the person picks another agent,
-    // runs once that ends, so it asks the agent picked now; every ask
-    // meanwhile joins it.
+    // One asked while another runs runs once that ends, so it asks the agent picked now; every ask meanwhile joins it.
     look,
-    // Starts no look after, and one running keeps nothing when it ends.
     close(): void {
       closed = true;
     },
-    // Turns a kind on: through `server`, one Oriel found for it, or, with
-    // none, one that was off by choice and has a connection. Gives what it
-    // was before, for its Undo.
     async turnOn(kind: string, server: string | undefined): Promise<{ server: string | null }> {
       if (!knows(kind)) throw new ActionError("not-found", `Oriel has no source kind ${kind}.`);
       const via = server ?? found().find((each) => each.kind === kind)?.server ?? null;
@@ -237,8 +192,6 @@ export function sourceServers(deps: SourceServersDeps) {
       await deps.changed();
       return { server: before?.server ?? null };
     },
-    // Turns a kind off, by the person or the agent. Gives the server it
-    // came through, for its Undo.
     async turnOff(kind: string, by: "person" | "agent"): Promise<{ server: string | null }> {
       if (!knows(kind) || !on(kind))
         throw new ActionError("not-found", `${knows(kind) ? nameOf(kind) : kind} isn't on.`);
@@ -251,7 +204,6 @@ export function sourceServers(deps: SourceServersDeps) {
     dismiss(): void {
       store.dismiss(workspaceId);
     },
-    // As Settings, the first run and the overview's card show it.
     view(): SourceServersView {
       const finds = store.finds(workspaceId);
       const listed = found();
@@ -294,8 +246,6 @@ export function sourceServers(deps: SourceServersDeps) {
             },
           ];
         }),
-        // Each kind not on whose server isn't listed; with no AI to ask, every
-        // kind neither on nor turned off, since none is listed now.
         missing: deps.kinds.flatMap(({ kind }) => {
           const first = knownFor(kind)[0];
           const unlisted = noAgent
@@ -304,8 +254,6 @@ export function sourceServers(deps: SourceServersDeps) {
           if (!first || on(kind) || !unlisted) return [];
           return [{ kind, server: first.server.name, instructions: first.server.instructions }];
         }),
-        // Shown while it offers something to turn on or says what went, and
-        // never with no AI to ask, when nothing it found stands.
         card:
           !noAgent && shown && (shown.appeared.some((each) => !each.on) || shown.gone.length > 0)
             ? shown

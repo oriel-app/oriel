@@ -14,7 +14,6 @@ import { mcpServer } from "./mcp/protocol.ts";
 
 export type Serving = { url: string; port: number; app: App; door: Door; close(): Promise<void> };
 
-// The web app's files.
 export function webFiles(): Pick<Site, "dist" | "entry" | "assets" | "vendor"> {
   return {
     dist: fileURLToPath(dist),
@@ -24,8 +23,6 @@ export function webFiles(): Pick<Site, "dist" | "entry" | "assets" | "vendor"> {
   };
 }
 
-// Reads a request's body, or null once it passes `limit` bytes, when the
-// rest is left unread.
 export function bodyReader(req: IncomingMessage): (limit: number) => Promise<string | null> {
   let read: Promise<string | null> | null = null;
   return (limit) => {
@@ -82,21 +79,12 @@ export async function send(res: ServerResponse, method: string, reply: Reply): P
 }
 
 export type ServeOptions = {
-  // The desktop app's launch secret, and the cookie that carries it.
   launch?: Site["launch"];
-  // Called once the server listens, before the app is built. Requests that
-  // come meanwhile wait for it.
   listening?: (url: string) => void;
-  // Runs once the app is built, before any request reaches it.
   beforeRequests?: (app: App) => Promise<void>;
-  // The MCP door's ports, tried in order: the one kept, alone, once there
-  // is one; `listening` hears the one it opened on, to keep. Port 0, as by
-  // default, picks a free one.
   door?: { ports: readonly number[]; listening?: (port: number) => void };
 };
 
-// Answers each request on `server` with the handler `built` resolves to;
-// requests that come before it wait for it.
 function answer(
   server: Server,
   built: Promise<(request: Request & McpRequest) => Promise<Reply>>,
@@ -129,14 +117,8 @@ const closing = (server: Server) => {
   return closed;
 };
 
-// Listens on 127.0.0.1 only, on the first of `ports` that's free. Port 0
-// picks a free one. The app is built once the port is known, since review
-// links name it. Sketches are served by a second listener, the sketch
-// origin, on a free port of its own, behind the same launch secret, in the
-// person's theme (decisions 0033 and 0034). Outside tools reach Oriel
-// through the MCP door, on a third listener of its own, behind their tokens
-// rather than the launch secret (decision 0058). If its port is taken, the
-// door stays closed, and the window opens all the same.
+// 127.0.0.1 only. The app is built once the port is known, since review links name it. Sketches and the MCP door get
+// listeners of their own; if the door's port is taken, it stays closed and the window opens all the same.
 export async function serve(
   ports: number | readonly number[],
   options: Omit<AppOptions, "reviewBase" | "sketchBase" | "door"> = {
@@ -162,8 +144,6 @@ export async function serve(
   answer(doorServer, doorBuilt.promise);
   serving.listening?.(url);
   const log = options.log ?? (() => {});
-  // The door listens before the app is built, as the window does, so the
-  // app knows whether it opened. One that can't leaves the window up.
   const door: Door = await listen(doorServer, serving.door?.ports ?? [0]).then(
     ({ port }) => ({ url: `http://127.0.0.1:${port}/mcp`, port }),
     (error: unknown) => {
@@ -219,8 +199,6 @@ export async function serve(
         ...launch,
       }),
     );
-    // Each theme and text size's sheet, built the first time a frame asks
-    // for it.
     const sheets = new Map<string, string>();
     const { settings } = app;
     sketchBuilt.resolve(
@@ -267,7 +245,6 @@ export async function serve(
   };
 }
 
-// Listens on the first port that isn't taken. Any other failure stops it.
 async function listen(server: Server, ports: readonly number[]): Promise<AddressInfo> {
   for (const [i, port] of ports.entries()) {
     try {

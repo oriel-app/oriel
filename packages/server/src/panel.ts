@@ -1,6 +1,4 @@
-// The panel beside the page: one item, read live through the reader the
-// agent's `items.read` uses, so both see the same item, in its source's own
-// view (each source's declaration says how). A thin read: it changes nothing.
+// Read live through the reader the agent's `items.read` uses, so both see the same item.
 import {
   type IndexRecord,
   type Instant,
@@ -15,14 +13,12 @@ import { webUrl } from "./views.ts";
 
 export type PanelDeps = {
   reader: Pick<Reader, "read">;
-  // The index's live records, from every source.
   records: () => readonly IndexRecord[];
   sources: Readonly<Record<SourceKind, Pick<SourceDeclaration, "name" | "panel">>>;
   now: () => Instant;
 };
 
 export type ItemPanels = {
-  // Throws when the source can't be reached; a missing item is a view.
   read(id: ItemId): Promise<ItemPanelView>;
   stamp(id: ItemId): ItemStampView;
 };

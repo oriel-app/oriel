@@ -1,7 +1,4 @@
-// A workspace's connections as the server keeps them (decision 0049): each
-// one's options in the database, and its items in the index under its
-// prefix. None keeps a secret (decision 0059). The server makes every
-// connection's ID; the page only names one it has.
+// None keeps a secret. The server makes every connection's ID; the page only names one it has.
 import type { DatabaseSync } from "node:sqlite";
 import type { ConnectionSettings, Instant, Log, SourceKind, Ulid } from "@oriel/core";
 import { type Connection, connectionStore, type IndexStore } from "@oriel/db";
@@ -22,29 +19,22 @@ export function connectionsOf(deps: {
   return {
     list: () => store.list(workspaceId),
 
-    // One by its ID, live or a tombstone; null when this workspace has none.
     get: (id: Ulid): Connection | null => store.get(workspaceId, id),
 
-    // Sets a live connection's options, which its next sync reads with.
     configure(connection: Connection, options: Record<string, unknown>): void {
       store.configure(workspaceId, connection.id, options);
     },
 
-    // Sets a live connection's name and how often it syncs.
     settle(connection: Connection, settings: ConnectionSettings): void {
       store.settle(workspaceId, connection.id, settings);
     },
 
-    // A kind's first live connection, the one each kind's source opens until
-    // a kind can have several.
     first(kind: SourceKind): Connection | null {
       return store.live(workspaceId, kind)[0] ?? null;
     },
 
     planned: (kind: SourceKind, identity: string) => store.planned(workspaceId, kind, identity),
 
-    // Connects a thing, or finds the live connection that has it. A new one
-    // takes `id` when given, as from `planned`, and a new one otherwise.
     connect(made: {
       id?: Ulid;
       kind: SourceKind;
@@ -61,10 +51,7 @@ export function connectionsOf(deps: {
       );
     },
 
-    // A connection a flag makes at start, under `pnpm dev`, for fixtures and
-    // tests: its kind's first, which follows its flag. A database is one per
-    // set of modes, so what a flag names changes only when the flag does,
-    // and then its items follow it, as a kind's did before connections.
+    // A database is one per set of modes, so what a flag names changes only when the flag does.
     flagged(kind: SourceKind, identity: string, options: Record<string, unknown>): Connection {
       const live = store.live(workspaceId, kind)[0];
       if (live && live.identity !== identity) store.repoint(workspaceId, live.id, identity);
@@ -80,10 +67,6 @@ export function connectionsOf(deps: {
       return { ...first, identity, options };
     },
 
-    // Disconnects: a tombstone left, and its items, their change log and the
-    // references they made forgotten. Workstreams that hold its items keep
-    // them, as items the index no longer has, and threads keep what was
-    // said.
     disconnect(connection: Connection): void {
       store.disconnect(workspaceId, connection.id, now());
       index.forget(workspaceId, connection.prefix, now());

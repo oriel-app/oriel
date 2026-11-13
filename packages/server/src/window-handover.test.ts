@@ -1,8 +1,3 @@
-// The window chat moving into a workstream (decision 0027, OA-347): once it
-// is a workstream's thread, the window starts a fresh chat, the thread is the
-// user's turn like any other, and New chat never reaches it. For each way
-// in: a plan's change set applied there, whose items join its workstream;
-// the agent adding items to it; and Continue in….
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { DiffView, ThreadsView, ThreadView, WorkstreamView } from "@oriel/web/view";
@@ -45,7 +40,6 @@ async function app(t: TestContext) {
   };
   const listed = async (id: string) =>
     json<ThreadsView>(await it.get("/api/threads")).threads.find((each) => each.id === id);
-  // The three things the ticket asks, of the thread the chat moved into.
   const handedOver = async (moved: string) => {
     assert.equal(await current(), null, "the window shows a fresh chat");
     const thread = await listed(moved);
@@ -74,7 +68,6 @@ test("a plan's change set applied in the window chat moves it into its workstrea
     (e) => e.kind === "change-set",
   );
   assert.ok(set?.kind === "change-set");
-  // Still the window's while it waits on the user's review.
   assert.equal(await it.current(), id);
   const { hash } = json<DiffView>(await it.post(`/api/change-sets/${set.changeSetId}/diff`));
   it.advance(1000);
@@ -87,7 +80,6 @@ test("a plan's change set applied in the window chat moves it into its workstrea
     members.map((m) => m.ref.key),
     ["SYN-900", "SYN-901"],
   );
-  // Applied, it's done; the user's reply on its page reopens it there.
   await it.post(`/api/threads/${id}/messages`, { text: "Thanks" });
   await it.app.settled();
   await it.handedOver(id);

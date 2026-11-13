@@ -1,8 +1,3 @@
-// Sketches on the server (decision 0033): stored with their turn, framed
-// from the sketch origin, which serves only `GET /sketches/<thread>/<sketch>`
-// behind the Host check, checked again each time, under a policy that stops
-// every fetch, in a frame with no sandbox token. The window's pages may
-// frame that origin; a review link's page may not.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -24,8 +19,6 @@ const draw =
   (html: string, height = 400): Script =>
   async (bindings) => ({ value: (await bindings.read("sketch", [html, height])).value });
 
-// A thread whose one turn ran `scripts`' draw, and the sketch origin over
-// the app.
 async function sketched(t: Parameters<typeof testApp>[0], script = draw(drawing)) {
   const app = await testApp(t, {
     scripts: { draw: script },

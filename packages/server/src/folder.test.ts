@@ -1,5 +1,3 @@
-// A folder of markdown files, connected by its typed path: its items join
-// the window beside Jira's, and a workstream can mix both.
 import assert from "node:assert/strict";
 import {
   chmodSync,
@@ -16,7 +14,6 @@ import { type TestContext, test } from "node:test";
 import type { ConnectionView, ThreadView, WindowView, WorkstreamView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
-// A fresh folder for each test, removed when it ends.
 function folder(t: TestContext, files: Record<string, string>) {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-folder-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
@@ -55,14 +52,12 @@ test("picking the same folder again keeps every item's ID", async (t) => {
   const app = await connected(t);
   const before = fileIds(app.app.window("epic"));
   assert.equal(before.length, 2);
-  // Typed another way, it resolves to the same folder.
   const again = await app.connect("folder", { path: `${app.dir.root}/` });
   assert.equal(again.status, 200);
   const after = fileIds(app.app.window("epic"));
   assert.deepEqual(after, before);
 });
 
-// Every folder item's ID the window shows, from any folder's connection.
 const allFileIds = (view: WindowView) =>
   view.clusters
     .flatMap((c) => c.list.map((row) => row.id))
@@ -89,8 +84,6 @@ test("another folder takes the place of the first as a later connection, and the
     ]);
   assert.deepEqual(await members(), [[held, true]]);
 
-  // Another folder: a later connection, whose items carry its number. The
-  // first's go from the window, and its workstream holds its item as gone.
   const plans = join(app.dir.top, "plans");
   mkdirSync(plans);
   writeFileSync(join(plans, "Roadmap.md"), "Q4.");
@@ -99,8 +92,6 @@ test("another folder takes the place of the first as a later connection, and the
   assert.equal(second.length, 1);
   assert.match(second[0] ?? "", /^folder\.2:[0-9a-f]{16}$/);
   assert.deepEqual(await members(), [[held, false]]);
-  // The first again: the same connection, so the same IDs, and its workstream
-  // holds its item again. Restarting changes nothing.
   assert.equal((await app.connect("folder", { path: app.dir.root })).status, 200);
   assert.deepEqual(await window(), first);
   assert.deepEqual(await members(), [[held, true]]);
@@ -121,8 +112,6 @@ test("a sync asked for while another folder takes the first's place never brings
     for (let i = 0; i < wait; i++) await new Promise((resolve) => setImmediate(resolve));
     const synced = app.sync("folder");
     assert.equal((await replacing).status, 200);
-    // It names the connection open when it was asked for: synced, or, once
-    // another took its place, not connected now.
     assert.ok([200, 409].includes((await synced).status), `after ${wait}`);
     const ids = allFileIds(app.app.window("epic"));
     const prefixes = [...new Set(ids.map((id) => id.split(":")[0]))];

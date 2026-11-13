@@ -1,12 +1,5 @@
-// A tiny stdio MCP server, in tests and shots only (OA-275): a tracker's
-// source server as a person's agent would list it, with no SDK and nothing
-// behind its tools. Not a package, and never shipped. It answers
-// `server/discover` (2026-07-28), which Claude Code opens with, as well as
-// `initialize` (2025-06-18), as every stdio server Oriel writes must.
-//
-// Run as `node tiny-server.ts [name]`: `name` is what it reports, by
-// default the name the test entry in testing.ts knows, and
-// `--no-get` leaves out a read tool, for a server that isn't recognised.
+// Tests and shots only, never shipped. It answers `server/discover` (2026-07-28), which Claude Code opens with,
+// and `initialize` (2025-06-18), as every stdio server Oriel writes must.
 import { createInterface } from "node:readline";
 
 const modern = "2026-07-28";

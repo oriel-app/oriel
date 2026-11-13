@@ -1,6 +1,4 @@
-// A push-to-pull queue for a streamed reply. `return` (the client left, or
-// the server is closing) ends it at once, even while the reader waits, and
-// calls `onEnd` exactly once.
+// `return` ends it at once, even while the reader waits, and calls `onEnd` exactly once.
 export function channel<T>(onEnd: () => void) {
   const queue: T[] = [];
   let waiting: ((result: IteratorResult<T, undefined>) => void) | null = null;

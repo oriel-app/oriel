@@ -1,5 +1,3 @@
-// Deleting a thread: once deleted, its change sets can't be acted on, by the
-// window or a review link; and one whose agent is answering isn't deleted.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { ChangeSetView, DiffView, ThreadView } from "@oriel/web/view";
@@ -40,13 +38,11 @@ test("a deleted thread's change sets are out of reach, here and by a review link
   assert.equal(approved.changeSet.status, "applied");
   assert.equal((await app.post(`/api/threads/${app.threadId}/delete`)).status, 200);
   assert.equal((await app.get(`/api/threads/${app.threadId}`)).status, 404);
-  // Its change sets can't be acted on, here or by a review link.
   assert.equal((await app.post(`/api/change-sets/${entry.changeSetId}/revert`)).status, 404);
   assert.equal((await app.post(`/api/change-sets/${entry.changeSetId}/review-link`)).status, 404);
   assert.equal(app.site?.issue("SYN-23")?.points, 3, "what it wrote stays in Jira");
 });
 
-// Answers until stopped.
 const answering: Agent = {
   async *turn(_input, { signal }) {
     await new Promise((resolve) => signal.addEventListener("abort", resolve));

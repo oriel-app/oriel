@@ -1,5 +1,4 @@
-// A watcher ends what the server started once the desktop app is gone, and
-// nothing else (OA-195, #164: what the server started outlived a crash).
+// Defect fixed in 9e8861b6: what the server started outlived a crash.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { leftOver, processTable } from "./processes.ts";

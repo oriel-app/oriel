@@ -1,10 +1,4 @@
-// Settings (OA-181): the person's providers, the default model and the
-// Title model, the theme, the text size, which key sends a question, and
-// whether the desktop app notifies (OA-184) and asks before quitting while
-// Oriel works (decision 0045), and where a thread's page goes after an
-// approval.
-// They live in one JSON file in the data folder, `.oriel/` under `pnpm dev`,
-// and apply as soon as they change. The file holds no key or credential.
+// The file holds no key or credential.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
 import {
@@ -39,9 +33,6 @@ import {
   type UsageView,
 } from "@oriel/web/view";
 
-// One provider instance. A second account of a kind is another instance,
-// with its own ID and name. `path`: where its CLI is, when the person set
-// one; it wins over the PATH.
 export type ProviderSetting = {
   id: string;
   kind: ProviderKind;
@@ -50,7 +41,6 @@ export type ProviderSetting = {
   path?: string;
 };
 
-// `model` and `titleModel` null: Oriel picks, as before Settings existed.
 export type Settings = {
   providers: ProviderSetting[];
   model: ModelPick | null;
@@ -58,25 +48,15 @@ export type Settings = {
   theme: string;
   textSize: TextSize;
   send: SendKey;
-  // A desktop notification when a thread newly needs the person.
   notify: boolean;
-  // The desktop app asks before quitting while a thread's turn runs or a
-  // change set applies.
   askBeforeQuitting: boolean;
-  // How the window writes a time, everywhere but a review link's page.
   timeFormat: TimeFormat;
-  // Whether a thread's page stays after an approval there, or goes on to
-  // the next thread that needs the person.
   afterApprove: AfterApprove;
-  // How often Oriel reads the person's source servers, in minutes, or null
-  // for when it opens and when they press sync (decision 0059).
+  // Minutes; null reads only when Oriel opens and when the person presses sync.
   sourceSync: number | null;
 };
 
-// One instance of each kind, on, in the order Settings lists them. An API
-// key is no provider Settings lists (decision 0059): an `api` instance an
-// older file kept is dropped as it's read, and `.env`'s key runs only under
-// `pnpm dev --agent api` (model.ts).
+// An `api` instance an older file kept is dropped as it's read; `.env`'s key runs only under `pnpm dev --agent api`.
 const settingsKinds = ["claude-code", "codex"] as const;
 const defaultProviders: readonly ProviderSetting[] = [
   { id: "claude-code", kind: "claude-code", name: "Claude Code", on: true },
@@ -103,7 +83,6 @@ const idValue = refine(string, (id) => /^[a-z0-9-]{1,40}$/.test(id), "expected a
 const oneOf = <const T extends readonly string[]>(values: T) =>
   union(...values.map((value) => literal(value))) as Validator<T[number]>;
 const pickValue = object({ provider: idValue, model: string });
-// Every so many minutes, from 5 to a day.
 const syncMinutes = refine(
   number,
   (minutes) => Number.isInteger(minutes) && minutes >= 5 && minutes <= 1440,
@@ -111,8 +90,7 @@ const syncMinutes = refine(
 );
 const nameValue = refine(string, (name) => name.trim() !== "" && name.length <= 60, "a name");
 
-// A CLI's path as Settings takes it: absolute, and to a program named for
-// the CLI, so a path can only ever start the CLI it names.
+// Absolute, and to a program named for the CLI, so a path can only ever start the CLI it names.
 export function cliPath(kind: ProviderKind, path: string): boolean {
   const program = kind === "claude-code" ? "claude" : kind === "codex" ? "codex" : null;
   const names = program ? [program, `${program}.exe`, `${program}.cmd`] : [];
@@ -132,8 +110,7 @@ const providerValue = object({
   path: string,
 });
 
-// What the file holds, field by field: a field it can't read falls back to
-// its default, so one bad value never loses the rest.
+// A field it can't read falls back to its default, so one bad value never loses the rest.
 function read(parsed: unknown): Settings {
   const record = typeof parsed === "object" && parsed !== null ? parsed : {};
   const field = <T>(key: keyof Settings, validator: Validator<T>, fallback: T): T => {
@@ -148,7 +125,6 @@ function read(parsed: unknown): Settings {
     const { path, ...rest } = result.value;
     kept.push(path !== "" && cliPath(rest.kind, path) ? { ...rest, path } : rest);
   }
-  // A kind Oriel added since the file was written shows up, on.
   const missing = defaultProviders.filter((p) => !kept.some((k) => k.kind === p.kind));
   return {
     providers: [...kept, ...missing],
@@ -169,8 +145,7 @@ function read(parsed: unknown): Settings {
   };
 }
 
-// The settings file at `path`, read once and kept in memory; each change is
-// written whole and renamed into place, readable by its owner only.
+// Each change is written whole and renamed into place, readable by its owner only.
 export function settingsFile(path: string, log: Log): SettingsStore {
   let current = load();
   function load(): Settings {
@@ -211,7 +186,6 @@ export function memorySettings(initial: Partial<Settings> = {}): SettingsStore {
   };
 }
 
-// A change from the settings page, as the route takes it.
 export const settingsChange: Validator<SettingsChange> = union(
   object({ theme: string }),
   object({ textSize: oneOf(textSizes) }),
@@ -229,9 +203,6 @@ export const settingsChange: Validator<SettingsChange> = union(
 
 export class SettingsRefused extends Error {}
 
-// `settings` with `change` made, or why not. Themes and models are checked
-// against what exists; whether a model's provider is connected is the
-// model chooser's to say.
 export function changed(
   settings: Settings,
   change: SettingsChange,
@@ -271,17 +242,11 @@ export function changed(
   return { ...settings, providers: providers({ ...provider, path: change.path }) };
 }
 
-// The settings page's routes, over the store and the model chooser. Without
-// a chooser, the server runs the scripted agent and lists no provider.
 export type SettingsService = {
   view(): SettingsView;
   change(change: SettingsChange): Promise<SettingsView>;
-  // Looks for every provider again, as Check again asks.
   look(): Promise<SettingsView>;
-  // What the page's <html> carries, so its first paint is right.
   page(): { theme: string; textSize: TextSize };
-  // How much of each Claude Code instance's plan Oriel has used (decision
-  // 0046).
   usage(): Promise<UsageView[]>;
 };
 
@@ -289,21 +254,12 @@ export function settingsService(deps: {
   store: SettingsStore;
   models: Models | null;
   themes: readonly string[];
-  // Whether a change may set where a CLI is (decision 0041).
   cliPaths: boolean;
-  // The person's home folder: a CLI's path shows from `~`, and a `~/…`
-  // saved expands back (OA-315). None in a test that doesn't care.
   home?: string;
-  // Whether this server can notify: only the desktop app's shell shows them.
   notifies?: boolean;
-  // Whether this server's app asks before quitting: only the desktop app's.
   asksBeforeQuitting?: boolean;
-  // A theme was picked, for telemetry.
   picked(theme: string): void;
-  // A change was kept.
   saved?(): void;
-  // Threads run on another agent now, which may have other source servers
-  // (decision 0059); and how often sync runs changed.
   agentChanged?(): void;
   synced?(): void;
 }): SettingsService {
@@ -340,7 +296,6 @@ export function settingsService(deps: {
   return {
     view,
     async change(asked) {
-      // A path saved from `~` is kept as the real one.
       const change =
         "path" in asked && asked.path !== null
           ? { ...asked, path: homeExpanded(asked.path, home) }
@@ -372,7 +327,6 @@ export function settingsService(deps: {
       const runs = () => models?.choose(store.get()).model?.provider.id ?? null;
       const before = runs();
       await models?.look(store.get());
-      // A CLI signed out or in since: Sources ask the agent that runs now.
       if (runs() !== before) deps.agentChanged?.();
       return view();
     },

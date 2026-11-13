@@ -1,6 +1,3 @@
-// The agent's door onto Oriel's own actions (decision 0024): the host
-// refuses what would break a change set or close a thread that waits on the
-// user, and the Undo under the reply puts back what the agent did.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { type Actor, type IndexRecord, instant, ulid } from "@oriel/core";
@@ -30,9 +27,6 @@ const remove =
   (...items: string[]): Script =>
   async () => ({ intents: [["workstream.remove", [{ items }]]] });
 
-// A workstream on checkout and a thread on it, whose turns follow `plan` for
-// what the user says, over `scripts`. Each turn starts a second after the
-// last, so what it does lands after what the user said.
 async function thread(
   t: TestContext,
   scripts: Record<string, Script>,
@@ -87,11 +81,9 @@ test("the host refuses to close a thread that waits on the user, and its own whe
     [[false, null]],
   );
   assert.equal(proposed.state, "working");
-  // A later turn can't close it either while that change set waits.
   const later = await app.ask("Close");
   assert.equal(app.lines(later).at(-1)?.applied, false);
   assert.equal(later.state, "working");
-  // The user still may.
   app.advance(1000);
   const closed = json<ThreadView>(await app.post(`/api/threads/${app.threadId}/done`));
   assert.equal(closed.state, "done");
@@ -140,8 +132,6 @@ test("a stopped turn applies nothing it asked for", async (t) => {
   assert.ok((await app.members()).includes("jira:SYN-10"));
 });
 
-// The dispatcher alone, with a turn running in a second thread on the
-// workstream, and the turn's starter under the test's control.
 function world(startedBy: Actor | null = { kind: "user" }) {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -204,7 +194,6 @@ test("the host refuses the agent what another thread's running turn needs, and t
     lines.map((line) => line.applied),
     [false, false],
   );
-  // Its own thread's turn is the one acting, so it may close it.
   const own = await w.intents.apply({ thread: w.thread, changeSetId: null }, [
     { action: "thread.done", input: { thread: w.thread.id } },
   ]);
@@ -248,8 +237,6 @@ test("the agent can't close a thread whose held message waits on the user", asyn
   assert.notEqual(w.threads.get(w.thread.id, t0)?.state, "done");
 });
 
-// The list under the agent's reply at its latest, and how its Undo names a
-// line there (OA-88).
 const lastList = (view: ThreadView) => {
   const list = view.entries.findLast((e) => e.kind === "actions");
   assert.ok(list?.kind === "actions", "a list under the reply");
@@ -276,10 +263,8 @@ test("Undo under the reply puts back what the agent removed, once, and Redo remo
   assert.ok(back.includes("jira:SYN-10") && back.includes("jira:SYN-21"));
   const view = json<ThreadView>(await app.get(`/api/threads/${app.threadId}`));
   assert.equal(lastList(view).lines[0]?.undone, true);
-  // The same Undo again changes nothing: the line was already undone.
   const again = await app.post(undoUrl(undo.action, app.threadId, list.seq), undo.input);
   assert.equal(again.status, 403);
-  // Redo takes them out again, and the line offers its Undo once more.
   assert.ok(redo);
   const redone = await app.post(undoUrl(redo.action, app.threadId, list.seq), redo.input);
   assert.equal(redone.status, 200);
@@ -287,7 +272,6 @@ test("Undo under the reply puts back what the agent removed, once, and Redo remo
   const after = lastList(json<ThreadView>(await app.get(`/api/threads/${app.threadId}`)));
   assert.equal(after.lines[0]?.undone, undefined);
   assert.deepEqual(after.lines[0]?.undo, undo);
-  // A line that isn't there is not found.
   const nowhere = await app.post(undoUrl(undo.action, app.threadId, list.seq, 5), undo.input);
   assert.equal(nowhere.status, 404);
 });
@@ -296,7 +280,6 @@ test("a new thread adds an epic it doesn't hold and proposes a story in it in th
   const app = await testApp(t, {
     plan: () => [{ run: "join" }, { run: "story" }],
     scripts: {
-      // Found by this run's search, so it may join.
       join: async (bindings) => {
         await bindings.read("search", ["Boarding passes", 5]);
         return { intents: [["workstream.add", [{ items: ["jira:SYN-2"] }]]] };
@@ -314,8 +297,6 @@ test("a new thread adds an epic it doesn't hold and proposes a story in it in th
   await app.app.settled();
   const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
   const kinds = view.entries.map((e) => e.kind);
-  // The epic joined, with its Undo and its marker, before the change set the
-  // same turn proposed.
   const lines = view.entries.flatMap((e) => (e.kind === "actions" ? e.lines : []));
   assert.deepEqual(
     lines.map((line) => line.applied),

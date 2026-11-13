@@ -1,10 +1,5 @@
-// Sync, an item's read, a change set's diff and its replay, through the
-// routes, on the real Claude Code's tool host (decision 0060) and the dev
-// stand-ins of Atlassian's and Slack's servers (packages/standin-mcp), which
-// the CLI starts itself. No model runs, so the CLI needs no sign-in: it
-// keeps its state in a folder of the test's own, never the person's
-// `~/.claude`. Skipped unless ORIEL_LIVE_CLAUDE_CODE=1. Each step's time is
-// printed, for a PR's before and after.
+// On the real Claude Code's tool host and the dev stand-ins, with no model, so the CLI needs no sign-in; its state is in a
+// folder of the test's own, never the person's `~/.claude`. Skipped unless ORIEL_LIVE_CLAUDE_CODE=1.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,7 +49,6 @@ async function world(t: TestContext, script: Script) {
   const it = await testApp(t, {
     jira: false,
     discover: fakeAgent(() => servers).discover,
-    // The stand-ins at their own command, as ORIEL_DEV_STANDINS has them.
     knownServers: [
       {
         kind: "jira",
@@ -107,7 +101,6 @@ test("sync, read, diff and replay through the tool host on the stand-ins", { ski
     writes: [
       ["jira.setSummary", ["jira:SYN-10", "Checkout through the tool host"]],
       ["jira.setStatus", ["jira:SYN-10", "In Progress"]],
-      // Its ID is found among the issue's comments, read before and after.
       ["jira.addComment", ["jira:SYN-10", "Renamed through the tool host."]],
     ],
   });
@@ -145,7 +138,6 @@ test("sync, read, diff and replay through the tool host on the stand-ins", { ski
   const applied = json<DiffView>(await it.post(`/api/change-sets/${entry.changeSetId}/diff`));
   const comment = applied.lines.at(-1)?.fields.map((field) => field.name);
   assert.match(comment?.[0] ?? "", /^comment:\d+$/, "the new comment's ID was found");
-  // Written by the replay's host, and read back through the sync's.
   const after = json<{ title?: string }>(await it.get("/api/items/jira%3ASYN-10"));
   assert.equal(after.title, "Checkout through the tool host");
 });

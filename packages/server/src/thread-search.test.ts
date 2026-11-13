@@ -1,5 +1,3 @@
-// Searching threads (OA-108, OA-110): the query's text never reaches
-// telemetry, and a review link holder's held reason is never found.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fixtureApi, loadSlackFixture } from "@oriel/slack";

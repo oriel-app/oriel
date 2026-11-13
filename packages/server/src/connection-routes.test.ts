@@ -1,6 +1,3 @@
-// The window's connection routes (decision 0049) where trust or data is at
-// stake: an ID the page can't choose, and a read-only connection that offers
-// no write.
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,9 +10,6 @@ import { json, type Script, t0, testApp } from "./testing.ts";
 
 const site = "https://oriel.atlassian.net";
 
-// Jira reading SYN, through Atlassian's server in the person's agent: a
-// connection made before decision 0059, kept in the database with its
-// project, which turning Jira on opens again (decision 0059).
 async function connected(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-routes-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
@@ -36,7 +30,6 @@ async function connected(t: TestContext, options: Parameters<typeof testApp>[1] 
   return { ...app, jira };
 }
 
-// A folder of one note, which the window connects itself.
 function notes(t: TestContext): string {
   const path = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-routes-")));
   t.after(() => rmSync(path, { recursive: true, force: true }));
@@ -88,7 +81,6 @@ test("read-only, a connection gets no writer and its namespace offers no write, 
   const readOnly = await module();
   assert.match(readOnly, /declare const jira: \{/);
   assert.doesNotMatch(readOnly, /setSummary|createStory/);
-  // May propose changes again, by its Undo.
   await app.post("/api/actions/source.configure", set.undo.input);
   assert.equal((await app.connection("jira"))?.readOnly, false);
   assert.match(await module(), /setSummary/);

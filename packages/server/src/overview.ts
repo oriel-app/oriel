@@ -1,7 +1,4 @@
-// The overview (decision 0027), computed when it is asked for from the
-// index, the change log, workstreams, threads and change sets: never by a
-// model. The page and the window chat's `window.overview()` read this one
-// view. Each derived signal carries its rule.
+// Computed from Oriel's own data when asked for, never by a model; each derived signal carries its rule.
 import {
   type ChangeLogEntry,
   type Cluster,
@@ -37,11 +34,8 @@ import { webUrl } from "./views.ts";
 
 export type OverviewInput = {
   records: readonly IndexRecord[];
-  // Every change log entry kept, in the order they committed.
   changes: readonly ChangeLogEntry[];
-  // When the user last left the overview, and the last entry seen then.
   seen: { at: Instant; seq: number } | null;
-  // The open workstreams, with their members now.
   workstreams: readonly {
     id: string;
     name: string;
@@ -49,14 +43,11 @@ export type OverviewInput = {
     members: readonly WorkstreamMember[];
   }[];
   threads: readonly ThreadSummaryView[];
-  // Review links sent that nobody has opened.
   unopened: readonly { changeSetId: string; threadId: string; sentAt: Instant }[];
-  // A grouping's clusters now, which a cluster candidate names.
   clusters: (grouping: GroupingId) => readonly Cluster[];
   now: Instant;
 };
 
-// How many rows a capped section sends.
 export const caps = { candidates: 8, people: 10 };
 
 const identity = (source: string, stableId: string) => `${source}\u0000${stableId}`;
@@ -73,7 +64,6 @@ export const itemRef = (record: IndexRecord): ItemRef => ({
 const latest = (instants: readonly string[], fallback: string): string =>
   instants.reduce((a, b) => (b > a ? b : a), fallback);
 
-// Which open workstream holds each item, the first one listed, by identity.
 function holders(
   workstreams: OverviewInput["workstreams"],
 ): Map<string, { id: string; name: string }> {
@@ -84,9 +74,6 @@ function holders(
   return holder;
 }
 
-// The open workstream that holds an item, the first listed, by identity
-// when the index has it: where Continue in… carries a request about it
-// (decision 0062).
 export function holderOf(
   workstreams: OverviewInput["workstreams"],
   records: readonly IndexRecord[],
@@ -99,8 +86,6 @@ export function holderOf(
   return found ? { id: found.id, name: found.name } : null;
 }
 
-// Whether an open workstream holds a record: what Not in a workstream yet
-// leaves out, and Browse's "not in a workstream" filter too.
 export function heldBy(
   workstreams: OverviewInput["workstreams"],
 ): (record: IndexRecord) => boolean {
@@ -258,17 +243,9 @@ export function overviewView(input: OverviewInput): OverviewView {
   };
 }
 
-// How many of the Linked grouping's clusters are candidates, the most
-// linked first, and how many items no workstream holds one needs: the item
-// named and at least two that name it, or that it names.
 const linkedCandidates = 3;
 const linkedAtLeast = 3;
 
-// Every source's candidates, and the Linked clusters most worth curating,
-// ranked together by weight, then by how recently their items changed
-// (decision 0027). A cluster's items are its grouping's now, as Make a
-// workstream copies them, and a candidate whose items an open workstream
-// all holds is none.
 function rankCandidates(
   input: OverviewInput,
   held: (record: IndexRecord) => boolean,
@@ -281,8 +258,6 @@ function rankCandidates(
     now: input.now,
   });
   const items = (cluster: Cluster) => clusterMembers(cluster).flatMap((id) => byId.get(id) ?? []);
-  // A cluster as a candidate row; null when no item of it is left that no
-  // workstream holds, so nothing to make a workstream of.
   const clusterRow = (
     grouping: GroupingId,
     cluster: Cluster,
@@ -327,7 +302,6 @@ function rankCandidates(
     const row = cluster && clusterRow(grouping, cluster, base);
     return row ? [row] : [];
   });
-  // Weighed as the items in it no workstream holds, each an item to look at.
   const linked = input
     .clusters("linked")
     .flatMap((cluster) => {
@@ -393,10 +367,6 @@ function peopleOf(
 
 const names = new Intl.Collator("en");
 
-// The four standing questions (decision 0027's headlines): which workstream
-// moved most since the user looked, which has been quiet longest, what chat
-// names most this week, and the top candidate. Each is the extreme of one
-// measure, with its rule.
 function headlines(
   input: OverviewInput,
   workstreams: readonly WorkstreamRowView[],
@@ -425,7 +395,6 @@ function headlines(
       subject: { kind: "workstream", id: quiet.id, name: quiet.name },
       detail: `nothing moved in ${quiet.idleDays} ${quiet.idleDays === 1 ? "day" : "days"}`,
     });
-  // Chat messages from the last 7 days, and the items they name.
   const named = new Map<string, number>();
   for (const record of input.records)
     if (record.facets.kind === "message" && thisWeek(record.updatedAt, input.now))
@@ -460,9 +429,6 @@ function headlines(
   return lines;
 }
 
-// Every item the overview shows, once each, in the order it shows them: what
-// the window chat's window.overview() reaches outside its region (decision
-// 0027).
 export function overviewItems(view: OverviewView): string[] {
   const refs = [
     ...view.headlines.flatMap((line) => (line.subject.kind === "item" ? [line.subject.item] : [])),

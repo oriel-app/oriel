@@ -1,9 +1,3 @@
-// Slack through Slack's MCP server (decision 0059, OA-277), end to end
-// through the routes: the person's agent is a fake that lists the server,
-// and its processes call the stand-in's tools on Ferrowick in memory. Sync
-// reads with the read tools only, a change set's replay writes with the
-// write tool only, from another process, and an answer Oriel can't read
-// keeps the index as it was.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { FoundServer, ToolCall } from "@oriel/core";
@@ -34,12 +28,9 @@ type Made = { server: string; process: number; tools: readonly string[]; call: T
 async function world(
   t: TestContext,
   options: {
-    // A flag's Slack over its workspace in memory, beside the server.
     memory?: true;
     script?: Script;
-    // Changes an answer on its way back, as a server that changed might.
     answer?: (call: ToolCall, answer: unknown) => unknown;
-    // The channels the person is in, the fixture's picked unless given.
     yours?: string[];
   } = {},
 ) {
@@ -118,8 +109,6 @@ test("Slack on through its server syncs the person's channel with its read tools
 
 const conversation = `slack:${weather}-${question}`;
 
-// A thread whose agent replies to Amara, its change set approved: the
-// thread as it is then, and the set's ID.
 async function approvedReply(it: Awaited<ReturnType<typeof world>>) {
   const { id: workstreamId } = json<{ id: string }>(
     await it.post("/api/workstreams", { kind: "picked", name: "Rebooking", items: [conversation] }),

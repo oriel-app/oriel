@@ -1,9 +1,5 @@
-// How much of the person's plan Oriel has used (decision 0046): today's
-// turns and tokens on each Claude Code instance, counted from the harness's
-// own responses, kept in `usage.json` in the data folder beside
-// `settings.json`. Only counts are kept, for today alone: never a message, a
-// title or anything a turn said. The plan's own windows are the CLI's answer,
-// asked for when Settings shows them, and never kept.
+// Only counts are kept, for today alone: never a message, a title or anything a turn said.
+// The plan's own windows are the CLI's answer, asked for when Settings shows them, and never kept.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Usage } from "@oriel/agent";
@@ -11,8 +7,7 @@ import type { Log } from "@oriel/core";
 import type { UsageCountsView } from "@oriel/web/view";
 
 export type UsageCounts = {
-  // A response's tokens on an instance, its input counting what it read
-  // from the cache too; `turn` when it starts a turn.
+  // Its input counts what it read from the cache too.
   count(instance: string, used: Usage, turn: boolean): void;
   today(instance: string): UsageCountsView;
 };
@@ -21,7 +16,6 @@ type Kept = { day: string; instances: Record<string, UsageCountsView> };
 
 const none: UsageCountsView = { turns: 0, inputTokens: 0, outputTokens: 0 };
 
-// The local calendar day, as YYYY-MM-DD.
 export function localDay(at: Date): string {
   const two = (n: number) => String(n).padStart(2, "0");
   return `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
@@ -30,7 +24,6 @@ export function localDay(at: Date): string {
 const whole = (value: unknown) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 
-// What a file holds, read as counts only; anything else is dropped.
 function read(parsed: unknown): Kept {
   const record = typeof parsed === "object" && parsed !== null ? parsed : {};
   const { day, instances } = record as { day?: unknown; instances?: unknown };
@@ -50,7 +43,6 @@ function read(parsed: unknown): Kept {
 
 function counter(initial: Kept, today: () => string, save: (kept: Kept) => void): UsageCounts {
   let kept = initial;
-  // Yesterday's counts go when today's first is counted, or asked for.
   const current = () => {
     const day = today();
     if (kept.day !== day) kept = { day, instances: {} };
@@ -71,8 +63,7 @@ function counter(initial: Kept, today: () => string, save: (kept: Kept) => void)
   };
 }
 
-// The counts in the file at `path`, read once; each count rewrites it whole
-// and renames it into place, readable by its owner only.
+// Each count rewrites the file whole and renames it into place, readable by its owner only.
 export function usageFile(
   path: string,
   log: Log,

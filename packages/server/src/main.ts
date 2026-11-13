@@ -117,7 +117,6 @@ if (fresh !== undefined && !/^[a-z0-9-]+$/.test(fresh)) {
   console.error("--fresh names a run in lowercase letters, digits and dashes");
   process.exit(2);
 }
-// Each connector's mode, the kinds `--on` turns on, and their database.
 const dev = devModes(values.source ?? [], values.on ?? []);
 if ("problem" in dev) {
   console.error(dev.problem);
@@ -137,9 +136,8 @@ if (!existsSync(join(files.dist, files.entry))) {
 }
 
 if (pipes && values.data) {
-  // On the shell's Node, nothing the server starts is in a group the shell
-  // can kill, so the server ends it all itself, and its watcher does when
-  // the server can't.
+  // On the shell's Node, nothing the server starts is in a group the shell can kill, so the server ends it all itself,
+  // and its watcher does when the server can't.
   if (parent) {
     process.on("exit", killDescendants);
     const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
@@ -150,7 +148,6 @@ if (pipes && values.data) {
     }
   }
   let looked: Promise<string> = Promise.resolve("");
-  // Logs go to stderr, which the shell keeps in a file.
   const desktop = await runDesktop({
     data: values.data,
     input: pipes.input,
@@ -163,9 +160,7 @@ if (pipes && values.data) {
       const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
       const data = values.data ?? "";
       const settings = settingsFile(join(data, "settings.json"), log);
-      // The CLI is found on the PATH the shell gave, and where Anthropic's
-      // installer puts it (decision 0038). A Claude Code from that installer
-      // runs only once Anthropic's signature on it checks out.
+      // A Claude Code from Anthropic's installer runs only once Anthropic's signature on it checks out.
       const home = process.env.HOME ?? homedir();
       const env = { ...process.env, PATH: withLocalBin(process.env.PATH ?? "", home) };
       const trust =
@@ -220,14 +215,9 @@ if (values.agent === "api" && key === null) {
 const dir = join(root, ".oriel", ...(fresh ? ["fresh", fresh] : []));
 mkdirSync(dir, { recursive: true });
 const log: Log = (message, fields) => console.log(JSON.stringify({ message, ...fields }));
-// The person's settings, in the data folder. The scripted agent when asked
-// for; otherwise the provider and model Settings pick among those found:
-// the person's Claude Code, their Codex as a preview, or none; or `.env`'s
-// key, first, under `--agent api`.
 const settings = settingsFile(join(dir, "settings.json"), log);
 const claudeCodePath = values["claude-code"];
-// Stand-in source servers, in dev only: the desktop app's start above never
-// reads this.
+// In dev only: the desktop app's start above never reads this.
 const standIns = devStandIns(process.env.ORIEL_DEV_STANDINS);
 const models =
   values.agent === "scripted"
@@ -239,7 +229,6 @@ const models =
         ...(standIns ? { dev: standIns.dev } : {}),
       });
 await models?.look(settings.get());
-// The MCP door's port, kept beside the database it serves, and never moved.
 const doorFile = `${named}.mcp-port`;
 const serving = await serve(
   port,
@@ -247,8 +236,6 @@ const serving = await serve(
     db: join(dir, `${named}.db`),
     sources: modes,
     ...(on.length ? { on } : {}),
-    // What every database's connections kept of their secrets before
-    // decision 0059, and Jira's saved connection from before connections.
     retire: oldSecretFiles(join(root, "secrets")),
     ...(models ? { models } : {}),
     ...(standIns ? { knownServers: standIns.known } : {}),
@@ -270,7 +257,6 @@ console.log(
     ? `Oriel's MCP door, for outside tools: ${serving.door.url}`
     : `Oriel's MCP door is closed. ${serving.door.closed}`,
 );
-// Each connector, as this start made it.
 const shown = serving.app.connections();
 for (const kind of sourceKinds) {
   const declaration = declarationOf(kind);

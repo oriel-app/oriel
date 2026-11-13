@@ -1,9 +1,3 @@
-// Oriel's MCP door (decision 0058): its tools are the registry's direct
-// actions open to tools and the agent's reads, never a person's actions; a
-// tool that acts changes a workstream as itself, which the window shows with
-// Undo; one that reads only, or was revoked, or comes from a page, is
-// refused. What it reads is only what the window reads, marked as data, and
-// it's capped each minute.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { type ActionDeclaration, type ActionName, actions } from "@oriel/core";
@@ -13,7 +7,6 @@ import { mcpHandler, type McpRequest } from "./mcp/http.ts";
 import { mcpServer, modern, perMinute } from "./mcp/protocol.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
-// What a test reads of an answer: a result, or an error.
 type Answer = {
   result: {
     tools: { name: string; annotations: { readOnlyHint: boolean } }[];
@@ -38,7 +31,6 @@ async function door(t: TestContext, options: Parameters<typeof testApp>[1] = {})
   const server = mcpServer({ outside: app.app.outside, version: "test", clock: () => clock });
   const handle = mcpHandler({ server, tools: connected, port });
   let id = 0;
-  // A 2026-07-28 request, as a client sends it, headers and all.
   const request = (
     token: string | null,
     method: string,
@@ -122,7 +114,6 @@ test("a tool that acts removes an item as itself, and the window shows it with a
   );
   const after = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstream}`));
   assert.ok(after.members.some((member) => member.ref.id === "jira:SYN-10"));
-  // Undone by the user, the tool's version is no longer the latest: no Undo.
   assert.equal(after.changes.find((change) => change.tool)?.undo, null);
 });
 
@@ -140,7 +131,6 @@ test("a tool is refused what isn't open to tools, whatever it calls it", async (
     const refused = await app.call(app.acting.token, "tools/call", { name, arguments: args });
     assert.equal(refused.error?.code, -32602, name);
   }
-  // Even straight to the dispatcher, whichever door it came by.
   for (const action of ["thread.stop", "thread.sync"] as const)
     await assert.rejects(
       app.app.outside.dispatch.untyped(action, { thread }, { kind: "tool", name: "Claude Code" }),
@@ -257,7 +247,6 @@ test("a revoked tool's open subscription ends as it is revoked", async (t) => {
   assert.equal((await stream.next()).done, true);
 });
 
-// Each turn proposes a new title for SYN-23, which only the user approves.
 const rename: Script = async () => ({
   value: null,
   writes: [["jira.setSummary", ["jira:SYN-23", "A program asked"]]],
@@ -267,7 +256,6 @@ const proposing = {
   scripts: { rename },
 };
 
-// What a resource read gives back, under its line marking it as data.
 const dataOf = (answer: Answer) => {
   const text = answer.result.contents[0]?.text ?? "";
   return JSON.parse(text.slice(text.indexOf("\n") + 1)) as unknown;
@@ -285,7 +273,6 @@ test("a program reads only what the window reads: nothing of the person's own, a
     "oriel://browse?grouping=epic&token=x",
     "oriel://items/jira%3ASYN-9999",
     "oriel://items/%E0%A4%A",
-    // The workspace's event stream is no thread: a read never opens one.
     "oriel://threads/events",
   ]) {
     const refused = await app.call(app.reading.token, "resources/read", { uri });
@@ -316,7 +303,6 @@ test("the person connects a tool in the window, its token shown once, and revoke
   assert.equal(added.status, 200);
   const { tool, token } = json<{ tool: { id: string; name: string }; token: string }>(added);
   assert.equal((await app.call(token, "tools/list")).status, 200);
-  // Listed, with no token.
   const listed = await app.get("/api/outside-tools");
   assert.ok(String(listed.body).includes(tool.id));
   assert.ok(!String(listed.body).includes(token));

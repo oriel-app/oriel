@@ -1,14 +1,9 @@
-// The agent revises its own proposed change set in place when asked for a
-// change before anyone decides (OA-309): one change set, its ID kept, its
-// hash new, and an Approve of the old diff refused as stale. Another
-// thread's agent, or a decided set, gets a new change set instead.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DiffView, ThreadView } from "@oriel/web/view";
 import { scriptedAgent } from "./scripted-agent.ts";
 import { estimate, json, type Script, testApp } from "./testing.ts";
 
-// Revises the change set awaiting review, if Oriel lets it, to 5 points.
 const revise: Script = async (bindings) => {
   const sets = (await bindings.read("thread.changeSets", [])).value as {
     id: string;
@@ -85,14 +80,12 @@ test("asked for a change before anyone decides, the agent revises its own change
   const refused = await app.post(`/api/change-sets/${set.id}/approve`, { hash: old });
   assert.equal(refused.status, 409);
 
-  // Another thread's agent can't revise it: its writes make a set of its own.
   const second = await thread();
   const elsewhere = await ask(second, "Make it 5");
   assert.equal(elsewhere.changeSets.length, 1);
   assert.notEqual(elsewhere.changeSets[0]?.id, set.id);
   assert.equal(await hashOf(set.id), now);
 
-  // Once approved, it is decided: a revision is a new change set.
   app.advance(1000);
   assert.equal((await app.post(`/api/change-sets/${set.id}/approve`, { hash: now })).status, 200);
   await app.app.settled();

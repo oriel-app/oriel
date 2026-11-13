@@ -1,17 +1,4 @@
-// What the user dropped on a workstream or a thread, as the items it names. A
-// browser hands over links (a Jira card dragged out of its board is a link to
-// the issue), text, and files by name and modification time only: it never
-// gives a page a file's path. So:
-// - a link names the item at its location, the item its source says it
-//   points into (a chat reply's link names its message), or one whose handle
-//   is a whole path segment or query value of a link to a site Oriel indexes,
-//   like a board with an issue open;
-// - text names the items whose handles are words in it;
-// - a file is the one folder file with its name and modification time.
-// What names nothing is refused with a plain reason (decision 0018: links and
-// files outside a connected folder wait for their own sources), and says
-// whether a sync might find it. A link to a site Oriel doesn't index is
-// refused by naming the sources whose items it has, by their declared names.
+// A browser hands over links, text, and files by name and modification time only: never a file's path.
 import {
   type IndexRecord,
   type ItemId,
@@ -32,7 +19,6 @@ const sameTime = 2_000;
 const webOrFile = (url: URL) =>
   url.protocol === "https:" || url.protocol === "http:" || url.protocol === "file:";
 
-// A link without its query, fragment or trailing slash.
 const place = (url: URL) =>
   `${url.protocol === "file:" ? "file://" : url.origin}${url.pathname.replace(/\/+$/, "")}`;
 
@@ -44,7 +30,6 @@ const decoded = (part: string) => {
   }
 };
 
-// "Jira, Folder and Slack": each source with items here, in declared order.
 const sourceNames = new Intl.ListFormat("en-GB");
 const elsewhere = (sources: Presentations, kinds: ReadonlySet<SourceKind>) => {
   const names = Object.entries(sources).flatMap(([kind, source]) =>
@@ -138,8 +123,6 @@ export function resolveDropped(
       ids.add(only.id);
       continue;
     }
-    // With no folder items, there is no connected folder to look in, or none
-    // with a file in it to add.
     if (!kinds.has("folder")) {
       refused.push({
         what: file.name,

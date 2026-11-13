@@ -1,9 +1,5 @@
-// What `history()` reads (core's `historyOf`): the index and its change log,
-// never a source or a model, so a pin of it can be rerun on every look
-// (decision 0053). `of` is an item, whose children it reads (an epic's
-// stories), a workstream, whose members it reads, or nothing, for every
-// item. What `of` names is checked here, as a pin's stored arguments are:
-// it is free text, the agent's, so an item's ID must be a declared kind's.
+// The index and its change log only, never a source or a model, so a pin of it can be rerun on every look.
+// `of` is the agent's free text, so an item's ID must be a declared kind's.
 import {
   type ChangeLogEntry,
   type History,

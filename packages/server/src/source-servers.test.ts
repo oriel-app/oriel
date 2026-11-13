@@ -1,6 +1,3 @@
-// Source servers (decision 0059, OA-275): which of what Oriel finds in the
-// person's agent may be turned on, by whom, and through which server. The
-// agent's answer is faked: no CLI starts.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { FoundServer } from "@oriel/core";
@@ -35,7 +32,6 @@ test("a known server Oriel finds is offered on the overview's card, never turned
     servers.found.map((each) => [each.server, each.on]),
     [["work-tracker", false]],
   );
-  // Offered, not on: the stand-in still holds the tracker's place.
   assert.deepEqual((await it.connections()).standingIn, ["tracker"]);
   assert.deepEqual(servers.kinds, []);
 });
@@ -65,7 +61,6 @@ test("a kind stays on only through the server the person picked, not another rep
   let servers = await it.look();
   assert.deepEqual(servers.kinds, []);
   assert.deepEqual((await it.connections()).standingIn, ["tracker"]);
-  // The picked one is back: on again, through it.
   found = [other, picked];
   servers = await it.look();
   assert.deepEqual(

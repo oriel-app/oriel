@@ -1,10 +1,5 @@
-// A localhost server with no login is reachable from every page the user's
-// browser has open, including links in synced content. So:
-// - Every request must name this server in Host. A site that rebinds its own
-//   domain to 127.0.0.1 sends its own name there, and is refused.
-// - A request naming any other Origin is refused, whatever its method.
-// - A request that can change state (anything but GET and HEAD) must carry this
-//   server's own Origin. One with no Origin isn't from our page, so it's refused.
+// A localhost server with no login is reachable from every page the browser has open. So every request must name this
+// server in Host (a rebound domain sends its own), no other Origin is allowed, and a state change must carry our own Origin.
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const safeMethods = new Set(["GET", "HEAD"]);
@@ -15,7 +10,6 @@ export function ownHosts(port: number): string[] {
   return [`127.0.0.1${suffix}`, `localhost${suffix}`];
 }
 
-// Why the request is refused, or null if it may go on.
 export function refusal(
   method: string,
   headers: { host?: string; origin?: string },
@@ -32,12 +26,8 @@ export function refusal(
   return null;
 }
 
-// The desktop app adds a launch secret (decision 0036). Loopback is shared
-// by every account on the machine, and a page in the person's browser can
-// still send GETs. So its server answers only requests carrying the secret
-// in the cookie its shell set, compared in constant time. A Cookie header
-// may name the cookie more than once, since cookies aren't kept apart by
-// port: any one of them may match.
+// Loopback is shared by every account on the machine, and a page in the browser can still send GETs, so the desktop server
+// answers only requests carrying the launch secret, compared in constant time. A Cookie header may name it more than once.
 export function hasLaunchSecret(
   cookies: string | undefined,
   name: string,

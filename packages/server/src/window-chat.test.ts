@@ -1,5 +1,3 @@
-// The window chat (decision 0027): New chat never drops a change set that
-// still waits on the user, and no other thread reads the window.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { StartQuestion } from "@oriel/core/window-chat";

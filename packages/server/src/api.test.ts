@@ -11,7 +11,6 @@ import type {
 import type { Agent } from "./agent.ts";
 import { host, json, type Script, testApp } from "./testing.ts";
 
-// SYN-1's epic cluster is keyed by the epic's stable ID.
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
 async function workstream(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
@@ -73,7 +72,6 @@ test("every POST needs this server's Origin, JSON, and a body within its cap", a
   assert.equal((await app.get("/api/workstreams/01ARZ3NDEKTSV4RRFFQ69G5FAV")).status, 404);
 });
 
-// Proposes 3 points for the first story in the region without an estimate.
 const estimate: Script = async (bindings) => {
   const stories = (await bindings.read("jira.listItems", [])).value as {
     id: string;
@@ -137,7 +135,6 @@ test("a rejection in the thread has an Undo, which puts it back to awaiting revi
   assert.equal(undone.status, 200);
   const view = await app.view();
   assert.equal(view.changeSets[0]?.status, "open");
-  // Its Undo is spent: undoing it again changes nothing.
   assert.equal((await app.post(`/api/actions/${undo.action}`, undo.input)).status, 403);
   // Rejected again, the new rejection has its own Undo, and the old one
   // can't take it back.
@@ -246,13 +243,10 @@ test("a review link works without the thread; its GET opens and decides nothing"
     [set.status, set.decision?.via, set.decision?.by],
     ["rejected", "review-link", "Ana"],
   );
-  // Deciding killed the link.
   assert.equal((await app.post("/api/review/open", { token })).status, 404);
   assert.equal((await app.post("/api/review/open", { token: "nonsense" })).status, 404);
 });
 
-// Thinks until stopped, then ends with its `done`, as the contract asks; or,
-// breaking it, throws.
 function waiting(keepsContract: boolean): Agent {
   return {
     async *turn(_input, { signal }) {
@@ -280,7 +274,6 @@ test("one turn at a time per thread, and stopping one is explicit", async (t) =>
     assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: true });
     await app.app.settled();
     const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
-    // Every turn ends with one `done`, and a stopped one says so last.
     assert.deepEqual(
       view.entries.map((e) => e.kind),
       ["user", "text", "done", "error"],
@@ -290,8 +283,6 @@ test("one turn at a time per thread, and stopping one is explicit", async (t) =>
   }
 });
 
-// SPEC §9's cap is per thread: a stopped turn's usage, and a failed one's,
-// count toward the next turn's.
 test("what stopped and failed turns spent counts toward the next turn", async (t) => {
   const inputs: Parameters<Agent["turn"]>[0][] = [];
   let turn = 0;

@@ -1,13 +1,5 @@
-// Desktop notifications (OA-184): when a thread newly waits on the person (a
-// change set to review, an answer waiting for their reply, a held message,
-// or an apply stalled), the desktop app's shell notifies, if Settings has it
-// on. The shell shows it only while its window isn't in front, and a click
-// opens the thread. The window chat, as in Needs you, waits on the person
-// only for a change set or a held message, never for an answer. The wording
-// is Oriel's own; the thread's title, which may
-// come from synced content, is the body, as plain text. Threads already
-// waiting when the server starts, or while notifications are off, say
-// nothing.
+// The thread's title, which may come from synced content, is the body, as plain text.
+// Threads already waiting when the server starts, or while notifications are off, say nothing.
 import type { Log } from "@oriel/core";
 import { type ThreadSummaryView, type WaitingOn, waitsOnUser } from "@oriel/web/view";
 import { type Looks, looks } from "./looks.ts";
@@ -23,11 +15,7 @@ const titles: Partial<Record<WaitingOn, string>> = {
   stalled: "A change set stopped while it was being applied",
 };
 
-// What newly waits on the person since `before`, and how each thread waits
-// now, for next time. A thread that waits on them in a new way, such as a
-// change set after an answer, is new again. A thread with no title has no
-// message yet, and has only just been made: its turn is about to start, so
-// it waits on nothing.
+// A thread with no title has no message yet: its turn is about to start, so it waits on nothing.
 export function newlyWaiting(
   before: ReadonlyMap<string, WaitingOn>,
   threads: readonly ThreadSummaryView[],

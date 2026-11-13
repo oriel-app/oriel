@@ -1,10 +1,4 @@
-// What becomes of a turn's intents (decision 0024), once its change set is
-// captured: the calls they plan out as (`planned`) go through the one
-// dispatcher, in order, as the thread's agent, and each comes back as a line
-// the host shows under the agent's reply: applied, with its Undo, or refused,
-// and why. They apply only in a turn the user started. The user's Undo of a
-// line, and their redo of it, go through the same dispatcher, and the line
-// then says so.
+// They apply only in a turn the user started.
 import {
   type ActionLine,
   type Actor,
@@ -24,15 +18,10 @@ import { agentEvent } from "./agent.ts";
 export type IntentDeps = {
   dispatch: Dispatch;
   workstreams: WorkstreamStore;
-  // A thread's title as the window shows it, or null before it has one.
   title(threadId: Ulid): string | null;
-  // Who started the thread's turn now running: the user, whose message it
-  // answers, or a message they sent on (decision 0024).
   startedBy(threadId: Ulid): Actor | null;
 };
 
-// A line under the agent's reply, by its place: the thread, the list's seq in
-// its chat, and the line's index in the list.
 export type LinePlace = { thread: Ulid; seq: number; index: number };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -40,8 +29,6 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const text = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export function intentsOf(deps: IntentDeps) {
-  // What a call touches, named as it is now: a workstream it names, or the
-  // one it made, or else the thread.
   const touched = (call: Intent, made: unknown): Touched => {
     const { input } = call;
     const id = (value: unknown) => (typeof value === "string" ? (value as Ulid) : null);
@@ -97,7 +84,6 @@ export function intentsOf(deps: IntentDeps) {
             ...(gone?.length ? { gone } : {}),
           });
         } catch (error) {
-          // What didn't apply says why, and what did keeps its line.
           lines.push(
             refused(error instanceof ActionError ? text(error) : `Oriel failed: ${text(error)}`),
           );
@@ -112,9 +98,6 @@ export type LineUndoDeps = {
   dispatch: Dispatch;
   threads: ThreadStore;
   workspaceId: Ulid;
-  // An entry already in the thread's chat changed: its pages reload it.
-  // `own`: what changed was the thread's own workstream, which it catches up
-  // with, as it would on the user's message.
   rewritten(threadId: Ulid, own: boolean): void;
   now(): Instant;
 };
@@ -123,12 +106,6 @@ export function lineUndo(deps: LineUndoDeps) {
   // Lines with an Undo or redo in flight, so a second click waits for it.
   const undoing = new Set<string>();
 
-  // The user's Undo of the line at `at`, or their redo of one they undid:
-  // `call` must be what it offers now, so each click does it once. It
-  // runs as the user's, naming whose action it undoes, and the line
-  // keeps what comes of it: undone, with the call that does it again, or
-  // done again, with its Undo.
-  // The list at `at`, as stored now, and its line there that applied.
   const lineAt = (at: LinePlace) => {
     const thread = deps.threads.get(at.thread, deps.now());
     const [message] =
@@ -150,6 +127,7 @@ export function lineUndo(deps: LineUndoDeps) {
     const { line } = lineAt(at);
     const undone = line.since?.undone === true;
     const offered = line.since ? line.since.next : line.undo;
+    // `call` must be what the line offers now, so each click does it once.
     if (!offered || !same(offered, call))
       throw new ActionError(
         "refused",

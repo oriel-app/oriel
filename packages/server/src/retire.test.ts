@@ -1,9 +1,3 @@
-// What goes with decision 0059 (OA-280), on a copy of a database that had
-// Jira, Slack, Google Sheets and a folder connected before it: the start
-// retires the connection secrets `pnpm dev` kept, once, and keeps every
-// connection and its items. A kind that only had a connection of its own is
-// off until a person turns it on through its source server, which opens
-// that same connection, under its ID, prefix and options.
 import assert from "node:assert/strict";
 import {
   copyFileSync,
@@ -34,15 +28,10 @@ import { json, type Logged, testApp } from "./testing.ts";
 const t0 = instant(new Date(Date.UTC(2026, 10, 1, 9)));
 const site = "https://oriel.atlassian.net";
 
-// A database as one kept before decision 0059: a workspace, and Jira, Slack
-// and Sheets connected with their own accounts, each with its fixture's
-// items under its prefix, and a folder of notes; and the secrets `pnpm dev`
-// kept beside it.
 async function before(t: TestContext) {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-retire-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const made = join(top, "made.db");
-  // A start makes the workspace, as one before did.
   const first = await testApp(t, { db: made, jira: false });
   const workspaceId = first.app.workspaceId;
   await first.app.close();
@@ -73,7 +62,6 @@ async function before(t: TestContext) {
     items.close();
   }
   db.close();
-  // Each copy is a database as the person had it.
   const copy = (name: string) => {
     const path = join(top, `${name}.db`);
     copyFileSync(made, path);
@@ -117,17 +105,12 @@ test("the start retires every connection's secret and the saved one, once, and k
     retire: oldSecretFiles(join(secrets, "..")),
   });
   await it.app.settled();
-  // Every secret is gone, the saved one too, and the folder that held them.
   assert.equal(existsSync(secrets), false);
   assert.equal(existsSync(saved), false);
   assert.deepEqual(
     retired(it.logged).map((each) => each.fields),
     [{ deleted: 5 }],
   );
-  // Every connection stays, as it was. Only the folder, which the window
-  // connects itself, is on, beside the stand-in tracker, as no tracker is:
-  // Jira, Slack and Sheets wait for their servers.
-  // The stand-in tracker's, which Oriel keeps itself, is left out.
   const rows = connectionStore(open(path))
     .list(it.app.workspaceId)
     .filter((each) => each.kind !== "tracker");
@@ -146,11 +129,9 @@ test("the start retires every connection's secret and the saved one, once, and k
   );
   assert.equal((await it.connection("folder"))?.id, old.connected.get("folder")?.id);
   await it.app.close();
-  // Their items stay, for when each turns on.
   for (const kind of ["jira", "slack", "sheets"] as const)
     assert.deepEqual(old.records(path, kind), items[kind], kind);
 
-  // Started again, there's nothing left to retire.
   const again = await testApp(t, {
     db: path,
     jira: false,
@@ -193,7 +174,6 @@ test("turned on through its server, a kind opens the connection it had before, u
     [had?.id, "jira", site, { project: "SYN" }, "atlassian", "open"],
   );
   assert.match(jira?.about ?? "", /^SYN on oriel\.atlassian\.net, through /);
-  // Its items keep their IDs: the server's sync reads the same SYN.
   const rows = it.app
     .window("epic")
     .clusters.flatMap((cluster) => cluster.list)
@@ -201,7 +181,6 @@ test("turned on through its server, a kind opens the connection it had before, u
     .map((row) => row.id);
   assert.ok(rows.length > 20);
   assert.ok(rows.every((id) => (jiraBefore as string[]).includes(id)));
-  // And it's picked again through the server.
   assert.deepEqual(
     jira?.picks.map((pick) => [pick.name, pick.picked]),
     [["project", ["SYN"]]],
@@ -212,8 +191,6 @@ test("Jira and Slack turned on through their servers reuse the rows the window h
   const old = await before(t);
   const { path, secrets } = old.copy("live");
   const had = { jira: old.records(path, "jira"), slack: old.records(path, "slack") };
-  // A workstream made before decision 0059 holds one item of each, by
-  // source and stable ID, as every member is matched.
   const held = await (async () => {
     const db = open(path);
     try {
@@ -254,7 +231,6 @@ test("Jira and Slack turned on through their servers reuse the rows the window h
     );
   }
   await it.app.settled();
-  // No number 2, nor any row kept through a server beside them.
   const rows = connectionStore(open(path))
     .list(it.app.workspaceId)
     .filter((each) => each.kind === "jira" || each.kind === "slack");
@@ -265,7 +241,6 @@ test("Jira and Slack turned on through their servers reuse the rows the window h
       ["slack", 1, false],
     ],
   );
-  // The workstream finds both, by their source and stable ID.
   const workstream = json<{ members: { ref: { id: string }; row: unknown }[] }>(
     await it.get(`/api/workstreams/${held.id}`),
   );
@@ -274,11 +249,8 @@ test("Jira and Slack turned on through their servers reuse the rows the window h
     held.items.map((id) => [id, true]),
   );
   await it.app.close();
-  // And every item keeps its ID, synced again through the servers, none
-  // under another prefix.
   for (const kind of ["jira", "slack"] as const) {
     const now = old.records(path, kind);
-    // Only what the site itself deleted since is gone (fixtures/jira/edits.json).
     assert.deepEqual(
       had[kind].filter((id) => !now.includes(id)),
       kind === "jira" ? ["jira:SYN-27"] : [],

@@ -1,19 +1,5 @@
-// What changes when the server runs on the shell's own Node, as Electron's
-// utility process (decision 0047), and not as a plain child.
-//
-// - The channel. A utility process has no stdin, so the channel's text comes
-//   and goes as messages on the parent port, the pipe only the shell holds:
-//   each string the shell sends is text it would have written to stdin, and
-//   `null` is stdin's end. Each line the server writes goes back as one
-//   string. The text is PROTOCOL.md's, unchanged.
-// - Its group. A utility process can't lead a process group, so nothing the
-//   server starts shares one the shell could kill. Instead, as it exits, the
-//   server kills whatever it started that is still running, by the process
-//   table: a Deno, a tsc, the person's CLI, and theirs.
-// - Its watcher. When the shell dies, Electron ends the server at once, with
-//   no exit hooks, so the server tells a watcher outside both processes each
-//   process it starts, and the watcher kills what's left once the server is
-//   gone (watcher.ts).
+// On Electron's utility process: no stdin, so the channel's text comes as messages on the parent port; no process group, so
+// the server kills what it started as it exits; and Electron ends it with no exit hooks when the shell dies, hence the watcher.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PassThrough, type Readable } from "node:stream";
@@ -23,19 +9,15 @@ import { descendants } from "./processes.ts";
 
 export { descendants };
 
-// Electron's `process.parentPort`, as much of it as the channel uses.
 export type ParentPort = {
   on(event: "message", listener: (event: { data: unknown }) => void): unknown;
   postMessage(message: unknown): void;
 };
 
-// The parent port, when this process is Electron's utility process.
 export function parentPort(): ParentPort | null {
   return (process as { parentPort?: ParentPort }).parentPort ?? null;
 }
 
-// The channel's stdin and stdout, over the parent port. Anything but a
-// string or `null` is dropped, as a line that can't be read is.
 export function portPipes(port: ParentPort): { input: Readable; write: (line: string) => void } {
   const input = new PassThrough({ encoding: "utf8" });
   port.on("message", ({ data }) => {
@@ -46,10 +28,8 @@ export function portPipes(port: ParentPort): { input: Readable; write: (line: st
   return { input, write: (line) => port.postMessage(line) };
 }
 
-// Kills what this process started that is still running. Synchronous, as an
-// `exit` hook must be. setup/cli.ts keeps its own hook beside this one: it
-// kills each CLI's whole group, which reaches a grandchild the CLI already
-// left to launchd, where this finds only what is still under the server.
+// Synchronous, as an `exit` hook must be. setup/cli.ts keeps its own hook beside this one: it kills each CLI's whole group,
+// which reaches a grandchild the CLI already left to launchd.
 export function killDescendants(): void {
   if (process.platform === "win32") return;
   let table: string;
@@ -66,8 +46,7 @@ export function killDescendants(): void {
     }
 }
 
-// The watcher's command line: Deno with nothing allowed but running `ps` and
-// `kill`. DENO_DIR names a folder that can't exist, so Deno caches nothing.
+// DENO_DIR names a folder that can't exist, so Deno caches nothing.
 export function watcherCommand(deno: string): {
   file: string;
   args: string[];
@@ -95,11 +74,7 @@ export function watcherCommand(deno: string): {
   };
 }
 
-// Starts the watcher, in a session of its own so nothing aimed at the shell's
-// group reaches it, and tells it each process this one starts from now on,
-// in any thread, and each that ends (@oriel/sandbox, onChildren). Its stderr is
-// this process's, so what it says reaches the log. `stop` is for tests: it
-// stops telling, and ends the watcher's stdin as this process's death would.
+// In a session of its own, so nothing aimed at the shell's group reaches it.
 export function watchChildren(
   deno: string,
   log: (message: string, fields?: Record<string, unknown>) => void,
@@ -109,13 +84,11 @@ export function watchChildren(
   const watcher = spawn(file, args, { env, detached: true, stdio: ["pipe", "ignore", "inherit"] });
   watcher.on("error", (error) => log("watcher: couldn't start", { error: String(error) }));
   watcher.stdin!.on("error", () => {});
-  // Neither keeps this process running.
   watcher.unref();
   (watcher.stdin as { unref?: () => void }).unref?.();
   const tell = ({ what, pid }: ChildNews) => {
     if (watcher.stdin!.writable) watcher.stdin!.write(`${what} ${pid}\n`);
   };
-  // This thread's, and the compiler worker's, relayed.
   const stopHearing = onChildren(tell);
   const relayed = new BroadcastChannel(childrenChannel);
   relayed.unref();

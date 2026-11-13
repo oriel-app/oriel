@@ -1,13 +1,4 @@
-// Which model the agent and thread titles run on (decisions 0037, 0041 and
-// 0048). Oriel looks for each provider instance Settings lists: the
-// person's own Claude Code and Codex, each installed, a supported version
-// and signed in. Each turn and each title then runs on the provider and
-// model Settings pick, among those found and turned on, so a change in
-// Settings applies at the next turn. With no pick, Claude Code wins, then
-// Codex, a preview. With none, each turn says how to set one up, naming no
-// credential. There is no API-key way in (decision 0059): `.env`'s key is
-// an instance only under `pnpm dev --agent api`, where it's asked for, and
-// so wins.
+// There is no API-key way in: `.env`'s key is an instance only under `pnpm dev --agent api`.
 import {
   agent,
   anthropicProvider,
@@ -56,16 +47,12 @@ import type { Discovery } from "./source-servers.ts";
 import type { ProviderSetting, Settings } from "./settings.ts";
 import { memoryUsage, type UsageCounts } from "./usage.ts";
 
-// The models a Claude provider offers, by the API's IDs, the largest first.
 export const claudeModels: readonly { id: string; label: string }[] = [
   { id: defaultModel, label: "Opus 5.5" },
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
   { id: titleModel, label: "Haiku 5.5" },
 ];
 
-// What Oriel found for one instance when it last looked. An untrusted CLI's
-// problem is the trust check's sentence. A ready Codex has the models it
-// lists and, for its row only, its plan and email.
 export type Found =
   | { status: "ready"; cli: ClaudeCode | null; models?: CodexModel[]; account?: CodexAccount }
   | {
@@ -73,90 +60,50 @@ export type Found =
       problem?: HarnessProblem | { kind: "untrusted"; message: string };
     };
 
-// What runs a turn or a title: an instance found ready and turned on, and
-// one of its models.
 export type Running = { provider: ProviderSetting; model: string; cli: ClaudeCode | null };
 
-// Noticed's model where the provider offers Claude's.
 export const noticedModel = "claude-sonnet-5-5";
 
 export type Choice = { model: Running | null; title: Running | null; problem: string };
 
 export type ModelsOptions = {
-  // ANTHROPIC_API_KEY from `.env` under `pnpm dev --agent api`, or null:
-  // the only way a key runs anything.
+  // The only way a key runs anything.
   key: string | null;
-  // `--claude-code <path>`; a path set in Settings wins.
   claudeCodePath?: string;
-  // Whether Oriel may run the CLI at `path`, asked before each look runs it
-  // and before each turn and title on it: on the desktop app, that a Claude
-  // Code from its vendor's installer is signed by its vendor (decision
-  // 0038). Null when it may; else the sentence its row says.
+  // Asked before each look runs the CLI and before each turn and title on it.
   trust?: (path: string) => Promise<string | null>;
-  // The desktop app, whose first run and Settings install and sign in the
-  // person's Claude Code: a turn with no model points there, never to a
-  // terminal (decision 0038).
   desktop?: true;
-  // The environment the CLIs are found in. Default `process.env`.
   env?: Readonly<Record<string, string | undefined>>;
-  // Stand in for the CLI check and the providers in tests.
   check?: (options: CheckOptions) => ReturnType<typeof checkClaudeCode>;
   checkCodex?: (options: CheckOptions) => ReturnType<typeof checkCodex>;
   provider?: (running: Running, key: string | null, effort?: Effort) => Provider;
   titler?: (running: Running, key: string | null) => Titler;
-  // Today's counts of each CLI instance's turns and tokens, kept in the
-  // data folder (decision 0046). In memory when absent.
   counts?: UsageCounts;
-  // Asks a CLI how much of the plan is used; tests stand in for it.
   plan?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<PlanUsage>;
-  // Asks a CLI for the person's MCP servers; tests stand in for it.
   servers?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<FoundServer[]>;
-  // Starts a process that calls one of them; tests stand in for it.
   serverCalls?: (
     cli: ClaudeCode,
     kind: "claude-code" | "codex",
     options: ServerCallsOptions,
   ) => ServerCalls;
-  // Stand-in source servers each CLI gets beside the person's own, in dev
-  // only (`ORIEL_DEV_STANDINS`, OA-276): never on the desktop app.
+  // In dev only, never on the desktop app.
   dev?: readonly DevServer[];
 };
 
-// What a sync or a replay calls one source server with: the CLI that runs
-// threads, the process, and the agent by its Settings ID and name.
 export type Calling = { calls: ServerCalls; agent: { id: string; name: string; kind: string } };
 
 export type Models = {
-  // Looks for every instance again, the CLIs' checks included. Ends once
-  // the latest look's answers stand, even when a later look started.
   look(settings: Settings): Promise<void>;
-  // What was found for an instance; "checking" until the first look ends.
   found(id: string): Found;
   choose(settings: Settings): Choice;
-  // The agent and the titler, each choosing again at every turn and title.
   agent(settings: () => Settings, deps: ServerAgentDeps): Agent;
   titler(settings: () => Settings): Titler;
-  // What Noticed's pass runs on (decision 0052): the
-  // threads' provider, with Sonnet at low effort where it offers Claude's
-  // models, as the noticed-1 climb found best; null with no model, or a CLI
-  // that doesn't pass its trust check now.
   noticer(settings: Settings): Promise<{ provider: Provider; model: string } | null>;
-  // The models the default and Title model can be, from instances found
-  // ready and turned on.
   options(settings: Settings): ModelOptionView[];
   providers(settings: Settings): ProviderView[];
-  // The line the server prints at startup.
   describe(settings: Settings): string;
-  // Each CLI instance's usage: today's counts, and the plan's windows from
-  // its CLI, asked now.
   usage(settings: Settings): Promise<UsageView[]>;
-  // The person's MCP servers, from the CLI that runs threads, once the
-  // latest look ends (decision 0059): null when none runs them, or an API
-  // key does, which has no servers to bring.
   servers(settings: Settings): Promise<Discovery>;
-  // A process of the CLI that runs threads that calls `server`, one of the
-  // person's own, with only `tools` (decision 0059): null when none runs
-  // them, or the CLI doesn't pass its trust check now.
   serverCalls(
     settings: Settings,
     server: FoundServer,
@@ -167,21 +114,16 @@ export type Models = {
 
 const checking: Found = { status: "checking" };
 
-// Which instance runs when nothing is picked: the key, when `--agent api`
-// gave one, then Claude Code, then Codex.
 export const order = ["api", "claude-code", "codex"] as const;
 
-// `.env`'s key as an instance, under `pnpm dev --agent api` only. Settings
-// never lists it, and the desktop app never has one.
+// Settings never lists it, and the desktop app never has one.
 const apiInstance: ProviderSetting = { id: "api", kind: "api", name: "API key", on: true };
 
-// The instances Oriel looks for: Settings', and the key first when given.
 export const instancesOf = (settings: Settings, key: string | null): ProviderSetting[] => [
   ...(key ? [apiInstance] : []),
   ...settings.providers.filter((p) => p.kind !== "api"),
 ];
 
-// A turn with no model to run it: it says why and how to set one up.
 export function setupAgent(message: string): Agent {
   return {
     async *turn() {
@@ -194,8 +136,6 @@ export function setupAgent(message: string): Agent {
 const ready = (found: Found): found is Extract<Found, { status: "ready" }> =>
   found.status === "ready";
 
-// The model Codex runs when nothing names one: its own default, else the
-// first it lists; none until it's found ready.
 export function codexDefault(found: Found): string {
   const list = ready(found) ? (found.models ?? []) : [];
   return (list.find((m) => m.isDefault) ?? list[0])?.id ?? "";
@@ -207,7 +147,6 @@ export function models(options: ModelsOptions): Models {
   const { key } = options;
   const instances = (settings: Settings) => instancesOf(settings, key);
   let found = new Map<string, Found>();
-  // Agents and titlers by instance, model and CLI, built once each.
   const agents = new Map<string, Agent>();
   const titlers = new Map<string, Titler>();
   const cacheKey = (r: Running) => JSON.stringify([r.provider.id, r.model, r.cli]);
@@ -253,10 +192,7 @@ export function models(options: ModelsOptions): Models {
       kind === "codex"
         ? codexServerCalls(cli, { ...called, env })
         : claudeCodeServerCalls(cli, { ...called, env }));
-  // A found server as a process loads it alone: a dev stand-in by its
-  // command, a remote one by its URL, a local one by its command and
-  // arguments, which Claude Code starts from the person's own entry
-  // (decision 0060), else by its name, as Codex can.
+  // A local one by its command and arguments, which Claude Code starts from the person's own entry; else by its name, as Codex can.
   const calledOf = (server: FoundServer): CalledServer => {
     const stand = dev.find((each) => each.name === server.name);
     if (stand) return { name: server.name, dev: stand };
@@ -293,28 +229,22 @@ export function models(options: ModelsOptions): Models {
   const foundOf = (id: string) => found.get(id) ?? checking;
   const usable = (settings: Settings) =>
     instances(settings).filter((p) => p.on && ready(foundOf(p.id)));
-  // The models an instance offers: Claude's three, or what Codex lists.
   const modelsOf = (provider: ProviderSetting): readonly { id: string; label: string }[] => {
     if (provider.kind !== "codex") return claudeModels;
     const at = foundOf(provider.id);
     return ready(at) ? (at.models ?? []) : [];
   };
-  // What an instance runs when nothing names a model: for threads, Claude's
-  // largest or Codex's own default; for titles, Claude's smallest or the same.
   const defaultFor = (provider: ProviderSetting, purpose: "model" | "title"): string => {
     if (provider.kind !== "codex") return purpose === "model" ? defaultModel : titleModel;
     return codexDefault(foundOf(provider.id));
   };
-  // Codex's row shows once it's installed: on the PATH, or at a path set in
-  // Settings, which its row can change. Oriel doesn't install it.
+  // Oriel doesn't install it.
   const shown = (provider: ProviderSetting) =>
     provider.kind !== "codex" ||
     foundOf(provider.id).status !== "missing" ||
     provider.path !== undefined ||
     locateCodex(env) !== null;
 
-  // The pick, if its instance is usable and offers its model; else the
-  // first usable instance in `order`, with its default.
   function running(
     settings: Settings,
     pick: ModelPick | null,
@@ -336,7 +266,6 @@ export function models(options: ModelsOptions): Models {
 
   function choose(settings: Settings): Choice {
     const model = running(settings, settings.model, "model");
-    // Titles follow the default model's provider until the person picks.
     const title = running(
       settings,
       settings.titleModel ??
@@ -346,7 +275,6 @@ export function models(options: ModelsOptions): Models {
     return { model, title, problem: model ? "" : problemOf(settings) };
   }
 
-  // Why no model runs, and what to do, for a turn.
   function problemOf(settings: Settings): string {
     const claude = settings.providers.find((p) => p.kind === "claude-code");
     const claudeFound = claude ? foundOf(claude.id) : checking;
@@ -358,7 +286,6 @@ export function models(options: ModelsOptions): Models {
       return "Oriel is still looking for Claude Code. Try again in a moment.";
     if (options.desktop && claudeFound.status !== "untrusted")
       return "Oriel has no AI set up yet. Set up Claude Code or Codex in Settings.";
-    // Only Codex is there, and it isn't ready: its own problem.
     const codexProblem = codexFound && "problem" in codexFound ? codexFound.problem : undefined;
     if (claudeFound.status === "missing" && codexProblem && codexFound?.status !== "missing")
       return codexProblem.message;
@@ -423,7 +350,6 @@ export function models(options: ModelsOptions): Models {
       const codex = chosen.provider.kind === "codex";
       const model = codex ? defaultFor(chosen.provider, "model") : noticedModel;
       if (chosen.cli && (await options.trust?.(chosen.cli.path))) return null;
-      // Codex runs at its own default effort too.
       const provider = providerOf({ ...chosen, model }, key, codex ? undefined : "low");
       return { provider, model };
     },
@@ -499,7 +425,6 @@ export function models(options: ModelsOptions): Models {
       });
     },
     async usage(settings) {
-      // Codex's, like its row, only once it's installed.
       const clis = settings.providers.flatMap((p) =>
         p.kind === "api" || !shown(p) ? [] : [{ ...p, kind: p.kind }],
       );
@@ -529,8 +454,7 @@ export function models(options: ModelsOptions): Models {
   };
 }
 
-// What a row says was found, in the person's words. Never a key. The
-// CLI's own problems say to restart Oriel; Settings can check again instead.
+// In the person's words, never a key.
 function detailOf(provider: ProviderSetting, found: Found): string {
   if ("problem" in found && found.problem)
     return found.problem.message

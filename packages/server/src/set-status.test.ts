@@ -1,6 +1,3 @@
-// What the agent reads of the thread's change sets as a turn starts: their
-// states as the window shows them, whatever happened to them between turns
-// (OA-310).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TurnInput } from "@oriel/agent";

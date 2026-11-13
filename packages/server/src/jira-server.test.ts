@@ -1,9 +1,3 @@
-// Jira through Atlassian's MCP server (decision 0059, OA-276), end to end
-// through the routes: the person's agent is a fake that lists the server,
-// and its processes call the stand-in's tools on SYN in memory. Sync reads
-// with the read tools only, a change set's replay writes with the write
-// tools only, from another process, and an answer Oriel can't read keeps
-// the index as it was.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { FoundServer, ToolCall } from "@oriel/core";
@@ -33,7 +27,6 @@ async function world(
   options: {
     found?: () => FoundServer[];
     script?: Script;
-    // Changes an answer on its way back, as a server that changed might.
     answer?: (call: ToolCall, answer: unknown) => unknown;
   } = {},
 ) {
@@ -150,7 +143,6 @@ test("an approved change set replays through the write tools, from another proce
     it.made.every((each) => each.process !== writer.process || writes.includes(each.call.tool)),
     "sync and replay never share a process",
   );
-  // The index has the new summary, read back through the read tools.
   assert.ok(it.jiraRows().some((row) => row.title === "Checkout through the server"));
 });
 
@@ -177,7 +169,6 @@ test("a comment through the server lands, its ID found among the issue's, as the
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   const diff = json<DiffView>(await it.post(`/api/change-sets/${entry.changeSetId}/diff`));
-  // The move was checked against SYN-10's workflow through the server.
   assert.ok(diff.lines.every((line) => line.check === null));
   assert.ok(
     it.made.some((each) => each.call.args.name === "listJiraIssueTransitions"),

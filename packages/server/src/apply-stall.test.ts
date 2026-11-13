@@ -1,7 +1,3 @@
-// A change set stuck applying comes back to Needs you (OA-82): with no word
-// from its source, the server looks once a send's lease could have run, and
-// each minute after, and tells the window again whenever the engine says the
-// apply has stalled, or moved again; the window reloads and shows it stuck.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -29,9 +25,6 @@ const t0 = instant(new Date(Date.UTC(2026, 10, 2, 9)));
 const id = (n: number) => ulid(n, new Uint8Array(10));
 const user: Actor = { kind: "user" };
 
-// A thread with a change set whose apply ends only when the test says, an
-// engine that says it stalled when the test does, and the timers the
-// dispatcher set, which only the test runs.
 function world() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -88,12 +81,10 @@ function world() {
   });
   const told = () =>
     published.flatMap((changed) => ("applying" in changed ? [changed.applying] : []));
-  // The timer set last, which is the one still to run.
   const next = () => timers.at(-1);
   return { dispatch, changeSetId, ending, engine, timers, told, next };
 }
 
-// Every promise the dispatcher has started has gone as far as it can.
 const settled = () => new Promise((resolve) => setImmediate(resolve));
 
 const report = (changeSetId: Ulid): ApplyReport => ({
@@ -108,21 +99,17 @@ test("an apply that stalls is told again, so the window shows it stuck, and agai
   const approving = w.dispatch("changeset.approve", { changeSet: w.changeSetId, hash: "h" }, user);
   await settled();
   assert.deepEqual(w.told(), [true]);
-  // Once the lease could have run, it looks: still sending, nothing to say.
   assert.equal(w.next()?.ms, sendLeaseMs);
   w.next()?.fire();
   assert.deepEqual(w.told(), [true]);
-  // A minute on, it has stalled: the window hears it again, once.
   assert.equal(w.next()?.ms, 60_000);
   w.engine.stalled = true;
   w.next()?.fire();
   w.next()?.fire();
   assert.deepEqual(w.told(), [true, true]);
-  // Its source answers and it moves on: told again.
   w.engine.stalled = false;
   w.next()?.fire();
   assert.deepEqual(w.told(), [true, true, true]);
-  // It ends: told, and nothing looks again.
   w.ending.resolve(report(w.changeSetId));
   assert.deepEqual(await approving, { report: report(w.changeSetId), problem: null, undo: null });
   assert.deepEqual(w.told(), [true, true, true, false]);

@@ -27,7 +27,6 @@ test("a file is refused as not in the connected folder, or as having no folder t
     resolveDropped(from, { links: [], files: [{ name: "elsewhere.md", modified: at }] }, sources)
       .refused[0];
   assert.deepEqual([why(records)?.what, why(records)?.syncMightHelp], ["elsewhere.md", true]);
-  // OA-168: with no folder connected, a sync can't help, and it isn't offered.
   const jira = records.filter((r) => r.id.startsWith("jira:"));
   for (const from of [jira, []])
     assert.deepEqual([why(from)?.what, why(from)?.syncMightHelp], ["elsewhere.md", false]);
