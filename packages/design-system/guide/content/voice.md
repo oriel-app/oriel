@@ -35,7 +35,7 @@ Oriel's words are fixed in `SPEC.md` §2. Use them exactly, in the interface, in
 | **window**                            | Everything from every connected source, in one place                                | dashboard, home, feed                                         |
 | **overview**                          | The window's first view                                                             | dashboard, home                                               |
 | **Browse**                            | The window's grouped list (a proper noun)                                           | explorer, search                                              |
-| **window chat**                       | The short-lived thread the ask bar opens                                            | assistant, helper                                             |
+| **window chat**                       | The short-lived thread the overview's composer opens                                | assistant, helper                                             |
 | **block**                             | Bars, a table or rows of items in an answer, built by Oriel from a read             | widget, card, chart                                           |
 | **chip**                              | An item, thread, change set or workstream drawn in a line by Oriel                  | tag, pill, mention                                            |
 | **sketch**                            | HTML the agent draws under its answer, never checked against Oriel's data           | mockup, preview, embed                                        |

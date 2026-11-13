@@ -195,7 +195,7 @@ type Under = { thread: string; seq: number };
 export type Model = {
   route: Route;
   overview: OverviewModel | null;
-  // The window chat's ask bar and whether it is open. While the overview is
+  // The overview's composer and whether the window chat is open. While the overview is
   // on screen, its thread is `thread`.
   chat: WindowChatModel;
   window: WindowModel | null;
@@ -1029,7 +1029,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "setupProgress": {
       const [setup, effects] = setupReplied(model.setup, msg);
       // What Claude Code, Codex or the AI chosen changed shows in Settings
-      // too, and in the ask bar: once asked, and once a command has finished.
+      // too, and in the overview's composer: once asked, and once a command has finished.
       const ended = (key: "cli" | "codex") =>
         model.setup.view?.[key]?.running != null && setup.view?.[key]?.running == null;
       const finished = ended("cli") || ended("codex");

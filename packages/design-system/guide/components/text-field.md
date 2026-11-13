@@ -24,7 +24,7 @@ An `<input>` or `<textarea>` for something a person types to keep: a connection'
 | `.rename-field`                           | renaming a workstream in its row, from its menu                                                       | 1.875rem          | `--focus`, ringed | inherited           |
 | `.sidebar-search-field`, `.filter-search` | search, framed with an icon ([below](#search))                                                        | 1.875rem          | `--line`          | inherited           |
 
-The chat inputs (the ask bar and the composers) are their own component: see [Chat input](/components/chat-input). The proposed single field, in modern CSS, is in the [text field lab](/lab/text-field).
+The chat inputs (the composers) are their own component: see [Chat input](/components/chat-input). The proposed single field, in modern CSS, is in the [text field lab](/lab/text-field).
 
 ## When to use it
 

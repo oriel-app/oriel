@@ -32,7 +32,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 ```html specimen id=above title="One above" height=160
 <main class="thread">
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <div class="composer-pills">
         <button type="button" class="to-review-pill">
           <span aria-hidden="true">↑</span>1 change set to review above
@@ -56,7 +56,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 ```html specimen id=both title="Some above and one below, at 390" height=200 width=390
 <main class="thread">
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <div class="composer-pills">
         <button type="button" class="to-review-pill">
           <span aria-hidden="true">↑</span>2 change sets to review above
@@ -88,7 +88,7 @@ A column of at most two pills, centred over the composer, `--space-2` above it: 
 ```html specimen id=hover title="Hover" state=hover height=160
 <main class="thread">
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <div class="composer-pills">
         <button type="button" class="to-review-pill ws-hover">
           <span aria-hidden="true">↓</span>1 change set to review below

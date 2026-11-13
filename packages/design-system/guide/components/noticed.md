@@ -11,7 +11,7 @@ summary: The overview's strip of what Oriel found in the window unasked (decisio
 
 ## What it is
 
-The Noticed strip is the overview's at most four cards about what in the window may need the person, found without anyone asking (decision 0052). It sits under the ask bar, above the overview's columns.
+The Noticed strip is the overview's at most four cards about what in the window may need the person, found without anyone asking (decision 0052). It sits in the overview's side column, under Not in a workstream yet, so it never pushes the workstreams down.
 
 "A card's kind, subject, headline, rule and block are Oriel's; its one line is the agent's, checked by Oriel and captioned as the agent's; a quote is shown only once found word for word." (`packages/web/src/noticed-strip.tsx`)
 
@@ -849,7 +849,7 @@ Under the cards, what dismissals taught, one faint line each (`.noticed-taught`)
 
 ## Where the app uses it
 
-- `NoticedStrip` in `packages/web/src/noticed-strip.tsx`, on the overview under the ask bar (`OverviewPage` in `packages/web/src/overview-page.tsx`). Its block at the first rows: `topOf` there.
+- `NoticedStrip` in `packages/web/src/noticed-strip.tsx`, on the overview under Not in a workstream yet (`OverviewPage` in `packages/web/src/overview-page.tsx`). Its block at the first rows: `topOf` there.
 - The signals and their blocks: `signalsOf` and `signalRules` in `packages/server/src/signals.ts`. The pass, what it keeps and what dismissals teach: `packages/server/src/noticed.ts`.
 - CSS: `.noticed-by`, `.noticed-cards`, `.noticed-card`, `.noticed-why`, `.noticed-actions` and `.noticed-pinned` in `window.css`.
 - Pins: `PinnedStrip`, in the same file; see [Block › Pins](/components/block#pins).

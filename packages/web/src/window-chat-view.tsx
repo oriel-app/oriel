@@ -1,5 +1,5 @@
-// The window chat on screen (decisions 0027 and 0030): the ask bar under the
-// overview's counts strip, with questions to start from, and the chat beside
+// The window chat on screen (decisions 0027 and 0030): the overview's
+// composer at the page's foot, and the chat beside
 // the overview while it has a conversation, over the page's right side, or
 // as a sheet on a narrow window. While an item is open, on a window with
 // room, the chat moves into the page column beside it, and "‹ Window" puts
@@ -17,32 +17,34 @@ import { NewMessage } from "./new-message.tsx";
 import { type Dispatch, ItemLinksContext, Link } from "./parts.tsx";
 import { entriesOf, expected, type ThreadModel, type ThreadMsg, unseen } from "./thread.ts";
 import { ChatEntryItem, itemsOf } from "./thread-page.tsx";
-import type { OverviewView } from "./view.ts";
-import { questionsFrom, type WindowChatModel, type WindowChatMsg } from "./window-chat.ts";
+import type { Question, WindowChatModel, WindowChatMsg } from "./window-chat.ts";
 
-export function AskBar(props: {
+// The overview's composer (decision 0030): a thread's, raised in a thread's
+// dock at the page's foot. Asking opens the window chat; while it's open,
+// the chat's own composer is the one to type in, so this one is hidden, as
+// a thread's is under the item panel's dock. The questions to start from
+// sit beside their headlines (`QuestionButton`); one with no headline on
+// screen, such as the empty window's plan, sits in its frame, unless an
+// item is in view: what the message is about comes first (decision 0062).
+export function OverviewComposer(props: {
   chat: WindowChatModel;
-  view: OverviewView | null;
   // Whether there is a conversation to go back to, behind a closed chat.
   ongoing: boolean;
-  // The first run's overview, whose top question is an instruction.
-  firstRun?: boolean;
-  // No AI is set up, so the bar says so and opens Settings (decision 0038).
-  noAi?: boolean;
-  // A stand-in is on, which a plan may be drafted into (decision
-  // 0059).
-  plans?: boolean;
+  // The questions no headline on screen holds.
+  questions: Question[];
+  // No AI is set up, so it says so and opens Settings (decision 0038).
+  noAi: boolean;
   dispatch: Dispatch;
 }) {
-  const { chat, view, ongoing, dispatch } = props;
+  const { chat, ongoing, dispatch } = props;
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
   if (props.noAi)
     return (
-      <section class="ask" aria-label="Ask about your window">
-        <div class="chat-input" data-lines="one" data-size="lg" data-marked data-off>
-          <input
-            type="text"
-            class="chat-input-field ask-input"
+      <div class="chat-dock overview-dock">
+        <div class="chat-input composer" data-elevation="raised" data-off>
+          <textarea
+            rows={2}
+            class="chat-input-field"
             disabled
             placeholder="Set up Claude to ask about your window"
             aria-label="Set up Claude to ask about your window"
@@ -55,22 +57,35 @@ export function AskBar(props: {
             Set up
           </Link>
         </div>
-      </section>
+      </div>
     );
-  const questions = view ? questionsFrom(view, props.firstRun === true, props.plans === true) : [];
+  const composer = windowChatComposer(chat, null, dispatch);
+  const starts = chat.lookingAt.chips.length === 0 ? props.questions : [];
   return (
-    <section class="ask" aria-label="Ask about your window">
+    <div class="chat-dock overview-dock" inert={chat.open || undefined}>
       <ChatInput
-        lines="one"
-        size="lg"
-        marked
-        label="Ask about your window"
-        placeholder="Ask about your window"
+        {...composer}
+        class="composer"
+        elevation="raised"
         submitLabel="Ask"
-        draft={chat.draft}
-        busy={chat.asking}
-        reads="Reads your whole window"
-        notice={chat.open ? null : chat.problem}
+        notice={chat.open ? null : composer.notice}
+        context={
+          <>
+            {starts.length > 0 && (
+              <div class="ask-starts" role="group" aria-label="Questions to start from">
+                {starts.map((question) => (
+                  <QuestionButton
+                    key={question.kind}
+                    question={question}
+                    chat={chat}
+                    dispatch={dispatch}
+                  />
+                ))}
+              </div>
+            )}
+            {composer.context}
+          </>
+        }
         extra={
           ongoing &&
           !chat.open && (
@@ -83,31 +98,31 @@ export function AskBar(props: {
             </button>
           )
         }
-        onDraft={(text) => send({ type: "draftChanged", text })}
-        onSubmit={() => send({ type: "askClicked" })}
       />
-      {questions.length > 0 && (
-        <>
-          <h2 class="ask-starts-head" id="ask-starts-head">
-            Questions to start from
-          </h2>
-          <ul class="ask-questions" aria-labelledby="ask-starts-head">
-            {questions.map((question) => (
-              <li key={question.kind}>
-                <button
-                  type="button"
-                  class="ask-question"
-                  disabled={chat.asking}
-                  onClick={() => send({ type: "questionPicked", question })}
-                >
-                  {question.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
+    </div>
+  );
+}
+
+// A question to start from, as a button: its label shows, and its fixed
+// wording is what's sent. `about`: the ID of the headline line it comes from,
+// which describes it.
+export function QuestionButton(props: {
+  question: Question;
+  chat: WindowChatModel;
+  about?: string;
+  dispatch: Dispatch;
+}) {
+  const { question } = props;
+  return (
+    <button
+      type="button"
+      class="ask-question"
+      disabled={props.chat.asking}
+      aria-describedby={props.about}
+      onClick={() => props.dispatch({ type: "chat", msg: { type: "questionPicked", question } })}
+    >
+      {question.label}
+    </button>
   );
 }
 
@@ -216,8 +231,8 @@ export function WindowChat(props: {
   );
 }
 
-// The window chat's composer, as the chat and the item panel's dock
-// (dock.tsx) both draw it: a follow-up in its thread, or its first
+// The window chat's composer, as the overview's foot, the chat and the item
+// panel's dock (dock.tsx) draw it: a follow-up in its thread, or its first
 // question. One problem line, the thread's or the chat's own.
 export function windowChatComposer(
   chat: WindowChatModel,
@@ -266,6 +281,6 @@ export function windowChatComposer(
       />
     ),
     onDraft: (text) => send({ type: "draftChanged", text }),
-    onSubmit: () => send({ type: "askClicked", chat: true }),
+    onSubmit: () => send({ type: "askClicked" }),
   };
 }

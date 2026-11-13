@@ -21,7 +21,6 @@ test("a sketch's theme sheet never holds the accent, a state or the page's own c
     "--del",
     "--section-rule",
     "--list-bg",
-    "--ask-mark",
   ])
     assert.ok(!named.includes(kept), kept);
   // Every value stands alone: the frame has no other sheet to borrow from.

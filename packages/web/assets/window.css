@@ -154,7 +154,6 @@ html {
   --list-frame: var(--border-thin) solid var(--line);
   --row: 2rem;
   --row-pad: 0.375rem;
-  --ask-mark: none;
 
   /* Space and shape. */
   --space-1: 0.25rem;
@@ -239,7 +238,7 @@ html {
 
 /* Broadsheet (decision 0034): a newspaper page. Cream paper and ink, serif
    section heads under a heavy rule, square corners, open lists on the page
-   and a marked ask bar, with roomier rows. The accent is umber; each state
+   with roomier rows. The accent is umber; each state
    has a hue of its own. */
 :root[data-theme="broadsheet"] {
   --bg: #f4efe3;
@@ -281,7 +280,6 @@ html {
   --list-frame: none;
   --row: 2.25rem;
   --row-pad: 0.5rem;
-  --ask-mark: var(--border-thick) solid var(--accent);
 
   --radius-sm: 0;
   --radius: 2px;
@@ -2696,12 +2694,6 @@ a.replies:hover {
   box-shadow: 0 0 0 var(--border-thin) var(--focus);
 }
 
-/* Marked with the theme's --ask-mark: Broadsheet rules the ask bar's start
-   edge, Graphite leaves it. */
-.chat-input[data-marked] {
-  border-inline-start: var(--ask-mark);
-}
-
 .chat-input[data-elevation="raised"] {
   box-shadow: var(--shadow);
 }
@@ -2715,12 +2707,17 @@ a.replies:hover {
 .chat-input-field {
   width: 100%;
   min-width: 0;
+  min-height: 2.5rem;
+  max-height: 12rem;
   padding: var(--space-1) var(--space-2);
   border: 0;
   background: none;
   color: var(--text);
   font: inherit;
   line-height: var(--leading);
+  resize: none;
+  /* Grows with what's written, up to the limit, then scrolls. */
+  field-sizing: content;
 }
 
 .chat-input-field:focus-visible {
@@ -2729,19 +2726,6 @@ a.replies:hover {
 
 .chat-input-field::placeholder {
   color: var(--text-faint);
-}
-
-/* Grows with what's written, up to a limit, then scrolls. */
-.chat-input[data-lines="grow"] .chat-input-field {
-  min-height: 2.5rem;
-  max-height: 12rem;
-  resize: none;
-  field-sizing: content;
-}
-
-.chat-input[data-size="lg"] .chat-input-field {
-  min-height: 1.875rem;
-  font-size: var(--text-lg);
 }
 
 /* What the agent will read on the left; the button on the right. */
@@ -5157,7 +5141,7 @@ button.ctx-chip:hover {
    page. Only its shape is drawn (`.bead-shape`); its words sit still on
    whole pixels at their rested size, and a clip reveals them as the shape
    grows (undo-stack.tsx, bead-motion.ts). It never reaches past the
-   column's corners, and never the composer or the ask bar. */
+   column's corners, and never a composer. */
 @media (min-width: 761px) {
   .shell:is([data-panel], [data-chat]) {
     --bead-beside: var(--panel);
@@ -6374,17 +6358,33 @@ button.ctx-chip:hover {
 }
 
 /* The overview (decision 0027): the window's first view, as wide as the
-   page allows. Two columns where there is room: Needs you, the headlines and
-   the workstreams, then what no workstream holds yet and who has work in
-   progress beside them. */
+   page allows. The counts strip, the headlines, then two columns where
+   there is room: the workstreams, and beside them what no workstream holds
+   yet and who has work in progress, their heads on one line. The composer
+   is a thread's, in a thread's dock at the foot.
+   One rhythm: the page's parts are --space-6 apart, a section's head is
+   --space-2 over its list, and every list row pads by --row-pad. */
 
 .overview {
-  display: grid;
-  gap: var(--space-4);
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
   min-width: 0;
-  padding: var(--inset-top) var(--space-6) 6rem;
+  min-height: calc(100vh - var(--bar-height));
+  padding: var(--inset-top) var(--space-6) 0;
   container: overview / inline-size;
+}
+
+/* The composer: a thread's own, in a thread's dock, at the page's foot,
+   however short the page. */
+.overview-dock {
+  margin-top: auto;
+}
+
+.overview-dock > .chat-input {
+  width: 100%;
+  max-width: var(--chat);
+  margin-inline: auto;
 }
 
 .overview-top {
@@ -6441,9 +6441,11 @@ button.overview-stat:not(:disabled):hover {
   grid-template-columns: minmax(0, 1fr);
 }
 
-@container overview (min-width: 900px) {
+/* Two columns from a 760px overview, so at 1100 with the sidebar open the
+   heads still share a line. */
+@container overview (min-width: 760px) {
   .overview-columns {
-    grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
+    grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr);
   }
 }
 
@@ -6453,6 +6455,10 @@ button.overview-stat:not(:disabled):hover {
   gap: var(--space-6);
   align-content: start;
   min-width: 0;
+}
+
+.overview-main {
+  container: main / inline-size;
 }
 
 .overview-section {
@@ -6531,14 +6537,9 @@ button.overview-title:hover {
 }
 
 .overview-sub,
-.overview-last,
-.overview-note {
+.overview-last {
   color: var(--text-muted);
   font-size: var(--text-sm);
-}
-
-.overview-note {
-  margin: 0;
 }
 
 .overview-more {
@@ -6684,12 +6685,14 @@ button.overview-title:hover {
   justify-self: stretch;
 }
 
+/* The headlines: cells side by side in one frame, each its label over its
+   line; the review links nobody has opened are the last. */
 .overview-headlines {
   display: grid;
   /* Fit, not fill: one headline takes the whole row, not a third of it. */
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 0 var(--space-6);
-  padding: var(--space-2) var(--space-4);
+  padding: 0 var(--space-4);
   border: var(--list-frame);
   border-radius: var(--radius-lg);
   background: var(--list-bg);
@@ -6698,10 +6701,96 @@ button.overview-title:hover {
 .overview-headline {
   display: grid;
   gap: 0.125rem;
+  align-content: start;
   min-width: 0;
   margin: 0;
   padding: var(--space-2) 0;
   font-size: var(--text-md);
+}
+
+/* With questions to start from: a row each, one a line, its questions at
+   the row's end. The labels share one column, as wide as the longest. */
+.overview-headlines[data-questions] {
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+}
+
+[data-questions] > .overview-headline {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 0 var(--space-4);
+  padding: var(--row-pad) 0;
+  border-top: var(--border-thin) solid var(--line);
+}
+
+[data-questions] > .overview-headline:first-child {
+  border-top: 0;
+}
+
+[data-questions] .overview-headline-label {
+  white-space: nowrap;
+}
+
+[data-questions] .overview-headline > .overview-headline-body:last-child {
+  grid-column: 2 / -1;
+}
+
+.headline-asks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: var(--space-1) var(--space-2);
+}
+
+.headline-asks .ask-question {
+  white-space: nowrap;
+}
+
+/* A narrow overview: a row is its label over its line, with its questions
+   beside both, stacked. */
+@container overview (max-width: 700px) {
+  .overview-headlines[data-questions] {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  [data-questions] :is(.overview-headline-label, .overview-headline-body) {
+    grid-column: 1;
+  }
+
+  [data-questions] .headline-asks {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}
+
+/* The review links nobody has opened: the oldest one's thread, and "N
+   more" opening the rest in place. */
+.review-links {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.review-links[data-open] {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.review-links .overview-more {
+  flex: none;
+  padding: 0;
+}
+
+.review-links .overview-title {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: var(--weight-regular);
 }
 
 .overview-headline-label {
@@ -6794,7 +6883,6 @@ button.overview-title:hover {
 .overview-person {
   justify-content: space-between;
   flex-wrap: nowrap;
-  padding-block: 0.25rem;
   font-size: var(--text-sm);
 }
 
@@ -6817,7 +6905,6 @@ button.overview-title:hover {
 /* Not in a workstream yet: a line each, under the rule that found it. */
 .overview-candidates {
   display: block;
-  padding: var(--space-1) 0;
   overflow: hidden;
 }
 
@@ -6829,7 +6916,7 @@ button.overview-title:hover {
 
 .overview-rule {
   margin: 0;
-  padding: var(--space-2) var(--space-3) var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
   overflow: hidden;
   color: var(--derived);
   font-size: var(--text-xs);
@@ -6842,7 +6929,7 @@ button.overview-title:hover {
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
-  padding: 0.1875rem var(--space-3);
+  padding: var(--row-pad) var(--space-3);
   font-size: var(--text-md);
 }
 
@@ -6888,17 +6975,74 @@ button.overview-title:hover {
   }
 }
 
+/* A narrow main column gives each workstream's name the row's first line,
+   with its spark, bar, what moved and when under it. */
+@container main (max-width: 560px) {
+  .overview-workstream {
+    grid-template-columns: 3.5rem 4rem minmax(0, 1fr) auto;
+    row-gap: var(--space-1);
+  }
+
+  .overview-workstream-name {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 760px) {
   .overview {
     padding-inline: var(--space-3);
   }
 
-  .overview-workstream {
-    grid-template-columns: minmax(0, 1fr) 4rem 6.5rem 3rem;
+  /* A phone: the name on its own line, then its bar, what moved and when,
+     so a name never wraps to four lines. */
+  .overview-main .overview-workstream {
+    grid-template-columns: 4rem minmax(0, 1fr) auto;
   }
 
   .overview-workstream .overview-spark {
     display: none;
+  }
+
+  /* The headlines: one row of cells that scrolls sideways, each with its
+     questions under it. */
+  .overview .overview-headlines {
+    display: flex;
+    gap: var(--space-6);
+    overflow-x: auto;
+    padding-inline: var(--space-4);
+    scroll-padding-inline: var(--space-4);
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, var(--text) calc(100% - var(--space-6)), transparent);
+  }
+
+  .overview .overview-headline {
+    flex: 0 0 min(15rem, 75%);
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-1);
+    padding: var(--space-2) 0;
+    border-top: 0;
+    scroll-snap-align: start;
+  }
+
+  .overview .overview-headline > * {
+    grid-row: auto;
+  }
+
+  .overview .overview-headline > :is(*, .overview-headline-body:last-child) {
+    grid-column: 1;
+  }
+
+  .overview .headline-asks {
+    justify-self: start;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .overview .headline-asks .ask-question {
+    max-width: 100%;
+    white-space: normal;
   }
 
   /* The counts in a row of their own under the tabs, each count over its
@@ -6939,58 +7083,45 @@ button.overview-title:hover {
   }
 }
 
-/* The window chat (decisions 0027 and 0030): the ask bar under the counts
-   strip, its questions to start from, and the chat beside the overview
-   while it has a conversation. */
-.ask {
-  display: grid;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 var(--space-6);
-}
-
-/* Questions to start from: rows to scan and press, under a small head. */
-.ask-starts-head {
-  margin: var(--space-1) 0 0;
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-strong);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.ask-questions {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* Questions to start from (decision 0030): beside the headline each comes
+   from, or in the composer's frame where none on screen holds it. A filled
+   button, so it never reads as a field. */
+.ask-starts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-1);
 }
 
 .ask-question {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 1.5rem;
+  padding: 0.125rem var(--space-2);
   border: 0;
   border-radius: var(--radius);
-  background: none;
-  color: var(--text-muted);
+  background: var(--surface-hover);
+  color: var(--text);
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
 }
 
 .ask-question::before {
   content: "↳";
+  margin-right: var(--space-1);
   color: var(--text-faint);
 }
 
 .ask-question:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text);
+  background: var(--accent-soft);
 }
 
+/* The window chat (decisions 0027 and 0030): beside the overview while it
+   has a conversation. */
 .window-chat {
   position: fixed;
   top: 0;

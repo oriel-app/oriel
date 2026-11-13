@@ -137,7 +137,7 @@ The page is `.thread-layout`: the thread in the middle (`main.thread`, at most `
     </li>
   </ol>
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <textarea
         class="chat-input-field"
         rows="2"

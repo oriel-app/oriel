@@ -289,11 +289,12 @@ async function loadItems(
 // Puts the cursor in the composer: at once, as after Reject, or once the
 // page shows it, which may take a few frames, as when "Ask about this"
 // opens the chat. Under an open item, the composer is the one its dock
-// carries.
+// carries; a dock out of use (inert) is skipped, as the overview's is while
+// the window chat is open.
 function focusComposer(frames: number): void {
   const field =
     document.querySelector<HTMLTextAreaElement>(".panel-dock textarea") ??
-    document.querySelector<HTMLTextAreaElement>(".composer textarea");
+    document.querySelector<HTMLTextAreaElement>(":not([inert]) > .composer textarea");
   if (field) field.focus();
   else if (frames > 0) requestAnimationFrame(() => focusComposer(frames - 1));
 }

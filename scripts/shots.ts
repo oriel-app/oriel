@@ -1616,11 +1616,11 @@ async function openSources(page: Page): Promise<void> {
 }
 
 // Once the overview has loaded.
-// A question asked from the ask bar in a fresh window chat, waiting for its
+// A question asked from the overview's composer in a fresh window chat, waiting for its
 // block of `form` and the end of the turn.
 async function askInWindow(page: Page, question: string, form: string): Promise<void> {
   await post("/api/window-chat/new", {}, historied);
-  await page.locator(".ask-input").fill(question);
+  await page.locator(".overview-dock .chat-input-field").fill(question);
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   // The last scene's chat may still show its block until this one's
   // question replaces it.
@@ -1772,7 +1772,7 @@ async function askChat(page: Page, question: string, answered: string, on = serv
     .locator(".window-chat .answer-block, .window-chat .quote-from, .window-chat .run")
     .first()
     .waitFor({ state: "detached" });
-  await page.locator(".ask-input").fill(question);
+  await page.locator(".overview-dock .chat-input-field").fill(question);
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   await page.locator(answered).first().waitFor();
   await page.locator(".working").first().waitFor({ state: "detached" });
@@ -2094,8 +2094,8 @@ const scenes: Scene[] = [
     ),
     act: noticedShown,
   },
-  // The window chat (decision 0030): the ask bar with questions to start
-  // from, then an answer with each form of block, beside the overview or,
+  // The window chat (decision 0030): the overview's composer, its questions
+  // to start from beside the headlines, then an answer with each form of block, beside the overview or,
   // on a narrow window, as a sheet. Each starts a fresh chat.
   {
     name: "ask-bar",
@@ -4193,7 +4193,7 @@ const scenes: Scene[] = [
     make: async () => (await writing()).serving,
     act: async (page) => {
       await overviewShown(page);
-      await page.locator(".ask-input").fill("What's holding up saved cards?");
+      await page.locator(".overview-dock .chat-input-field").fill("What's holding up saved cards?");
       await page.getByRole("button", { name: "Ask", exact: true }).click();
       await page.locator(".window-chat .reply .chip").first().waitFor();
       await page.locator(".working").first().waitFor({ state: "detached" });
@@ -4373,7 +4373,9 @@ const scenes: Scene[] = [
     make: async () => (await writing()).serving,
     act: async (page) => {
       await overviewShown(page);
-      await page.locator(".ask-input").fill("Gather the vehicle stories into a workstream");
+      await page
+        .locator(".overview-dock .chat-input-field")
+        .fill("Gather the vehicle stories into a workstream");
       await page.getByRole("button", { name: "Ask", exact: true }).click();
       await page
         .locator(".sidebar-needs .nav-waiting-on[data-waiting='reply']", { hasText: "Your turn" })
@@ -4436,7 +4438,9 @@ const sheetsMcpDrafting = () =>
   );
 const sheetsMcpDrafted = async (page: Page) => {
   await overviewShown(page);
-  await page.locator(".ask-input").fill("Draft how Oriel reads my spreadsheets.");
+  await page
+    .locator(".overview-dock .chat-input-field")
+    .fill("Draft how Oriel reads my spreadsheets.");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   await page.locator(".window-chat .draft-card").waitFor();
   await page.locator(".window-chat .working").waitFor({ state: "detached" });

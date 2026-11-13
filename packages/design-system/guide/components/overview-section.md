@@ -3,25 +3,26 @@ title: Overview sections
 status: drifting
 group: Layout
 order: 74
-classes: overview, overview-columns, overview-main, overview-side, overview-section, overview-head, overview-count, overview-head-more, overview-rows, overview-row, overview-title, overview-sub, overview-more, overview-headlines, overview-headline, overview-headline-label, overview-headline-body, overview-note, overview-changed, overview-quiet, overview-loading, overview-problem, first-run-line, key, section, section-head, section-title, quiet-action
-summary: How the overview is laid out and headed: its two columns and their container query, each section's head with its count and "N more", the list frame, the headlines, and the notes between them. Section heads and list frames change with the theme.
+classes: overview, overview-columns, overview-main, overview-side, overview-section, overview-head, overview-count, overview-head-more, overview-rows, overview-row, overview-title, overview-sub, overview-more, overview-headlines, overview-headline, overview-headline-label, overview-headline-body, headline-asks, review-links, overview-changed, overview-quiet, overview-loading, overview-problem, first-run-line, key, section, section-head, section-title, quiet-action
+summary: How the overview is laid out and headed: its one spacing rule, its two columns and their container queries, each section's head with its count and "N more", the list frame, the headlines with their questions to start from, and the notes. Section heads and list frames change with the theme.
 ---
 
 # Overview sections
 
 ## What it is
 
-The overview (decision 0027) is "the counts strip, then the ask bar's place, then the review links nobody has opened, the headlines and the workstreams; beside them, what no workstream holds yet and who has work in progress" (`packages/web/src/overview-page.tsx`). This page is its frame: everything around the rows.
+The overview (decision 0027) is "the counts strip, then the headlines, each with its questions to start from (decision 0030) and the review links nobody has opened among them; then the workstreams, and beside them what no workstream holds yet and who has work in progress, their heads on one line. The composer is a thread's, at the page's foot." (`packages/web/src/overview-page.tsx`). This page is its frame: everything around the rows.
 
-- **The page** (`main.overview`): a grid that is also a container, `overview`, so its columns follow the page's own width, which the item panel narrows.
-- **The columns** (`.overview-columns`): one column, then `minmax(0,1.7fr) minmax(18rem,1fr)` once the overview is 900px wide (`@container overview (min-width: 900px)` in `window.css`). `.overview-main` holds the unopened note, the headlines and Workstreams; `.overview-side` holds Not in a workstream yet and In progress, by person.
+- **The page** (`main.overview`): a column that is also a container, `overview`, so its columns follow the page's own width, which the item panel narrows. Its composer is a thread's, in a `.chat-dock` at its foot (see [Chat input](/components/chat-input)).
+- **One rhythm**: the page's parts are `--space-6` apart, a section's head is `--space-2` over its list, and every list row pads by `--row-pad`. Nothing on the overview sets a margin of its own.
+- **The columns** (`.overview-columns`): one column, then `minmax(0,1.6fr) minmax(16rem,1fr)` once the overview is 760px wide (`@container overview (min-width: 760px)` in `window.css`), so at 1100 with the sidebar open the two heads still share a line. `.overview-main` holds Workstreams, then any pins; `.overview-side` holds Not in a workstream yet, then Noticed, then In progress, by person. Neither pushes the workstreams down.
 - **A section** (`section.overview-section`): a head and a list. The head (`h2.overview-head`) is the title, its count (`.overview-count`) and, at its end, any "N more" (`.overview-head-more`). "The theme's rule above it gives the sections their rank, and its colour is muted in every theme." (`.overview-head` in `window.css`).
 - **The list frame** (`.overview-rows`): `--list-frame` around it and `--list-bg` behind it. The rows inside are on [List rows](/components/list-row).
-- **The headlines** (`.overview-headlines`): "The standing questions, one computed line each, with its rule on hover." (`Headlines` in `packages/web/src/overview-page.tsx`).
+- **The headlines** (`.overview-headlines`): "The standing questions, one computed line each, with its rule on hover, and the questions to start from that each one offers at its row's end. The review links nobody has opened are the last." (`Headlines` in `packages/web/src/overview-page.tsx`).
 - **"N more"** (`.overview-more`): an accent word, in two places (see Drift).
-- **Notes**: the unopened review links (`.overview-note`), what changed by workstream (`.overview-changed`), and the loading, problem and empty lines.
+- **Notes**: what changed by workstream (`.overview-changed`), and the loading, problem and empty lines.
 
-The top strip (tabs and counts) is on [Page head](/components/page-head), and the ask bar on [Chat input](/components/chat-input).
+The top strip (tabs and counts) is on [Page head](/components/page-head), and the composer and the questions' buttons on [Chat input](/components/chat-input).
 
 ## When to use it
 
@@ -41,7 +42,7 @@ The top strip (tabs and counts) is on [Page head](/components/page-head), and th
 
 ### The whole overview
 
-```html specimen id=layout title="The overview at 1280, without the sidebar: the top strip, the ask bar, then two columns" screen height=800
+```html specimen id=layout title="The overview at 1280, without the sidebar: the top strip, the headlines, then two columns" screen height=800
 <main class="overview" aria-busy="false">
   <div class="overview-top">
     <nav class="tabs view-tabs" aria-label="Window">
@@ -60,68 +61,42 @@ The top strip (tabs and counts) is on [Page head](/components/page-head), and th
       <span class="overview-stat"><strong>16</strong> not in a workstream</span>
     </p>
   </div>
-  <section class="ask" aria-label="Ask about your window">
-    <form class="chat-input" data-lines="one" data-size="lg" data-marked>
-      <input
-        type="text"
-        class="chat-input-field"
-        placeholder="Ask about your window"
-        aria-label="Ask about your window"
-      />
-      <div class="chat-input-foot">
-        <span class="chat-input-reads">Reads your whole window</span>
-        <button type="submit" class="button" disabled>Ask</button>
-      </div>
-    </form>
-    <h2 class="ask-starts-head">Questions to start from</h2>
-    <ul class="ask-questions">
-      <li>
-        <button type="button" class="ask-question">
-          Chart what moved since I looked, by workstream
-        </button>
-      </li>
-      <li>
-        <button type="button" class="ask-question">
-          Should Vehicle and freight reservations become a workstream?
-        </button>
-      </li>
-    </ul>
+  <section
+    class="overview-headlines"
+    data-questions
+    data-section="headlines"
+    aria-label="Headlines"
+  >
+    <p class="overview-headline" data-headline="moved">
+      <span
+        class="overview-headline-label"
+        title="Oriel rule: The workstream with the most members changed since you last left the overview"
+        >Moved most</span
+      >
+      <span class="overview-headline-body"
+        ><a class="overview-title" href="/workstreams/ws-checkout"
+          >Checkout v2: phone wallets and saved cards</a
+        >
+        <span class="overview-sub">4 items moved, 1 to done</span></span
+      >
+    </p>
+    <p class="overview-headline" data-headline="quiet">
+      <span
+        class="overview-headline-label"
+        title="Oriel rule: The open workstream whose latest member update or thread activity is oldest"
+        >Quiet longest</span
+      >
+      <span class="overview-headline-body"
+        ><a class="overview-title" href="/workstreams/ws-weather"
+          >Weather disruptions and rebooking</a
+        >
+        <span class="overview-sub">nothing moved in 16 days</span></span
+      >
+    </p>
   </section>
+
   <div class="overview-columns">
     <div class="overview-main">
-      <p class="overview-note">
-        2 review links sent and not opened yet:
-        <a href="/threads/t-estimates">Which stories here still need estimates?</a>;
-        <a href="/threads/t-gift">Plan gift cards</a>
-      </p>
-      <section class="overview-headlines" data-section="headlines" aria-label="Headlines">
-        <p class="overview-headline" data-headline="moved">
-          <span
-            class="overview-headline-label"
-            title="Oriel rule: The workstream with the most members changed since you last left the overview"
-            >Moved most since Tue, Nov 3</span
-          >
-          <span class="overview-headline-body"
-            ><a class="overview-title" href="/workstreams/ws-checkout"
-              >Checkout v2: phone wallets and saved cards</a
-            >
-            <span class="overview-sub">4 items moved, 1 to done</span></span
-          >
-        </p>
-        <p class="overview-headline" data-headline="quiet">
-          <span
-            class="overview-headline-label"
-            title="Oriel rule: The open workstream whose latest member update or thread activity is oldest"
-            >Quiet longest</span
-          >
-          <span class="overview-headline-body"
-            ><a class="overview-title" href="/workstreams/ws-weather"
-              >Weather disruptions and rebooking</a
-            >
-            <span class="overview-sub">nothing moved in 16 days</span></span
-          >
-        </p>
-      </section>
       <section class="overview-section" data-section="workstreams" aria-label="Workstreams">
         <h2 class="overview-head"><span>Workstreams</span><span class="overview-count">7</span></h2>
         <ul class="overview-rows">
@@ -285,13 +260,13 @@ The top strip (tabs and counts) is on [Page head](/components/page-head), and th
 </main>
 ```
 
-- `main.overview` is a grid with `--space-4` between its parts, padded `--inset-top` and `--space-6` (`--space-3` under 760px), and 6rem at the foot, which kept the old Undo stack off the last row; the bead (0056) shows at the top now, so the 6rem is only room under the last row.
-- `.overview-main` and `.overview-side` are grids with `--space-6` between sections. In the app the overview sits in `.shell-main` beside the [sidebar](/components/sidebar); pins, when there are any, go between the headlines and Workstreams.
-- The ask bar's questions and the counts strip belong to [Chat input](/components/chat-input) and [Page head](/components/page-head).
+- `main.overview` is a column with `--space-6` between its parts, padded `--inset-top` and `--space-6` (`--space-3` under 760px), at least as tall as the window, so its composer's dock sits at the foot however short the page. The dock's own padding is the room under the last row.
+- `.overview-main` and `.overview-side` are grids with `--space-6` between sections. In the app the overview sits in `.shell-main` beside the [sidebar](/components/sidebar); pins, when there are any, go under Workstreams, and Noticed under Not in a workstream yet.
+- The composer and the counts strip belong to [Chat input](/components/chat-input) and [Page head](/components/page-head). The specimen leaves the composer out.
 
 ### Narrow: one column
 
-The columns key off the `overview` container, not the screen: below 900px of overview the side column goes under the main one. That happens on a laptop with the item panel open, as well as on a phone.
+The columns key off the `overview` container, not the screen: below 760px of overview the side column goes under the main one. That happens on a laptop with the item panel open, as well as on a phone. A main column under 560px (`@container main`) gives each workstream's name the row's first line, with its spark, bar, what moved and when under it; on a phone the spark goes too. On a phone the headlines are one row of cells that scrolls sideways, each with its questions under it.
 
 ```html specimen id=narrow title="At 390: one column, the side's sections under the main's" width=390
 <main class="overview" aria-busy="false">
@@ -379,7 +354,7 @@ Flip the theme in the workshop's bar to see the same markup become a ruled, open
     <span
       class="overview-headline-label"
       title="Oriel rule: The workstream with the most members changed since you last left the overview"
-      >Moved most since Tue, Nov 3</span
+      >Moved most</span
     >
     <span class="overview-headline-body"
       ><a class="overview-title" href="/workstreams/ws-checkout"
@@ -430,8 +405,10 @@ Flip the theme in the workshop's bar to see the same markup become a ruled, open
 </section>
 ```
 
-- Up to four, each only when it has an answer: "Moved most since you looked" (or "Moved most since {day}"), "Quiet longest", "Named most in chat this week", "Top not in a workstream" (`headlines` in `packages/server/src/overview.ts`).
-- An auto-fit grid of `minmax(16rem, 1fr)`: "Fit, not fill: one headline takes the whole row, not a third of it." (`.overview-headlines` in `window.css`). It wears the list frame.
+- Up to four, each only when it has an answer: "Moved most" (the counts strip says since when), "Quiet longest", "Named most in chat this week", "Top not in a workstream" (`headlines` in `packages/server/src/overview.ts`).
+- An auto-fit grid of `minmax(10rem, 1fr)`: "Fit, not fill: one headline takes the whole row, not a third of it." (`.overview-headlines` in `window.css`). It wears the list frame.
+- With questions to start from (`[data-questions]`), each headline is a row, one a line: the labels share a column as wide as the longest (a subgrid), and the row's questions (`.headline-asks`) sit at its end. Each question's button names itself with its own words and is described by its headline's line (`aria-describedby`). Under a 700px overview a row is its label over its line, with its questions stacked beside both.
+- The last is the review links sent and not opened (`data-headline="unopened"`, `.review-links`): the oldest one's thread, and "N more" opening the rest in place, each its own link. Their threads wait on others, so they aren't in Needs you.
 - The label is `--text-xs`, uppercase and faint, with `cursor: help` and "Oriel rule: …" as its title. The body is one line, ellipsised; under 760px it wraps.
 - An item headline opens the item in the [item panel](/components/item-panel); with no title it reads "Not in the window".
 
@@ -469,16 +446,10 @@ Decision 0027 says: 'N more' opens the rest of a short list in place (Needs you,
 - **In place**: a `button.overview-more` after the list (Workstreams). Opened, every row shows and the button goes. Workstreams shows the first 8 and up to 4 gone quiet from beyond them (`shown` in `packages/web/src/overview.ts`).
 - **Into Browse**: an `a.overview-more` in the head's `.overview-head-more` (Not in a workstream yet, In progress, by person), to Browse filtered to what the section counts.
 
-### Notes between sections
+### What changed, by workstream
 
-```html specimen id=notes title="The unopened review links, and what changed, by workstream"
+```html specimen id=notes title="What changed, by workstream"
 <div class="ws-stack">
-  <p class="overview-note">
-    3 review links sent and not opened yet:
-    <a href="/threads/t-estimates">Which stories here still need estimates?</a>;
-    <a href="/threads/t-rename">Rename the epic and plan gift cards in it</a>;
-    <a href="/threads/t-gift">Plan gift cards</a>
-  </p>
   <section class="overview-changed" aria-label="What changed, by workstream">
     <ul class="overview-rows">
       <li class="overview-row">
@@ -500,12 +471,11 @@ Decision 0027 says: 'N more' opens the rest of a short list in place (Needs you,
 </div>
 ```
 
-- **Unopened**: the review links sent and not opened, oldest first, the first 3 and then "…". Their threads wait on others, so they aren't in Needs you.
 - **What changed, by workstream** (`.overview-changed`) opens from the counts strip's first count, under the top strip, at most 40rem wide. It lists 8 workstreams, then "and {N} more workstreams, below", then "Not in a workstream" with its count.
 
 ### The first run's line
 
-```html specimen id=first-run title="The first run's one-time line, above the ask bar"
+```html specimen id=first-run title="The first run's one-time line, above the headlines"
 <aside class="first-run-line" aria-label="About the window">
   <p>
     <strong>This is your window:</strong> your Jira issues in one place. To follow an epic, make it
@@ -613,7 +583,7 @@ Decision 0027 says: 'N more' opens the rest of a short list in place (Needs you,
 - **Active** and **disabled** don't apply to a section; "N more" is never disabled, it isn't drawn when nothing is hidden.
 - **Loading**: until the server answers, "Loading the overview…" stands where the columns go, and `main.overview` has `aria-busy="true"`. The top strip waits for the same answer.
 - **Error**: the server's problem, then a `quiet-action` Try again, as `role="alert"` (`OverviewPage` in `packages/web/src/overview-page.tsx`). The sentence in the specimen is illustrative; the app shows what the server said.
-- **Empty**: a section always draws its head and count; its list gives way to an `.overview-quiet` line saying why: "No workstreams yet. Make one from what isn't in a workstream yet, or from Browse.", "Every item a rule finds is in a workstream.", "Nobody has work in progress." The headlines and the unopened note draw nothing at all when they have nothing.
+- **Empty**: a section always draws its head and count; its list gives way to an `.overview-quiet` line saying why: "No workstreams yet. Make one from what isn't in a workstream yet, or from Browse.", "Every item a rule finds is in a workstream.", "Nobody has work in progress." The headlines draw nothing at all when they have nothing.
 
 ## Keyboard and ARIA
 
@@ -629,20 +599,20 @@ Decision 0027 says: 'N more' opens the rest of a short list in place (Needs you,
 - Section titles are sentence case and say what's in the list: **Workstreams**, **Not in a workstream yet**, **In progress, by person**. The theme decides whether they show in capitals; write them in sentence case.
 - The count is the whole list's number, never "N of M".
 - "N more" is the number and the word: "6 more", never "Show more" or "See all".
-- Headline labels are questions answered: "Moved most since Tue, Nov 3", "Quiet longest", "Named most in chat this week", "Top not in a workstream". Details are lower case: "4 items moved, 1 to done", "nothing moved in 16 days", "named 5× · in Checkout v2: phone wallets and saved cards".
-- Notes: "2 review links sent and not opened yet:", then titles split by "; ".
+- Headline labels are questions answered: "Moved most", "Quiet longest", "Named most in chat this week", "Top not in a workstream". Details are lower case: "4 items moved, 1 to done", "nothing moved in 16 days", "named 5× · in Checkout v2: phone wallets and saved cards".
+- The review links' headline: "2 review links not opened", then the oldest one's thread title and "1 more".
 - Rules start "Oriel rule: " in a title, then the rule in sentence case.
 
 ## Where the app uses it
 
-- The page and its columns: `OverviewPage` in `packages/web/src/overview-page.tsx`. CSS `.overview`, `.overview-columns`, `@container overview (min-width: 900px)` and `.overview-main` in `window.css`.
+- The page and its columns: `OverviewPage` in `packages/web/src/overview-page.tsx`. CSS `.overview`, `.overview-columns`, `@container overview (min-width: 760px)`, `.overview-main` and `@container main (max-width: 560px)` in `window.css`.
 - Section and head: `Section` in `packages/web/src/overview-page.tsx`. CSS `.overview-section`, `.overview-head`, `.overview-count` and `.overview-head-more` in `window.css`. Theme tokens, Graphite then Broadsheet: `:root` and `:root[data-theme="broadsheet"]` in `window.css`.
 - The list frame: `.overview-rows` in `window.css`.
 - "N more": in place `More` in `packages/web/src/overview-page.tsx`; into Browse `Candidates` and `People` in `packages/web/src/overview-page.tsx`. CSS `.overview-more` in `window.css`.
-- Headlines: `Headlines` and `Headline` in `packages/web/src/overview-page.tsx`; computed by `headlines` in `packages/server/src/overview.ts`. CSS `.overview-headlines`, `.overview-headline`, `.overview-headline-label` and `.overview-headline-body` in `window.css`.
-- Notes: unopened `Unopened` in `packages/web/src/overview-page.tsx`; what changed `Changed` in `packages/web/src/overview-page.tsx`, CSS `.overview-sub` and `.overview-changed .overview-rows` in `window.css`. The first run's line `FirstRunLine` in `packages/web/src/overview-page.tsx`, CSS `.first-run-line` in `window.css`.
+- Headlines: `Headlines`, `Headline` and `Unopened` in `packages/web/src/overview-page.tsx`; computed by `headlines` in `packages/server/src/overview.ts`; their questions by `questionsFrom` in `packages/web/src/window-chat.ts`. CSS `.overview-headlines`, `.overview-headline`, `.overview-headline-label`, `.overview-headline-body`, `.headline-asks` and `.review-links` in `window.css`.
+- Notes: what changed `Changed` in `packages/web/src/overview-page.tsx`, CSS `.overview-sub` and `.overview-changed .overview-rows` in `window.css`. The first run's line `FirstRunLine` in `packages/web/src/overview-page.tsx`, CSS `.first-run-line` in `window.css`.
 - Loading, problem and empty: `OverviewPage` in `packages/web/src/overview-page.tsx`; CSS `.overview-loading`, `.overview-problem` and `.overview-quiet` in `window.css`.
-- Narrow: `@media (max-width: 760px)` in `window.css` (padding, the counts, wrapping titles).
+- Narrow: `@media (max-width: 760px)` in `window.css` (padding, the counts, the headlines' sideways row, the workstream rows, wrapping titles).
 - Other pages' sections: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`, `DonePage` in `packages/web/src/other-pages.tsx`; CSS `.section`, `.section-head` and `.section-title` in `window.css`.
 
 ## Drift

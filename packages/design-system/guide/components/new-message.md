@@ -38,7 +38,7 @@ One rule for every chat, in the thread's model (`packages/web/src/thread.ts`): `
 ```html specimen id=thread title="Over a thread's composer" height=160
 <main class="thread">
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <div class="composer-pills">
         <button type="button" class="new-message-pill">
           <span aria-hidden="true">↓</span>New message
@@ -62,7 +62,7 @@ One rule for every chat, in the thread's model (`packages/web/src/thread.ts`): `
 ```html specimen id=both title="Under a change set to review, at 390" height=200 width=390
 <main class="thread">
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <div class="composer-pills">
         <button type="button" class="to-review-pill">
           <span aria-hidden="true">↑</span>1 change set to review above
@@ -94,7 +94,7 @@ One rule for every chat, in the thread's model (`packages/web/src/thread.ts`): `
 ```html specimen id=hover title="Hover" state=hover height=160
 <main class="thread">
   <div class="chat-dock">
-    <form class="chat-input" data-lines="grow" data-elevation="raised">
+    <form class="chat-input" data-elevation="raised">
       <div class="composer-pills">
         <button type="button" class="new-message-pill ws-hover">
           <span aria-hidden="true">↓</span>New message

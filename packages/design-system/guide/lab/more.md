@@ -2,7 +2,7 @@
 title: More modern CSS
 status: proposed
 order: 90
-classes: more-unfold, more-enter, more-balance, more-pretty, more-scroll, more-scroll-row, more-stagger, more-scheme, run, run-body, code, output, context-menu, context-menu-item, button, page-title, panel-prose, ask-questions, ask-question
+classes: more-unfold, more-enter, more-balance, more-pretty, more-scroll, more-scroll-row, more-stagger, more-scheme, run, run-body, code, output, context-menu, context-menu-item, button, page-title, panel-prose, ask-question
 summary: The rest of modern CSS, judged for Oriel one feature at a time: light-dark(), color-mix(), @starting-style, interpolate-size, @scope, container queries, text-wrap, scrollbar-gutter, :has(), nesting, @layer and sibling-index().
 ---
 
@@ -132,7 +132,7 @@ Safari and Firefox have `::details-content` but not `interpolate-size`, so there
 
 ### Container queries
 
-Oriel uses size queries already: the page and the overview are containers (`body` and `.overview` in `window.css`), and the overview's layout changes at 900px of its own width (`@container overview (min-width: 900px)` in `window.css`). Style queries, `@container style(--x: y)`, could let a theme token switch a layout: a theme with `--list-frame: none` could drop a list's frame without a `[data-theme]` selector. Safari 18 and Firefox 151 have them; the range syntax, `style(--x > 2)`, is Chromium's only.
+Oriel uses size queries already: the page and the overview are containers (`body` and `.overview` in `window.css`), and the overview's layout changes at 760px of its own width (`@container overview (min-width: 760px)` in `window.css`). Style queries, `@container style(--x: y)`, could let a theme token switch a layout: a theme with `--list-frame: none` could drop a list's frame without a `[data-theme]` selector. Safari 18 and Firefox 151 have them; the range syntax, `style(--x > 2)`, is Chromium's only.
 
 **Verdict: keep the size queries.** Use a style query where a theme's token should change a layout, never the range syntax.
 
@@ -225,7 +225,7 @@ Nesting writes `.run { & summary { … } }`. Every engine Oriel meets has it. Bu
 ```html specimen id=stagger title="Questions to start from, staggered by sibling-index()" side=proposed height=140
 <details>
   <summary>Questions to start from</summary>
-  <ul class="ask-questions more-stagger" aria-label="Questions to start from">
+  <ul class="more-stagger" aria-label="Questions to start from">
     <li><button type="button" class="ask-question">What moved in Payments?</button></li>
     <li><button type="button" class="ask-question">Why is Checkout v2 stalled?</button></li>
     <li>

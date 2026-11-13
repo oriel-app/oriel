@@ -126,7 +126,6 @@ export const groups: Record<string, string[]> = {
     "--section-rule",
     "--list-frame",
     "--list-bg",
-    "--ask-mark",
   ],
   elevation: ["--shadow-sm", "--shadow", "--scrim"],
   motion: ["--duration-quick", "--duration-move", "--ease-out"],

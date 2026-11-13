@@ -88,7 +88,7 @@ Each, forced on (the workshop's `ws-focus-visible`, `ws-focus` and `ws-focus-wit
 ```
 
 ```html specimen id=override-chat-input title="Every chat input: the frame shows it" state=focus-within
-<form class="chat-input ws-focus-within" data-lines="grow">
+<form class="chat-input ws-focus-within">
   <textarea
     class="chat-input-field"
     rows="2"
@@ -150,7 +150,7 @@ Each, forced on (the workshop's `ws-focus-visible`, `ws-focus` and `ws-focus-wit
 
 ## Proposed: one field-frame focus
 
-In Oriel for the chat inputs (DRIFT D3); proposed for the rest. A field that's a frame round an input (the composer, the ask bar, the two searches) shows focus on the frame: its border in `--focus` and a 1px ring outside it, on `:focus-within`. That's the look the sidebar's search already has, so it's one look extended, not a new one. A plain text field shows the same on itself. The inner input turns its own outline off, because the frame carries it.
+In Oriel for the chat inputs (DRIFT D3); proposed for the rest. A field that's a frame round an input (the composers, the two searches) shows focus on the frame: its border in `--focus` and a 1px ring outside it, on `:focus-within`. That's the look the sidebar's search already has, so it's one look extended, not a new one. A plain text field shows the same on itself. The inner input turns its own outline off, because the frame carries it.
 
 The chat inputs have it: `.chat-input:focus-within` in `window.css`. The rest is in this workshop's proposals: `.text-field-input:focus-visible` and `.search-field:focus-within` in `assets/proposals/field.css`. See [Chat input](/components/chat-input) and the [text field lab](/lab/text-field).
 
@@ -162,7 +162,7 @@ The drift report also suggests naming the ring's parts on `html`: `--focus-ring:
 
 ```html specimen id=proposed-frames title="Proposed: the frame shows focus, for every field" side=proposed state=focus-within
 <div class="ws-stack">
-  <form class="chat-input ws-focus-within" data-lines="grow">
+  <form class="chat-input ws-focus-within">
     <textarea
       class="chat-input-field"
       rows="2"

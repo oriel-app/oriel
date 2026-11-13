@@ -1,12 +1,13 @@
-// The overview (decision 0027), laid out as the window-explore spike's round
-// 14 found best: the counts strip, then the ask bar's place, then the review
-// links nobody has opened, the headlines and the workstreams; beside them,
-// what no workstream holds yet and who has work in progress. The threads
+// The overview (decision 0027): the counts strip, then the headlines, each
+// with its questions to start from (decision 0030) and the review links
+// nobody has opened among them; then the workstreams, and beside them what
+// no workstream holds yet and who has work in progress, their heads on one
+// line. The composer is a thread's, at the page's foot. The threads
 // waiting on the user are in the sidebar, on every page, which the strip's
 // count of them points to (OA-185). Every number and line is the server's,
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
-import { useContext } from "preact/hooks";
+import { useContext, useState } from "preact/hooks";
 import type { OverviewSection } from "@oriel/core/overview";
 import { WindowUndos } from "./end-workstream.tsx";
 import type { EndingModel } from "./ending.ts";
@@ -38,9 +39,9 @@ import type {
 import { openConnections, standingIn } from "./connections.ts";
 import { FoundCard } from "./found.tsx";
 import { StatusBar } from "./window-page.tsx";
-import { AskBar } from "./window-chat-view.tsx";
+import { OverviewComposer, QuestionButton } from "./window-chat-view.tsx";
 import { NoticedStrip, PinnedStrip } from "./noticed-strip.tsx";
-import type { WindowChatModel } from "./window-chat.ts";
+import { type Question, questionsFrom, type WindowChatModel } from "./window-chat.ts";
 
 export function OverviewPage(props: {
   model: OverviewModel;
@@ -67,6 +68,17 @@ export function OverviewPage(props: {
   const { model, ending, added, connections, connectors, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
+  const questions =
+    view && !props.noAi
+      ? questionsFrom(
+          view,
+          props.firstRun.questions,
+          standingIn(connectors, connections).length > 0,
+        )
+      : [];
+  // A question whose headline isn't on screen sits in the composer's frame.
+  const shownHere = new Set(view?.headlines.map((line) => line.id));
+  const beside = questions.filter((q) => q.headline !== undefined && shownHere.has(q.headline));
   return (
     <main class="overview" aria-busy={view === null && model.problem === null}>
       <div class="overview-top">
@@ -84,22 +96,7 @@ export function OverviewPage(props: {
           dispatch={dispatch}
         />
       )}
-      <AskBar
-        chat={props.chat}
-        view={view}
-        ongoing={props.ongoing}
-        firstRun={props.firstRun.questions}
-        noAi={props.noAi}
-        plans={standingIn(connectors, connections).length > 0}
-        dispatch={dispatch}
-      />
       <FoundCard connections={connections} connectors={connectors} dispatch={dispatch} />
-      <NoticedStrip
-        view={model.noticed}
-        busy={model.noticing}
-        problem={model.noticedProblem}
-        dispatch={dispatch}
-      />
       {view === null ? (
         model.problem === null ? (
           <p class="overview-loading">Loading the overview…</p>
@@ -116,22 +113,31 @@ export function OverviewPage(props: {
           </p>
         )
       ) : (
-        <div class="overview-columns">
-          <div class="overview-main">
-            <Unopened view={view} dispatch={dispatch} />
-            <Headlines view={view} dispatch={dispatch} />
-            <PinnedStrip
-              pins={model.noticed?.pins ?? []}
-              busy={model.noticing}
-              dispatch={dispatch}
-            />
-            <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
+        <>
+          <Headlines view={view} questions={beside} chat={props.chat} dispatch={dispatch} />
+          {/* Noticed and pins go under a column's first section, so neither
+              pushes the workstreams down or unlevels the two heads. */}
+          <div class="overview-columns">
+            <div class="overview-main">
+              <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
+              <PinnedStrip
+                pins={model.noticed?.pins ?? []}
+                busy={model.noticing}
+                dispatch={dispatch}
+              />
+            </div>
+            <div class="overview-side">
+              <Candidates view={view} model={model} dispatch={dispatch} />
+              <NoticedStrip
+                view={model.noticed}
+                busy={model.noticing}
+                problem={model.noticedProblem}
+                dispatch={dispatch}
+              />
+              <People view={view} dispatch={dispatch} />
+            </div>
           </div>
-          <div class="overview-side">
-            <Candidates view={view} model={model} dispatch={dispatch} />
-            <People view={view} dispatch={dispatch} />
-          </div>
-        </div>
+        </>
       )}
       {/* One stack: a workstream ended from the sidebar, the panel's adds,
           and the workstreams made here. */}
@@ -153,6 +159,13 @@ export function OverviewPage(props: {
               ? added.problem
               : { said: model.failed, onDismiss: () => send({ type: "failedDismissed" }) },
         }}
+        dispatch={dispatch}
+      />
+      <OverviewComposer
+        chat={props.chat}
+        ongoing={props.ongoing}
+        questions={questions.filter((q) => !beside.includes(q))}
+        noAi={props.noAi}
         dispatch={dispatch}
       />
     </main>
@@ -368,64 +381,59 @@ function More(props: { section: OverviewSection; hidden: number; dispatch: Dispa
   );
 }
 
-// The review links sent that nobody has opened yet, oldest first: the
-// threads they are from wait on others, so they aren't in Needs you.
-function Unopened({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
+// The standing questions, one computed line each, with its rule on hover,
+// and the questions to start from that each one offers at its row's end.
+// The review links nobody has opened are the last.
+function Headlines(props: {
+  view: OverviewView;
+  questions: Question[];
+  chat: WindowChatModel;
+  dispatch: Dispatch;
+}) {
+  const { view, questions, chat, dispatch } = props;
   const { unopened } = view.needsYou;
-  return (
-    <>
-      {unopened.length > 0 && (
-        <p class="overview-note">
-          {plural(unopened.length, "review link")} sent and not opened yet:{" "}
-          {unopened.slice(0, 3).map((link, at) => (
-            <>
-              {at > 0 && "; "}
-              <Link
-                key={link.changeSetId}
-                route={{ page: "thread", id: link.thread.id, changeSet: link.changeSetId }}
-                dispatch={dispatch}
-              >
-                {link.thread.title ?? link.workstream.name}
-              </Link>
-            </>
-          ))}
-          {unopened.length > 3 && "…"}
-        </p>
-      )}
-    </>
-  );
-}
-
-// The standing questions, one computed line each, with its rule on hover.
-function Headlines({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
-  if (view.headlines.length === 0) return null;
+  if (view.headlines.length === 0 && unopened.length === 0) return null;
   const items = view.headlines.flatMap((line) =>
     line.subject.kind === "item" ? [line.subject.item.id] : [],
   );
   return (
-    <section class="overview-headlines" data-section="headlines" aria-label="Headlines">
+    <section
+      class="overview-headlines"
+      data-questions={questions.length > 0 || undefined}
+      data-section="headlines"
+      aria-label="Headlines"
+    >
       <ItemListContext.Provider value={items}>
         {view.headlines.map((line) => (
-          <Headline key={line.id} line={line} lastSeen={view.lastSeen} dispatch={dispatch} />
+          <Headline
+            key={line.id}
+            line={line}
+            questions={questions.filter((question) => question.headline === line.id)}
+            chat={chat}
+            dispatch={dispatch}
+          />
         ))}
       </ItemListContext.Provider>
+      {unopened.length > 0 && <Unopened view={view} dispatch={dispatch} />}
     </section>
   );
 }
 
-function Headline(props: { line: HeadlineView; lastSeen: string | null; dispatch: Dispatch }) {
-  const { line, lastSeen, dispatch } = props;
-  const stamp = useStamp();
-  const label =
-    line.id === "moved" && lastSeen !== null
-      ? `Moved most since ${stamp(lastSeen, day)}`
-      : line.label;
+function Headline(props: {
+  line: HeadlineView;
+  questions: Question[];
+  chat: WindowChatModel;
+  dispatch: Dispatch;
+}) {
+  const { line, questions, dispatch } = props;
+  const about = `headline-${line.id}`;
   return (
     <p class="overview-headline" data-headline={line.id}>
       <span class="overview-headline-label" title={`Oriel rule: ${line.rule}`}>
-        {label}
+        {/* The counts strip beside it already says since when. */}
+        {line.id === "moved" ? "Moved most" : line.label}
       </span>
-      <span class="overview-headline-body">
+      <span class="overview-headline-body" id={about}>
         {line.subject.kind === "workstream" ? (
           <Link
             route={{ page: "workstream", id: line.subject.id }}
@@ -438,6 +446,52 @@ function Headline(props: { line: HeadlineView; lastSeen: string | null; dispatch
           <Item item={line.subject.item} />
         )}{" "}
         <span class="overview-sub">{line.detail}</span>
+      </span>
+      {questions.length > 0 && (
+        <span class="headline-asks">
+          {questions.map((question) => (
+            <QuestionButton
+              key={question.kind}
+              question={question}
+              chat={props.chat}
+              about={about}
+              dispatch={dispatch}
+            />
+          ))}
+        </span>
+      )}
+    </p>
+  );
+}
+
+// The review links sent that nobody has opened yet, as a headline: the
+// oldest one's thread, and "N more" opening the rest in place. The threads
+// they are from wait on others, so they aren't in Needs you.
+function Unopened({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
+  const { unopened } = view.needsYou;
+  const [open, setOpen] = useState(false);
+  const shown = open ? unopened : unopened.slice(0, 1);
+  return (
+    <p class="overview-headline" data-headline="unopened">
+      <span class="overview-headline-label">
+        {plural(unopened.length, "review link")} not opened
+      </span>
+      <span class="overview-headline-body review-links" data-open={open || undefined}>
+        {shown.map((link) => (
+          <Link
+            key={link.changeSetId}
+            route={{ page: "thread", id: link.thread.id, changeSet: link.changeSetId }}
+            dispatch={dispatch}
+            class="overview-title"
+          >
+            {link.thread.title ?? link.workstream.name}
+          </Link>
+        ))}
+        {!open && unopened.length > 1 && (
+          <button type="button" class="overview-more" onClick={() => setOpen(true)}>
+            {unopened.length - 1} more
+          </button>
+        )}
       </span>
     </p>
   );
