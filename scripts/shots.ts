@@ -6307,8 +6307,6 @@ scenes.push(
       },
     })),
   ),
-  // A connection syncing (OA-255), in progress and not a problem, beside its
-  // off switch (OA-254).
   {
     name: "settings-connections-syncing",
     path: "/settings/connections",
@@ -6323,7 +6321,7 @@ scenes.push(
       const folder = page.locator(".connection-row", { hasText: "Folder" });
       await folder.getByRole("button", { name: "Sync", exact: true }).click();
       await folder
-        .locator('.provider-status[data-tone="in-progress"] .provider-state', {
+        .locator('.provider-status[data-tone="progress"] .provider-state', {
           hasText: "Syncing…",
         })
         .waitFor();

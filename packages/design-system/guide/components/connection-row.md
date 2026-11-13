@@ -219,7 +219,7 @@ A picked value the server's list no longer gives, as a channel the person left, 
 
 ### The status line
 
-`.provider-status` is a dot, a state word and a detail, in `--text-sm`. Its colour comes from the line's own `data-tone` (`done`, `in-progress`, `faint` or `danger`, as a connection's does), or from the row's `data-status`; with neither, the dot and word are `--danger` (`.provider-mark` and `.provider-state` in `window.css`).
+`.provider-status` is a dot, a state word and a detail, in `--text-sm`. Its colour comes from the line's own `data-tone` (`done`, `progress`, `quiet` or `danger`, as a connection's does), or from the row's `data-status`; with neither, the dot and word are `--danger` (`.provider-mark` and `.provider-state` in `window.css`).
 
 ```html specimen id=status-tones title="Status line tones, by the row's data-status"
 <ul class="provider-rows">
@@ -603,7 +603,7 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
     <div class="provider-main">
       <span class="provider-name">Folder</span>
       <span class="provider-about">~/Documents/Launch notes</span>
-      <span class="provider-status" data-tone="in-progress">
+      <span class="provider-status" data-tone="progress">
         <span class="provider-mark" aria-hidden="true"></span>
         <span class="provider-state">Syncing…</span>
         <span>· 3 items</span>
@@ -630,7 +630,7 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
 </ul>
 ```
 
-A connection's status line says its own tone, `data-tone` on `.provider-status`, from one map, `connectionStates` in `packages/web/src/connections-page.tsx`: Synced is `done`; Syncing… is `in-progress`, even over a standing problem, whose line hides while it syncs; Not synced yet and Waiting for options that fit are `faint`; Not open and A problem are `danger`.
+A connection's status line says its own tone, `data-tone` on `.provider-status`, from one map, `connectionStates` in `packages/web/src/connections-page.tsx`: Synced is `done`; Syncing… is `progress`, even over a standing problem, whose line hides while it syncs; Not synced yet and Waiting for options that fit are `quiet`; Not open and A problem are `danger`.
 
 ```html specimen id=disconnect title="Disconnect asks first, in the row"
 <ul class="provider-rows">
@@ -843,7 +843,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
     <div class="provider-main">
       <span class="provider-name">Jira</span>
       <span class="provider-about">SYN on oriel.atlassian.net</span>
-      <span class="provider-status" data-tone="in-progress"
+      <span class="provider-status" data-tone="progress"
         ><span class="provider-mark" aria-hidden="true"></span
         ><span class="provider-state">Syncing…</span><span>· 120 items</span></span
       >
@@ -939,4 +939,4 @@ Status **drifting**. One shape, four authors, and a status line written seven ti
 - **The unpicked pick mark** says "Picked" to a screen reader (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`), the same as the picked one.
 - `.cli-box` is also the Disconnect question, well beyond the CLI rows.
 
-Until `ProviderRow` becomes the one row, with a `StatusLine` that carries its own tone, **copy `ProviderRow`'s markup** (`ProviderRow` in `packages/web/src/provider-row.tsx`): `li.provider-row[data-status]` with the icon, the main column and the side, and the status line inside the main column. Set the tone on the status line: `data-tone` is `done`, `in-progress`, `faint` or `danger`. Don't add a fourth copy: render `ProviderRow` with a `status` and a `side`, as `cli-row.tsx` does. Don't use `data-connected` for anything new.
+Until `ProviderRow` becomes the one row, with a `StatusLine` that carries its own tone, **copy `ProviderRow`'s markup** (`ProviderRow` in `packages/web/src/provider-row.tsx`): `li.provider-row[data-status]` with the icon, the main column and the side, and the status line inside the main column. Set the tone on the status line: `data-tone` is `done`, `progress`, `quiet` or `danger`. Don't add a fourth copy: render `ProviderRow` with a `status` and a `side`, as `cli-row.tsx` does. Don't use `data-connected` for anything new.

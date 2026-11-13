@@ -34,18 +34,16 @@ import type {
   ReviewOutline,
 } from "./view.ts";
 
-// A connection's state on its status line: its words, and the one colour
-// each is drawn in. Syncing is in progress, even over a standing problem.
 type ConnectionState = "waiting" | "shut" | "syncing" | "problem" | "unsynced" | "synced";
 const connectionStates: Record<
   ConnectionState,
-  { name: string; tone: "done" | "in-progress" | "faint" | "danger" }
+  { name: string; tone: "done" | "progress" | "quiet" | "danger" }
 > = {
-  waiting: { name: "Waiting for options that fit", tone: "faint" },
+  waiting: { name: "Waiting for options that fit", tone: "quiet" },
   shut: { name: "Not open", tone: "danger" },
-  syncing: { name: "Syncing…", tone: "in-progress" },
+  syncing: { name: "Syncing…", tone: "progress" },
   problem: { name: "A problem", tone: "danger" },
-  unsynced: { name: "Not synced yet", tone: "faint" },
+  unsynced: { name: "Not synced yet", tone: "quiet" },
   synced: { name: "Synced", tone: "done" },
 };
 
