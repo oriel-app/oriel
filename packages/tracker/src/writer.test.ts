@@ -123,10 +123,13 @@ test("a write to an issue that isn't there, or is another now, is refused, sendi
   await assert.rejects(send("setStatus", "tracker:T-1", { status: "Shipped" }), refused);
   await assert.rejects(send("deleteItem", null, {}), refused);
   assert.equal(await writer.current("tracker:T-9", ["summary"]), "gone");
-  assert.deepEqual(await writer.read("tracker:T-1", ["summary", "label:web"]), {
-    stableId: "1",
-    values: { summary: "Pricing", "label:web": false },
-  });
+  assert.deepEqual(
+    (await writer.read(["tracker:T-1"], ["summary", "label:web"])).get("tracker:T-1"),
+    {
+      stableId: "1",
+      values: { summary: "Pricing", "label:web": false },
+    },
+  );
 });
 
 test("a write that fails in the store changed nothing, and is refused as unsent", async () => {

@@ -170,10 +170,15 @@ test("a created story whose update time the source never reported isn't deleted"
       const values = await jira.writer.current(id, fields);
       return values === "gone" ? values : without(values);
     },
-    read: async (id, fields) => {
-      const found = await jira.writer.read(id, fields);
-      return found === "gone" ? found : { ...found, values: without(found.values) };
-    },
+    read: async (ids, fields) =>
+      new Map(
+        [...(await jira.writer.read(ids, fields))].map(([id, found]) => [
+          id,
+          found === "gone" || "failed" in found
+            ? found
+            : { ...found, values: without(found.values) },
+        ]),
+      ),
   };
   const changeSets = instance(blind);
   const set = await changeSets.capture(run, [kiosk]);

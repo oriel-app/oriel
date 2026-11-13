@@ -876,6 +876,7 @@ export function views(deps: ViewDeps) {
       return {
         changeSetId: diff.changeSetId,
         hash: diff.hash,
+        ...(diff.stored && { stored: true as const }),
         lines: diff.lines.map((line) => {
           const row = rows.get(line.mutationId);
           const applied = row?.status === "applied";
@@ -896,6 +897,7 @@ export function views(deps: ViewDeps) {
             error,
             dismissed,
             check: line.check ?? null,
+            ...(line.checking && { checking: true as const }),
             brought: named(line),
             fields: line.fields.map((field) => ({
               name: field.name,

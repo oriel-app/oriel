@@ -174,17 +174,23 @@ export function memorySite(
         ? json(200, own())
         : json(404, { errorMessages: ["No project could be found with that key."] });
     // Every issue, oldest update first, whatever the JQL's window: listing
-    // more than was asked for changes nothing in an index.
+    // more than was asked for changes nothing in an index. Only a key list narrows it.
     if (method === "POST" && path === searchPath) {
-      const { maxResults = 50, nextPageToken } = body as {
+      const {
+        jql,
+        maxResults = 50,
+        nextPageToken,
+      } = body as {
+        jql?: string;
         maxResults?: number;
         nextPageToken?: string;
       };
       const at = Number(nextPageToken ?? 0);
       const from = searchable ?? issues;
-      const listed = [...from.values()].toSorted(
-        (a, b) => a.updated.localeCompare(b.updated) || a.key.localeCompare(b.key),
-      );
+      const keys = /^key in \(([^)]*)\)$/.exec(jql ?? "")?.[1]?.split(/,\s*/);
+      const listed = [...from.values()]
+        .filter((issue) => !keys || keys.includes(issue.key))
+        .toSorted((a, b) => a.updated.localeCompare(b.updated) || a.key.localeCompare(b.key));
       const more = at + maxResults < listed.length;
       return json(200, {
         issues: listed.slice(at, at + maxResults).map((issue) => view(issue, from)),

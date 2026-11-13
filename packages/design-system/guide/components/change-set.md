@@ -420,6 +420,38 @@ Every state the card goes through, in the order a change set lives them. The sta
 </section>
 ```
 
+```html specimen id=state-checking title="Drawn from what Oriel holds: each row checking with its source" state=loading
+<section class="change-set" data-status="open" data-awaits aria-busy="false" tabindex="-1">
+  <header class="change-set-head">
+    <h2>Proposed change</h2>
+    <span class="change-set-writes">2 edits in Jira</span>
+    <span class="change-set-status" role="status">Awaiting review</span>
+  </header>
+  <ul class="diff">
+    <li class="diff-line" data-kind="change" aria-busy="true">
+      <p class="line-head">
+        <span class="sentence">Move SYN-23 Pay with a phone wallet on the website to Done.</span>
+      </p>
+      <dl class="fields">
+        <div class="field">
+          <dt>Status</dt>
+          <dd class="edited">
+            <div class="side" data-side="after">
+              <span class="side-sign" aria-hidden="true">+</span
+              ><span class="side-text"><span class="visually-hidden">After: </span>Done</span>
+            </div>
+          </dd>
+        </div>
+      </dl>
+      <p class="line-note">Checking…</p>
+    </li>
+  </ul>
+  <footer class="change-set-actions">
+    <button type="button" class="button" disabled>Reject</button>
+  </footer>
+</section>
+```
+
 ```html specimen id=state-focus title="Focus: the primary step, and a line's ×" state=focus-visible
 <section class="change-set" data-status="open" aria-busy="false" tabindex="-1">
   <header class="change-set-head">
@@ -912,7 +944,7 @@ Every state the card goes through, in the order a change set lives them. The sta
 
 What each state is, and what it offers:
 
-- **Awaiting review** (`open`): Approve and apply, Reject, Share review link, and × on each line that can be left out. Approve and Reject stay **disabled until the diff has loaded**, because approving sends the diff's hash: the person approves exactly what they were shown, and the server refuses a stale one (`updateThread` in `packages/web/src/thread.ts`). Until then the card says "Reading what each change would replace in its source…", with a spinner, and offers no steps at all, Second look and Share review link included: the diff reads each changed item's current values from its source, which takes seconds on a large set (OA-257). A diff that fails says why, and the steps come back, Approve and Reject still disabled.
+- **Awaiting review** (`open`): Approve and apply, Reject, Share review link, and × on each line that can be left out. Approve and Reject stay **disabled until the diff has loaded**, because approving sends the diff's hash: the person approves exactly what they were shown, and the server refuses a stale one (`updateThread` in `packages/web/src/thread.ts`). The card draws its rows at once from what Oriel holds (a `GET` of the diff, which asks no source), and each row still being read from its source says "Checking…" in a `.line-note`, with `aria-busy` on its `.diff-line`; there's no spinner for the card. Approve isn't offered and Reject stays disabled until every row is read: the source's answer fills each row's current value and its check. For the few milliseconds before the rows draw, the card says "Reading what each change would replace in its source…". A diff that fails says why, and the steps come back, Approve and Reject still disabled.
 - **Applying** (`applying`): once Approve is clicked, the card shows it at once, before the server answers (`expected` in `packages/web/src/thread.ts`): status "Applying…", `aria-busy="true"`, which dims the whole card to 0.7 (`.change-set[aria-busy="true"]` in `window.css`), and no steps (an empty footer hides itself, `.change-set-actions:empty` in `window.css`). There's no spinner: the status and the dimming are the whole signal. The [sidebar](/components/sidebar)'s chip for the thread says "Applying…" too.
 - **Applied** (`applied`): the status turns `--done`; every applied line gets " ✓" after its sentence or title. Revert is offered, unless a source it wrote to can't take a change back, as a Slack post or a Linear issue made through its source server, which no tool deletes: then no Revert and no Undo show, and a `.change-set-foot` says why in the writer's own words, "A Linear issue or project can't be taken back." There's no partial revert. A set applied before the page opened **folds to its head**, with its count, when, and **Show**; Show opens it to its diff and Revert. One applied while the page is open stays shown, with **Hide**, until the page is left or reloaded, so the person sees what happened. Folding is the page's own; nothing is stored.
 - **Stopped partway** (`partial`, with a stop) and **Stopped** (`stopped`): the line that failed is tinted `--danger-soft`, says why in `--danger` (`.line-error`, `role="note"`), and offers **Remove this change**. Nothing after it was sent. The steps: Try again, Dismiss, Revert what was applied. A refusal its source would give again whenever it's sent as approved, as a workflow refusing a status, offers no Try again: the person leaves the change out and approves the rest, or dismisses the rest.

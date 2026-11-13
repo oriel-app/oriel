@@ -140,6 +140,8 @@ export const refresh = ({ id, statuses }: ThreadModel): Effect =>
   get(`/api/threads/${id}`, { kind: "thread", id, ...(statuses > 0 && { statuses }) });
 const diffOf = (changeSetId: string): Effect =>
   post(`/api/change-sets/${changeSetId}/diff`, {}, { kind: "diff", changeSetId });
+const storedDiffOf = (changeSetId: string): Effect =>
+  get(`/api/change-sets/${changeSetId}/diff`, { kind: "diff", changeSetId, stored: true });
 
 const problemOf = (body: unknown): string | null =>
   typeof body === "object" && body !== null && "problem" in body && typeof body.problem === "string"
@@ -675,7 +677,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
           ...(first
             ? [{ type: "subscribe" as const, threadId: model.id, after: view.lastSeq }]
             : []),
-          ...unseen.map((set) => diffOf(set.id)),
+          ...unseen.flatMap((set) => [storedDiffOf(set.id), diffOf(set.id)]),
           ...beats,
         ],
       ];
@@ -709,9 +711,19 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       return [model, [refresh(model)]];
     case "diff": {
       if (!model.view?.changeSets.some((set) => set.id === tag.changeSetId)) return [model, []];
+      const shown = model.diffs[tag.changeSetId];
+      if (tag.stored)
+        return msg.ok && (shown ? shown.stored : !model.problems[tag.changeSetId])
+          ? [{ ...model, diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView } }, []]
+          : [model, []];
+      // Without its live diff, the next reload asks again.
       if (!msg.ok)
         return [
-          { ...model, problems: { ...model.problems, [tag.changeSetId]: errorOf(msg.body) } },
+          {
+            ...model,
+            diffs: shown?.stored ? without(model.diffs, tag.changeSetId) : model.diffs,
+            problems: { ...model.problems, [tag.changeSetId]: errorOf(msg.body) },
+          },
           [],
         ];
       // A diff records what the person was shown, which approving waits on: the thread reloads after it.

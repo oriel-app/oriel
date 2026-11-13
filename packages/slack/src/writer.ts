@@ -13,6 +13,7 @@ import {
   string,
   type WriteResult,
   WriteStalled,
+  readEach,
 } from "@oriel/core";
 import { memoryApi, readMethods, type SlackApi, SlackError } from "./api.ts";
 import { slackTitle } from "./attrs.ts";
@@ -313,11 +314,12 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
       const found = await values(id, fields);
       return found === "gone" ? "gone" : found.values;
     },
-    read: async (id, fields) => {
-      const found = await values(id, fields);
-      const key = parseItemId(id)?.key ?? "";
-      return found === "gone" ? "gone" : { stableId: key, values: found.values };
-    },
+    read: (ids, fields) =>
+      readEach(ids, async (id) => {
+        const found = await values(id, fields);
+        const key = parseItemId(id)?.key ?? "";
+        return found === "gone" ? "gone" : { stableId: key, values: found.values };
+      }),
     name: async (id) => {
       if (/^[UW][A-Z0-9]+$/.test(id)) return reads.personName(id);
       if (!allowed.has(id)) return null;

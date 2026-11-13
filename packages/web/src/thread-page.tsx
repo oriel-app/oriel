@@ -995,7 +995,7 @@ function ChangeSet(props: {
   const stepButton = (step: (typeof steps)[number]) => {
     const forward = isForward(step.kind);
     const decides = forward && step.kind !== "retry";
-    const disabled = busy || ((decides || step.kind === "reject") && !diff);
+    const disabled = busy || ((decides || step.kind === "reject") && (!diff || diff.stored));
     return (
       <button
         key={step.kind}
@@ -1119,7 +1119,7 @@ function ChangeSet(props: {
           look={look}
           diff={diff}
           view={view}
-          busy={busy || !diff}
+          busy={busy || !diff || diff.stored === true}
           onAdd={(place) =>
             send({ type: "suggestionAdded", changeSetId: set.id, look: look.id, places: [place] })
           }
@@ -1537,6 +1537,7 @@ export function Diff(props: {
             data-applied={line.applied ? "" : undefined}
             data-stopped={line.stop ? "" : undefined}
             data-dismissed={line.dismissed ? "" : undefined}
+            aria-busy={line.checking}
           >
             <Brought brought={line.brought} />
             {line.kind === "create" && line.fields.length > 0 ? (
@@ -1581,6 +1582,7 @@ export function Diff(props: {
                 )}
               </>
             )}
+            {line.checking && <p class="line-note">Checking…</p>}
             {line.check && "later" in line.check && (
               <p class="line-note" role="note">
                 {line.check.later}

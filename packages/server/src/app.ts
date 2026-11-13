@@ -2406,6 +2406,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       dispatch,
       undoLine,
       changeSets: sets,
+      known,
       turns: conversation,
       views: viewer,
       reads,

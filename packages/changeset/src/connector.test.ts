@@ -12,6 +12,7 @@ import {
   type TelemetryEvent,
   ulid,
   unknown,
+  readEach,
 } from "@oriel/core";
 import {
   ensureWorkspace,
@@ -69,14 +70,15 @@ function memoWriter(): SourceWriter & { titles: Map<string, string> } {
       const found = values(memo);
       return found === "gone" ? found : Object.fromEntries(fields.map((f) => [f, found[f]]));
     },
-    read: async (memo, fields) => {
-      const found = values(memo);
-      if (found === "gone") return found;
-      return {
-        stableId: "stable-M1",
-        values: Object.fromEntries(fields.map((f) => [f, found[f]])),
-      };
-    },
+    read: (memos, fields) =>
+      readEach(memos, async (memo) => {
+        const found = values(memo);
+        if (found === "gone") return found;
+        return {
+          stableId: "stable-M1",
+          values: Object.fromEntries(fields.map((f) => [f, found[f]])),
+        };
+      }),
   };
 }
 

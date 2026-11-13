@@ -107,20 +107,36 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
   readonly kind: K;
   apply(request: Approved<WriteRequest<K>>, limit?: WriteLimit): Promise<WriteResult<K>>;
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
-  // "gone" when the item can't be read, which tells nothing about what it holds.
-  read(
-    id: ItemId<K>,
-    fields: readonly string[],
-  ): Promise<{ stableId: string; values: FieldValues } | "gone">;
+  // One answer for each ID asked, in as few calls as the source allows.
+  read(ids: readonly ItemId<K>[], fields: readonly string[]): Promise<Map<ItemId<K>, Read>>;
   name?(id: string): Promise<string | null>;
   readonly unsendable?: Readonly<Record<string, string>>;
   readonly checks?: readonly string[];
-  check?(
-    op: string,
-    target: ItemId<K>,
-    expectedStableId: string,
-    args: unknown,
-  ): Promise<string | null>;
+  // An item left out of the answer couldn't be checked.
+  check?(op: string, asked: readonly CheckAsked<K>[]): Promise<Map<ItemId<K>, Checked>>;
+}
+
+// "gone" when the item can't be read, which tells nothing about what it holds.
+export type Read = { stableId: string; values: FieldValues } | "gone" | { failed: unknown };
+
+export type CheckAsked<K extends SourceKind = SourceKind> = {
+  target: ItemId<K>;
+  expectedStableId: string;
+  args: unknown;
+};
+
+// `alike`: answered by checking an item above with the same move, which is advice: the writer checks each when it's applied.
+export type Checked = { refused: string; alike?: true } | { allowed: true; alike?: true };
+
+export async function readEach<K extends SourceKind>(
+  ids: readonly ItemId<K>[],
+  one: (id: ItemId<K>) => Promise<{ stableId: string; values: FieldValues } | "gone">,
+): Promise<Map<ItemId<K>, Read>> {
+  return new Map(
+    await Promise.all(
+      ids.map(async (id) => [id, await one(id).catch((failed: unknown) => ({ failed }))] as const),
+    ),
+  );
 }
 
 // Nothing landed, so it can be sent again; anything else `apply` throws may mean the write landed.

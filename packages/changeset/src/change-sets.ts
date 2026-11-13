@@ -297,6 +297,9 @@ function outsideRegion(
   return null;
 }
 
+const couldNotCheck = (name: string) =>
+  `Oriel couldn't check this with ${name} just now; ${name} checks it when it's applied.`;
+
 function approvedFrom(preview: FieldValues | null): FieldValues | null {
   if (preview === null) return null;
   const values = Object.fromEntries(Object.entries(preview).filter(([f]) => !f.startsWith("$")));
@@ -477,7 +480,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   };
 
   // So `set.hash` is the hash of exactly what is rendered.
-  const render = async (set: ChangeSet): Promise<{ diff: Diff; gone: Set<Ulid> }> => {
+  // With `stored`, from what Oriel holds alone, asking no source: each line still to read says it's being checked.
+  const render = async (
+    set: ChangeSet,
+    stored?: Known,
+  ): Promise<{ diff: Diff; gone: Set<Ulid> }> => {
     const creates = new Map<string, MutationRecord>();
     for (const m of set.mutations) if (m.ref !== null) creates.set(m.ref, m);
     const itemOf = (m: MutationRecord): ItemId | null => {
@@ -501,10 +508,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (carry !== null && Object.hasOwn(after, field)) titles.set(carry, text(after[field]));
     }
 
-    const wanted = new Map<
-      ItemId,
-      { prefix: string; fields: Set<string>; stableId: string | null }
-    >();
+    type Wanted = { prefix: string; fields: Set<string>; stableId: string | null };
+    const wanted = new Map<ItemId, Wanted>();
     for (const m of set.mutations) {
       const item = itemOf(m);
       if (item === null) continue;
@@ -521,62 +526,112 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     }
     // Read through the writer, so an item whose handle names another item now shows as gone: it isn't the item to change.
     // So does one whose handle names no member of the run's region now, as after a reused key.
-    const readLive = async (
-      item: ItemId,
-      {
-        prefix,
-        fields,
-        stableId,
-      }: { prefix: string; fields: Set<string>; stableId: string | null },
-    ): Promise<FieldValues | "gone"> => {
-      const { writer } = sourceOf(prefix);
-      if (!writer) return reader(prefix).current(item, [...fields]);
-      if (stableId === null) return "gone";
-      const found = await writer.read(item, [...fields]);
-      return found === "gone" || found.stableId !== stableId ? "gone" : found.values;
-    };
     // A change to an item that can't be read can't be approved until it's read again.
-    const live = new Map(
-      await Promise.all(
-        [...wanted].map(
-          async ([item, entry]) =>
-            [item, await readLive(item, entry).catch(() => "unread" as const)] as const,
-        ),
+    const live = new Map<ItemId, FieldValues | "gone" | "unread" | "checking">();
+    const readLive = async (batch: [ItemId, Wanted][]) => {
+      const [first] = batch;
+      if (!first) return;
+      const [, { prefix, fields }] = first;
+      const { writer } = sourceOf(prefix);
+      if (!writer) {
+        for (const [item] of batch)
+          live.set(
+            item,
+            await reader(prefix)
+              .current(item, [...fields])
+              .catch(() => "unread" as const),
+          );
+        return;
+      }
+      const asked = batch.flatMap(([item, { stableId }]) => (stableId === null ? [] : [item]));
+      const found = asked.length ? await writer.read(asked, [...fields]).catch(() => null) : null;
+      for (const [item, { stableId }] of batch) {
+        const each = found?.get(item);
+        live.set(
+          item,
+          stableId === null
+            ? "gone"
+            : each === undefined || (typeof each === "object" && "failed" in each)
+              ? "unread"
+              : each === "gone" || each.stableId !== stableId
+                ? "gone"
+                : each.values,
+        );
+      }
+    };
+    const batches = Map.groupBy([...wanted], ([, { prefix, fields }]) =>
+      JSON.stringify([prefix, [...fields].toSorted()]),
+    );
+    await Promise.all(
+      [...batches.values()].map((batch) =>
+        stored
+          ? batch.forEach(([item]) => live.set(item, "checking"))
+          : readLive(batch).catch(() => {
+              for (const [item] of batch) if (!live.has(item)) live.set(item, "unread");
+            }),
       ),
     );
     const undecided = set.decision === null;
     const checked = new Map<Ulid, { refused: string } | { later: string }>();
+    const asks = new Map<
+      string,
+      {
+        writer: SourceWriter;
+        op: string;
+        name: string;
+        rows: { m: MutationRecord; item: ItemId; stableId: string }[];
+      }
+    >();
+    for (const m of stored || !undecided ? [] : set.mutations) {
+      const item = itemOf(m);
+      if (m.status !== "pending" || item === null || isNewRef(item)) continue;
+      const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
+      const { writer } = sourceOf(prefix);
+      if (!writer?.check || !writer.checks?.includes(m.op) || !spec.args(m.args).ok) continue;
+      const name = catalogueFor(specs, kind).name;
+      const stableId = wanted.get(item)?.stableId ?? null;
+      const now = live.get(item);
+      if (stableId === null || now === undefined || now === "gone") continue;
+      // After an earlier change of the same kind to the item, its state
+      // then isn't its state now.
+      const earlier = set.mutations.some(
+        (e) => e.seq < m.seq && e.status === "pending" && e.op === m.op && itemOf(e) === item,
+      );
+      if (earlier) {
+        checked.set(m.id, {
+          later: `${name} checks this when it's applied, after the change above.`,
+        });
+        continue;
+      }
+      if (now === "unread") {
+        checked.set(m.id, { later: couldNotCheck(name) });
+        continue;
+      }
+      const ask = asks.get(`${prefix}\u0000${m.op}`) ?? { writer, op: m.op, name, rows: [] };
+      ask.rows.push({ m, item, stableId });
+      asks.set(`${prefix}\u0000${m.op}`, ask);
+    }
     await Promise.all(
-      set.mutations.map(async (m) => {
-        const item = itemOf(m);
-        if (!undecided || m.status !== "pending" || item === null || isNewRef(item)) return;
-        const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
-        const { writer } = sourceOf(prefix);
-        if (!writer?.check || !writer.checks?.includes(m.op) || !spec.args(m.args).ok) return;
-        const name = catalogueFor(specs, kind).name;
-        const later = {
-          later: `Oriel couldn't check this with ${name} just now; ${name} checks it when it's applied.`,
-        };
-        const stableId = wanted.get(item)?.stableId ?? null;
-        const now = live.get(item);
-        if (stableId === null || now === undefined || now === "gone") return;
-        // After an earlier change of the same kind to the item, its state
-        // then isn't its state now.
-        const earlier = set.mutations.some(
-          (e) => e.seq < m.seq && e.status === "pending" && e.op === m.op && itemOf(e) === item,
-        );
-        if (now === "unread" || earlier) {
-          checked.set(
-            m.id,
-            earlier
-              ? { later: `${name} checks this when it's applied, after the change above.` }
-              : later,
-          );
-          return;
+      [...asks.values()].map(async ({ writer, op, name, rows }) => {
+        const answers = await writer
+          .check?.(
+            op,
+            rows.map(({ m, item, stableId }) => ({
+              target: item,
+              expectedStableId: stableId,
+              args: m.args,
+            })),
+          )
+          .catch(() => null);
+        for (const { m, item } of rows) {
+          const answer = answers?.get(item);
+          if (answer === undefined) checked.set(m.id, { later: couldNotCheck(name) });
+          else if (answer.alike)
+            checked.set(m.id, {
+              later: `Oriel checked the same move above; ${name} checks this one when it's applied.`,
+            });
+          else if ("refused" in answer) checked.set(m.id, { refused: answer.refused });
         }
-        const why = await writer.check(m.op, item, stableId, m.args).catch(() => undefined);
-        if (why === undefined) checked.set(m.id, later);
-        else if (why !== null) checked.set(m.id, { refused: why });
       }),
     );
     const state = new Map<string, Record<string, unknown>>();
@@ -587,12 +642,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         return titles.get(id) ?? null;
       }
       if (titles.has(id)) return titles.get(id) ?? null;
+      if (stored) return stored.title(id);
       const parsed = parseItemId(id);
       if (!parsed) return null;
       const field = catalogueFor(specs, parsed.kind).titleField;
       const known = live.get(id);
       const values =
-        known === undefined || known === "unread"
+        known === undefined || known === "unread" || known === "checking"
           ? await reader(parsed.prefix)
               .current(id, [field])
               .catch(() => "gone" as const)
@@ -607,7 +663,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const context = (subject: Subject, before: FieldValues) => ({
         subject,
         before,
-        name: (id: string) => reader(prefix).name(id),
+        name: async (id: string) => (stored ? stored.name(id) : reader(prefix).name(id)),
         title,
       });
       const item = itemOf(m);
@@ -642,7 +698,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             : null;
         const name =
           later ??
-          (now && now !== "gone" && now !== "unread" ? text(now[catalogue.titleField]) : null) ??
+          (now && typeof now === "object" ? text(now[catalogue.titleField]) : null) ??
           text(after[catalogue.titleField]) ??
           text(before[catalogue.titleField]);
         const subject: Subject = m.target === null ? null : { kind: "item", id: item, title: name };
@@ -672,12 +728,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const renames = Object.hasOwn(after, catalogue.titleField);
       let subject: Subject = null;
       let values: Record<string, unknown> = {};
+      let checking = false;
       if (item !== null) {
         const read = live.get(item);
         // Once decided, a line Oriel can't read shows what it was approved
         // from; before, it can't be approved until it's read.
         const kept = undecided ? null : approvedFrom(m.preview);
-        const now = read === "unread" && kept ? kept : read;
+        const now = (read === "unread" || read === "checking") && kept ? kept : read;
         if (now === "unread") {
           gone.add(m.id);
           lines.push({
@@ -704,7 +761,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           });
           continue;
         }
-        values = state.get(item) ?? { ...now };
+        if (now === "checking") checking = true;
+        values =
+          state.get(item) ?? (now === "checking" ? { ...approvedFrom(m.preview) } : { ...now });
         const name = renames ? text(values[catalogue.titleField]) : await title(item);
         subject = { kind: "item", id: item, title: name };
       } else if (m.target !== null && isNewRef(m.target)) {
@@ -727,6 +786,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         makes: spec.makes,
         source: catalogue.name,
         ...(check ? { check } : {}),
+        ...(checking ? { checking: true as const } : {}),
         fields: await Promise.all(
           Object.keys(after).map(async (f) => {
             const value = after[f];
@@ -745,7 +805,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const carry = item ?? m.target ?? m.ref;
       if (carry !== null) state.set(carry, { ...values, ...after });
     }
-    return { diff: { changeSetId: set.id, hash: set.hash, lines }, gone };
+    return {
+      diff: {
+        changeSetId: set.id,
+        hash: set.hash,
+        ...(stored ? { stored: true as const } : {}),
+        lines,
+      },
+      gone,
+    };
   };
 
   // Approval requires a diff since the last edit with none of its lines gone. Not while approved, nor if the rows changed
@@ -952,13 +1020,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return { unknown: `${key(target)} no longer names an item in the region it was made in` };
     // A read that fails tells nothing either. A bug in Oriel (a RangeError, say) isn't the source's answer, and throws.
     const found = await writerOf(prefix)
-      .read(target, [...fields, updated])
-      .catch((error: unknown) => {
-        if (error instanceof RangeError || error instanceof SyntaxError) throw error;
-        return { failed: message(error) };
-      });
+      .read([target], [...fields, updated])
+      .then((read) => read.get(target) ?? { failed: new Error("no answer") })
+      .catch((failed: unknown) => ({ failed }));
     if (found === "gone") return { unknown: `${key(target)} can't be read` };
-    if ("failed" in found) return { unknown: `reading ${key(target)} failed: ${found.failed}` };
+    if ("failed" in found) {
+      if (found.failed instanceof RangeError || found.failed instanceof SyntaxError)
+        throw found.failed;
+      return { unknown: `reading ${key(target)} failed: ${message(found.failed)}` };
+    }
     if (found.stableId !== stableId) return { unknown: `${key(target)} names another item now` };
     const current = found.values;
     if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
@@ -1651,6 +1721,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
     async diff(id) {
       return diff(mustLoad(id));
+    },
+
+    async stored(id, known) {
+      return (await render(mustLoad(id), known)).diff;
     },
 
     async look(id) {

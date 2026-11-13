@@ -578,6 +578,7 @@ export type ItemValue = {
 export type DiffView = {
   changeSetId: string;
   hash: string;
+  stored?: true;
   lines: {
     mutationId: string;
     sentence: string;
@@ -589,6 +590,7 @@ export type DiffView = {
     error: string | null;
     dismissed: boolean;
     check: { refused: string } | { later: string } | null;
+    checking?: true;
     brought: { key: string; by: "agent" | "tool" }[];
     fields: {
       name: string;
