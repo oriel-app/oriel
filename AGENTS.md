@@ -22,6 +22,20 @@ Almost no code comments. Write one only when reading the code can't tell you why
 - pnpm refuses versions younger than 7 days and runs no install scripts.
 - `.env` is unreadable to agents. Scripts may load it, but never print it, and give child processes only what they need. Variables are listed in `env.example`.
 - Reach GitHub with `pnpm -s github`, never `gh`. It runs as the agent token, which can't change rulesets, settings or secrets.
+- `packages/web/src` imports only types from other workspace packages (`import type`). A value import passes `pnpm check`, but the browser bundle can't load it and the window renders blank.
+- A button's tooltip is `<Tooltip text>` (`packages/web/src/tooltip.tsx`), never `title=`.
+- The `prefers-reduced-motion` block stays last in `window.css`. New motion goes above it, with its selector added to the block; a rule after it wins and re-breaks reduced motion.
+- A page model with its own notice field adds it to `cameBack` (`packages/web/src/came-back.ts`), or after a restart that page keeps "Oriel can't be reached".
+- F8 belongs to the whole window (the bead). Keydown handlers leave it alone.
+- Under the item panel, build on `PanelDockContext` (`packages/web/src/dock.tsx`): one composer path, and one follow-the-end hook for every chat.
+- A local path sent to the window goes through `homeRelative` (`homeExpanded` for a saved `~/…`) in `packages/core/src/home.ts`. The window never shows `/Users/<name>`.
+- A Messages API request goes through `messagesSender` (`packages/agent/src/anthropic.ts`); its error text comes from `errorText` and `causeOf` (`packages/agent/src/provider.ts`). No second sender or formatter.
+- Free text, anything a person or the agent typed, goes through `parseDeclared`, never `parseItemId`. Source kinds are declared in `packages/sources`, not core.
+- A worker thread that starts processes calls `relayChildren()` (`packages/sandbox/src/children.ts`). Nothing long-lived uses `execFileSync` or `spawnSync`.
+- A new desktop launch argument goes in `shellSwitches` (`packages/desktop/shell/rules.ts`), or the app exits 1.
+- A dev server in a worktree runs with `--agent scripted`: `auto` picks Codex, which refuses the worktree's AGENTS.md as outside instructions.
+- In `scripts/shots.ts`, new scenes go at the end; code for `page.waitForFunction` is a string; a click just after the rail moves waits for `data-carrying` to go; a scene that starts or holds a drag calls `letGo(page)` first. `node --test` runs any `*-test.ts`, so only unit tests get that name.
+- An agent-facing change (the prompt, the module, tools, anything a cassette's hash covers) adds a line to `packages/evals/stale.md`. Don't record cassettes; the night's recording on main does, and removes the file. A change to the stand-in tracker's or Linear's module text updates `tests/golden/module-{tracker,linear}.txt` in the same PR, for the maintainer to approve.
 
 ## Ways to hurt yourself
 
