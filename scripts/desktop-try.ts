@@ -1,16 +1,5 @@
-// `pnpm desktop:try <scenario>`: the desktop app in a given state, without
-// touching the person's screen, keychain or data (packages/desktop/README.md).
-// It builds the app if any of its sources changed since the last build,
-// copies it to a temp folder, and opens the copy with `--background` and a
-// fresh data folder, then prints how to reach its server and its PID.
-// `pnpm desktop:try stop` stops that PID, and only it, and removes the
-// folder. `--show` opens the window instead, for the maintainer to look at.
-//
-// The scenarios are the first run's. `fresh` runs the person's own Claude
-// Code. Each other one sets Settings' Claude Code path to a throwaway home's
-// `~/.local/bin/claude`, which holds a stand-in (stand-in-claude.ts) or, for
-// `no-cli`, nothing until the first run's Install puts the real one there,
-// and gives the server that home, so nothing it runs is the person's.
+// `pnpm desktop:try <scenario> [--show] [--build]`, or `pnpm desktop:try stop`.
+// See packages/desktop/README.md.
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -40,8 +29,6 @@ export const scenarios = {
 } as const satisfies Record<string, Omit<StandIn, "updatesTo"> | "none" | null>;
 export type Scenario = keyof typeof scenarios;
 
-// The settings a scenario starts with: both CLIs at paths in the throwaway
-// home, so neither is looked for on the person's PATH.
 export function scenarioSettings(home: string): Settings {
   const paths: Record<string, string> = {
     "claude-code": join(home, ".local/bin/claude"),
@@ -55,15 +42,12 @@ export function scenarioSettings(home: string): Settings {
   };
 }
 
-// The program at Settings' path: the stand-in, on the Node running this.
 export function standInScript(node: string, script: string, folder: string): string {
   for (const path of [node, script, folder])
     if (path.includes("'")) throw new Error(`a path with a quote in it: ${path}`);
   return `#!/bin/sh\nexec '${node}' '${script}' '${folder}' "$@"\n`;
 }
 
-// Whether any source the app is built from is newer than the build, or
-// gone: `listed` is the sources, from git, `built` the build's time.
 export function stale(listed: readonly string[], built: number, mtime: (path: string) => number) {
   return listed.some((path) => {
     try {
@@ -74,7 +58,6 @@ export function stale(listed: readonly string[], built: number, mtime: (path: st
   });
 }
 
-// One line of `ps -A -o pid=,command=` for the copy's own executable.
 export function findPid(table: string, executable: string): number | null {
   for (const row of table.split("\n")) {
     const match = /^\s*(\d+)\s+(.*)$/.exec(row);
@@ -108,7 +91,6 @@ async function stop() {
   const running = JSON.parse(readFileSync(stateFile, "utf8")) as Running;
   if (isOurs(running)) {
     process.kill(running.pid, "SIGTERM");
-    // The shell gives the server 5 s to quit before it kills it.
     const deadline = Date.now() + 10_000;
     while (isOurs(running) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
     if (isOurs(running)) process.kill(running.pid, "SIGKILL");
@@ -118,7 +100,6 @@ async function stop() {
   rmSync(stateFile, { force: true });
 }
 
-// The app, built again if a source changed since its last build.
 export function build(force: boolean): string {
   const app = join(
     root,
@@ -204,8 +185,6 @@ async function launch(scenario: Scenario, show: boolean, force: boolean) {
     }
   }
 
-  // A new instance, of this copy. In the background: not brought forward,
-  // hidden, its window never shown, its secrets in memory.
   const args = show
     ? ["--data", data, "--launch-file"]
     : ["--background", "--data", data, "--launch-file"];
@@ -240,7 +219,6 @@ async function launch(scenario: Scenario, show: boolean, force: boolean) {
     url: string;
     cookie: string;
   };
-  // For `curl -H @headers`: the cookie, and the Origin a change needs.
   const headers = join(folder, "headers");
   writeFileSync(headers, `cookie: ${cookie}\norigin: ${new URL(url).origin}\n`, { mode: 0o600 });
   console.log(`Oriel is running ${show ? "in its window" : "in the background"}: ${scenario}`);

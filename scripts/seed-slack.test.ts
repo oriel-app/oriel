@@ -42,7 +42,6 @@ test("a token joins SLACK_USER_TOKENS once, and every other line is kept", () =>
 
 type Sent = { method: string; token: string | null; params: Record<string, string> };
 
-// A workspace with the two people, in memory.
 function fakeSlack(options: { team?: string; channels?: string[]; history?: object[] } = {}) {
   const sent: Sent[] = [];
   let ts = 0;
@@ -94,7 +93,6 @@ test("it posts nothing unless every token is the test workspace's and the channe
     const { run, sent } = fakeSlack(options);
     await assert.rejects(seed(run, ["xoxp-pm", "xoxp-eng"], conversation, () => {}, 0));
     assert.ok(!sent.some((s) => s.method === "chat.postMessage"));
-    // Nobody but the first poster joins a channel it refuses.
     assert.ok(
       sent.filter((s) => s.method === "conversations.join").every((s) => s.token === "xoxp-pm"),
     );

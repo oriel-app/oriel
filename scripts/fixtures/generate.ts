@@ -1,9 +1,4 @@
-// Writes fixtures/jira/*.json: SYN, the synthetic project, a backlog for
-// Ferrowick, a fictional ferry booking and boarding app. The content is
-// hand-written; a seeded PRNG fills in what it leaves open (statuses,
-// estimates, assignees, times) from a fixed time base, and decides the order
-// issues were created in. Regenerating is byte-identical.
-// Usage: node scripts/fixtures/generate.ts
+// Usage: node scripts/fixtures/generate.ts (regenerating is byte-identical)
 import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +10,6 @@ import {
 } from "../../packages/jira/src/fixture.ts";
 
 const seed = 0x5f3759df;
-// Every time in the fixture is at or before this, except the edits after it.
 const timeBase = Date.UTC(2026, 9, 1, 9, 0, 0);
 const minute = 60_000;
 const hour = 60 * minute;
@@ -34,7 +28,6 @@ type Draft = {
   status?: Status;
   assignee?: string | null;
   daysAgo?: number;
-  // The estimate scale when `points` is left open; defaults to the type.
   scale?: keyof typeof scales;
   comments?: [author: string, body: string][];
   links?: [title: string, url: string][];
@@ -42,7 +35,6 @@ type Draft = {
 
 type EpicDraft = Omit<Draft, "type" | "points"> & {
   ref: string;
-  // Created after most of the backlog, so its key sits mid-sequence.
   late?: boolean;
   children: Draft[];
 };
@@ -277,7 +269,6 @@ const boarding: EpicDraft = {
   ],
 };
 
-// Half-estimated: five of the ten children have points.
 const weather: EpicDraft = {
   ref: "weather",
   summary: "Weather disruptions and rebooking",
@@ -414,7 +405,6 @@ const vehicles: EpicDraft = {
   ],
 };
 
-// Forty stories: a long cluster, for stress.
 const auditFindings: [summary: string, description: string][] = [
   ["Give the departure time picker an accessible name", ""],
   [
@@ -689,8 +679,6 @@ const epics = [
   offline,
 ];
 
-// Edits made directly in the source after the base: one story moves epic, one
-// summary is edited, one story is deleted. Times are hours after the time base.
 const edits: (
   | { kind: "setEpic"; ref: string; epic: string; hours: number }
   | { kind: "setSummary"; ref: string; summary: string; hours: number }
@@ -706,7 +694,6 @@ const edits: (
   { kind: "delete", ref: "nfc-spike", hours: 26 },
 ];
 
-// Frozen against the base state. Epic regions hold the epic and its children.
 const regions: { name: string; epic?: string; refs?: string[] }[] = [
   { name: "boarding-epic", epic: "boarding" },
   { name: "checkout-epic", epic: "checkout" },
@@ -714,11 +701,9 @@ const regions: { name: string; epic?: string; refs?: string[] }[] = [
   { name: "picked", refs: ["timetable", "japanese", "countdown", "three-ds", "nfc-spike"] },
 ];
 
-// Key numbers deleted before the base, after the nth created issue.
 const gapsAfter = new Set([23, 58, 91]);
 const lateEpicAfter = 85;
 
-// The winter timetable, pasted from a spreadsheet: well over 10,000 characters.
 function timetableDescription(): string {
   const routes = [
     {
@@ -803,7 +788,6 @@ type Rng = {
   shuffle<T>(items: readonly T[]): T[];
 };
 
-// mulberry32: small, seedable, and the same on every platform.
 function rng(state: number): Rng {
   let a = state >>> 0;
   const next = () => {
@@ -833,12 +817,9 @@ function rng(state: number): Rng {
 
 type Planned = { draft: Draft; type: FixtureIssue["issueType"]; epic: string | null };
 
-// File name to contents, in `jiraFixtureParts` order.
 export function generate(): Map<string, string> {
   const random = rng(seed);
 
-  // Creation order: the first epics, then their stories and the loose issues
-  // shuffled, with the late epic and its stories mixed into the tail.
   const asEpic = (epic: EpicDraft): Planned => ({ draft: epic, type: "Epic", epic: null });
   const childrenOf = (epic: EpicDraft): Planned[] =>
     epic.children.map((draft) => ({ draft, type: draft.type ?? "Story", epic: epic.ref }));
@@ -881,7 +862,6 @@ export function generate(): Map<string, string> {
     const assignee = draft.assignee !== undefined ? draft.assignee : pickAssignee(random);
     const daysAgo = draft.daysAgo ?? pickDaysAgo(status, random);
     const updatedMs = timeBase - daysAgo * day - Math.floor(random.next() * 600) * minute;
-    // Comments end at the last update, each some hours after the one before.
     let commentMs = updatedMs;
     const comments = (draft.comments ?? [])
       .toReversed()
@@ -945,8 +925,8 @@ export function generate(): Map<string, string> {
     const problems = result.issues.map((issue) => `${issue.path}: ${issue.message}`);
     throw new Error(`generated fixture is invalid:\n${problems.join("\n")}`);
   }
-  // The validator rebuilds each object in its shape's key order, so the files
-  // follow the format's key order, whatever order the code above used.
+  // The validator rebuilds each object in its shape's key order, so the files follow the
+  // format's, whatever order the code above used.
   const fixture = result.value;
   return new Map(
     jiraFixtureParts.map((part) => [`${part}.json`, `${JSON.stringify(fixture[part], null, 2)}\n`]),
@@ -965,7 +945,6 @@ function pickAssignee(random: Rng): string | null {
   return random.pick(engineers);
 }
 
-// Done work is older; work in progress was touched recently.
 function pickDaysAgo(status: Status, random: Rng): number {
   if (status === "Done") return 8 + Math.floor(random.next() * 110);
   if (status === "In Progress") return Math.floor(random.next() * 30);
@@ -976,7 +955,6 @@ const scales = {
   Story: { unestimated: 0.12, points: [1, 2, 3, 3, 5, 5, 8, 13] },
   Task: { unestimated: 0.3, points: [1, 2, 3, 5] },
   Bug: { unestimated: 0.55, points: [1, 2, 3] },
-  // Audit findings are small.
   finding: { unestimated: 0.05, points: [1, 1, 2, 2, 3, 5] },
 };
 
@@ -987,9 +965,8 @@ function pickPoints(name: keyof typeof scales, random: Rng): number | null {
 }
 
 if (import.meta.main) {
-  // The generator owns the directory: a part it no longer writes is removed.
-  // Only names shaped like its own parts are touched, joined as plain paths
-  // (a URL would read a backslash as a separator), and never through a symlink.
+  // Only names shaped like its own parts are removed, joined as plain paths (a URL would read
+  // a backslash as a separator), and never through a symlink.
   const files = generate();
   const dir = fileURLToPath(jiraFixtureDir);
   mkdirSync(dir, { recursive: true });

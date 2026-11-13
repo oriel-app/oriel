@@ -1,8 +1,4 @@
-// Records one real Noticed pass on the screenshot script's window (SYN and
-// its Slack fixture, with the Checkout, Boarding and Weather workstreams),
-// through the server's own path, for `pnpm shots`'s noticed scenes to
-// replay. Run it with the main checkout's .env; it prints the model's lines
-// and writes them, by signal kind and subject, to scripts/noticed/pass.json.
+// `node scripts/noticed/record-pass.ts <the main checkout's .env>`; writes pass.json.
 // The key goes to the model client and nowhere else.
 import { writeFileSync } from "node:fs";
 import { anthropicProvider } from "../../packages/agent/src/index.ts";
@@ -45,8 +41,6 @@ const call = async (method: string, path: string, body?: unknown) => {
 };
 for (const cluster of ["10001", "10002", "10003"])
   await call("POST", "/api/workstreams", { kind: "cluster", grouping: "epic", cluster });
-// The passes run in the background, after the start's sync and each
-// curation that changed the signals on offer.
 await app.settled();
 const view = (await call("GET", "/api/noticed")) as NoticedView;
 for (const pass of app.telemetry().filter((event) => event.name === "noticed.pass")) {

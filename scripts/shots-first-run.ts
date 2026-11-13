@@ -1,11 +1,3 @@
-// The desktop app's first run for `pnpm shots` (decision 0038): its screens,
-// and the onboarding budget timed from its first screen on a fresh data
-// folder to an approved change set, on three paths. Nothing here is the
-// person's: each server gets its own throwaway home, with a stub Claude Code
-// in it or none, a stub of Anthropic's installer, a stand-in signature check
-// and test turn, and stand-ins of the source servers the person's agent may
-// list (decision 0059). The stubs print the vendors' lines; nothing reaches
-// the network.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,11 +33,9 @@ import { loadCalls as loadSheetsCalls } from "../packages/sheets/src/calls.ts";
 import { sheetsMcpMain, sheetsServer } from "../packages/sheets/src/sheets-mcp.ts";
 import { replayCalls } from "../packages/core/src/recorded-calls.ts";
 
-// How each stub behaves, read from its home when it runs.
 type Login = "works" | "waits" | "fails";
 type Install = "works" | "waits" | "fails";
 
-// A stub `claude`, as Claude Code answers what the first run runs.
 const stubCli = (version: string) =>
   [
     "#!/bin/bash",
@@ -69,8 +59,6 @@ const stubCli = (version: string) =>
     "",
   ].join("\n");
 
-// Anthropic's installer, as it prints: nothing while it downloads, then
-// "Setting up Claude Code...", then the binary sets itself up.
 const stubInstaller = [
   "#!/bin/bash",
   "set -e",
@@ -90,60 +78,27 @@ const stubInstaller = [
 ].join("\n");
 
 export type FirstRunOptions = {
-  // Claude Code as the person's Mac has it, or none.
   cli?: { version?: string; signedIn?: boolean };
-  // Codex on the PATH: signed out, or "ready", signed in (decision 0048).
   codex?: true | "ready";
-  // Both CLIs signed in with the person's own API key, with no plan: their
-  // own sign-in, which Oriel only reads (no API-key way into Oriel itself,
-  // decision 0059).
   apiKeys?: true;
   install?: Install;
   login?: Login;
-  // What Claude Code says instead of answering the test turn; it answers
-  // when absent.
   refuses?: string;
-  // Oriel's look for the CLI doesn't end.
   stillLooking?: true;
-  // The first run so far.
   state?: Partial<SetupState>;
-  // A folder connected.
   folder?: string;
-  // A data folder on disk, as the desktop app has, in place of memory.
   data?: string;
-  // A database to start on, without a data folder.
   db?: string;
-  // The person's Claude Code lists the tiny test tracker server (decision
-  // 0059), which Oriel knows by its test-only entry, for Jira's kind.
   found?: true;
-  // The person's Claude Code lists Atlassian's MCP server (OA-276), as the
-  // stand-in of it answers SYN in memory: found, or Jira on through it.
   atlassian?: "found" | "on";
-  // And Slack's MCP server (OA-277), as the stand-in of it answers
-  // Ferrowick in memory: found, or Slack on through it.
   slack?: "found" | "on";
-  // The Ferrowick the Slack stand-in answers, in place of a fresh copy, for
-  // a scene to change as it goes, as the channels the person is in.
   slackFixture?: SlackFixture;
-  // And Linear's MCP server (OA-278), as the stand-in of it answers
-  // Ferrowick's Linear in memory: found, or Linear on through it.
   linear?: "found" | "on";
-  // And packages/sheets-mcp (OA-279), as its fixture mode answered, from
-  // its recorded calls: found, or Google Sheets on through it.
   sheetsMcp?: "found" | "on";
-  // sheets-mcp reading the Sheets fixture's spreadsheets instead, through
-  // a fake of its read tools over the fixture's stand-in for Google, with
-  // that many more tabs in the tracker, each a small table of its own, as
-  // a tracker with a tab a week has (OA-232).
   sheetsTabs?: number;
-  // Once set up, the AI goes, as when the person turns Codex off and Claude
-  // Code is signed out: Oriel looks again and finds no AI to ask, and no
-  // process of one calls a source server.
   aiGone?: true;
 };
 
-// sheets-mcp as the person's agent lists it: a local server, started by the
-// command Oriel knows it by.
 const sheetsMcpFound = {
   name: "sheets",
   status: "connected" as const,
@@ -154,8 +109,6 @@ const sheetsMcpFound = {
   local: { command: "node", args: [sheetsMcpMain] },
 };
 
-// Atlassian's server as the person's agent lists it, under the name they
-// gave it there.
 const atlassianFound = {
   name: "atlassian",
   status: "connected" as const,
@@ -166,7 +119,6 @@ const atlassianFound = {
   transport: "http" as const,
 };
 
-// Slack's server as the person's agent lists it.
 const slackFound = {
   name: "slack",
   status: "connected" as const,
@@ -182,19 +134,14 @@ type Start = (
   options: Omit<AppOptions, "reviewBase" | "sketchBase">,
 ) => Promise<Serving>;
 
-// A home on disk for the stubs, removed once the shots are done, and any
-// other folder kept as long.
 const homes: string[] = [];
 export const keepUntilDone = (folder: string) => void homes.push(folder);
-// What each server holds up, as a look that doesn't end, a search held or a
-// stub waiting for the browser, let go once the shots are done, so every
-// server can close.
 const holds: (() => void)[] = [];
 export const releaseAll = () => {
   for (const release of holds.splice(0)) release();
 };
-// The servers that hold something up until `releaseAll`, which close only
-// then: let go while closing, what they held would finish on a closed server.
+// These close only after `releaseAll`: let go while closing, what they held would finish on a
+// closed server.
 export const holdsUp = new WeakSet<Serving>();
 export const removeHomes = () => {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
@@ -217,7 +164,6 @@ export async function firstRunServer(
   const codexBin = join(home, "codex-bin");
   if (options.codex) {
     mkdirSync(codexBin, { recursive: true });
-    // `codex login` signs in at once, as the browser would hand it back.
     writeFileSync(
       join(codexBin, "codex"),
       '#!/bin/bash\n[ "$1" = login ] && echo "Starting local login server on http://localhost:1455." && touch "$HOME/.codex-signed-in"\n',
@@ -230,8 +176,6 @@ export async function firstRunServer(
   writeFileSync(join(home, ".stub-install"), options.install ?? "works");
   const env = { HOME: home, PATH: ["/usr/bin", "/bin", bin, codexBin].join(":") };
 
-  // The harness's check, as far as a stub answers it: on the PATH, the
-  // version it prints, and signed in once its sign-in left its mark.
   const look = Promise.withResolvers<void>();
   if (!options.stillLooking) look.resolve();
   holds.push(() => {
@@ -259,13 +203,10 @@ export async function firstRunServer(
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };
 
-  // Whether the AI went (`aiGone`), once the first run is set up.
   let gone = false;
   const settings = options.data
     ? settingsFile(join(options.data, "settings.json"), () => {})
     : memorySettings();
-  // Codex's check, as its stub answers: found, and signed in once its
-  // sign-in left its mark. The real check, which starts Codex, never runs.
   const checkCodex = async ({ env: given, path }: CheckOptions) => {
     await look.promise;
     const cli = locateCodex(given ?? {}, path);
@@ -292,11 +233,8 @@ export async function firstRunServer(
     checkCodex,
     trust: async () => null,
   });
-  // Not awaited when it's held, so the page sees it still looking.
   void chooser.look(settings.get());
 
-  // The Sheets fixture, with the tracker's tabs added, as a fake of
-  // sheets-mcp's read tools reads it, when asked for.
   const sheetsFixture = loadSheetsFixture();
   const tracker = sheetsFixture.spreadsheets.find((s) => s.slug === "tracker");
   for (let n = 1; n <= (options.sheetsTabs ?? 0); n++)
@@ -308,8 +246,6 @@ export async function firstRunServer(
         ["Mon", "Stand-up moved"],
       ],
     });
-  // SYN in memory, as one stand-in of Atlassian's server answers every
-  // process: sync's and replay's.
   const atlassianTools = standInCaller(atlassianStandIn());
   const slackTools = slackCaller(slackStandIn(options.slackFixture));
   const linearTools = linearCaller(linearStandIn());
@@ -326,8 +262,6 @@ export async function firstRunServer(
 
   const serving = await start(0, {
     db: options.data ? join(options.data, "oriel.db") : (options.db ?? ":memory:"),
-    // The person's agent, as a fake that asks the tiny server itself, by
-    // the name of the one that runs, if one does; none once the AI went.
     discover: async () => {
       if (gone) return null;
       const running = chooser.choose(settings.get()).model?.provider;
@@ -349,7 +283,6 @@ export async function firstRunServer(
     },
     ...(standing
       ? {
-          // Each process of the person's agent, as the stand-in answers it.
           callServer: async (server) =>
             gone
               ? null
@@ -448,7 +381,6 @@ export async function firstRunServer(
   return serving;
 }
 
-// A POST to the server's API, as the page sends it, which must work.
 export async function postTo(serving: Serving, path: string, body: unknown): Promise<void> {
   const url = new URL(path, serving.url);
   const reply = await serving.app.api(
@@ -467,7 +399,6 @@ export async function postTo(serving: Serving, path: string, body: unknown): Pro
   if (!reply || reply.status !== 200) throw new Error(`${path} didn't work`);
 }
 
-// "token" in what a screen shows: its text, and what fields and tooltips say.
 export async function tokensOn(page: Page): Promise<number> {
   const text = await page.evaluate<string>(`[
     document.body.innerText,
@@ -478,12 +409,6 @@ export async function tokensOn(page: Page): Promise<number> {
   return (text.match(/\btokens?\b/gi) ?? []).length;
 }
 
-// One path of the onboarding budget (decisions 0038 and 0059), as fast as a
-// script clicks: the first run's first screen on a fresh data folder, the
-// AI, Your work, where the stand-in tracker is ready with no tracker to
-// connect, the overview's question to start from, a plan drafted in the
-// window chat, and that change approved. Returns how long it took, and
-// "token" on each screen.
 export async function timedPath(
   page: Page,
   url: string,

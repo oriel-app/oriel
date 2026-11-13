@@ -1,7 +1,4 @@
-// Calls a local MCP server's tools over stdio, as a person's agent would:
-// for recording what packages/sheets-mcp answers in its fixture mode, with
-// no agent between (OA-279). It starts the server with only this process's
-// PATH and HOME, so nothing of `.env` reaches it, and stops it on close.
+// The server gets only this process's PATH and HOME, so nothing of `.env` reaches it.
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { ToolAnswer, ToolCaller } from "../packages/core/src/index.ts";

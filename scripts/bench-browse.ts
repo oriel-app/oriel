@@ -1,12 +1,4 @@
-// `node scripts/bench-browse.ts`: how big and how fast Browse's replies are
-// over a 4,000-item index, built in memory. SYN's fixture, plus generated
-// epics and stories, is served by SYN's Jira site in memory and synced into
-// an in-memory database, as the tests' app does; no fixture file changes.
-// Each route is asked once cold (the first request a newly started server
-// answers) and then `--runs` times warm, timed through the server's own
-// handler, so no network is in the numbers. Browse's first reply
-// (`/api/browse`) is measured beside the first page of its largest cluster
-// (`/api/browse/items`).
+// `node scripts/bench-browse.ts [--items <n>] [--runs <n>]`
 import { parseArgs } from "node:util";
 import { json, testApp } from "../packages/server/src/testing.ts";
 import { bigWorld } from "./big-world.ts";
@@ -26,7 +18,6 @@ const start = () =>
 
 type Row = { route: string; bytes: number; coldMs: number; warmMs: number };
 
-// Each route on a server of its own, so its first request is its cold one.
 async function measure(route: string): Promise<Row | null> {
   const app = await start();
   const time = async () => {

@@ -1,6 +1,3 @@
-// A big world for timing: SYN's fixture, plus generated epics and stories up
-// to `total` issues, served by SYN's Jira site in memory. No fixture file
-// changes. `node scripts/bench-browse.ts` and `pnpm perf` use it.
 import { instant } from "../packages/core/src/ids.ts";
 import type { FixtureIssue } from "../packages/jira/src/fixture.ts";
 
@@ -13,9 +10,6 @@ const people = ["amara", "bastian", "yuting", "dara", "esme", "farid", null];
 const day = 86_400_000;
 const t0 = Date.parse("2026-10-29T09:00:00.000Z");
 
-// Generated issues: one epic per 50 items, and stories spread over them
-// unevenly, with one in eleven in no epic. Deterministic, so every run
-// builds the same index.
 export function generated(count: number): FixtureIssue[] {
   const epics = Math.max(1, Math.round(count / 50));
   const issue = (n: number, over: Partial<FixtureIssue>): FixtureIssue => ({
@@ -41,7 +35,6 @@ export function generated(count: number): FixtureIssue[] {
   });
 }
 
-// SYN's issues and generated ones, `total` in all.
 export const bigWorld =
   (total: number) =>
   (syn: readonly FixtureIssue[]): FixtureIssue[] => [...syn, ...generated(total - syn.length)];

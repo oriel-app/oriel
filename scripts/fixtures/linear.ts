@@ -1,26 +1,8 @@
-// Writes fixtures/linear/world.json: a synthetic Linear workspace for
-// Ferrowick, the fictional ferry app of the SYN fixture, kept by the same
-// made-up people (OA-278). Its engineering team, ENG, has a launch-shaped
-// project, "Summer timetable launch", in the cycle under way and the next,
-// and a smaller one; a second team, OPS, is there to show that a
-// connection reads one team. The content is hand-written and the times are
-// fixed, so regenerating is byte-identical.
-//
-// It covers what Linear sends that a tidy fixture wouldn't, as SPEC §8 asks
-// of SYN: two issues with the same title, an issue assigned to someone who
-// has left, a half-estimated project, a project with no issues, sub-issues,
-// an issue in no project and one in no cycle, triage and canceled issues,
-// an issue in progress with no update in weeks, emoji and non-Latin titles,
-// a 10k-character description, and an injection in an issue's title, its
-// description, a project's description and a person's name. A region holds
-// an issue deleted since, ENG-99.
-//
 // Usage: node scripts/fixtures/linear.ts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { LinearWorldFile, WorldIssue } from "../../packages/linear/src/world.ts";
 
-// A made-up UUID, the same on every run: its group, then its number.
 const uuid = (group: number, n: number) =>
   `${group.toString(16).padStart(8, "0")}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
@@ -47,7 +29,6 @@ const people = [
 ] as LinearWorldFile["people"];
 const who = (displayName: string) => people.find((each) => each.displayName === displayName)?.id;
 
-// Each team's workflow, as Linear starts a team with, and triage on.
 const workflow = (team: string, group: number) =>
   (
     [
@@ -64,7 +45,6 @@ const statuses = [...workflow(eng, 3), ...workflow(ops, 4)];
 const status = (name: string, team = eng) =>
   statuses.find((each) => each.name === name && each.team === team)?.id ?? "";
 
-// ENG's two-week cycles: the last, the one under way, and the next.
 const cycles = [
   {
     id: uuid(5, 12),
@@ -134,7 +114,6 @@ const projects: LinearWorldFile["projects"] = [
   },
 ];
 
-// The long description: a timetable's notes, repeated past 10k characters.
 const longNotes = Array.from(
   { length: 60 },
   (_, i) =>
@@ -441,7 +420,6 @@ const issues: WorldIssue[] = rows.map(
     updatedAt,
   }),
 );
-// OPS's own, which a connection to ENG never reads.
 issues.push({
   id: uuid(8, 1),
   team: ops,
@@ -503,7 +481,6 @@ export function linearWorld(): LinearWorldFile {
           "linear:ENG-18",
         ],
       },
-      // A region frozen before ENG-99 was deleted.
       {
         name: "with-deleted",
         origin: { kind: "picked" },

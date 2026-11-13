@@ -1,7 +1,6 @@
-// Agents' only way to GitHub (decision 0014): a fixed set of operations on
-// this repo, over the REST and GraphQL APIs, as the fine-grained agent token
-// from .env. There is no gh, so no saved logins, aliases, extensions, file
-// reads, other hosts or pass-through flags. Usage: pnpm -s github <operation>
+// Usage: pnpm -s github <operation>
+// As the fine-grained agent token from .env, never gh: no saved logins, aliases, extensions,
+// file reads, other hosts or pass-through flags.
 import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,15 +57,11 @@ export type Operation =
   | { op: "runs"; branch: string | null }
   | { op: "shots-push"; branch: string; pngs: string[] };
 
-// SPEC §10: branch names are at most three hyphenated words, no prefixes.
 const branchName = /^[a-z0-9]+(-[a-z0-9]+){0,2}$/;
 const prNumber = (value: string | undefined) =>
   value && /^[1-9][0-9]*$/.test(value) ? Number(value) : null;
-// pr-create takes the title before the body and pr-edit after it, so each is
-// told by its shape: a title is one line, SPEC §10's `type(scope): summary`,
-// and a body never is. A pair given the wrong way round is refused rather
-// than published swapped. Neither is a flag, so `--title x` can't become a
-// body or `--draft` a title.
+// Title and body are told apart by shape, so a pair given the wrong way round is refused
+// rather than published swapped, and neither can be a flag.
 const isTitle = (text: string) =>
   /^[a-z]+(\([a-z0-9,-]+\))?!?: (?=\S)[^\p{Cc}\p{Zl}\p{Zp}]+$/u.test(text);
 const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") && !isTitle(text);
@@ -131,16 +126,14 @@ export function leaksSecret(texts: readonly string[], envFile: string | null): b
   return texts.some((text) => values.some((value) => text.includes(value)));
 }
 
-// What an operation would publish on a PR's page.
 export function published(operation: Operation): string[] {
   if (operation.op === "pr-create") return [operation.title, operation.body];
   if (operation.op === "pr-edit") return [operation.title ?? "", operation.body];
   return [];
 }
 
-// Only a PR from a branch of this repo may enter the merge queue or have its
-// title or body rewritten: a fork's PR is attacker input, whatever its title or branch
-// name says (decision 0012).
+// A fork's PR is attacker input, whatever its title or branch name says: only a PR from a
+// branch of this repo may be enqueued or have its title or body rewritten.
 export function headRefusal(
   pr: { isCrossRepository: boolean; headRepository: { nameWithOwner: string } | null },
   action: "enqueue" | "edit",
@@ -184,10 +177,8 @@ async function graphql(
   return result.data;
 }
 
-// Why GitHub refused an enqueue, if the only answer is to wait for CI: a
-// required check still queued or running, or mergeability not yet worked
-// out. GitHub joins reasons with " and Pull request …", so every one must be
-// a wait; a conflict or a failing check alongside one is not.
+// GitHub joins reasons with " and Pull request …", so every one must be a wait; a conflict
+// or a failing check alongside one is not.
 export function waitingOnChecks(errors: GraphqlResult["errors"]): string | null {
   const messages = (errors ?? []).map(({ message = "" }) => message);
   const waits = (reason: string) =>
@@ -215,10 +206,6 @@ const autoMergeOff = (errors: GraphqlResult["errors"]) =>
     /auto.?merge (is )?(not allowed|not enabled|disabled)/i.test(message),
   );
 
-// What pr-enqueue reads of the checks before it enqueues: the check runs on
-// a commit, and the checks main's ruleset requires, which the merge queue
-// waits for. Its ruleset is read rather than the workflows' triggers: it
-// names the checks themselves, and the agent token can read it.
 export type Checks = {
   runs(sha: string): Promise<CheckRun[]>;
   required(): Promise<string[]>;
@@ -231,10 +218,6 @@ const red = (run: CheckRun) =>
     run.conclusion ?? "",
   );
 
-// Why the PR must not enter the queue at this head, if it mustn't: a check
-// that ended red, or one still running that the queue won't wait for, so it
-// would merge whatever that check goes on to say (#228, with ui failing).
-// A check named in --despite is let through, and every one is said.
 export async function checksGate(
   checks: Checks,
   sha: string,
@@ -264,16 +247,8 @@ export async function checksGate(
   };
 }
 
-// Enqueue the PR, pinned to the commit just checked so a push in between
-// can't slip in. While CI runs, GitHub refuses an enqueue, so arm auto-merge
-// instead: the PR enters the queue when CI passes. That pin holds only while
-// arming; auto-merge stays armed through later pushes, so the agent pushes
-// nothing more without a fresh go-ahead. This changes when the merge happens,
-// not who decides (decision 0012).
-//
-// Right after a push, GitHub may not yet know the head it just took, and
-// refuses the head it reports. Then the PR is read again 3 seconds on, and
-// the enqueue tried once more on what it reports then.
+// GitHub refuses an enqueue while CI runs, so auto-merge is armed, which outlives later pushes;
+// right after a push it may refuse the head it reports, so the PR is read again 3 s on.
 export async function enqueue(
   send: Graphql,
   first: Enqueued,
@@ -282,7 +257,6 @@ export async function enqueue(
   checks: Checks,
 ): Promise<unknown> {
   let pr = first;
-  // The checks on a head, before it's enqueued; again when it's read again.
   let notes: string[] = [];
   const gate = async (on: Enqueued) => {
     const gated = await checksGate(checks, on.headRefOid);
@@ -339,8 +313,6 @@ export async function enqueue(
   );
 }
 
-// The number after the highest decision on main or in any open PR, so two
-// decisions drafted at once can't share one.
 export function nextDecision(paths: readonly string[]): string {
   const taken = paths.flatMap((path) => {
     const number = /^docs\/decisions\/(\d{4})-[^/]*\.md$/.exec(path)?.[1];
@@ -380,8 +352,6 @@ async function pullRequest(token: string, number: number) {
   return pr;
 }
 
-// pr-view's PR, with whether it's in the merge queue and armed to enter it
-// first, as plain fields, before the rest as GitHub gave it.
 export type Viewed = {
   number: number;
   title: string;
@@ -401,7 +371,6 @@ export function viewed<T extends Viewed>(pr: T) {
   };
 }
 
-// What pr-wait reads of a PR on each look.
 export type Watched = {
   state: "OPEN" | "CLOSED" | "MERGED";
   headRefOid: string;
@@ -424,8 +393,7 @@ export type Reads = {
   annotations(checkRunId: number): Promise<Annotation[]>;
 };
 
-// A run that ended this way won't merge the PR. A cancelled one isn't
-// counted: the queue cancels a group's runs when it rebuilds the group.
+// A cancelled run isn't failing: the queue cancels a group's runs when it rebuilds the group.
 const failing = (run: CheckRun) =>
   run.status === "completed" &&
   ["failure", "timed_out", "startup_failure", "action_required"].includes(run.conclusion ?? "");
@@ -440,11 +408,6 @@ const lookEveryMs = 20_000;
 const dropLooks = 3;
 const dropLookEveryMs = 10_000;
 
-// Looks at a PR until it merges, fails a check, leaves the queue or the
-// time is up, whichever comes first; one never queued or armed, until its
-// CI passes instead of leaving the queue. The checks it reads are its head's and
-// its merge queue entry's, the last one seen, so a group the queue dropped
-// for a failure still says which check failed.
 export async function waitFor(
   reads: Reads,
   clock: () => number,
@@ -452,8 +415,6 @@ export async function waitFor(
 ): Promise<string> {
   const deadline = clock() + waitLimitMs;
   let queued: string | null = null;
-  // Whether any look found it queued or armed. Until one does, it's waiting
-  // for CI, not for the queue, so it can't be dropped from it.
   let joined = false;
   let outLooks = 0;
   for (;;) {
@@ -485,7 +446,6 @@ export async function waitFor(
   }
 }
 
-// Runs git where the caller is, and returns its output trimmed.
 export type Git = (args: readonly string[], env?: Record<string, string>) => Promise<string>;
 const execGit = promisify(execFile);
 export const git: Git = async (args, env) =>
@@ -499,21 +459,14 @@ export const git: Git = async (args, env) =>
 const isSha = (value: string) => /^[0-9a-f]{40}$/.test(value);
 const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-// Each PNG's path in the commit: its path from `from`, which it must be
-// inside, so a push can't name a file outside the checkout's reach.
 export function shotPaths(from: string, pngs: readonly string[]): string[] | { error: string } {
   const paths = pngs.map((png) => relative(from, resolve(from, png)).split(sep).join("/"));
-  // Two paths to one file, or one given twice, would be one entry.
   const outside = paths.find((path) => path === "" || path.startsWith("../") || isAbsolute(path));
   if (outside !== undefined) return { error: `refusing: a PNG outside ${from}: ${outside}` };
   if (new Set(paths).size !== paths.length) return { error: "refusing: a PNG given twice" };
   return paths;
 }
 
-// Commits the PNGs as an images-only commit on shots/<branch> and pushes it,
-// with plumbing, so no checkout, index or stash is touched. The branch is
-// made fresh, or grows by a commit when its tip is one of these, so a raw URL
-// given earlier still resolves. Anything else there is someone's: refused.
 export async function shotsPush(
   run: Git,
   from: string,
@@ -570,12 +523,9 @@ export async function shotsPush(
   }
 }
 
-// One file a commit or a branch changes: its status letter (A, M, D, R…) and
-// path, and a rename's old path too.
 export type Changed = { status: string; path: string; from?: string };
 export type LandedPr = { sha: string; number: number | null; title: string; files: Changed[] };
 
-// `git diff --name-status` lines, as Changed.
 export function changedFiles(text: string): Changed[] {
   return text.split("\n").flatMap((line) => {
     const [status = "", path = "", renamed] = line.split("\t");
@@ -584,9 +534,6 @@ export function changedFiles(text: string): Changed[] {
   });
 }
 
-// What landedLog's git log prints: each commit as a NUL, its SHA and subject
-// on one line, then its --name-status lines. A squash merge's subject ends
-// with its PR number, `(#209)`; a commit pushed straight to main has none.
 export const landedLogFormat = "%x00%H %s";
 export function landedLog(text: string): LandedPr[] {
   return text
@@ -607,15 +554,6 @@ export function landedLog(text: string): LandedPr[] {
     });
 }
 
-// A cassette's key hashes its request's method, URL and body
-// (packages/evals/src/cassette.ts): the model, the system prompt, the run
-// tool with the module's .d.ts, and the messages, run results among them, and
-// the judge's request likewise. packages/agent writes the prompt, the tool and
-// the messages, packages/bindings the module and what a run returns, each
-// connector's namespace and declaration its own part of them, and the evals'
-// system under test, world, judge, cases and fixtures fill them in.
-// Main replays green, so a merged PR that moved any key a case reaches also
-// changed tests/cassettes/.
 export function agentFacing(path: string): boolean {
   const code = (dir: string) =>
     path.startsWith(dir) && !path.endsWith(".test.ts") && !path.endsWith("/testing.ts");
@@ -634,13 +572,10 @@ export function agentFacing(path: string): boolean {
 const migrationNumber = (file: Changed) =>
   file.status === "A" ? (/^packages\/db\/migrations\/(\d+)_/.exec(file.path)?.[1] ?? null) : null;
 
-// The design system's generated files, each with the command that writes it.
 export const generated: Record<string, string> = {
   "packages/design-system/COMPONENTS.md": "pnpm --filter @oriel/design-system index",
 };
 
-// One line per PR that landed: what in it collides with this branch's own
-// changes (`mine`).
 export function landedReport(base: string, landed: readonly LandedPr[], mine: readonly Changed[]) {
   if (landed.length === 0) return `nothing landed on main since ${base.slice(0, 7)}`;
   const paths = (files: readonly Changed[]) =>
@@ -657,7 +592,6 @@ export function landedReport(base: string, landed: readonly LandedPr[], mine: re
     .map((pr) => {
       const theirs = [...paths(pr.files)];
       const overlap = theirs.filter((path) => own.has(path));
-      // Re-recorded cassettes count once, as one name.
       const facing = [
         ...new Set(
           theirs
@@ -683,8 +617,6 @@ export function landedReport(base: string, landed: readonly LandedPr[], mine: re
     .join("\n");
 }
 
-// What landed on main since this branch's base, from git where it runs.
-// Fetch main first: an old origin/main would say nothing landed.
 export async function landed(run: Git): Promise<string> {
   const base = await run(["merge-base", "HEAD", "origin/main"]);
   const log = await run([
@@ -696,7 +628,6 @@ export async function landed(run: Git): Promise<string> {
     `--format=${landedLogFormat}`,
     `${base}..origin/main`,
   ]);
-  // The branch's own changes: committed, staged, unstaged and new.
   const mine = [
     ...changedFiles(await run(["diff", "--name-status", "-M", base])),
     ...(await run(["ls-files", "--others", "--exclude-standard"]))
@@ -881,7 +812,6 @@ if (import.meta.main) {
   }
   if (!("error" in operation) && operation.op === "landed") {
     try {
-      // Bounded: a fetch that hangs leaves the last origin/main, and says so.
       await execGit("git", ["fetch", "--quiet", "--no-prune", "origin", "main"], {
         timeout: 30_000,
       }).catch(() => console.error("couldn't fetch main; reading origin/main as last fetched"));

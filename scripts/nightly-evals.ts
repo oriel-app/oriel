@@ -1,11 +1,3 @@
-// The night's recording (decision 0061): every eval case once against the
-// live model; a case whose draw would fail CI's replay drawn again, up to
-// twice; then CI's own replay, strict. It records only the cassettes whose
-// requests changed, and keeps the rest byte for byte (packages/evals/src/
-// nightly.ts). It writes packages/evals/nightly.json, which the next night
-// compares with, removes packages/evals/stale.md, and prints a summary to
-// paste into the PR.
-//
 //   node scripts/nightly-evals.ts --env /Users/Vibdev/code/oriel/.env
 //
 // Run it in a fresh checkout of origin/main, never the main checkout or a

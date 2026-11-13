@@ -1,7 +1,3 @@
-// A stand-in for the person's model in Noticed's pass, for `pnpm shots`: it
-// answers with the lines a real pass wrote on the same window
-// (record-pass.ts), matched to the signals this run offers by kind and
-// subject, so the shots show what a model says without calling one.
 import { readFileSync } from "node:fs";
 import type { Provider } from "../../packages/agent/src/provider.ts";
 

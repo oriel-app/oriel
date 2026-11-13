@@ -1,23 +1,6 @@
-// `node scripts/mcp-try.ts`: Oriel's MCP door (decision 0058) for a real
-// client to try, with a tool connected and its token shown once.
-//
-// With no `--window`, on a throwaway server: the SYN fixture in memory, with
-// the scripted agent, and one workstream on SYN's checkout epic, the window
-// and the door each on a free loopback port. Two tools are connected: one
-// that reads and acts (`--name`), and one that reads only. It runs until
-// stopped. `--check` runs Oriel's own small client against it instead,
-// prints what each call answered, and stops.
-//
-// With `--window <url> --headers <file>`, on an Oriel already running, such
-// as the desktop app under `pnpm desktop:try` (whose headers file carries the
-// launch cookie): it connects one tool through the window's own route, as
-// the person would. `--notes` first connects a folder of three notes and
-// makes a workstream of them, for a fresh data folder with nothing in it.
-//
-// Either way it writes, into a temporary folder, each acting tool's config
-// for Claude Code (`claude -p --mcp-config <file> --strict-mcp-config`) and
-// its `-c` overrides for Codex (`codex exec $(cat <file>)`). It never edits
-// a client's own config.
+// `node scripts/mcp-try.ts [--check] [--name <name>] [--mode <mode>] [--port <n>]`, or on a
+// running Oriel: `--window <url> --headers <file> [--notes]` (the file `pnpm desktop:try` prints).
+// Writes each tool's config for Claude Code and Codex to a temporary folder, never a client's own.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,8 +22,6 @@ const { values } = parseArgs({
 const mode = values.mode === "read" ? "read" : "act";
 
 const folder = mkdtempSync(join(tmpdir(), "oriel-mcp-"));
-// What each client is given: Claude Code's MCP config, and Codex's `-c`
-// overrides, which approve the door's tools for this run alone.
 function configs(file: string, door: string, token: string): void {
   const claude = {
     mcpServers: {

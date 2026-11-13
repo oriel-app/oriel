@@ -1,26 +1,3 @@
-// Writes fixtures/sheets/: four synthetic Google spreadsheets for Ferrowick,
-// the fictional ferry app of the SYN fixture, kept by the same made-up
-// people, and the account that reads them (decision 0050). `account.json`
-// holds the account and names the spreadsheets; each spreadsheet is its own
-// file. The content is hand-written and the times are fixed, so regenerating
-// is byte-identical.
-//
-// It covers SPEC §8's checklist for Google Sheets:
-// - tracker.json, "Ferrowick delivery tracker": a tracker tab with an epic
-//   merged down its stories, a notes block under the table, a duplicate key
-//   and a blank one, a row hidden by hand and one hidden by a filter, a
-//   hidden column, a formula cell and a text cell starting with `=`, a
-//   10k-character cell, and an injection in a cell and in a note. Two sprint
-//   tabs with the same headers, keyed by numbers stored as text, and a tab
-//   with non-Latin and emoji headers and values. Its later versions edit a
-//   key, sort a sprint tab and rename the other.
-// - raid.json, "Ferrowick launch RAID log": a RAID log, an injection in a
-//   header, in a comment and in a tab's name, and comments with replies, one
-//   resolved and one deleted.
-// - contacts.json: a plain table with no status, in a spreadsheet the
-//   account can only view, whose title is an injection.
-// - archive.json, "Ferrowick story archive": a tab past the row cap.
-//
 // Usage: node scripts/fixtures/sheets.ts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -32,7 +9,6 @@ import {
   sheetsFixtureDir,
 } from "../../packages/sheets/src/fixture.ts";
 
-// A made-up Drive file ID, 44 characters as Google's are.
 const fileId = (name: string) => `1Fw${name}Fixture`.padEnd(44, "0");
 
 export const trackerId = fileId("Tracker");
@@ -57,8 +33,6 @@ const date = (month: number, day: number): FixtureCell => ({
 
 const jira = (key: string) => `https://oriel.atlassian.net/browse/${key}`;
 
-// Over 10,000 characters in one cell: the alert-window investigation,
-// sailing by sailing.
 const research = [
   "Alert window investigation, September sailings.",
   ...Array.from(
@@ -234,7 +208,6 @@ const tracker: FixtureSpreadsheet = {
         ["Ticket", "Story", "Owner", "Status", "Points"],
         ["00421", "Pick a new sailing in the app", "Farid Haddad", "In progress", 5],
         ["00422", "At-risk banner", "Bastian Holm", "To do", 3],
-        // Typed without its leading zeros, so it's a number.
         [423, "Night-sailing alert sound", "Esme Whitlock", "To do", 1],
         ["00424", "Alerts in Japanese", "Amara Okafor", "In progress", 3],
         ["00425", "SMS alerts under 160 characters", "Chen Yuting", "Done", 2],
@@ -437,7 +410,6 @@ const contacts: FixtureSpreadsheet = {
   later: [],
 };
 
-// Past the 5,000-row cap of decision 0050.
 export const archiveRows = 5_200;
 
 const verbs = ["Fix", "Show", "Send", "Move", "Rename", "Check", "Hide", "Explain"];
@@ -479,8 +451,6 @@ export function sheetsFixture(): SheetsFixture {
   return { user, spreadsheets: [tracker, raid, contacts, archive] };
 }
 
-// JSON indented by two, except that a row of cells stays on one line, so a
-// tab of thousands of rows reads as thousands of lines.
 const plain = (v: unknown) => typeof v !== "object" || v === null;
 const cellLike = (v: unknown) =>
   plain(v) || (!Array.isArray(v) && Object.values(v as object).every(plain));
@@ -507,7 +477,6 @@ function stringify(value: unknown, indent: string): string {
 
 type Account = { user: SheetsFixture["user"]; spreadsheets: string[] };
 
-// Each file as the generator writes it.
 export function sheetsFixtureFiles(): Map<string, string> {
   const fixture = sheetsFixture();
   const json = (value: unknown) => `${stringify(value, "")}\n`;

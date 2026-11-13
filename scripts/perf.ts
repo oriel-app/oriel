@@ -1,22 +1,5 @@
-// `pnpm perf`: how fast the window opens on a big world, in the installed
-// Chrome. SYN's fixture plus generated issues, 4,000 in all (`--items`), is
-// served by SYN's Jira site in memory and synced as from a source server into a
-// database file in a temporary directory, with `--workstreams` workstreams
-// made from its largest epics, as a user's would be. The server is the real
-// one, on a free port.
-//
-// It times the server's start on an empty database and again on the one the
-// first start left, then opens the overview once on each freshly started
-// server (cold) and `--runs` more times (warm, the median). Each open
-// reports time to first byte, when the app first drew, when the overview
-// first showed its sections (the first useful paint), and every request it
-// made, with its size and the server's time. Chrome's trace gives the time
-// spent compiling and running scripts. Last, each route the overview and
-// Browse ask for is timed through the server's own handler, one request at
-// a time, so no other request is in its number.
-//
-// The budget is `budgets` below; over any of it, it exits 1. It reads the
-// clock, so it is a script, not a test.
+// `pnpm perf [--items <n>] [--workstreams <n>] [--runs <n>] [--history <n>]`; exits 1 over
+// `budgets`. It reads the clock, so it is a script, not a test.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,8 +22,6 @@ const { values } = parseArgs({
 const total = Number(values.items);
 const runs = Number(values.runs);
 const history = Number(values.history);
-// The overview shown on a warm open and on a cold one, as medians, and the
-// overview's reply alone.
 const budgets = { warmMs: 150, coldMs: 400, overviewMs: 50 };
 
 const syn = loadJiraFixture();
@@ -82,8 +63,6 @@ type Open = {
   requests: Request[];
 };
 
-// Set before the page's own scripts: when #app first has content, and when
-// the overview first has its sections, each after the frame that paints it.
 const marks = `(() => {
   const seen = new Set();
   const mark = (name) => {
@@ -104,7 +83,6 @@ async function open(page: Page, url: string): Promise<Open> {
   await browser.startTracing(page, { categories: ["devtools.timeline", "v8"] });
   await page.goto(url);
   await page.waitForFunction(() => performance.getEntriesByName("oriel:shown").length > 0);
-  // Whatever the overview asked for after it showed.
   await page.waitForLoadState("networkidle");
   const trace = JSON.parse((await browser.stopTracing()).toString("utf8")) as {
     traceEvents: { name: string; ph: string; dur?: number }[];
@@ -172,7 +150,6 @@ function report(label: string, opens: Open[]) {
   const lastScript = (o: Open) =>
     Math.max(0, ...o.requests.filter((r) => r.path.endsWith(".js")).map((r) => r.endMs));
   console.log(`  last script loaded      ${ms(pick(lastScript))}`);
-  // The nth request for a path in one open is the nth in every other.
   const nth = (o: Open, path: string, n: number) => o.requests.filter((r) => r.path === path)[n];
   console.log("  api calls                  start   server      end      size");
   const api = first.requests.filter((r) => r.path.startsWith("/api/"));
@@ -198,7 +175,6 @@ try {
   const first = await start();
   started.push(first.serving);
   console.log(`${total} issues; server started on an empty database in ${ms(first.ms)}`);
-  // The user's workstreams: the largest epics, one each.
   const base = first.serving.url;
   const browse = (await (await fetch(new URL("/api/browse?grouping=epic", base))).json()) as {
     clusters: { row: { key: string; count: number } }[];
@@ -220,8 +196,6 @@ try {
   };
   for (const cluster of largest)
     await post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: cluster.row.key });
-  // Weeks of use: each round, teammates move some issues on in Jira, and
-  // Oriel syncs, so the change log holds what moved.
   const keys = bigWorld(total)(syn.issues).map((issue) => issue.key);
   const moves = ["To Do", "In Progress", "Done"];
   for (let round = 0; round < history; round += 1) {
@@ -234,8 +208,6 @@ try {
   await first.serving.close();
   started.pop();
 
-  // Started again on the database the first left: the server a user opens
-  // the window on, cold for its first open and warm after.
   const again = await start();
   started.push(again.serving);
   console.log(`started again on that database in ${ms(again.ms)}`);
@@ -245,7 +217,6 @@ try {
   report("cold open", [cold]);
   report("warm open", warm);
 
-  // One request at a time, as the window would send each.
   const serving = again.serving;
   const call = async (path: string) => {
     const url = new URL(path, serving.url);

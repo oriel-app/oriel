@@ -1,37 +1,5 @@
-// Records what Oriel's sync and reads of one kind call of its source server,
-// and the server's answers, into fixtures/<kind>-mcp/, which the parser's
-// tests replay (OA-276, OA-277): `sync.json` opens a connection and lists it
-// in full, and `read.json` reads its items one by one.
-//
-// - jira: Atlassian's server, on SYN; the reads are every frozen region's
-//   items.
-// - slack: Slack's server, in the channels the fixture picked, or, through
-//   the real server, those `--channels` names; the reads are every message
-//   the sync listed.
-// - linear: Linear's server, on the first team it lists, ENG in the
-//   fixture; the reads are every item the sync listed.
-// - sheets: packages/sheets-mcp, our own server, in its fixture mode on its
-//   shipped `fixture/backlog.json`, as a process of its own, since Oriel
-//   never imports it; the sync reads the Backlog tab, the reads are every
-//   item it listed, and `preview.json` is a preview with nothing picked.
-//   Then, on the evals' Sheets fixture (fixtures/sheets/) as sheets-mcp
-//   serves it, each cell as it shows with its note, the rows and columns
-//   hidden by hand and the comments, `world.json`: a sync of what the
-//   fixture's connection picks, and the previews of the spreadsheets the
-//   draft cases wait on, which the eval world reads through the server.
-//
-// By default it records the kind's stand-in (`@oriel/<kind>/standin`, its
-// fixture world in memory), in this process. With `--through codex --server
-// <name>` it records the real server as the person's own Codex lists it
-// under <name>, through its app server's `mcpServer/tool/call`, with no
-// model and only that server's read tools; with `--through claude-code`,
-// as their Claude Code lists it, through its tool host's `mcp_call`, with
-// no model either. Point
-// it at our test site or workspace, never a person's data: Jira reads SYN.
-// A real server's recordings are `real-sync.json` and `real-read.json`,
-// beside the stand-in's. People are replaced with numbered placeholders
-// (packages/jira/src/recorded.ts). Nothing is written.
 // Usage: node scripts/record-source-mcp.ts <jira|slack|linear|sheets> [--through <codex|claude-code> --server <name>] [--channels <a,b>]
+// Point a real server at our test site or workspace, never a person's data.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
@@ -86,9 +54,8 @@ import {
   shown,
 } from "../packages/sheets/src/fixture.ts";
 
-// An Atlassian answer scrubbed as Jira's are, with the site's cloud ID as
-// the stand-in's, and without the call's context the server adds to its
-// structured content, which names the account.
+// Atlassian's server adds the call's context to its structured content, which names the
+// account: it's dropped.
 export function scrubAtlassian(value: unknown, people = new Map<string, string>()): unknown {
   const cloud = (each: unknown): unknown =>
     typeof each === "string"
@@ -107,9 +74,6 @@ export function scrubAtlassian(value: unknown, people = new Map<string, string>(
   return scrubJira(cloud(value), people);
 }
 
-// A Slack answer with its people as numbered placeholders, their IDs and
-// the names and contact details of their profiles, and the workspace's
-// address as a placeholder's: none of our test workspace is in the repo.
 export function scrubSlack(value: unknown, people = new Map<string, string>()): unknown {
   const placeholder = (key: string, make: (n: number) => string) => {
     const made = people.get(key) ?? make(people.size + 1);
@@ -117,9 +81,8 @@ export function scrubSlack(value: unknown, people = new Map<string, string>()): 
     return made;
   };
   if (typeof value === "string") {
-    // Slack's server answers in Markdown: a person's name stands beside their
-    // ID, as "Name <email> (U0…)", "<@U0…|Name>" or a profile's lines, so
-    // each name it gives is replaced wherever it appears, longest first.
+    // Slack's server answers in Markdown, a name beside its ID ("Name <email> (U0…)", "<@U0…|Name>"),
+    // so each name it gives is replaced wherever it appears, longest first.
     const names = new Set<string>();
     for (const [, name] of value.matchAll(
       /(?:Message from |From: )(.+?)(?: <[^>\n]*>)? \([UWB][A-Z0-9]{2,}\)/g,
@@ -129,8 +92,6 @@ export function scrubSlack(value: unknown, people = new Map<string, string>()): 
     for (const [, name] of value.matchAll(/^Creator: (.+?) \(<@/gm)) if (name) names.add(name);
     for (const [, name] of value.matchAll(/^(?:Display Name|Real Name|Username): (.+)$/gm))
       if (name?.trim()) names.add(name.trim());
-    // Each name earlier answers gave, and each word of one, as a message
-    // may name someone by their first name alone.
     for (const key of people.keys()) if (key.startsWith("name:")) names.add(key.slice(5));
     let scrubbed = value.replace(
       /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/g,
@@ -168,9 +129,6 @@ export function scrubSlack(value: unknown, people = new Map<string, string>()): 
   );
 }
 
-// A Linear answer with its people as numbered placeholders, by their names
-// and email addresses wherever they appear, and its workspace's address as
-// a placeholder's: none of our test workspace is in the repo.
 export function scrubLinear(value: unknown, people = new Map<string, string>()): unknown {
   const placeholder = (key: string) => {
     const made = people.get(key) ?? `Person ${people.size + 1}`;
@@ -183,7 +141,6 @@ export function scrubLinear(value: unknown, people = new Map<string, string>()):
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, each]) => {
-      // A person as an object: its name and contact, whatever beside them.
       if (
         ["assignee", "lead", "creator", "createdBy"].includes(key) &&
         typeof each === "object" &&
@@ -203,7 +160,6 @@ export function scrubLinear(value: unknown, people = new Map<string, string>()):
           ),
         ];
       if (["assignee", "lead", "creator", "createdBy", "name", "displayName"].includes(key)) {
-        // A person's name, where the object or the field is a person's.
         const person =
           key !== "name" ||
           ("email" in value && typeof (value as Record<string, unknown>).email === "string");
@@ -218,15 +174,11 @@ export function scrubLinear(value: unknown, people = new Map<string, string>()):
 type Kind = {
   server: SourceServer;
   dir: URL;
-  // In this process, or a process of its own, which is stopped once done.
   standIn: () => ToolCaller | Promise<{ call: ToolCaller; close(): void }>;
   standInLine: string;
   realLine: (version: string) => string;
   scrub: (value: unknown, people: Map<string, string>) => unknown;
-  // Where its parser reads only an answer's text: its structured content,
-  // which some agents pass on, isn't kept.
   textOnly?: true;
-  // Through the real server, where `real`.
   connection: (
     channels: readonly string[] | null,
     real: boolean,
@@ -240,14 +192,10 @@ type Kind = {
       read(ids: never[]): Promise<unknown>;
     };
   }>;
-  // What `read.json` reads, given what the sync listed.
   reads: (listed: readonly IndexRecord[]) => readonly string[];
-  // What `preview.json` previews, where the kind previews its source for
-  // the options the person sets through it.
   preview?: (connection: ToOpen, via: OpenVia) => Promise<unknown>;
 };
 
-// The Backlog tab of sheets-mcp's shipped fixture, as a person maps it.
 export const backlogPicks = {
   spreadsheets: [
     {
@@ -281,8 +229,6 @@ const kinds: Record<string, Kind> = {
       `From Atlassian's Rovo MCP server, through ${version}, on our test site's SYN.`,
     scrub: scrubAtlassian,
     textOnly: true,
-    // The real site's SYN, which scripts/seed-jira.ts seeds from the
-    // fixture: never another project there.
     connection: (_, real) => ({
       prefix: "jira",
       identity: "",
@@ -335,8 +281,8 @@ const kinds: Record<string, Kind> = {
       "From packages/sheets-mcp in its fixture mode, on its shipped fixture/backlog.json: no Google account. Re-record with --through codex.",
     realLine: (version) =>
       `From packages/sheets-mcp signed in to Google, through ${version}, on our test account's spreadsheets.`,
-    // Our own server's answers hold nothing of a person but cell text,
-    // which the test account's spreadsheets make up.
+    // Our own server's answers hold nothing of a person but cell text, which the test account's
+    // spreadsheets make up.
     scrub: (value) => value,
     connection: () => ({ prefix: "sheets", identity: "", options: backlogPicks }),
     open: openSheets as Kind["open"],
@@ -345,7 +291,6 @@ const kinds: Record<string, Kind> = {
   },
 };
 
-// A tool's answer scrubbed, in its JSON text.
 function scrubbed(answer: ToolAnswer, kind: Kind, people: Map<string, string>): ToolAnswer {
   const { structuredContent, ...rest } = answer;
   return {
@@ -356,7 +301,6 @@ function scrubbed(answer: ToolAnswer, kind: Kind, people: Map<string, string>): 
       try {
         parsed = JSON.parse(String(block.text));
       } catch {
-        // Prose can't be scrubbed by its fields: check it by hand.
         throw new Error("an answer isn't JSON, so Oriel can't scrub it: nothing was written");
       }
       return { ...block, text: JSON.stringify(kind.scrub(parsed, people)) };
@@ -385,8 +329,6 @@ export async function recordCalls(
           }))
         : calls,
     };
-    // A real server's recording sits beside the stand-in's, which the
-    // tests compare with the fixture.
     const named = scrubbing ? `real-${name}` : name;
     writeFileSync(new URL(named, kind.dir), `${JSON.stringify(file, null, 2)}\n`);
     console.log(`${named}: ${calls.length} calls`);
@@ -460,10 +402,6 @@ export async function recordCalls(
   save("preview.json", previewed);
 }
 
-// The evals' Sheets fixture as sheets-mcp's fixture mode reads it: each
-// cell as it shows, with its note, the rows and columns hidden by hand, and
-// the comments, each resolved when its last reply's action resolved it. No
-// merges or filters, which its tools don't give.
 export function sheetsMcpFixture(fixture: SheetsFixture) {
   return {
     spreadsheets: fixture.spreadsheets.map((spreadsheet) => ({
@@ -514,7 +452,6 @@ export function sheetsMcpFixture(fixture: SheetsFixture) {
   };
 }
 
-// The draft cases' spreadsheets, each waiting with nothing mapped.
 export const draftWaits = [
   "1FwTrackerFixture000000000000000000000000000",
   "1FwRaidFixture000000000000000000000000000000",
@@ -567,8 +504,6 @@ async function recordSheetsWorld() {
       {
         recorded:
           "From packages/sheets-mcp in its fixture mode, on fixtures/sheets/ as it serves it (scripts/record-source-mcp.ts): each cell as it shows, with its note, the rows and columns hidden by hand and the comments, no merges, and each answer's structured content alone.",
-        // Each answer's structured content alone, which the parser reads
-        // first, so the cells aren't kept twice.
         calls: calls.map(({ call, answer }) => {
           const { structuredContent } = answer as ToolAnswer;
           return structuredContent === undefined
@@ -619,8 +554,6 @@ if (import.meta.main) {
     if (!codex.ok) throw new Error(codex.problem.message);
     const at = kind.server.at;
     const calls = codexServerCalls(codex.cli, {
-      // A remote one by its URL; a local one by its name in the person's
-      // Codex, which starts it as they configured it.
       server:
         at && "url" in at
           ? { name: values.server, url: at.url, transport: "http" }
@@ -640,9 +573,6 @@ if (import.meta.main) {
       calls.close();
     }
   } else if (values.through === "claude-code" && values.server) {
-    // The same, through the person's Claude Code's tool host
-    // (packages/agent/src/tool-host.ts): each call is its `mcp_call`, with
-    // no model, to the server where Claude Code lists it.
     mkdirSync(kind.dir, { recursive: true });
     const claude = await checkClaudeCode();
     if (!claude.ok) throw new Error(claude.problem.message);

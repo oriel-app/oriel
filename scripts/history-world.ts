@@ -1,8 +1,3 @@
-// SYN with eight weeks behind it, for the chart blocks' screenshots: the
-// fixture as it stood on Monday Sep 7, then a week's moves at a time
-// (packages/evals/src/past-weeks.ts), each synced on its Monday, so the
-// change log holds what a real team's would and every chart is drawn from
-// it. No fixture file changes.
 import { instant, type Instant } from "../packages/core/src/ids.ts";
 import type { State } from "../packages/core/src/source.ts";
 import { type Moves, pastOf, pastWeeks } from "../packages/evals/src/past-weeks.ts";
@@ -18,8 +13,6 @@ const names: Record<State, { name: string; category: State }> = {
   done: { name: "Done", category: "done" },
 };
 
-// The fixture as it stood before the first week, and each week's moves by
-// Jira's status names.
 export function history(fixture: JiraFixture): {
   start: JiraFixture;
   moves: Map<number, [string, string][]>;

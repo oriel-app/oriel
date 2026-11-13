@@ -50,8 +50,6 @@ const clean = {
 
 type Repo = Partial<typeof clean> & { sources?: { path: string; text: string }[] };
 
-// What a problem is about, once each, in the order first reported: a file's
-// path, or a package's name.
 const flagged = (repo: Repo) => [
   ...new Set(problems({ ...clean, ...repo }).map((p) => p.slice(0, p.indexOf(": ")))),
 ];
@@ -89,7 +87,6 @@ test("importing an adapter's writer anywhere but the file that builds writers is
     { path: "packages/server/src/x.ts", text: 'import { w } from "../../jira/src/writer.ts";' },
     { path: "packages/jira/src/source.ts", text: 'const w = await import("./writer.ts");' },
     { path: "scripts/x.ts", text: 'import { w } from "../packages/jira/src/writer";' },
-    // Nor may a test outside the adapter.
     { path: "packages/server/src/y.test.ts", text: 'import { w } from "@oriel/jira/writer";' },
   ];
   assert.deepEqual(flagged({ sources }), [
@@ -119,7 +116,6 @@ test("naming SourceWriter, which can stand in for an approval in a cast, is repo
 test("a template literal in import() names a module like a quoted string does", () => {
   const sources = [
     { path: "packages/server/src/x.ts", text: "const w = await import(`@oriel/jira/writer`);" },
-    // Not read: an interpolated specifier, and backticked code in a comment.
     { path: "packages/server/src/w.ts", text: "await import(`@oriel/${kind}/writer`);" },
     { path: "packages/jira/src/v.ts", text: "// The writer is `@oriel/jira/writer` only." },
   ];
@@ -160,8 +156,6 @@ test("a lockfile that declares dependencies but parses to nothing is reported", 
   assert.deepEqual(flagged({ lockfile: unreadable }), ["pnpm-lock.yaml"]);
 });
 
-// A routes file declaring every exempt route as the list says, as api.ts
-// does, plus `extra`.
 const route = (path: string, code: string) =>
   `{ method: "POST", path: at("${path}"), async run() { ${code} } },`;
 const routes = (extra: string) => ({
@@ -188,7 +182,6 @@ test("a POST route that changes state without the dispatcher is reported", () =>
   assert.deepEqual(flagged({ sources: [...clean.sources, routes(sneaky)] }), [
     "packages/server/src/api.ts",
   ]);
-  // Tests may post anything.
   const test = { path: "packages/server/src/testing.ts", text: sneaky };
   assert.deepEqual(flagged({ sources: [...clean.sources, routes(""), test] }), []);
 });
@@ -242,7 +235,6 @@ test("a Chrome launch must be the installed Chrome with its sandbox on, and noth
     ).length,
     1,
   );
-  // The options belong to the call: a later call's don't count for it.
   assert.equal(
     chromeLaunchProblems(
       "scripts/c.ts",

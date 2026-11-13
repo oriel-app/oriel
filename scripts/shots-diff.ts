@@ -1,8 +1,4 @@
-// `pnpm shots:diff <dirA> <dirB>`: which screenshots differ between two
-// `pnpm shots` runs, compared pixel by pixel. Each PNG under either folder is
-// matched by its path below it; a line says how many pixels differ and the
-// box around them, or that one is missing or another size. Exits 1 if any
-// differ. `--tolerance <n>` lets each channel differ by up to n first.
+// `pnpm shots:diff <dirA> <dirB> [--tolerance <n>]`; exits 1 if any screenshot differs.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
@@ -10,10 +6,8 @@ import { inflateSync } from "node:zlib";
 
 export type Image = { width: number; height: number; channels: number; pixels: Buffer };
 
-// Channels per pixel for each 8-bit colour type: grey, RGB, grey and alpha, RGBA.
 const channelsOf: Record<number, number> = { 0: 1, 2: 3, 4: 2, 6: 4 };
 
-// PNG's Paeth predictor: whichever neighbour is nearest their gradient.
 export function paeth(left: number, above: number, corner: number): number {
   const guess = left + above - corner;
   const [a, b, c] = [left, above, corner].map((v) => Math.abs(guess - v)) as [
@@ -24,8 +18,6 @@ export function paeth(left: number, above: number, corner: number): number {
   return a <= b && a <= c ? left : b <= c ? above : corner;
 }
 
-// The PNG's pixels, unfiltered. Only what Chrome writes is read: 8 bits a
-// channel, no palette, not interlaced.
 export function decode(png: Buffer): Image {
   if (!png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
     throw new Error("not a PNG");
@@ -69,8 +61,6 @@ export function decode(png: Buffer): Image {
   return { width, height, channels, pixels };
 }
 
-// How two images differ: the count of pixels with a channel further apart
-// than `tolerance`, and the box around them, or that their sizes differ.
 export function compare(
   a: Image,
   b: Image,
@@ -82,7 +72,6 @@ export function compare(
   let [left, top, right, bottom] = [a.width, a.height, -1, -1];
   const stride = a.width * a.channels;
   for (let y = 0; y < a.height; y++) {
-    // Most rows match byte for byte; only the rest are read pixel by pixel.
     const [rowA, rowB] = [a, b].map((image) => image.pixels.subarray(y * stride, (y + 1) * stride));
     if (rowA?.equals(rowB ?? Buffer.alloc(0))) continue;
     for (let x = 0; x < a.width; x++) {
@@ -105,7 +94,6 @@ const pngsUnder = (dir: string): string[] =>
     .map((path) => relative(dir, join(dir, path)))
     .sort();
 
-// One line per PNG that differs, by its path below the folders.
 export function diffDirs(dirA: string, dirB: string, tolerance = 0): string[] {
   const inA = new Set(pngsUnder(dirA));
   const inB = new Set(pngsUnder(dirB));
