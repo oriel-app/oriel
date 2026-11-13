@@ -1,39 +1,23 @@
-// A writable source's namespace in a region's module (decision 0019): its
-// read helpers, and a write for each op its catalogue lets a run capture. The
-// adapter declares it; bindings generate the declarations, the guest stubs
-// and the host side from it; the composition root hands it over by source
-// kind. Each parameter carries its TypeScript type, as the agent sees it,
-// beside the validator the host checks the guest's value with.
 import type { ResultFields } from "./block.ts";
 import type { ItemId } from "./ids.ts";
 import type { NewRef } from "./sandbox.ts";
 import type { OpCatalogue } from "./source.ts";
 import { optional, type Validator } from "./validate.ts";
 
-// An item that can't be read any more: deleted, hidden from Oriel, or moved
-// out of reach.
 export type Tombstone = { id: ItemId; gone: true; reason: "deleted" | "forbidden" | "moved" };
 
-// What a namespace's functions get from the run.
 export type NamespaceHost = {
-  // Whether an ID is one of the region's items, from any source.
   has(id: string): id is ItemId;
-  // Refs from creates this run has captured, each with its op.
   created: ReadonlyMap<NewRef, string>;
-  // Reads items live, each shaped by `view`: a missing item is a tombstone,
-  // never a throw, and a moved one is followed, since its identity is its
-  // stable ID.
+  // A missing item is a tombstone, never a throw; a moved one is followed by its stable ID.
   read<V>(
     ids: readonly ItemId[],
     view: (id: ItemId, content: unknown) => V,
   ): Promise<(V | Tombstone)[]>;
 };
 
-// The region as one source's namespace sees it.
 export type NamespaceScope = {
-  // The region's items from this source, in RegionId order.
   ids: readonly ItemId[];
-  // The item the region's workstream was made around, when it is from this source.
   anchor: ItemId | null;
 };
 
@@ -47,21 +31,15 @@ type Base = { name: string; doc: string; params: readonly Param<unknown>[] };
 
 export type NamespaceRead = Base & {
   kind: "read";
-  // The TypeScript type the read resolves to.
   returns: string;
-  // What its result holds that a block can show (decision 0030).
   fields?: ResultFields;
   run(args: readonly unknown[], host: NamespaceHost): Promise<unknown>;
 };
 
 export type NamespaceWrite = Base & {
   kind: "write";
-  // The op in the source's catalogue that checks what `build` returns.
   op: string;
-  // Whether it returns a new item's ref, which later writes in this run can
-  // name. Other writes, and a create nothing later can name, return nothing.
   creates: boolean;
-  // The target and the op's arguments, before the catalogue checks them.
   build(
     args: readonly unknown[],
     host: NamespaceHost,
@@ -71,25 +49,15 @@ export type NamespaceWrite = Base & {
 export type NamespaceFn = NamespaceRead | NamespaceWrite;
 
 export type NamespaceSpec = {
-  // The source's name as a person knows it, such as "Jira".
   name: string;
-  // What its writes are checked against. A revert-only op is never offered.
   ops: OpCatalogue;
-  // The declarations it adds: IDs and types only, never source text.
+  // IDs and types only, never source text.
   types(scope: NamespaceScope): string[];
-  // Its functions, in declaration order, which is part of the byte-stable
-  // output.
+  // In declaration order: part of the byte-stable output.
   fns(scope: NamespaceScope): NamespaceFn[];
-  // Whether a region with no items yet gets this namespace, so a plan can
-  // start from nothing: its `types` and `fns` then see a scope with no IDs.
   blank?: boolean;
 };
 
-// What a tracker's create says of the containers its items go in (an epic,
-// a project), whatever the tracker: only a region with no items offers to
-// create one (by design), so the agent never promises one elsewhere
-// (OA-312); and an item for one outside the region goes in once it is
-// added, from the next run on. `a` is the container with its article.
 export const containerRules = {
   noNew: (a: string) => `Only an empty workstream can create ${a}.`,
   addFirst: (a: string) =>
@@ -127,8 +95,6 @@ function checkArgs<P extends readonly Param<unknown>[]>(
   return values as Values<P>;
 }
 
-// A read whose arguments are checked against its parameters before `run`
-// sees them, typed from those parameters.
 export function read<
   const P extends readonly Param<unknown>[],
   H extends NamespaceHost = NamespaceHost,
@@ -145,7 +111,6 @@ export function read<
   };
 }
 
-// A write whose arguments are checked the same way before `build`.
 export function write<const P extends readonly Param<unknown>[]>(
   spec: Omit<NamespaceWrite, "kind" | "params" | "build"> & {
     params: P;
@@ -159,7 +124,6 @@ export function write<const P extends readonly Param<unknown>[]>(
   };
 }
 
-// `type Name =` then one `| "id"` line per ID.
 export function idUnion(name: string, ids: readonly string[]): string[] {
   if (!ids.length) return [`type ${name} = never;`];
   return [

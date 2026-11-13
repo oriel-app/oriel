@@ -1,12 +1,5 @@
-// The one search over Oriel's threads (OA-108, OA-110): pure, so it is
-// tested without a database or a clock. The server's read layer gathers the
-// workspace's threads, what was said in them and what their change sets
-// wrote; this says which match a query, best first, and the words around
-// each match. An eval's workspace is searched by the same code.
 import type { ChangeSetRead, MatchedIn, ThreadFound, ThreadRead } from "./oriel-reads.ts";
 
-// What can be found: a thread, by its name and what was said in it, or a
-// change set, by what it wrote. `at` breaks ties, latest first.
 export type Findable<T> = {
   target: T;
   at: string;
@@ -15,29 +8,19 @@ export type Findable<T> = {
 
 export type Match<T> = { target: T; matched: MatchedIn; excerpt: string };
 
-// A query reads as at most this many words, of at most this many characters.
 const maxWords = 12;
 const maxWordChars = 64;
-// How much of a field shows around the first word it matched.
 const before = 40;
 const excerptChars = 140;
 
-// What a change set wrote is the most specific answer, a thread and a
-// moment in it; then a thread's name; then what was said, where a question
-// about something repeats its words (as the thread asking does).
 const weight: Record<MatchedIn, number> = { "change-set": 3, name: 2, chat: 1 };
 
-// Case- and accent-folded, for every search Oriel runs, over threads here
-// and over items in search.ts: NFKD, then the Combining Diacritical Marks
-// block (U+0300–U+036F) is dropped. So "cafe" finds "Café", Cyrillic "й"
-// folds to "и", and Japanese voicing marks, which sit outside the block,
-// survive.
+// NFKD, then U+0300–U+036F dropped: "cafe" finds "Café", Cyrillic "й" folds to "и",
+// and Japanese voicing marks, which sit outside the block, survive.
 const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
 export const searchFold = (text: string) =>
   text.normalize("NFKD").replace(diacritics, "").toLocaleLowerCase("en");
 
-// Words a question is asked with, which say nothing about what it is
-// after: "where did I approve the post?" looks for "approve" and "post".
 const asking = new Set(
   (
     "a an and are at did do does for from had has have how i in is it me my of on or our " +
@@ -45,9 +28,6 @@ const asking = new Set(
   ).split(" "),
 );
 
-// The words of a query, folded: letters, digits and the marks folding
-// keeps, so punctuation and accents don't stop a match. A question's own words are left out, unless
-// they are all it has.
 export function words(query: string): string[] {
   const found = [
     ...new Set(
@@ -60,8 +40,6 @@ export function words(query: string): string[] {
   return (meant.length ? meant : found).slice(0, maxWords);
 }
 
-// A field folded character by character, with where each folded unit came
-// from, so a match points back into the text as written.
 export function folded(text: string): { text: string; from: number[] } {
   let out = "";
   const from: number[] = [];
@@ -75,14 +53,10 @@ export function folded(text: string): { text: string; from: number[] } {
   return { text: out, from };
 }
 
-// Scripts written without spaces between words, where a word may start
-// anywhere in a run of letters. The index's search sets each of their
-// characters apart (search.ts).
+// The index's search sets each of their characters apart too (search.ts).
 export const unspaced =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
-// Where `word` starts a word in `text`, or -1. In a script without spaces,
-// anywhere it appears.
 export function startOf(text: string, word: string): number {
   const anywhere = unspaced.test(word);
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1))
@@ -90,9 +64,6 @@ export function startOf(text: string, word: string): number {
   return -1;
 }
 
-// A field's text around `at`, on one line, cut at spaces, with an ellipsis
-// where it was cut: at most 140 characters of the text, so it never echoes a
-// long one.
 export function excerpt(text: string, at: number): string {
   const line = text.replace(/\s+/g, " ");
   const flat = text.slice(0, at).replace(/\s+/g, " ").length;
@@ -110,11 +81,6 @@ export function excerpt(text: string, at: number): string {
   return `${start > 0 ? "…" : ""}${shown}${end < line.length ? "…" : ""}`;
 }
 
-// What matches every word of `query` as the start of a word, best first: by
-// where the words matched (what was written over a name over what was said),
-// then latest first. When nothing matches every word, what matches the most
-// of them, so a question asked in a sentence still finds its answer. Each
-// match shows the field that matched the most words, around the first.
 export function find<T>(all: readonly Findable<T>[], query: string, limit: number): Match<T>[] {
   const wanted = words(query);
   if (!wanted.length) return [];
@@ -161,9 +127,6 @@ export function find<T>(all: readonly Findable<T>[], query: string, limit: numbe
     .map((s) => s.match);
 }
 
-// Threads by their names and what was said in them (`said`), and change sets
-// by what each wrote, where, and where it stands, so "approved" finds the
-// change set the person approved.
 export function findThreads(
   threads: readonly ThreadRead[],
   said: (thread: ThreadRead) => string,

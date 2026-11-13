@@ -1,11 +1,4 @@
-// What Browse shows of a cluster, hand-built: its row (the epic row), and its
-// items, one row each, as it shows them opened (decision 0029). Each builds
-// the view data the web package renders. Every number here is a count or sum
-// over the cluster's items, never generated.
-//
-// Facets give what every source shares. What a source calls its items' types
-// and states, and its name, come from its presentation, which the composition
-// root passes in; a source without one shows what core knows.
+// Every number here is a count or sum over the cluster's items, never generated.
 import {
   type Cluster,
   clusterMembers,
@@ -26,17 +19,12 @@ const presentationOf = (id: ItemId, sources: Presentations): Presentation | unde
   return kind === undefined ? undefined : sources[kind];
 };
 
-// What the window calls an item's source: its presentation's name, or its
-// kind.
 function sourceName(id: ItemId, sources: Presentations): string | undefined {
   return presentationOf(id, sources)?.name ?? parseItemId(id)?.kind;
 }
 
 const keyOf = (id: ItemId) => parseItemId(id)?.key ?? id;
 
-// An item's state as a status category, with its source's name for it; none
-// for an item whose source tracks no state, which isn't counted as not
-// started.
 const statusOf = (record: IndexRecord, name: string): ItemRow["status"] => {
   const category: StatusCategory | undefined = record.facets.state;
   return category === undefined ? null : { name, category };
@@ -63,8 +51,6 @@ export function itemRow(record: IndexRecord, now: Instant, sources: Presentation
 const byId = (records: readonly IndexRecord[]) =>
   new Map<ItemId, IndexRecord>(records.map((record) => [record.id, record]));
 
-// `byId`, built once for the records a builder is handed cluster after
-// cluster, and again only when it is handed others.
 function lastIndex(): (records: readonly IndexRecord[]) => ReadonlyMap<ItemId, IndexRecord> {
   let last: { records: readonly IndexRecord[]; index: ReadonlyMap<ItemId, IndexRecord> } | null =
     null;
@@ -74,17 +60,12 @@ function lastIndex(): (records: readonly IndexRecord[]) => ReadonlyMap<ItemId, I
   };
 }
 
-// The cluster's records, in its order. An ID the index no longer has is
-// skipped, not fatal.
 function members(cluster: Cluster, index: ReadonlyMap<ItemId, IndexRecord>): IndexRecord[] {
   return cluster.itemIds.flatMap((id) => index.get(id) ?? []);
 }
 
-// Builds view data from a cluster and the index records it is handed.
 export type FromCluster<V> = (cluster: Cluster, records: readonly IndexRecord[]) => V;
 
-// A cluster's row. A cluster the source has names the sources its anchor and
-// items come from.
 export function clusterRowOf(now: Instant, sources: Presentations): FromCluster<ClusterRow> {
   const indexOf = lastIndex();
   return (cluster, records) => {
@@ -107,14 +88,12 @@ export function clusterRowOf(now: Instant, sources: Presentations): FromCluster<
       size: ids.filter((id) => index.has(id)).length,
       points: items.reduce((sum, item) => sum + (item.facets.estimate ?? 0), 0),
       estimated: items.filter((item) => typeof item.facets.estimate === "number").length,
-      // Only an item whose source estimates can lack an estimate.
       unestimated: items.filter((item) => item.facets.estimate === null).length,
       status,
     };
   };
 }
 
-// A cluster's items, one row each, as it shows them opened.
 export function clusterItemsOf(now: Instant, sources: Presentations): FromCluster<ItemRow[]> {
   const indexOf = lastIndex();
   return (cluster, records) =>

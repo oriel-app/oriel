@@ -5,7 +5,6 @@ import { fixtureSnapshot, jiraPresentation, loadJiraFixture } from "@oriel/jira"
 import { epicGrouping } from "./groupings.ts";
 import { clusterRowOf } from "./rows.ts";
 
-// Item IDs in declared kind order, as the composition root gives it.
 const order = itemOrder(["jira", "folder", "slack"]);
 
 const fixture = loadJiraFixture();
@@ -14,7 +13,7 @@ const current = fixtureSnapshot(fixture, site, fixture.edits.length).records;
 const now = instant(new Date("2026-10-02T11:00:00.000Z"));
 const sources = { jira: jiraPresentation };
 
-// OA-163 (#123): the row's size left out the epic that Make workstream holds.
+// Defect fixed in abdf6d4f: the row's size left out the epic that Make workstream holds.
 test("a cluster row's size counts what Make workstream holds, its epic too", () => {
   const clusters = epicGrouping.group(current, now, order);
   const checkout = clusters.find((c) => c.key === "10001");

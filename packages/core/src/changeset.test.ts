@@ -3,9 +3,8 @@ import { test } from "node:test";
 import { ulid } from "./ids.ts";
 import type { SourceWriter, WriteRequest } from "./source.ts";
 
-// The assertion is the `@ts-expect-error` below, which `pnpm typecheck`
-// enforces: if an unapproved request ever becomes acceptable to a writer, the
-// directive goes unused and typecheck fails.
+// The assertion is the `@ts-expect-error` below: if an unapproved request ever becomes acceptable
+// to a writer, the directive goes unused and `pnpm typecheck` fails.
 test("a writer accepts only approved requests", () => {
   const request: WriteRequest<"jira"> = {
     mutationId: ulid(0, new Uint8Array(10)),

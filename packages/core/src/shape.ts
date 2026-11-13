@@ -1,6 +1,3 @@
-// A validator's shape as TypeScript type text, for the line an Oriel action
-// gets in a region's `.d.ts` (decision 0024). A refine that names the type it
-// narrows to reads as that type.
 import type { Shape } from "./validate.ts";
 
 export function typeText(shape: Shape): string {
@@ -23,7 +20,6 @@ export function typeText(shape: Shape): string {
     case "object":
       return `{ ${Object.entries(shape.fields)
         .map(([name, field]) => {
-          // A key that isn't a name, such as `in-progress`, is quoted.
           const key = /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
           return field.kind === "optional"
             ? `${key}?: ${typeText(field.inner)}`
@@ -39,13 +35,9 @@ export function typeText(shape: Shape): string {
   }
 }
 
-// A JSON Schema value, as MCP's `inputSchema` takes one.
 export type JsonSchema = { [key: string]: unknown };
 
-// A validator's shape as JSON Schema (2020-12), for an Oriel action's tool
-// at the MCP door (decision 0024): one declaration gives its check, its type,
-// its `.d.ts` line and this. A refine's check can't be said in JSON Schema,
-// so its message is the schema's description, as it is the type's doc.
+// A refine's check can't be said in JSON Schema, so its message is the schema's description.
 export function jsonSchema(shape: Shape): JsonSchema {
   switch (shape.kind) {
     case "unknown":

@@ -1,7 +1,3 @@
-// The sync worker: drives a source's `sync` into the index, one snapshot
-// version per sync. It is Oriel's, not any one source's: every source syncs
-// through it, and what a sync does beyond storing records runs here, never
-// in an adapter's package.
 import type { DeclaredFacets } from "./change-log.ts";
 import type { Recognizer } from "./references.ts";
 import {
@@ -16,20 +12,13 @@ import type { Log } from "./run.ts";
 import { facets, type IndexRecord, type Source, type SyncPage } from "./source.ts";
 import type { Validator } from "./validate.ts";
 
-// A page as the sync worker hands it to the index: the records; the item
-// IDs each record's text names, by stable ID, for the index to resolve; and
-// each record's text, for search (OA-242). A record left out of
-// `references` or `texts` keeps what it had.
 export type IndexPage = Omit<SyncPage, "swept" | "held"> & {
   references?: Readonly<Record<string, readonly ItemId[]>>;
 };
 
-// The most items one record's text may name. Synced text is anyone's, and a
-// message naming every key in a project would otherwise weigh on every read.
+// Synced text is anyone's: a message naming every key in a project would otherwise weigh on every read.
 export const maxReferences = 50;
 
-// What the sync worker needs of the index. The index store (packages/db) is
-// one; core names only what it calls.
 export type SyncIndex = {
   source(workspaceId: Ulid, kind: SourceKind): { cursor: string | null } | null;
   beginSync<A>(
@@ -45,28 +34,15 @@ export type SyncIndex = {
 
 export type SyncOptions<K extends SourceKind, A> = {
   source: Source<K, A>;
-  // The source's attrs shape and its declared key shape; each record is
-  // checked against them.
   attrs: Validator<A>;
   key: RegExp;
-  // The source's declared facets, which the change log records beside the
-  // common ones: its declaration's `facets`. None when left out.
   facets?: DeclaredFacets;
-  // Every source's recognizer as one, run over each record's text (decision
-  // 0027). None found when left out.
   recognize?: Recognizer;
   index: SyncIndex;
   workspaceId: Ulid;
-  // A full sweep lists everything and marks what the source no longer returns
-  // as gone. Otherwise the sync resumes from the stored cursor, and is a full
-  // sweep anyway if there is none.
   full: boolean;
-  // Items to read one by one, with the stable IDs they were written with:
-  // what a change set just wrote, which a listing that lags its writes may
-  // not show yet, or may still show once deleted. One the source doesn't
-  // have is gone. Needs the source's `records`.
+  // What a change set just wrote: a listing that lags its writes may not show it yet, or may still show it once deleted.
   items?: readonly { id: ItemId<K>; stableId: string }[];
-  // Read once when the sync starts and once when it finishes.
   clock: () => Instant;
   log: Log;
 };
@@ -79,17 +55,13 @@ export type SyncReport = {
   gone: number;
 };
 
-// Run one at a time per workspace (the index store's rule). If the source
-// throws partway, nothing is marked gone and the error propagates; the next
-// sync reclaims the pages already applied. Items are read before the listing
-// starts, so a failed read applies nothing, and land after it, so what was
-// read by itself wins over a listing that lags.
+// Run one at a time per workspace. Items are read before the listing starts, so a failed read applies nothing,
+// and land after it, so what was read by itself wins over a listing that lags.
 export async function syncSource<K extends SourceKind, A>(
   options: SyncOptions<K, A>,
 ): Promise<SyncReport> {
   const { source, attrs, index, workspaceId, log } = options;
   const recognize = options.recognize ?? (() => []);
-  // The index keeps its items under its connection's prefix.
   const prefix = source.prefix ?? source.kind;
   const stored = index.source(workspaceId, prefix)?.cursor ?? null;
   const cursor = options.full ? null : stored;
@@ -102,11 +74,9 @@ export async function syncSource<K extends SourceKind, A>(
       ? await source.records(items.map((i) => i.id))
       : { records: [], gone: [], texts: {} };
   const run = index.beginSync(workspaceId, prefix, attrs, options.clock(), options.facets);
-  // Every stable ID the source returned, skipped ones included: a record that
-  // can't be indexed still exists, so a full sweep mustn't mark it gone.
+  // A record that can't be indexed still exists, so a full sweep mustn't mark it gone.
   const seen = new Set<string>();
   let last: string | null = null;
-  // What the source says it listed in full, or couldn't read (`SyncPage`).
   const swept: string[] = [];
   const held: string[] = [];
   let records = 0;
@@ -125,8 +95,6 @@ export async function syncSource<K extends SourceKind, A>(
       });
       return false;
     });
-    // Each text is read here for the IDs it names, and goes to the index for
-    // search.
     const given = page.texts ?? {};
     const textOf = (record: IndexRecord<K, A>) =>
       Object.hasOwn(given, record.stableId) ? given[record.stableId] : undefined;
@@ -152,10 +120,7 @@ export async function syncSource<K extends SourceKind, A>(
     records += valid.length;
     gone += page.gone.length;
   };
-  // What the index holds as gone, a listing that lags its source may still
-  // return, as Jira's search lists a deleted issue for a while. A source that
-  // can read by key is asked first, and only what it still has comes back; one
-  // that can't is taken at its word. The items above are read already.
+  // A listing that lags may still return what the index holds as gone, as Jira's search lists a deleted issue for a while.
   const tombstoned = new Set(source.records ? index.goneStableIds(workspaceId, prefix) : []);
   const ours = new Set(items.map((item) => item.stableId));
   const confirmed = async (page: SyncPage<K, A>): Promise<SyncPage<K, A>> => {
@@ -170,12 +135,9 @@ export async function syncSource<K extends SourceKind, A>(
     if (stale) log("sync: the listing returned items the source no longer has", { stale });
     return { ...page, records: kept };
   };
-  // When the listing last saw each item updated, by stable ID.
   const listed = new Map<string, Instant>();
-  // A listing that lags would set an item read by key back to how it was
-  // before its write, and the read forward again, which the change log would
-  // keep as moves the source never made. So where the read is as new as the
-  // listing, the read alone lands, after the listing.
+  // A lagging listing would set an item read by key back to before its write, and the change log would keep moves
+  // the source never made; so where the read is as new as the listing, the read alone lands, after it.
   const readBy = new Map(read.records.map((record) => [record.stableId, record.updatedAt]));
   const behind = (record: IndexRecord<K, A>) => {
     const own = readBy.get(record.stableId);
@@ -188,8 +150,7 @@ export async function syncSource<K extends SourceKind, A>(
     keep({ ...page, records: page.records.filter((record) => !behind(record)) });
     last = page.cursor ?? last;
   }
-  // A read the listing has since overtaken is left out. The cursor stays the
-  // listing's: these reads say nothing of what else changed.
+  // The cursor stays the listing's: these reads say nothing of what else changed.
   if (items.length) {
     const live = new Set(index.liveStableIds(workspaceId, prefix));
     keep({
@@ -216,11 +177,7 @@ export async function syncSource<K extends SourceKind, A>(
   return { version, full, records, skipped, gone };
 }
 
-// The index store's own checks, made per record so one bad record is skipped
-// instead of failing its page. Attrs are checked after a JSON round trip, as
-// the index reads them back.
-// A record's ID names the source's own connection: its prefix is the one the
-// index keeps it under.
+// Attrs are checked after a JSON round trip, as the index reads them back.
 function check<A>(
   prefix: string,
   key: RegExp,

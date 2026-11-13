@@ -1,12 +1,3 @@
-// The issue shape's agent side (decision 0059, OA-327): what a tracker
-// offers the agent and change sets, built from what it declares. issue.ts
-// gives the index side, so Browse, "stuck" and the overview read any
-// tracker's issues alike; this gives the rest: its op catalogue, its
-// namespace in a region's module, its ops' specs, its panel and how it takes
-// in a stand-in's issues. A tracker declares its words (an epic or a
-// project, a story or an issue), its ops' and arguments' names, its checks
-// and docs, and its extras, such as Linear's cycles, and keeps only what is
-// its own: its parser both ways, its mapping onto the shape and its writer.
 import type { ItemId, SourceKind } from "./ids.ts";
 import { isItemId, parseItemId } from "./ids.ts";
 import { issueFacts } from "./issue.ts";
@@ -31,21 +22,13 @@ import type { IndexRecord, WriteResult } from "./source.ts";
 import type { TakenIssue } from "./declaration.ts";
 import { type Infer, nullable, object, optional, string, type Validator } from "./validate.ts";
 
-// A thing a tracker holds, in its words: "epic", "an epic", "epics".
 export type IssueWord = { word: string; a: string; plural: string };
 
-// One of a tracker's own fields on an issue beyond the shape's, such as
-// Linear's cycle: how its item type and list show it, and, when a new issue
-// may set it, how createIssue takes it and how its line says it. Its name is
-// the field change sets read it under.
 export type IssueExtraField = {
   item: { type: string; doc?: string; listed?: string };
   create?: { type: string; check: Validator<unknown>; describe(value: unknown): string };
 };
 
-// One of a tracker's own ops, such as Linear's setCycle: its catalogue entry,
-// its write when a run may capture it (after the target, by its params'
-// names), and its spec, from the shape's lines.
 export type IssueExtraOp = {
   args: Validator<unknown>;
   revertOnly: boolean;
@@ -53,8 +36,6 @@ export type IssueExtraOp = {
   spec(lines: IssueLines): OpSpec;
 };
 
-// An issue as a live read gives it, in the shape's terms: the namespace's
-// view of it is built from this, field by field.
 export type IssueView = {
   kind: string;
   title: string;
@@ -64,27 +45,18 @@ export type IssueView = {
   assignee: string | null;
   estimate: number | null;
   labels: readonly string[];
-  // Its extra fields' values, by name.
   fields?: Readonly<Record<string, unknown>>;
 };
 
-// An issue as its panel shows it: the shape's facts, then its own, its
-// description, and the form a person edits it in, where it has one.
 export type IssuePanel = {
   facts: Parameters<typeof issueFacts>[0];
   more?: readonly { name: string; value: string }[];
-  // Its description as text, or as a block of its own, such as rich text.
   description: string | PanelBlock;
   format: "plain" | "markdown";
-  // Its own blocks after the description, such as comments.
   blocks?: readonly PanelBlock[];
   edit?: PanelEdit;
 };
 
-// What a tracker's namespace knows of it while it's on, beyond the index:
-// its region doc line, its types beyond the shape's, its reads beyond
-// getItem and listItems, and what a write's argument may be, by its name,
-// such as a status among the team's.
 export type IssueRegion = {
   doc: string;
   types?: readonly string[];
@@ -94,18 +66,12 @@ export type IssueRegion = {
 
 export type IssueDeclared<C = never> = {
   kind: SourceKind;
-  // Its name in the namespace, the change set and its types (`TrackerId`).
   name: string;
-  // What its items are called ("a tracker item", "a Linear item"), who
-  // returns them, what it didn't keep for a revert, and where a delete is
-  // from.
   called: string;
   source: string;
   unkept: string;
   from: string;
   is(id: string): id is ItemId;
-  // Where issues go, and how its create reads: `made` in its doc, `in`
-  // after its line, `keyed` whether a line names one by its key too.
   container: IssueWord & {
     op: string;
     title: string;
@@ -114,36 +80,26 @@ export type IssueDeclared<C = never> = {
     in: string;
     keyed: boolean;
   };
-  // An issue, and what a new one is called on a line.
   issue: IssueWord & { op: string; fresh: string };
   title: { op: string; arg: string; check: Validator<string>; doc: string; label: string };
   description: { check: Validator<string>; doc: string };
   estimate: { arg: string; check: Validator<number>; doc: string; label: string };
   assignee: { arg: string; check: Validator<string>; doc: string };
-  // `declares` are the types its own status type needs.
   status: { check: Validator<string>; doc: string; type: string; declares: readonly string[] };
   label?: { check: Validator<string>; doc: string };
   fields?: Readonly<Record<string, IssueExtraField>>;
-  // After setStatus, in catalogue order.
   ops?: Readonly<Record<string, IssueExtraOp>>;
-  // Its items' kinds as its item type names them, and its container's doc
-  // there.
   item: { kinds: readonly string[]; containerDoc?: string };
   view(content: unknown): IssueView | null;
   panel(content: unknown): IssuePanel | null;
-  // On, what its namespace knows; off, undefined, and it offers nothing.
   region(context: C): IssueRegion | undefined;
-  // How it takes in a stand-in's issues, when it does: its titles' limit,
-  // and an estimate it takes.
   take?: { maxTitle: number; estimate(points: number): number };
-  // What stops a revert, in its own words (`OpSpecs.explain`).
   explain?: OpSpecs["explain"];
 };
 
 type Entry<A> = { args: Validator<A>; revertOnly: boolean };
 type D = IssueDeclared<never>;
 
-// What a check takes, from a declaration.
 type Of<X> = X extends { check: Validator<infer U> } ? U : never;
 type Created<F> = {
   [P in keyof F as F[P] extends { create: object } ? P : never]: F[P] extends {
@@ -153,7 +109,6 @@ type Created<F> = {
     : never;
 };
 
-// The catalogue a declaration gives, typed by its names.
 export type IssueOps<T extends D> = {
   [K in T["container"]["op"]]: Entry<
     { [P in T["container"]["title"]]: Of<T["container"]> } & {
@@ -179,8 +134,6 @@ export type IssueOps<T extends D> = {
     ? { addLabel: Entry<{ label: L }>; removeLabel: Entry<{ label: L }> }
     : unknown) & { deleteItem: Entry<Record<string, never>> };
 
-// What a tracker's extra op's spec is built with: how a line names an item,
-// and a set op's revert.
 export type IssueLines = {
   quoted(text: string): string;
   named(subject: Subject): string;
@@ -188,8 +141,6 @@ export type IssueLines = {
 };
 type Revert<T> = (args: T, applied: WriteResult) => Undo;
 
-// The fields change sets read an issue under, in the order a diff lists
-// them: the shape's, with its extras before its container.
 const fieldsOf = (d: D) => [
   "summary",
   "description",
@@ -213,22 +164,18 @@ function quoted(text: string): string {
 }
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
-// An op's arguments, checked by its catalogue entry before a spec reads them.
 type A = Readonly<Record<string, unknown>>;
 const text = (a: A, key: string) => a[key] as string;
 const points = (n: unknown) =>
   typeof n !== "number" ? "no estimate" : n === 1 ? "1 point" : `${n} points`;
 const capital = (word: string) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`;
 
-// A tracker's agent side, from its declaration.
 export function issueShape<const T extends D>(d: T) {
   type Ctx = T extends IssueDeclared<infer C> ? C : never;
   const { container, issue, title, estimate, assignee, status, label } = d;
   const fields = Object.entries(d.fields ?? {});
   const extraOps = Object.entries(d.ops ?? {});
 
-  // The catalogue, in its order: the creates, the sets, its own ops, the
-  // labels, and the delete a create's revert is.
   const creates = Object.fromEntries(
     fields.flatMap(([name, f]) => (f.create ? [[name, optional(f.create.check)]] : [])),
   );
@@ -266,7 +213,6 @@ export function issueShape<const T extends D>(d: T) {
   } as unknown as IssueOps<T>;
   const entry = (name: string) => (ops as Record<string, Entry<A>>)[name] as Entry<A>;
 
-  // How a line names an item, and a set op's revert.
   const named = (subject: Subject): string => {
     if (subject === null) return `a new ${issue.word}`;
     if (subject.kind === "new")
@@ -412,7 +358,6 @@ export function issueShape<const T extends D>(d: T) {
           after: (a) => ({ [`label:${a.label}`]: true }),
           describe: (a, context) =>
             `Add the label ${quoted(text(a, "label"))} to ${named(context.subject)}.`,
-          // One it had already stays.
           undo: (a, applied) =>
             applied.before[`label:${a.label}`] === true
               ? { op: "addLabel", args: { label: a.label } }
@@ -445,7 +390,6 @@ export function issueShape<const T extends D>(d: T) {
 
   return {
     ops,
-    // The fields its writer reports, by change sets' names.
     fields: fieldsOf(d),
     isOp: (name: string): name is keyof IssueOps<T> & string => Object.hasOwn(ops, name),
     specs,
@@ -463,8 +407,6 @@ export function issueShape<const T extends D>(d: T) {
   };
 }
 
-// The region as a tracker's namespace sees it: its items, the container a
-// workstream was made around, and those a new issue may go in.
 type Scope = { ids: readonly ItemId[]; anchor: ItemId | null; containers: readonly ItemId[] };
 
 function namespaceOf(
@@ -474,8 +416,7 @@ function namespaceOf(
   region: IssueRegion | undefined,
 ): NamespaceSpec {
   const catalogue = ops as Readonly<Record<string, Entry<unknown>>>;
-  // Off, the namespace has nothing: what it can't apply, the agent can't
-  // propose.
+  // Off, the namespace has nothing: what it can't apply, the agent can't propose.
   if (!region) return { name: d.name, ops: catalogue, types: () => [], fns: () => [] };
   const { container, issue, title, estimate, assignee, status, label } = d;
   const fields = Object.entries(d.fields ?? {});
@@ -485,8 +426,6 @@ function namespaceOf(
   const outside = (id: string) =>
     new RangeError(`${JSON.stringify(id)} isn't in this region; use search() to look outside it`);
 
-  // The guest's view of a read, field by field, so it has exactly the shape
-  // its item type declares.
   const itemView = (id: ItemId, content: unknown) => {
     const c = d.view(content);
     if (!c) throw new Error(`${d.source} returned ${id} in a shape Oriel can't read`);
@@ -559,7 +498,6 @@ function namespaceOf(
       run: (_, host) => host.read(scope.ids, itemView),
     });
 
-  // A new issue's fields, and its extras', each checked as it may be.
   const issueChecks = {
     [title.arg]: title.check,
     description: optional(d.description.check),
@@ -622,8 +560,6 @@ function namespaceOf(
     });
   };
 
-  // A region with no items yet offers only creates, to start a plan from
-  // nothing: a container, and issues in it or in none.
   const createContainer = write({
     name: container.op,
     doc: `Create ${container.made}. Returns its ref, which ${issue.op} can put ${issue.plural} in.`,
@@ -674,9 +610,6 @@ function namespaceOf(
       },
     });
 
-  // The writes a region with items offers, in catalogue order: every op but
-  // the container's create, which only a blank region offers, and the
-  // revert-only ones.
   const writes: NamespaceWrite[] = [
     set(title.op, title.doc, [param(title.arg, "string", title.check)]),
     set("setDescription", d.description.doc, [param("description", "string", d.description.check)]),
@@ -735,8 +668,6 @@ function namespaceOf(
     ];
   };
 
-  // `kinds` holds each item's kind facet from the index: only an epic, as
-  // core calls a container, can hold a new issue.
   const scopeOf = ({ ids, anchor }: NamespaceScope): Scope => {
     const own = ids.filter((id) => d.is(id));
     if (anchor !== null && d.is(anchor) && kinds.get(anchor) === "epic")
@@ -778,11 +709,7 @@ function panelOf(d: D): PanelOf {
   };
 }
 
-// A stand-in's issues, taken in once a tracker is on (decision 0059): one
-// create of a change set for each, containers first, then each issue, in
-// its container's create when its container is among them. The stand-in's
-// own words go in as they are; a longer title is cut at a character, never
-// a half of one.
+// A longer title is cut at a character, never half of one.
 function takeOf(d: D, take: NonNullable<D["take"]>) {
   const { container, issue, title, estimate } = d;
   const titleOf = (text: string) => [...text.trim()].slice(0, take.maxTitle).join("") || "Untitled";

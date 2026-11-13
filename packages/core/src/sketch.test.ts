@@ -1,7 +1,4 @@
-// The sketch check (decision 0033): it refuses, never rewrites; every `<`
-// opens an allowed element, closes one or opens a comment, and every href
-// points inside the sketch. The probes are the loopback harness's attempts
-// on the scan, and the elements it found can navigate, frame or load.
+// The check refuses, never rewrites. The probes are the loopback harness's attempts on the scan.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkSketch, maxSketchBytes, sketchElements } from "./sketch.ts";

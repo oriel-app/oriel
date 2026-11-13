@@ -1,60 +1,35 @@
-// A sketch (decision 0033): HTML and CSS the agent writes, shown under its
-// answer in a sandboxed frame that reaches nothing. The frames are the wall;
-// the check here refuses, never rewrites, so the frames meet only text that
-// can't navigate. It doesn't parse. A browser makes an element only from a
-// `<name` or `</name` token, or implies one (`html`, `head`, `body`,
-// `tbody`, `tr`), so every `<` in the text, in a comment or a `<style>` too,
-// must open an allowed element, close one or open a comment. Every `href`,
-// `xlink:href` included, in any case, must be written `href="#name"`,
-// pointing inside the sketch. The check runs when the agent calls
-// `sketch()`, and again whenever the frame is served.
+// The sandboxed frame is the wall; this check refuses, never rewrites. It doesn't parse: a browser makes an element only
+// from `<name` or `</name`, so every `<`, in a comment or `<style>` too, must open an allowed element, close one or open a comment.
 import { isUlid, type Ulid } from "./ids.ts";
 import { literal, number, object, refine, string, union, type Validator } from "./validate.ts";
 
-// Elements for text, lists, tables, sections, form controls outside a form,
-// `img` and `details`, and SVG's shapes, text, gradients, markers and `use`,
-// by their names in lower case. Nothing here can navigate, hold a frame, run
-// anything or load media: an `img` draws as a still image, and the frame's
-// policy stops every fetch.
+// Nothing here can navigate, hold a frame, run anything or load media.
 export const sketchElements: ReadonlySet<string> = new Set([
-  // The document and its text.
   ..."html head body title style div span p br hr h1 h2 h3 h4 h5 h6 header footer main section article aside figure figcaption blockquote q cite abbr dfn time code pre kbd samp var mark strong em b i u s small sub sup del ins wbr address".split(
     " ",
   ),
-  // Lists and tables.
   ..."ul ol li dl dt dd table caption colgroup col thead tbody tfoot tr th td".split(" "),
-  // Form controls, which do nothing outside a form; and images and details.
   ..."button input label select option optgroup textarea fieldset legend progress meter output img details summary".split(
     " ",
   ),
-  // SVG.
   ..."svg g defs symbol use path rect circle ellipse line polyline polygon text tspan desc lineargradient radialgradient stop marker pattern clippath".split(
     " ",
   ),
 ]);
 
-// The heights a frame takes, in pixels; a taller sketch scrolls inside it.
 export const sketchHeights = [240, 400, 640] as const;
 export type SketchHeight = (typeof sketchHeights)[number];
 export const isSketchHeight = (value: unknown): value is SketchHeight =>
   (sketchHeights as readonly unknown[]).includes(value);
 
-// The most a sketch's text may be, in UTF-8 bytes, and the most an answer
-// shows.
 export const maxSketchBytes = 32 * 1024;
 export const maxSketchesPerTurn = 2;
 
-// Why a sketch was refused, for telemetry, which never records its text or
-// the names refused: too big, too many, or something not allowed in it (an
-// element, an `href` or a stray `<`). A call with no text or another height
-// is `malformed`.
+// For telemetry, which never records a sketch's text or the names refused.
 export const sketchRefusals = ["too-big", "too-many", "not-allowed", "malformed"] as const;
 export type SketchRefusal = (typeof sketchRefusals)[number];
 
-// The tokens a sketch's theme sheet sets (decisions 0033 and 0034): the
-// neutral colours, the fonts, the text sizes, weights and leadings, the
-// space scale and the radii. Never the accent, a state, `--del`, or a
-// section, list or ask-bar token, so a sketch can't draw a copy of Approve.
+// Never the accent, a state, `--del`, or a section, list or ask-bar token, so a sketch can't draw a copy of Approve.
 export const sketchTokens = [
   "--bg",
   "--surface",
@@ -90,7 +65,6 @@ export const sketchTokens = [
   "--radius-lg",
 ] as const;
 
-// A sketch as Oriel checked it, stored with its turn.
 export type Sketch = { id: Ulid; html: string; height: SketchHeight };
 
 export const storedSketch: Validator<Sketch> = object({
@@ -106,9 +80,7 @@ export const sketchRefusal: Validator<SketchRefusal> = union(
   literal("malformed"),
 );
 
-// What a run's record and its log lines keep of a call's arguments: a
-// sketch's HTML, which may repeat what the agent read, as its size in bytes,
-// never its text.
+// A sketch's HTML may repeat what the agent read, so a record keeps its size in bytes, never its text.
 export const recordedArgs = (fn: string, args: readonly unknown[]): unknown[] => {
   if (fn !== "sketch" || args.length === 0) return [...args];
   const [html, ...rest] = args;
@@ -129,8 +101,6 @@ const local = /^href="#[A-Za-z][\w:.-]*"/i;
 
 const listed = (names: readonly string[]) => names.map((name) => `<${name}>`).join(", ");
 
-// Whether `html` may be shown as a sketch, and if not, what to change, in
-// words the agent can act on.
 export function checkSketch(html: string): SketchChecked {
   const bytes = new TextEncoder().encode(html).length;
   if (bytes > maxSketchBytes)
