@@ -1,9 +1,5 @@
-// `pnpm design`: the workshop on http://localhost:4400. Everything is read
-// on request: the guide's markdown from this package, and window.css and the
-// source files from the Oriel checkout, so a change to either shows on
-// reload. It only reads the checkout; nothing here writes to it. It listens
-// on 127.0.0.1 alone, and answers only a request addressed to this machine,
-// so a page on another site can't read it by renaming its own host to it.
+// `pnpm design`, on http://localhost:4400. It answers only a request addressed to this machine,
+// so a page on another site can't read it by pointing its own host name here.
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
@@ -58,7 +54,6 @@ const schemeOf = (url: URL) => {
 
 const local = /^(?:127\.0\.0\.1|localhost)(?::\d+)?$/;
 
-// The directories /assets/ and /shots/ serve from, and nothing above them.
 const served = ["assets", "shots"].map((d) => join(root, d) + "/");
 
 function decoded(path: string): string | null {
@@ -106,7 +101,6 @@ export function handle(req: IncomingMessage, res: ServerResponse): void {
     }
     if (path.startsWith("/source/")) {
       const file = path.slice("/source/".length);
-      // A dated report's line link: the file as it was at its commit.
       const at = url.searchParams.get("at");
       if (at !== null) {
         const then = sourceAt(file, at);
@@ -116,7 +110,6 @@ export function handle(req: IncomingMessage, res: ServerResponse): void {
       }
       const text = shownSource(file);
       if (text === null) return send(res, 404, htmlType, notFound(v, `No ${file} in ${oriel}.`));
-      // A page's citation of a name: on to the line it's on today.
       const name = url.searchParams.get("find");
       if (name !== null) {
         const [first] = where(file, name) ?? [];

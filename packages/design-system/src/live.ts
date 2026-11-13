@@ -1,6 +1,3 @@
-// Live tables: a page's ```live …``` fence, filled in from the Oriel
-// checkout as it is now. Each renders as markdown, for `pnpm ds` and the
-// plain-text routes, and as HTML, for the page.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { escape, inline } from "./md.ts";
@@ -30,7 +27,6 @@ const both = (t: Table, cell?: (c: string) => string): Live => ({
   html: htmlTable(t, cell),
 });
 
-// A cell that is a colour gets a swatch beside its value on the page.
 const swatchCell = (c: string): string => {
   const m = /^(#[0-9a-f]{6,8})$/.exec(c);
   if (!m) return inline(c);
@@ -164,8 +160,6 @@ function themeCheck(): Live {
   return { md: said, html: `<p class="ws-summary">${inline(said)}</p>` };
 }
 
-// Every inline icon the app draws, read from its components: the function
-// that draws it, where, and its marks.
 type Icon = { name: string; file: string; line: number; svg: string };
 
 export function icons(): Icon[] {
@@ -207,7 +201,6 @@ function iconList(): Live {
   return { md, html };
 }
 
-// The reduced-motion block, as written.
 function reducedMotion(): Live {
   const css = windowCss();
   const rows = themes
@@ -221,7 +214,6 @@ function reducedMotion(): Live {
   return both({ head: ["Selector", "What it sets", "Where"], rows });
 }
 
-// Every transition and animation, so a builder can see the speeds in use.
 function motionList(): Live {
   const css = windowCss();
   const rows = themes
@@ -237,10 +229,6 @@ function motionList(): Live {
   return both({ head: ["Selector", "Motion", "Where"], rows });
 }
 
-// Where window.css's values bypass tokens, and what it repeats: the drift
-// report's counts, taken from the checkout as it is now. Spacing literals
-// are allowed by decision 0034; they are counted because that is where
-// copies of one thing drift apart.
 export function census(css = windowCss()): { measure: string; count: number; where: string[] }[] {
   const token = /^(?:html|:root(?:\[data-theme="[^"]+"\])?|html\[data-text-size(?:="[a-z]+")?\])$/;
   const plain = themes

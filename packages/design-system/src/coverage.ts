@@ -1,23 +1,3 @@
-// What of Oriel the guide covers, the other way round from the class check:
-// every class window.css styles, and every component packages/web/src
-// exports, is either on a guide page or listed in UNDOCUMENTED.md with a
-// reason. A new surface fails `pnpm check` until someone documents it or
-// lists it on purpose, and the list is the next round's to-do.
-//
-// On a guide page, a class counts when a specimen's markup uses it, the
-// front matter documents it, or a code span or CSS fence names it as a
-// selector (`.noticed-card`), not when the word is in a sentence. A
-// component counts when a code span names it.
-//
-// UNDOCUMENTED.md lists them as list items, each a name or names, then a
-// colon and the reason:
-//
-//   - `.noticed-*`: the Noticed strip (0052), new since the survey.
-//   - `NoticedStrip` in `packages/web/src/noticed-strip.tsx`: the same.
-//
-// `.noticed-*` is a family: `.noticed` and every `.noticed-…` class. Under a
-// "Gone from Oriel" heading the list names classes Oriel dropped that pages
-// held for a review still cite; that line fails once no page cites them.
 import { readdirSync } from "node:fs";
 import { classesIn, documentedClasses, pages, type Page } from "./guide.ts";
 import { nameRefs, type Node } from "./md.ts";
@@ -26,17 +6,13 @@ import { oriel, source, themes, windowCss } from "./oriel.ts";
 export const listFile = "UNDOCUMENTED.md";
 
 export type Entry = {
-  // `.noticed-*`, `.chart-axis` or `NoticedStrip`, as written.
   names: string[];
-  // Under "Gone from Oriel": a class Oriel dropped that held pages still
-  // cite. The class and reference checks let these through, and only these.
   gone: boolean;
   file: string | null;
   reason: string;
   text: string;
 };
 
-// Every class window.css's selectors name.
 export function stylesheetClasses(css = windowCss()): Set<string> {
   const out = new Set<string>();
   for (const rule of themes.rules(css))
@@ -44,8 +20,6 @@ export function stylesheetClasses(css = windowCss()): Set<string> {
   return out;
 }
 
-// Every component packages/web/src exports: a function whose name is
-// capitalised, in a .tsx file.
 export function components(): { name: string; file: string }[] {
   const out: { name: string; file: string }[] = [];
   for (const f of readdirSync(`${oriel}/packages/web/src`).sort()) {
@@ -63,7 +37,6 @@ const fences = /^```(\w*)[^\n]*\n([\s\S]*?)^```/gm;
 const selectorClasses = (text: string) =>
   [...text.matchAll(/(?<![\w-])\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? "");
 
-// The classes and component names the guide's pages cover.
 export function covered(): { classes: Set<string>; names: Set<string> } {
   const classes = new Set<string>();
   const names = new Set<string>();
@@ -81,7 +54,6 @@ export function covered(): { classes: Set<string>; names: Set<string> } {
   return { classes, names };
 }
 
-// The list's entries: each list item that starts with names.
 export function entries(nodes: Node[]): Entry[] {
   const out: Entry[] = [];
   const item = /^((?:`[^`\n]+`(?:, and |, | and )?)+?)(?: in `([^`\n]+)`)?: (.+)$/s;
@@ -111,7 +83,6 @@ export function entries(nodes: Node[]): Entry[] {
   return out;
 }
 
-// Whether a list's class name, `.noticed-*` or `.noticed-card`, covers a class.
 export function matches(name: string, cls: string): boolean {
   if (!name.startsWith(".")) return false;
   const bare = name.slice(1);
@@ -122,7 +93,6 @@ export function matches(name: string, cls: string): boolean {
   return cls === bare;
 }
 
-// The classes Oriel dropped that held pages may still cite, bare.
 export function goneClasses(list: Page | undefined): Set<string> {
   const listed = list ? entries(list.nodes) : [];
   return new Set(listed.filter((e) => e.gone).flatMap((e) => e.names.map((n) => n.slice(1))));
@@ -130,8 +100,6 @@ export function goneClasses(list: Page | undefined): Set<string> {
 
 export type Gap = { kind: "class" | "component"; name: string; file: string };
 
-// What's neither on a page nor listed, and what the list says that's no
-// longer so: a name that matches nothing, or that a page documents now.
 export function coverage(list: Page | undefined): {
   checked: number;
   gaps: Gap[];

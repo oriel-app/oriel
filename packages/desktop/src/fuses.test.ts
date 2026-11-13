@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { setFuses } from "./fuses.ts";
 
 const sentinel = "dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX";
-// As Electron 45 ships: version 1, nine fuses.
 const binary = (wire = "101100011", version = 1) =>
   Buffer.concat([
     Buffer.from("…code before…"),

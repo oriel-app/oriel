@@ -1,20 +1,9 @@
-// Where a name is in the Oriel checkout today. The guide cites Oriel by name,
-// never by line, so a line added above a rule doesn't make a page wrong:
-//
-// - in a stylesheet, a selector (`.connect-actions`, `.menu-item:hover`), an
-//   at-rule (`@keyframes pulse`) or a custom property (`--accent`);
-// - in code, a top-level declaration: a component, function, constant, type
-//   or class (`FolderStep`);
-// - in markdown, a heading's text, or the start of it (`2. Words`).
-//
-// `pnpm -s ds where <name>` prints the lines, for anyone who wants them.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { oriel, source, themes, windowCssPath } from "./oriel.ts";
 
 export type Place = { file: string; line: number; text: string };
 
-// A selector list's selectors, split at the commas outside brackets.
 export function selectors(list: string): string[] {
   const out: string[] = [];
   let depth = 0;
@@ -35,7 +24,6 @@ const normal = (s: string) => s.trim().replace(/\s+/g, " ");
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// The lines `name` is on in `text`, the contents of `file`.
 export function find(file: string, text: string, name: string): number[] {
   if (file.endsWith(".css")) {
     if (name.startsWith("@")) {
@@ -65,7 +53,6 @@ export function find(file: string, text: string, name: string): number[] {
   return [];
 }
 
-// Every line `name` is on in `file`, or null if the file isn't there.
 export function where(file: string, name: string): Place[] | null {
   const text = source(file);
   if (text === null) return null;
@@ -77,9 +64,6 @@ export function where(file: string, name: string): Place[] | null {
   }));
 }
 
-// The files a name is looked for in when no file is given: window.css, the
-// packages' source, the scripts, and the spec. This package's own guide is
-// left out: it cites names, it doesn't hold them.
 export function sourceFiles(): string[] {
   const out = [windowCssPath, "SPEC.md", "CLAUDE.md"];
   const walk = (dir: string) => {

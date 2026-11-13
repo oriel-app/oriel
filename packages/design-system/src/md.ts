@@ -1,9 +1,3 @@
-// A small markdown reader for the guide: what its pages use and no more.
-// Headings, paragraphs, lists (nested by two spaces), quotes, tables, rules
-// and fenced code, with code spans, strong, em and links inline. A fence's
-// info string can make it a specimen (```html specimen id=…) or a live
-// table (```live …), which the page that renders it fills in.
-
 export type Front = Record<string, string>;
 
 export type Fence = { lang: string; info: Record<string, string>; flags: string[]; text: string };
@@ -36,7 +30,6 @@ export function slug(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
-// `key=value`, `key="a value"` and bare flags, after the language.
 export function fenceInfo(info: string): Omit<Fence, "text"> {
   const [lang = ""] = info.trim().split(/\s+/);
   const out: Record<string, string> = {};
@@ -129,8 +122,6 @@ function blocks(lines: string[], ids: Map<string, number>): Node[] {
         const text = [m[3] ?? ""];
         const inner: string[] = [];
         i++;
-        // Continuation lines and nested lists, until the next item at this
-        // indent or a line less indented.
         while (i < lines.length) {
           const next = lines[i] ?? "";
           const nested = listItem.exec(next);
@@ -174,19 +165,10 @@ function blocks(lines: string[], ids: Map<string, number>): Node[] {
 export const escape = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// A file in the Oriel checkout, as a page names it in a code span.
 const fileName = String.raw`(?:packages|scripts|docs)\/[\w./-]+|window\.css|SPEC\.md|CLAUDE\.md`;
 
-// A reference into the Oriel checkout in a code span: a file, `window.css`,
-// or a file and line, `window.css:278`. Guide pages cite names, not lines
-// (see `nameRef`); only the dated reports, DRIFT.md and CONTROLS.md, keep
-// lines.
 export const sourceRef = new RegExp(`^(${fileName})(?::(\\d+)(?:-(\\d+))?)?$`);
 
-// A name cited in a file: `.connect-actions` in `window.css`, `FolderStep`
-// in `packages/web/src/connect-steps.tsx`, or a list of them, `.a`, `.b`
-// and `.c` in `window.css`. A count before "in" says how many times the
-// name is there: `.connect-actions` twice in `window.css`.
 const span = "`[^`\\n]+`";
 const nameRef = new RegExp(
   `((?:${span}(?:, and |, or |, | and | or ))*${span})(?: (twice|three times|four times|\\d+ times))? in \`(${fileName})\``,
@@ -197,7 +179,6 @@ const counts: Record<string, number> = { twice: 2, "three times": 3, "four times
 
 export type NameRef = { file: string; name: string; count: number | null; at: number };
 
-// Every name a text cites, with where its code span starts.
 export function nameRefs(text: string): NameRef[] {
   const out: NameRef[] = [];
   for (const m of text.matchAll(nameRef)) {
@@ -218,8 +199,6 @@ export function refPath(file: string): string {
   return file === "window.css" ? "packages/web/assets/window.css" : file;
 }
 
-// `at`, for a dated report, is the Oriel commit its lines were written at:
-// a line link opens the file as it was then.
 export function inline(text: string, at?: string): string {
   // Code spans first, held aside, so nothing inside them is read as markup
   // and bold or a link can still hold one.
@@ -242,7 +221,6 @@ export function inline(text: string, at?: string): string {
     return `\uE000${held.length - 1}\uE000`;
   });
   let html = escape(bare);
-  // Screenshots are taken at 2x, as `pnpm shots` takes them.
   html = html.replace(
     /!\[([^\]]*)\]\(([^)\s]+)\)/g,
     (_, alt: string, src: string) =>
@@ -260,7 +238,6 @@ export function inline(text: string, at?: string): string {
     .replace(/\uE001(\d+)\uE001/g, (_, i: string) => plain[Number(i)] ?? "");
 }
 
-// Every link a page's text makes, for the link check.
 export function links(nodes: Node[]): string[] {
   const out: string[] = [];
   const from = (text: string) => {
@@ -279,8 +256,6 @@ export function links(nodes: Node[]): string[] {
   return out;
 }
 
-// Every reference into Oriel a page's text makes, outside its fences, for
-// the reference check: files and lines, and names.
 export function refs(text: string): {
   files: { file: string; line: number | null; end: number | null }[];
   names: NameRef[];

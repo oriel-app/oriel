@@ -1,13 +1,4 @@
-// The secret store (OA-188, decision 0039). Each secret the server keeps,
-// by a name of a shape it uses (rules.ts), is encrypted with Electron's
-// safeStorage, whose key the OS keeps under Oriel's own name (the Keychain
-// on macOS), and written to its own file in the data folder's `Secrets/`. Only ciphertext
-// is ever on disk, and no secret is ever logged. The encryption is a
-// parameter, so tests reach the files without Electron.
-//
-// Under `--background` or `--launch-file`, for development, secrets are kept
-// in memory instead, so a launch from a script never reaches safe storage or
-// the OS's key (rules.ts, secretsInMemory).
+// Only ciphertext is ever on disk, and no secret is ever logged.
 import {
   type Dirent,
   mkdirSync,
@@ -21,10 +12,8 @@ import { join } from "node:path";
 import { isSecretName } from "./rules.ts";
 
 export type Crypt = {
-  // Why nothing can be kept now, or null.
   problem(): Promise<string | null>;
   encrypt(text: string): Promise<Buffer>;
-  // `stale`: the OS's key has moved on, so the file is written again.
   decrypt(data: Buffer): Promise<{ text: string; stale: boolean }>;
 };
 
@@ -39,13 +28,10 @@ const named = (name: string) => {
   return name;
 };
 
-// The store the shell uses: in memory, where `os` is never called, or the
-// OS's.
 export function shellSecrets(inMemory: boolean, dir: string, os: () => Crypt): SecretStore {
   return inMemory ? memorySecrets() : secretStore(dir, os());
 }
 
-// Secrets kept only while the app runs, and gone when it quits.
 export function memorySecrets(): SecretStore {
   const kept = new Map<string, string>();
   return {
@@ -55,10 +41,6 @@ export function memorySecrets(): SecretStore {
   };
 }
 
-// The names an older Oriel kept a secret under, before decision 0059: Jira's
-// saved connection, `jira`, each connection's, `connection.<ULID>`, and the
-// API key Settings took, `anthropic-key`, which no AI runs on now. Nothing
-// reads them any more.
 const retired = (name: string) =>
   name === "jira" ||
   name === "anthropic-key" ||
@@ -66,14 +48,11 @@ const retired = (name: string) =>
 
 export function secretStore(dir: string, crypt: Crypt): SecretStore {
   const file = (name: string) => join(dir, named(name));
-  // Each secret an older Oriel kept is deleted as the store opens, needing
-  // no key, and nothing else in the folder is touched.
   let kept: Dirent[] = [];
   try {
     kept = readdirSync(dir, { withFileTypes: true });
   } catch {
-    // No folder yet, so nothing was kept; or one the store's own reads and
-    // writes will say can't be reached, which mustn't stop the app opening.
+    // A folder the store can't reach mustn't stop the app opening: its own reads and writes say so.
   }
   for (const each of kept)
     if (each.isFile() && retired(each.name)) rmSync(join(dir, each.name), { force: true });
@@ -81,7 +60,6 @@ export function secretStore(dir: string, crypt: Crypt): SecretStore {
     const problem = await crypt.problem();
     if (problem) throw new Error(problem);
   };
-  // Written whole and renamed into place, readable by its owner only.
   const write = async (name: string, secret: string) => {
     const data = await crypt.encrypt(secret);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -104,8 +82,7 @@ export function secretStore(dir: string, crypt: Crypt): SecretStore {
       try {
         read = await crypt.decrypt(data);
       } catch {
-        // Safe storage's own message is fixed, but the text it couldn't
-        // read never goes anywhere.
+        // Not safe storage's error: the text it couldn't read must go nowhere.
         throw new Error("the secret can't be decrypted with the OS's key");
       }
       if (read.stale) await write(name, read.text);

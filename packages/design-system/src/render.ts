@@ -1,9 +1,3 @@
-// HTML for the workshop's pages: its chrome (index, search, theme, scheme,
-// text size and viewport), a guide page with its specimens, and the frame
-// each specimen is drawn in. A specimen's frame is its own document with
-// only Oriel's window.css (and the proposals), so Oriel's global rules never
-// touch the chrome, and its media and container queries see the frame's
-// width: 390 means 390.
 import { escape, type Fence, html, inline, type Node } from "./md.ts";
 import {
   documentedClasses,
@@ -55,7 +49,6 @@ const htmlAttrs = (v: View) =>
 const statusBadge = (status: string | undefined) =>
   status ? `<span class="ws-status" data-status="${escape(status)}">${escape(status)}</span>` : "";
 
-// The chrome around any page.
 export function shell(v: View, title: string, main: string, current = ""): string {
   const css = windowCss();
   const themeOptions = themes
@@ -130,7 +123,6 @@ function nav(current: string): string {
     .join("");
 }
 
-// A frame's URL, with the view it starts in.
 export const frameUrl = (p: Page, id: string, v: View) =>
   `/frame${p.url}/${encodeURIComponent(id)}${query({ ...v, vp: "wide" })}`;
 
@@ -167,7 +159,6 @@ function renderFence(p: Page, v: View) {
   };
 }
 
-// Consecutive "today" and "proposed" specimens sit side by side.
 function grouped(nodes: Node[], render: (n: Node[]) => string): string {
   const out: string[] = [];
   let run: Node[] = [];
@@ -187,7 +178,6 @@ function grouped(nodes: Node[], render: (n: Node[]) => string): string {
   return out.join("\n");
 }
 
-// Whether window.css has a class today, or only a proposal does.
 function isOriels(c: string): boolean {
   return (
     new RegExp(`\\.${c}(?![\\w-])`).test(windowCss()) ||
@@ -221,12 +211,9 @@ ${toc ? `<nav class="ws-toc" aria-label="On this page"><h2>On this page</h2><ul>
   return shell(v, p.title, main, p.url);
 }
 
-// A live fence names its table after `live` (```live tokens type) or on
-// its own line inside.
 const liveArgs = (flags: string[], text: string): string[] =>
   flags.length > 0 ? flags : text.trim().split(/\s+/);
 
-// A page as plain text: its markdown, with live tables filled in.
 export function plainText(p: Page): string {
   return p.text.replace(/^```live([^\n]*)\n([\s\S]*?)```$/gm, (_, after: string, body: string) => {
     const [name = "", ...args] = liveArgs(after.trim() ? after.trim().split(/\s+/) : [], body);
@@ -238,7 +225,6 @@ export function plainText(p: Page): string {
   });
 }
 
-// One specimen in its own document.
 export function frame(p: Page, s: Specimen, v: View): string {
   const bg = s.info["bg"] ?? (s.flags.includes("screen") ? "bg" : "bg");
   const pad = s.flags.includes("screen") || s.info["pad"] === "0" ? "0" : "1";
@@ -298,7 +284,6 @@ ${blocks}
   return shell(v, "Index", main, "/");
 }
 
-// The search index: each page's title, summary, classes and headings.
 export function searchIndex(): unknown[] {
   return pages().map((p) => ({
     url: p.url,

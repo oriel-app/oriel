@@ -1,7 +1,5 @@
-// The checks that need no browser, for Oriel's `pnpm check`: the guide's own,
-// and those that judge Oriel's window.css and packages/web/src by name.
-// `node scripts/check.ts references` runs only the checks it names. What
-// each one checks is in scripts/checks.ts; `pnpm ui-check` adds the rest.
+// `node scripts/check.ts [check…]` runs only the checks named; `pnpm ui-check` adds the
+// browser ones.
 import { checks, runChecks } from "./checks.ts";
 
 process.exitCode = (await runChecks(

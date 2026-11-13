@@ -1,7 +1,3 @@
-// The guide: every page the workshop shows, read from markdown on each
-// request, so an edit shows on reload. A page is one file, and that file is
-// what a builder `cat`s: its guidance, its specimens as ```html fences, and
-// its `file:line` references into Oriel.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Fence, type Front, frontMatter, type Node, parse } from "./md.ts";
@@ -57,7 +53,6 @@ export type Page = {
   section: Section;
   slug: string;
   url: string;
-  // Repo-relative, for the plain-text reader.
   file: string;
   title: string;
   front: Front;
@@ -111,7 +106,6 @@ export function specimen(fence: Fence): Specimen {
 
 let cache: { at: number; pages: Page[] } | null = null;
 
-// Every page, in each section's order. Read again at most once a second.
 export function pages(): Page[] {
   if (cache && Date.now() - cache.at < 1000) return cache.pages;
   const out: Page[] = [];
@@ -144,7 +138,6 @@ export function page(url: string): Page | undefined {
   return pages().find((p) => p.url === url);
 }
 
-// The classes a component documents, from its `classes:` line.
 export function documentedClasses(p: Page): string[] {
   return (p.front["classes"] ?? "")
     .split(/[\s,]+/)
@@ -152,8 +145,6 @@ export function documentedClasses(p: Page): string[] {
     .filter(Boolean);
 }
 
-// Every class attribute's classes in some HTML, the workshop's own `ws-`
-// ones aside.
 export function classesIn(html: string): string[] {
   const out = new Set<string>();
   for (const m of html.matchAll(/\bclass="([^"]*)"/g))
@@ -161,8 +152,6 @@ export function classesIn(html: string): string[] {
   return [...out];
 }
 
-// A specimen's markup as a builder would copy it: without the workshop's
-// forced states and hooks.
 export function snippet(html: string): string {
   return html
     .replace(/\s+data-ws-[a-z-]+(="[^"]*")?/g, "")

@@ -1,29 +1,5 @@
-// `pnpm desktop`: builds the desktop app, unsigned, under the gitignored
-// `packages/desktop/build/` (decisions 0036, 0039 and 0047). Only macOS's
-// `Oriel.app` so far; the target is a parameter so Windows and Linux can follow.
-//
-// The shell is Electron, from its pinned release zip, never npm: the zip is
-// checked against the hash in electron.ts, renamed to Oriel, its fuses set,
-// given Oriel's icon, drawn from `icon.svg` by sips and packed by iconutil,
-// and given the shell's code, compiled from `shell/`. The server runs on
-// Electron's own Node, so the app carries no other. Beside the shell go the
-// Deno that mise.toml pins, copied from mise's install; the server's source,
-// laid out as in the repo, with the packages it reaches, the fixtures they
-// read and the built web app; and the third-party packages those declare,
-// the native TypeScript compiler among them. On macOS the whole app is then
-// signed: ad hoc, which Apple silicon requires, or, with
-// `ORIEL_SIGN_IDENTITY`, as that code-signing identity in the keychain. To
-// the Keychain, each ad-hoc build is a new app, which asks again before it
-// reads "Oriel Safe Storage", Always Allow or not: an item lists the apps
-// that may read it by their team ID or, with none, by the build's own hash.
-// Only an Apple-issued certificate, such as the Apple Development one any
-// Apple ID gets, carries a team ID, so only builds signed as one read the
-// item without asking (decision 0047).
-// A new build replaces the old one. The zip stays cached outside the repo,
-// in `~/Library/Caches/oriel/electron/`, which every worktree shares.
-//
-// `--measure` marks the build so that `--measure <file>` at launch writes when
-// the overview first rendered, for timing a start.
+// To the Keychain each ad-hoc build is a new app, which asks again before reading its key;
+// only a build signed with an Apple-issued certificate (ORIEL_SIGN_IDENTITY) isn't asked.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -60,8 +36,6 @@ export type Manifest = {
   optionalDependencies?: Record<string, string>;
 };
 
-// The workspace packages `from` reaches through its dependencies, itself
-// included, by name.
 export function workspaceClosure(from: string, manifests: ReadonlyMap<string, Manifest>): string[] {
   const found = new Set<string>();
   const visit = (name: string) => {
@@ -76,8 +50,6 @@ export function workspaceClosure(from: string, manifests: ReadonlyMap<string, Ma
   return [...found].sort();
 }
 
-// What a server package keeps in the app: everything but tests, their
-// support files and build state.
 export function shipped(path: string): boolean {
   const parts = path.split("/");
   const name = parts.at(-1) ?? "";
@@ -86,7 +58,6 @@ export function shipped(path: string): boolean {
   return !name.endsWith(".tsbuildinfo");
 }
 
-// The total size of the files under `dir`, not following links.
 function size(dir: string): number {
   let total = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -97,8 +68,6 @@ function size(dir: string): number {
   return total;
 }
 
-// A package's folder as Node would find it from `from`: the nearest
-// `node_modules/<name>` up the tree, through pnpm's links.
 function findPackage(from: string, name: string): string | null {
   for (let dir = from; ; dir = dirname(dir)) {
     const candidate = join(dir, "node_modules", name);
@@ -123,8 +92,6 @@ function clone(from: string, to: string, filter: (path: string) => boolean = () 
   });
 }
 
-// The fuses the shell turns off: Electron as plain Node, NODE_OPTIONS, the
-// inspector's arguments, and file:// pages' extra privileges.
 export const fusesOff = {
   runAsNode: false,
   nodeOptions: false,
@@ -132,12 +99,10 @@ export const fusesOff = {
   fileProtocolPrivileges: false,
 } as const;
 
-// The helper apps inside Electron.app, by the suffix after "Electron Helper".
 export const helperSuffixes = ["", " (GPU)", " (Plugin)", " (Renderer)"];
 
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-// The pinned zip, from the cache at `path` if its hash still matches.
 async function electronZip(path: string, on: Target): Promise<string> {
   const expected = electronZips[on];
   if (existsSync(path) && sha256(path) === expected) return path;
@@ -162,8 +127,6 @@ function plist(file: string, values: Record<string, string>, remove: string[] = 
   for (const key of remove) execFileSync("plutil", ["-remove", key, file]);
 }
 
-// The images a macOS .iconset holds, by the names iconutil reads: each size
-// at 1x and 2x, 16 to 1024 pixels.
 export function iconset(): { name: string; pixels: number }[] {
   return [16, 32, 128, 256, 512].flatMap((size) => [
     { name: `icon_${size}x${size}.png`, pixels: size },
@@ -171,8 +134,6 @@ export function iconset(): { name: string; pixels: number }[] {
   ]);
 }
 
-// Oriel's icon, as `Oriel.icns` in place of Electron's, from the one SVG the
-// maintainer can replace. Only macOS's own tools: sips draws, iconutil packs.
 function macIcon(svg: string, resources: string, scratch: string) {
   const set = join(scratch, "Oriel.iconset");
   mkdirSync(set, { recursive: true });
@@ -187,8 +148,6 @@ function macIcon(svg: string, resources: string, scratch: string) {
   rmSync(scratch, { recursive: true });
 }
 
-// Electron.app from the zip, as Oriel.app: renamed, its default app gone,
-// its icon Oriel's, its fuses set.
 function macShell(zip: string, build: string, icon: string): string {
   const unpacked = join(build, "unpacked");
   rmSync(unpacked, { recursive: true, force: true });
@@ -240,15 +199,11 @@ function macShell(zip: string, build: string, icon: string): string {
   return app;
 }
 
-// The server and the Deno it runs, under `resources`.
 function addServer(root: string, resources: string) {
-  // The Deno mise.toml pins, as mise installed it.
   const deno = mise(root, "deno");
   mkdirSync(join(resources, "deno"), { recursive: true });
   cpSync(join(deno, "bin/deno"), join(resources, "deno/deno"));
 
-  // The server's packages, laid out as in the repo, so every path between
-  // them resolves as it does under `pnpm dev`.
   const server = join(resources, "server");
   mkdirSync(server, { recursive: true });
   const manifests = new Map(
@@ -271,11 +226,8 @@ function addServer(root: string, resources: string) {
     mkdirSync(dirname(link), { recursive: true });
     symlinkSync(relative(dirname(link), join(server, "packages", dir)), link);
   }
-  // Each connector's fixture loader, in its package, reads its fixture.
   clone(join(root, "fixtures"), join(server, "fixtures"));
 
-  // Third-party packages the server's packages declare, and theirs, each
-  // where Node finds it, flat under the server's node_modules.
   const copied = new Set<string>();
   const pending = packages.flatMap((name) => {
     const { dir, dependencies = {} } = manifests.get(name)!;
@@ -299,8 +251,6 @@ function addServer(root: string, resources: string) {
       pending.push({ dep, from: found, optional: true });
   }
 
-  // Every module the server loads resolves inside the app, on this Node,
-  // which is Electron's version.
   const serve = pathToFileURL(join(server, "packages/server/src/serve.ts")).href;
   execFileSync(
     process.execPath,

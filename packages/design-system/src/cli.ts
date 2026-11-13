@@ -1,14 +1,5 @@
-// `pnpm -s ds <page>`: a guide page as plain text, with its live tables
-// filled in from the Oriel checkout. `pnpm -s ds` lists the pages.
-//
-//   pnpm -s ds components/button
-//   pnpm -s ds foundations/colour
-//
-// `pnpm -s ds where <name> [file]`: the lines a name the guide cites is on in
-// the checkout today, in one file or in all of them.
-//
-//   pnpm -s ds where .connect-actions
-//   pnpm -s ds where FolderStep packages/web/src/connect-steps.tsx
+// `pnpm -s ds [page]`, e.g. `pnpm -s ds components/button`; no page lists them.
+// `pnpm -s ds where <name> [file]`, e.g. `pnpm -s ds where .connect-actions`
 import { pages } from "./guide.ts";
 import { refPath } from "./md.ts";
 import { plainText } from "./render.ts";

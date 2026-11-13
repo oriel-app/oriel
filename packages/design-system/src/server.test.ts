@@ -3,8 +3,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { test } from "node:test";
 import { handle } from "./server.ts";
 
-// The status the workshop answers a GET with, called directly, without a
-// socket.
 function status(url: string, host = "127.0.0.1:4400", method = "GET"): number {
   let said = 0;
   const req = { url, method, headers: { host } } as unknown as IncomingMessage;

@@ -1,9 +1,3 @@
-// Oriel's tokens and their contrast, computed from window.css with Oriel's
-// own theme code. The pairs are the ones scripts/check-themes.ts judges,
-// plus the non-text pairs this workshop claims (WCAG 1.4.11, 3:1): the
-// focus ring and the accent's fills on every background. Lines and control
-// borders are reported beside them, unclaimed, since Oriel draws its
-// controls' edges as hairlines that aren't meant to carry meaning alone.
 import { check, type Scheme, themes, windowCss } from "./oriel.ts";
 
 export const schemes: Scheme[] = ["light", "dark"];
@@ -64,7 +58,6 @@ export function judge(css = windowCss()): Judged[] {
   return out;
 }
 
-// A token's value as the browser computes it on the root, `var()`s resolved.
 export function value(css: string, theme: string, scheme: Scheme, name: string): string {
   const values = themes.tokens(css, theme, scheme);
   const raw = values.get(name);
@@ -85,7 +78,6 @@ export function hex(css: string, theme: string, scheme: Scheme, name: string): s
   return `#${byte(r)}${byte(g)}${byte(b)}${a < 1 ? byte(a) : ""}`;
 }
 
-// The tokens of one kind, by name, as the theme check groups them.
 export const groups: Record<string, string[]> = {
   type: [
     "--font",
@@ -142,7 +134,6 @@ export const groups: Record<string, string[]> = {
     "--head-row",
     "--slide-panel",
   ],
-  // The frame and the bead grown from it (decision 0056, amended).
   frame: [
     "--frame",
     "--frame-shade",
@@ -179,8 +170,6 @@ export const groups: Record<string, string[]> = {
   ],
 };
 
-// Where window.css changes layout: every @media and @container that isn't a
-// colour scheme, with the line it starts on and how many rules it holds.
 export function breakpoints(css = windowCss()): { at: string; line: number; rules: number }[] {
   const out: { at: string; line: number; rules: number }[] = [];
   let last: string | undefined;
@@ -196,7 +185,6 @@ export function breakpoints(css = windowCss()): { at: string; line: number; rule
   return out;
 }
 
-// Shared tokens sit on `html`, under a media query for some of them.
 export function shared(css = windowCss()): Map<string, string> {
   const out = new Map<string, string>();
   for (const rule of themes.rules(css))

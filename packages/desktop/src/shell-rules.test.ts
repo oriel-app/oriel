@@ -23,12 +23,9 @@ test("anything else is refused, with an answer when it has an id", () => {
   assert.equal(refused('{"id":6,"kind":"shell.run","command":"rm"}'), 6);
   assert.equal(refused('{"id":7,"kind":"secret.get","name":"../../login"}'), 7);
   assert.equal(refused('{"id":8,"kind":"secret.get","name":"Jira"}'), 8);
-  // Only the names the server uses, though others are well formed.
   assert.equal(refused('{"id":12,"kind":"secret.get","name":"slack.token"}'), 12);
   assert.equal(refused('{"id":13,"kind":"secret.set","name":"login","secret":"s"}'), 13);
   assert.equal(refused('{"id":14,"kind":"secret.delete","name":"anthropic-key.tmp"}'), 14);
-  // No connection keeps a secret since decision 0059, nor does Jira's from
-  // before connections: none of their names is taken.
   for (const name of [
     "jira",
     "connection.01JC0NNECT10NSST0RED0000AB",
@@ -58,7 +55,6 @@ test("anything else is refused, with an answer when it has an id", () => {
   assert.equal(refused('{"id":13,"kind":"notify","title":"x"}'), 13);
   for (const threads of [-1, 1.5, "2", null])
     assert.equal(refused(JSON.stringify({ id: 16, kind: "working", threads })), 16);
-  // A click opens only a path on the server's own origin.
   for (const open of ["https://evil.example/", "//evil.example/", "/\\\\evil", "threads/1", "/a b"])
     assert.equal(
       refused(JSON.stringify({ id: 15, kind: "notify", title: "x", body: "", open })),
@@ -143,11 +139,9 @@ test("a secret is kept only where the OS gives safe storage a key of its own", (
   assert.equal(storageProblem("linux", true, "gnome_libsecret"), null);
   assert.equal(storageProblem("linux", true, "kwallet6"), null);
   assert.notEqual(storageProblem("darwin", false, null), null);
-  // On Linux with no keyring, safe storage would encrypt with a fixed key.
   assert.notEqual(storageProblem("linux", true, "basic_text"), null);
   assert.notEqual(storageProblem("linux", true, "unknown"), null);
   assert.notEqual(storageProblem("linux", true, null), null);
-  // A keyring that fails falls back to the fixed key, which its prefix shows.
   assert.equal(fixedKey("linux", Buffer.from("v10abc")), true);
   assert.equal(fixedKey("linux", Buffer.from("v11abc")), false);
   assert.equal(fixedKey("darwin", Buffer.from("v10abc")), false);
@@ -156,29 +150,24 @@ test("a secret is kept only where the OS gives safe storage a key of its own", (
 test("what a server that died left in the shell's group is swept, only if the shell leads it", () => {
   const table = (shellGroup: number) =>
     [
-      // The shell, its helpers, and what the dead server started: a Deno
-      // and a tsc, now launchd's, and a child of the Deno.
       `  400     1 ${shellGroup}`,
       `  401   400 ${shellGroup}`,
       `  402   400 ${shellGroup}`,
       `  610     1 ${shellGroup}`,
       `  611     1 ${shellGroup}`,
       `  612   610 ${shellGroup}`,
-      // A CLI's own group, and another app's orphan.
       "  700     1   700",
       "  800     1   800",
       "",
       "junk",
     ].join("\n");
   assert.deepEqual(orphans(table(400), 400), [610, 612, 611]);
-  // From a terminal, the group is the terminal's: nothing is swept.
   assert.deepEqual(orphans(table(399), 400), []);
   assert.deepEqual(orphans("", 400), []);
 });
 
 test("in the background, or with a launch file, secrets stay in memory, away from the OS's store", () => {
   assert.equal(secretsInMemory(["Oriel", "--background", "--data", "/tmp/o"]), true);
-  // Whoever reads the launch file's cookie reaches none of the person's secrets.
   assert.equal(secretsInMemory(["Oriel", "--launch-file", "--data", "/tmp/o"]), true);
   assert.equal(secretsInMemory(["Oriel", "--data", "/tmp/o"]), false);
   assert.equal(secretsInMemory(["Oriel"]), false);
@@ -214,9 +203,7 @@ test("a launch takes only the shell's own switches, each value where one belongs
     ["stray"],
   ])
     assert.deepEqual(refusedArguments(["--background", ...args]), args);
-  // A value that is missing, or is another switch, isn't a value.
   assert.deepEqual(refusedArguments(["--data"]), ["--data"]);
-  // Finder's first open of a downloaded app can add a process serial number.
   assert.deepEqual(refusedArguments(["-psn_0_1234567"]), []);
   assert.deepEqual(refusedArguments(["--background", "-psn_0_1234567"]), []);
   for (const args of [["-psn_0_1=x"], ["-psn_"], ["--psn_0_1"], ["-psn_0_1", "--inspect"]])
