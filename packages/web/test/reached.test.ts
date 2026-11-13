@@ -58,18 +58,15 @@ test("a thread's page, once its stream is back, loads again and stops saying Ori
   assert.equal(after.thread?.view?.changeSets[0]?.status, "applied");
 });
 
-// OA-126: the window and the Done page kept saying Oriel can't be reached
-// after it came back, until the person went to another page; only a thread's
-// stream reconnecting took the notice back.
+// Defect fixed in #281: the overview and the Done page kept saying Oriel
+// can't be reached after it came back.
 test("every other page, once the threads stream is back, loads again and stops saying Oriel can't be reached", () => {
   const back: Msg = { type: "streamReopened", stream: "threads" };
-  // The window's overview failed to load as Oriel restarted.
   const [overview] = run(init({ page: "overview" })[0], replied({ kind: "overview" }, away, false));
   assert.equal(overview.overview?.problem, unreachable);
   const [shown, loads] = run(overview, back);
   assert.equal(shown.overview?.problem, null);
   assert.ok(requests(loads).some((r) => r.tag.kind === "overview"));
-  // Marked done on the Done page as Oriel restarted: it may have landed.
   const [done] = run(
     init({ page: "done" })[0],
     { type: "closing", msg: { type: "markDoneClicked", threadId, via: "menu" } },

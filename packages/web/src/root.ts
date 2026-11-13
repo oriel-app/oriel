@@ -307,8 +307,6 @@ export type Msg =
   // The page changed: after a link, or back and forward.
   | { type: "routed"; route: Route }
   | { type: "streamed"; event: StreamEvent }
-  // A stream reconnected after dropping, as when Oriel restarts: the open
-  // thread's, or the one every other page watches threads moving on.
   | { type: "streamReopened"; stream: "thread" | "threads" }
   // The workspace changed: some thread's turn started or ended, a change set
   // of one moved, or one of Oriel's own actions changed a workstream or thread,
@@ -948,8 +946,6 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
           : enter(model, msg.route);
       return withPanel(routed, effects);
     }
-    // Every page, back, loads again what it shows. A thread's page hears its
-    // thread on its own stream; every other page, the workspace on the other.
     case "streamReopened": {
       const [back, reading] = cameBack(model);
       if (msg.stream === "thread") {

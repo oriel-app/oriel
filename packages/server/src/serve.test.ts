@@ -1,7 +1,5 @@
-// OA-244: a client that left before the server attached its close listener
-// kept the stream's watchers forever, and one that left while the server
-// waited for it to read hung the send loop. Either way now the stream ends
-// and `send` returns.
+// Defect fixed in #281: a client that left early kept its stream's watchers,
+// or hung `send` waiting for drain.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, request, type ServerResponse } from "node:http";
@@ -10,7 +8,6 @@ import { test } from "node:test";
 import { send } from "./serve.ts";
 import { channel } from "./stream.ts";
 
-// A server whose one request `answer` takes, and a client that asks it.
 async function served(answer: (res: ServerResponse) => Promise<void>) {
   const server = createServer((_req, res) => void answer(res));
   server.listen(0, "127.0.0.1");
@@ -48,7 +45,7 @@ test("a stream whose client leaves while it waits for the client to read lets go
   let sent!: Promise<void>;
   const { client, close } = await served(async (res) => {
     sent = send(res, "GET", { status: 200, headers: {}, body: "", stream: events.iterator });
-    // More than the socket holds, which the client never reads.
+    // More than the socket buffers, so `send` waits for drain.
     events.push("x".repeat(16 * 1024 * 1024));
   });
   const [response] = await once(client, "response");

@@ -242,9 +242,8 @@ export const report = (event: Report): Effect =>
   post("/api/telemetry", event, { kind: "telemetry" });
 
 // What a request that never reached Oriel says, as while it restarts. A load
-// that works once it's back takes it back, as does Oriel answering again,
-// with any notice that ends saying so: what the request did, if anything,
-// shows on the page that loaded.
+// that works once it's back takes it back: what the request did, if anything,
+// shows on the page that loaded. Some notices name what failed first.
 export const unreachable = "Oriel can't be reached. Is it still running?";
 export const reached = (notice: string | null): string | null =>
   notice?.endsWith(unreachable) ? null : notice;

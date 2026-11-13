@@ -1,12 +1,8 @@
-// Oriel answers again after it couldn't be reached, as after a restart: every
-// page hears it here, from whichever stream it watches reconnecting.
 import { reached } from "./http.ts";
 import { updatePanel } from "./panel.ts";
 import type { Effect } from "./http.ts";
 import type { Model } from "./root.ts";
 
-// Nothing on any page still says Oriel can't be reached: what a request sent
-// meanwhile did, if anything, shows in what loads again. Other notices stay.
 export function cameBack(model: Model): [Model, Effect[]] {
   const { overview, chat, window, workstream, newThread, closing, ending, moving } = model;
   const { approved, rejected, panelAdds, panelEdits, settings, setup, connections } = model;

@@ -6035,9 +6035,6 @@ scenes.push(
   },
 );
 
-// OA-126: Oriel restarts under the overview, whose composer asks while it's
-// down. Once it's back the page stops saying it can't be reached, and loads
-// again, without going anywhere.
 let restarting: { on: Serving; db: string } | null = null;
 const restartSources = { jira: { mode: "fixture" } } as const;
 scenes.push({

@@ -53,9 +53,7 @@ export async function send(res: ServerResponse, method: string, reply: Reply): P
     return;
   }
   const stream = reply.stream[Symbol.asyncIterator]();
-  // A client that leaves ends the stream, which lets go of what it watched,
-  // and stops waiting for it to read: whenever it leaves, before the reply
-  // was ready included.
+  // "close" may have fired before the reply was ready.
   const left = new AbortController();
   const leave = () => {
     left.abort();
@@ -74,7 +72,6 @@ export async function send(res: ServerResponse, method: string, reply: Reply): P
     const next = await stream.next();
     if (next.done || left.signal.aborted) break;
     if (res.write(next.value)) continue;
-    // Rejects once the client has left, or the response errs.
     const drained = await once(res, "drain", { signal: left.signal }).then(
       () => true,
       () => false,
