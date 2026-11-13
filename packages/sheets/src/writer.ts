@@ -1,27 +1,5 @@
-// The Google Sheets writer (decision 0050). Only packages/changeset imports
-// this subpath (checked by scripts/check-repo.ts), and `apply` takes only a
-// request a person approved: its type comes from `SourceWriter`, so nothing
-// here can mint one.
-//
-// Sheets has no conditional write, so each write:
-// - finds its row again by its key, in its mapped tab, since rows move;
-// - checks the spreadsheet is one the person can edit, by Drive's
-//   `capabilities.canEdit`;
-// - reads the cell, refuses one holding a formula, and writes only while it
-//   still holds what the approved diff showed (`WriteRequest.seen`): a
-//   mismatch is a conflict, never an overwrite;
-// - writes values only: an edit with `RAW`, a new row with typed values,
-//   never a formula (requests.ts);
-// - reads the row back, and fails, naming the row by its number, if a sort
-//   slid another row under the write.
-//
-// Values are keyed by Oriel's field names, as specs.ts lists them, and
-// `cells`, the row's digest.
-//
-// Through sheets-mcp (decision 0059), the same checks read through its read
-// tools and the write is its `update_range` or `append_rows`, values `RAW`
-// (sheets-mcp.ts). Its tools can't delete a row, so a row added through it
-// can't be taken back, which the writer says up front (`unsendable`).
+// Sheets has no conditional write, so each write re-finds its row by key, writes only while the
+// cell holds what the diff showed, and reads the row back in case a sort slid another under it.
 import {
   type FieldValues,
   type ItemId,
@@ -66,7 +44,6 @@ const source = "Google Sheets";
 const spilled = (cell: Cell | null | undefined) =>
   cell !== null && cell !== undefined && cell.entered === null && cell.shown !== "";
 
-// A value as a person reads it in a message: short, on one line.
 function said(value: unknown): string {
   if (value === null || value === undefined || value === "") return "nothing";
   const chars = [...String(value).replace(/\s+/g, " ").trim()];
@@ -75,7 +52,6 @@ function said(value: unknown): string {
 
 export function sheetsWriter(
   writes: SheetsWrites & {
-    // Waits before a request goes again; tests pass one that doesn't.
     wait?: (ms: number) => Promise<void>;
   },
   log: Log,
@@ -85,10 +61,8 @@ export function sheetsWriter(
   const toServer = server && serverWrites(server.write);
   const memory = "memory" in writes ? writes.memory : null;
   const wait = writes.wait ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
-  // Which tab each row was last found in, across writes.
   const where = new Map<string, { spreadsheet: string; sheetId: number }>();
 
-  // Google's reads, each request within what is left of the write, if any.
   const reads = (limit?: WriteLimit): Google =>
     server
       ? serverGoogle(server.read)
@@ -108,12 +82,8 @@ export function sheetsWriter(
           random: Math.random,
         });
 
-  // The one request that writes, as JSON, to the fixture's stand-in in
-  // memory. It is sent once its time is in hand: a failure before then sent
-  // nothing this time, and any time before was a `429`, turned away
-  // unprocessed, which goes again while the write has time. Any other
-  // refusal changed nothing, since Google applies a batch whole or not at
-  // all. Through sheets-mcp, the server's write tools send it.
+  // A `429` is turned away unprocessed, so it goes again; any other refusal changed nothing, since
+  // Google applies a batch whole or not at all.
   function memoryOf() {
     if (!memory) throw new Error("Sheets writes through its server");
     return memory;
@@ -170,7 +140,6 @@ export function sheetsWriter(
   const spreadsheetPath = (id: string, after: string) =>
     `/v4/spreadsheets/${encodeURIComponent(id)}${after}`;
 
-  // The spreadsheet must still be picked, and one the person can edit.
   const editable = async (google: Google, spreadsheet: string) => {
     if (!picks.spreadsheets.some((s) => s.id === spreadsheet))
       throw new Error("Oriel doesn't read that spreadsheet now, so it won't write to it");
@@ -181,8 +150,6 @@ export function sheetsWriter(
       throw new Error("the person Oriel reads Sheets as can only view that spreadsheet now");
   };
 
-  // The row a write targets, found by its key in the tab its stable ID
-  // names, so long as its handle still names that row.
   const target = async (google: Google, id: ItemId<"sheets"> | null, stableId: string | null) => {
     if (id === null || stableId === null) throw new Error("this operation needs a row");
     const parsed = parseItemId(id);
@@ -199,14 +166,12 @@ export function sheetsWriter(
     return { ...found, id, stableId, key: parsed.key };
   };
 
-  // Reads one row back by its index, as the write left it.
   const rowAt = async (google: Google, at: TabRead, index: number) => {
     const grid = await google.rows(at.spreadsheet, at.tab, index, index + 1, true);
     if (grid === "gone") throw new Error(`${source} lost the spreadsheet as Oriel wrote to it`);
     return cellsAt(grid, index);
   };
 
-  // Whether the cells read back are the row with this key.
   const holds = (at: TabRead, cells: ReturnType<typeof cellsAt>, key: string) => {
     const column = at.columns.key;
     const shown = column === undefined ? "" : (cells[column]?.shown ?? "");
@@ -227,7 +192,6 @@ export function sheetsWriter(
     const at = await target(google, request.target, request.expectedStableId);
     const column = at.columns[field];
     if (column === undefined) throw new Error(`the row's tab maps no ${field} column`);
-    // A key column that is the title too finds the row, so it isn't edited.
     if (column === at.columns.key)
       throw new Error(`the ${field} cell is the row's key too, and Oriel never changes a key`);
     const cells = cellsAt(at.grid, at.index);
@@ -308,7 +272,6 @@ export function sheetsWriter(
         (row[keyColumn]?.shown ?? "").normalize("NFC").trim() === key,
     );
     if (taken) throw new Error("a row in the tab has that key already");
-    // Two fields in one column, as a key that is the title too, must agree.
     const clash = given.find(([field, value]) =>
       given.some(
         ([other, v]) =>
@@ -316,7 +279,6 @@ export function sheetsWriter(
       ),
     );
     if (clash) throw new Error(`the ${clash[0]} column is another field's too, and they differ`);
-    // A column an array formula above fills down: a value there would break it.
     const above = cellsAt(read.grid, read.last);
     const filled = given.find(([field]) => spilled(above[read.columns[field] ?? 0]));
     if (filled && read.last > read.mapping.header - 1)
@@ -336,8 +298,6 @@ export function sheetsWriter(
         read.last,
         cells,
       );
-      // Anywhere but in the table, or right under it, a sync wouldn't
-      // read it as one of the tab's rows.
       if (index < read.mapping.header || index > read.last + 1)
         throw new Error(
           `the new row went in at row ${index + 1}, outside the table Oriel reads, so check the tab`,
@@ -391,7 +351,6 @@ export function sheetsWriter(
     return { item: { id: at.id, stableId: at.stableId }, before, after: {} };
   };
 
-  // The row's values now, with its stable ID, or "gone".
   const values = async (id: ItemId<"sheets">, fields: readonly string[]) => {
     const parsed = parseItemId(id);
     if (parsed?.prefix !== prefix) return "gone" as const;
@@ -406,8 +365,6 @@ export function sheetsWriter(
   return {
     kind: "sheets",
     ...(toServer ? { unsendable: { deleteRow: unsendable } } : {}),
-    // A target must come with the stable ID it is expected to have, and an
-    // added row with none. A failure before the write went out sent nothing.
     apply: async ({ op, target: id, expectedStableId, args, seen }, limit) => {
       const google = reads(limit);
       try {
@@ -443,7 +400,6 @@ export function sheetsWriter(
       return found === "gone" ? found : found.values;
     },
     read: values,
-    // A picked spreadsheet by its ID, and a tab by `<spreadsheet>/<sheetId>`.
     name: async (id) => {
       const [spreadsheet = "", sheetId] = id.split("/");
       if (!picks.spreadsheets.some((s) => s.id === spreadsheet)) return null;
@@ -462,8 +418,6 @@ function valid<O extends SheetsOp>(op: O, args: unknown): SheetsArgs<O> {
   throw new Error(`${op}: bad arguments (${at})`);
 }
 
-// A Sheets connection's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for Sheets (decision 0049).
 export function sheetsWriterOf(writes: SheetsWrites, log: Log): SourceWriter<"sheets"> {
   return sheetsWriter(writes, log);
 }

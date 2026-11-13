@@ -1,5 +1,4 @@
-// The read side only. The writer is exported from `@oriel/slack/writer`, and
-// nothing here imports it.
+// Read side only: the writer is `@oriel/slack/writer`, and nothing here may import it.
 export { readMethods, type ReadMethod, type SlackApi, SlackError } from "./api.ts";
 export {
   type SlackAttrs,

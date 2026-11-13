@@ -1,15 +1,5 @@
-// Slack as a source (decision 0021): read-only, so it has no op catalogue and
-// no writer, and it reads only the channels the user picked. An item is a
-// message posted in one of them, not as a reply; its replies are part of its
-// content. `sync` lists each channel's messages into index records, and
-// `read` fetches one message with its replies.
-//
-// No cursor, as with the folder. A reply moves its message's update time, and
-// a deleted message just stops being listed, so listing only what is new
-// would miss both. Every sync lists every picked channel, up to a cap, with a
-// null cursor, and the sync worker's full sweep marks whatever the index has
-// and the listing lacks as gone. The index skips records that haven't
-// changed, so listing them again costs no snapshot.
+// No cursor: a reply moves its message's update time and a deleted message just stops being
+// listed, so every sync lists every picked channel and the full sweep marks the rest gone.
 import {
   array,
   type Infer,
@@ -46,23 +36,15 @@ export type SlackSource = Source<"slack", SlackAttrs, SlackContent>;
 
 export type SlackSourceOptions = {
   api: SlackApi;
-  // The workspace's address, as `auth.test` gives it, such as
-  // "https://example.slack.com/". Item locations are links into it.
   workspaceUrl: string;
-  // The channels the user picked, by ID. Nothing else is read.
   channels: readonly string[];
-  // How many messages a sync lists per channel; `maxMessagesPerChannel`
-  // when absent.
   maxMessages?: number;
   log: Log;
-  // Through a source server (decision 0059): a sync reads every page before
-  // it gives one, and a message it can't place stops it, so one that fails
-  // leaves the index as it was.
+  // Every page is read before one is given, so a sync that fails leaves the index as it was.
   whole?: true;
 };
 
-// How much one sync or read takes in. A channel past its cap lists only its
-// latest messages; the rest read as forbidden, hidden from Oriel, until a
+// A channel past its cap lists only its latest messages; the rest read as forbidden until a
 // sync lists them again.
 export const maxChannels = 20;
 export const maxMessagesPerChannel = 2_000;
@@ -72,12 +54,8 @@ const pageSize = "200";
 const tsShape = /^[0-9]{10}\.[0-9]{6}$/;
 const channelShape = /^[CG][A-Z0-9]{6,20}$/;
 
-// A field with the wrong type is left out rather than dropping the message,
-// which the sync worker's full sweep would then mark gone. Except where
-// leaving it out would change what the message is: without a good `ts` it
-// has no key, and without a good `subtype` or `thread_ts` it could pass for a
-// person's post. Those are skipped; a message that never lists isn't swept.
-// An odd `user` leaves the author unknown, never an app.
+// A field with the wrong type is left out rather than drop the message, which the sweep would
+// mark gone; a bad `ts`, `subtype` or `thread_ts` skips it, lest it pass for a person's post.
 const fields = {
   subtype: optional(string),
   user: optional(string),
@@ -120,9 +98,6 @@ const profile = object({
   profile: object({ real_name: optional(string), display_name: optional(string) }),
 });
 
-// What a person posted: a message, one an app posted as itself, a file with
-// its comment, a /me. Joins, topic changes, the placeholder a deleted message
-// with replies leaves, and the like aren't anyone's message.
 export const posted = new Set([
   undefined,
   "bot_message",
@@ -131,8 +106,6 @@ export const posted = new Set([
   "thread_broadcast",
 ]);
 
-// Slack's codes for a channel or message Oriel can't read now, and for one
-// that isn't there. Anything else is a failure, not a result.
 export const forbidden = new Set([
   "channel_not_found",
   "not_in_channel",
@@ -142,14 +115,12 @@ export const forbidden = new Set([
 ]);
 export const deleted = new Set(["thread_not_found", "message_not_found"]);
 
-// A `ts` as an instant: seconds, then microseconds, which an instant keeps to
-// the millisecond.
+// An instant keeps a `ts`'s microseconds only to the millisecond.
 export function tsInstant(ts: string): Instant {
   const [seconds = "0", micros = "0"] = ts.split(".");
   return instant(new Date(Number(seconds) * 1000 + Math.floor(Number(micros) / 1000)));
 }
 
-// A message's item key: its channel and its `ts`.
 export const slackKey = (channel: string, ts: string) => `${channel}-${ts}`;
 
 // The link Slack gives a message, built rather than asked for:
@@ -168,8 +139,6 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
   if (channels.length > maxChannels)
     throw new RangeError(`slack: at most ${maxChannels} channels can be picked`);
   const cap = Math.max(Math.trunc(options.maxMessages ?? maxMessagesPerChannel), 1);
-  // Per channel, the oldest message the last sync listed, when it stopped at
-  // the cap: older ones are left out of the index.
   const cutoff = new Map<string, string>();
 
   const { people, channelName, messagesOf, conversation } = slackReads(api, log, options.whole);
@@ -179,9 +148,6 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
 
     sync: () => (options.whole ? readWhole(pages()) : pages()),
 
-    // Each ID's message and replies, by `conversations.replies`. A message
-    // in a channel the user didn't pick, or can't read now, is forbidden; one
-    // that isn't there any more is deleted.
     async read(ids) {
       const named = people();
       const names = new Map<string, Promise<string | SlackError>>();
@@ -216,8 +182,6 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
           results.push({ id, status: "gone", reason: thread === "forbidden" ? thread : "deleted" });
           continue;
         }
-        // A channel mentioned with no name is named where it is one the user
-        // picked; any other stays its ID.
         const channelNamed = async (id: string) => {
           if (!channels.includes(id)) return null;
           const found = await nameOf(id);
@@ -258,8 +222,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
     },
   };
 
-  // One page per page of each channel's history, newest first. A channel
-  // that can't be read throws, so the sync worker marks nothing gone.
+  // A channel that can't be read throws, so the sync worker marks nothing gone.
   async function* pages(): AsyncGenerator<SyncPage<"slack", SlackAttrs>> {
     const named = people();
     for (const channel of channels) {
@@ -280,7 +243,6 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
         // their message, which reads them.
         const roots = found.filter(isRoot);
         const records: SlackRecord[] = [];
-        // Each message's text, for Oriel's sync to find references in.
         const texts: Record<string, string> = {};
         if (roots.length > cap - listed) capped = true;
         for (const m of roots.slice(0, cap - listed)) {
@@ -314,7 +276,6 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
         if (listed >= cap && cursor) capped = true;
         if (capped) break;
       } while (cursor);
-      // What the sweep is about to mark gone mustn't read as fine.
       if (capped && oldest) {
         log("slack: the listing stopped at a cap", { channel, messages: listed });
         cutoff.set(channel, oldest);
@@ -323,11 +284,9 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
   }
 }
 
-// When a message's text last changed, or null if it never has.
 const editedOf = (m: Message): Instant | null =>
   m.edited && tsShape.test(m.edited.ts) ? tsInstant(m.edited.ts) : null;
 
-// A message someone posted in the channel, not a reply to another.
 export function isRoot(m: Message | undefined): m is Message {
   return (
     m !== undefined &&
@@ -337,12 +296,7 @@ export function isRoot(m: Message | undefined): m is Message {
   );
 }
 
-// How the source and the writer read a conversation the same way: people's
-// names, looked up once per call of `people` (a name changed since shows on
-// the next one), a channel's name, a page's messages, and a message with its
-// replies.
 export function slackReads(api: SlackApi, log: Log, whole?: true) {
-  // A person's name, or null when Slack has no such person.
   const personName = (id: string): Promise<string | null> =>
     api("users.profile.get", { user: id }).then(
       (reply) => {
@@ -357,8 +311,6 @@ export function slackReads(api: SlackApi, log: Log, whole?: true) {
       },
     );
 
-  // People's names, looked up once per sync or read: a name changed since
-  // shows on the next one.
   const people = () => {
     const known = new Map<string, Promise<string | null>>();
     const lookup = (id: string) => {
@@ -369,9 +321,6 @@ export function slackReads(api: SlackApi, log: Log, whole?: true) {
       }
       return found;
     };
-    // A message's author and body, with every mention in it named, and its
-    // own text in parts and its files apart, for the panel. `channel` names
-    // a channel mentioned with no name beside it, where it can.
     return async (
       m: Message,
       channel: (id: string) => Promise<string | null> = async () => null,
@@ -386,9 +335,7 @@ export function slackReads(api: SlackApi, log: Log, whole?: true) {
           unnamedChannels(text).map(async (id) => [id, await channel(id)] as const),
         ),
       );
-      // The author is the person in `user`, even when an app posted for them
-      // and `bot_id` is set too (decision 0021). Only a message with no
-      // person is the app's own.
+      // The author is the person in `user`, even when an app posted for them and `bot_id` is set too.
       const author: SlackPerson = m.unknownAuthor
         ? { id: null, name: "Unknown person" }
         : m.user
@@ -413,8 +360,6 @@ export function slackReads(api: SlackApi, log: Log, whole?: true) {
     return parsed.value.channel.name;
   };
 
-  // A page's messages. One without a `ts` has no key and is skipped; odd
-  // fields are left out. Either is logged.
   const messagesOf = (reply: unknown, method: string) => {
     const parsed = page(reply);
     if (!parsed.ok) throw new Error(`slack: ${method}: unexpected reply`);
@@ -433,8 +378,7 @@ export function slackReads(api: SlackApi, log: Log, whole?: true) {
     return { found, next: parsed.value.response_metadata?.next_cursor ?? "" };
   };
 
-  // A message and its replies, oldest first, once each: Slack repeats the
-  // message at the top of every page.
+  // Slack repeats the message at the top of every page.
   async function conversation(channel: string, ts: string): Promise<Message[]> {
     const byTs = new Map<string, Message>();
     const cursors = new Set<string>();

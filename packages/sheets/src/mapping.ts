@@ -1,8 +1,3 @@
-// What a Sheets connection reads (decision 0050): the spreadsheets the person
-// picked, and in each the tabs they mapped, each tab's columns named by their
-// headers onto Oriel's fields. A tab with no mapping isn't read. The person
-// sets a mapping in Settings and the agent drafts the first one (0051); this
-// is only its shape.
 import { createHash } from "node:crypto";
 import {
   array,
@@ -19,22 +14,14 @@ import {
 } from "@oriel/core";
 import type { State } from "@oriel/core";
 
-// Which status values, as the cell shows them, mean each state. A status
-// column with none, such as RAG, is a status with no state: red isn't a
-// stage.
 export type States = Readonly<Record<State, readonly string[]>>;
 
 export type TabMapping = {
   // Google's `sheetId`, which survives a rename.
   sheetId: number;
-  // The header row's number as the sheet shows it, 1 for the first.
   header: number;
-  // Where the table ends: at its first blank row, so a notes block below it
-  // isn't items, or at the grid's end, with blank rows skipped.
   end: "blank" | "grid";
-  // Whether rows hidden by hand are read. Rows a filter hides always are.
   hidden: boolean;
-  // Each field's column, by its header. The key's values name the rows.
   key: string;
   title: string;
   status?: string;
@@ -42,20 +29,16 @@ export type TabMapping = {
   assignee?: string;
   estimate?: string;
   link?: string;
-  // A column naming another row by its key, in this tab or another mapped
-  // one of the same spreadsheet, which becomes its container.
   parent?: string;
 };
 
 export type SpreadsheetPick = {
-  // Its Drive file ID.
   id: string;
   tabs: TabMapping[];
 };
 
 export type SheetsPicks = { spreadsheets: SpreadsheetPick[] };
 
-// The fields a tab maps, in the order a draft and Settings list them.
 export const fieldNames = [
   "key",
   "title",
@@ -92,15 +75,12 @@ const spreadsheets = array(
   }),
 );
 
-// What a mapping must hold: one mapping per tab, states only with a status,
-// and no column mapped to two fields.
 const fits = (picks: SheetsPicks) =>
   new Set(picks.spreadsheets.map((s) => s.id)).size === picks.spreadsheets.length &&
   picks.spreadsheets.every(
     (s) =>
       new Set(s.tabs.map((t) => t.sheetId)).size === s.tabs.length &&
       s.tabs.every((tab) => {
-        // A unique name, such as a feature's, may be both key and title.
         const columns = mappedColumns(tab).flatMap(([field, column]) =>
           field === "key" && column.trim() === tab.title.trim() ? [] : [column.trim()],
         );
@@ -110,12 +90,8 @@ const fits = (picks: SheetsPicks) =>
 const fitsSays =
   "expected each spreadsheet and tab once, states only with a status, and each column mapped once";
 
-// The picks, then what a mapping must hold.
 export const sheetsPicks: Described<SheetsPicks> = refine(object({ spreadsheets }), fits, fitsSays);
 
-// What a person sets per connection (decision 0049): the picks, and
-// whether it may propose changes. Spreadsheets just picked map no tab, so
-// the connection waits for its options (decision 0051).
 export type SheetsOptions = SheetsPicks & { readOnly?: boolean };
 export const sheetsOptions: Described<SheetsOptions> = refine(
   object({ spreadsheets, readOnly: optional(boolean) }),
@@ -123,15 +99,12 @@ export const sheetsOptions: Described<SheetsOptions> = refine(
   fitsSays,
 );
 
-// Each field the tab maps, with its column's header.
 export const mappedColumns = (tab: TabMapping): [FieldName, string][] =>
   fieldNames.flatMap((field) => {
     const column = tab[field];
     return column === undefined ? [] : [[field, column]];
   });
 
-// A spreadsheet's mappings in short: a sync re-reads a spreadsheet whose
-// mapping changed, as one whose version moved.
 export function mappingPrint(pick: SpreadsheetPick): string {
   const tabs = pick.tabs
     .toSorted((a, b) => a.sheetId - b.sheetId)

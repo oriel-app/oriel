@@ -1,9 +1,3 @@
-// What's kept on disk, in `oriel-sheets-mcp/` under $XDG_CONFIG_HOME, or
-// ~/.config: the refresh token `login` brings back, in `token.json`, and the
-// client it signed in with, in `client.json`, so the server needs no
-// environment of its own. Only its owner may read the folder (0700) or a
-// file (0600). Access tokens are never written; the server keeps them in
-// memory.
 import {
   chmodSync,
   lstatSync,
@@ -20,17 +14,14 @@ export const folderName = "oriel-sheets-mcp";
 
 export function configFolder(env: Readonly<Record<string, string | undefined>>, home: string) {
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  // The spec asks for an absolute path, and says to ignore any other.
+  // The XDG spec asks for an absolute path, and says to ignore any other.
   return join(xdg && isAbsolute(xdg) ? xdg : join(home, ".config"), folderName);
 }
 
-// One JSON file in the folder: its value, or null when there's none, or
-// it isn't one this wrote.
 type Kept<T> = {
   path: string;
   read(): T | null;
   write(value: T): void;
-  // Whether there was one to delete.
   remove(): boolean;
 };
 

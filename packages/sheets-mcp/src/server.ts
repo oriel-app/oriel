@@ -1,17 +1,5 @@
-// The MCP server, on no SDK: a JSON-RPC message in, its answer out, for the
-// stdio transport to carry. It offers tools only.
-//
-// It speaks two revisions: 2025-06-18, which opens with `initialize`, and
-// 2026-07-28, where each request may carry its revision in `_meta` and a
-// client may ask `server/discover` instead. `initialize` echoes the client's
-// revision when it is one of the two, and offers 2025-06-18 otherwise.
-// https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
-//
-// A tool that fails answers with `isError` and a short sentence, for the
-// model to read and act on; only a request that is itself wrong, such as one
-// naming no tool there is, gets a JSON-RPC error. Nothing it answers holds a
-// token, a code, or the client's ID or secret: every answer passes through
-// `redact` on its way out.
+// Nothing it answers holds a token, a code, or the client's ID or secret: every answer
+// passes through `redact` on its way out.
 import type { AccessSource } from "./access.ts";
 import { type Google, Refusal } from "./google.ts";
 import type { Fetch } from "./oauth.ts";
@@ -41,7 +29,6 @@ const capabilities = { tools: { listChanged: false } };
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// Every secret in a string, as one word in its place.
 function redact<T>(value: T, secrets: readonly string[]): T {
   const known = secrets.filter((secret) => secret.length >= 6);
   if (!known.length) return value;
@@ -61,8 +48,7 @@ function redact<T>(value: T, secrets: readonly string[]): T {
 export type ServerDeps = {
   fetch: Fetch;
   source: AccessSource;
-  // A tool call that failed for a reason of the server's own, by the
-  // error's name only.
+  // Gets the error's name only: its message could hold a secret.
   log?: (line: string) => void;
 };
 
@@ -100,8 +86,6 @@ export function mcpServer(deps: ServerDeps) {
     }
   }
 
-  // The answer to one message, or null for a notification, or for a
-  // client's answer to a request this never sent.
   async function answer(message: unknown): Promise<Answer | null> {
     const id: Id | null =
       isObject(message) && (typeof message.id === "string" || typeof message.id === "number")

@@ -1,6 +1,3 @@
-// Folders for tests. Each test builds its own tree in a fresh temporary
-// directory, removed when the test ends: the folder the user picked, and a
-// sibling outside it for links to point at.
 import {
   accessSync,
   chmodSync,
@@ -21,16 +18,10 @@ import type { FolderSource } from "./source.ts";
 import type { FolderPath } from "./walk.ts";
 
 export type TempFolder = {
-  // The folder, by its real path.
   root: FolderPath;
-  // A directory beside it, outside the folder.
   outside: string;
-  // Writes a file under `base` (the folder by default), making its
-  // directories, and sets its modification time when given. Returns its path.
   write(rel: string, body: string | Uint8Array, mtime?: string, base?: string): string;
-  // Takes every permission off a file or directory, until the test ends.
-  // False where permissions don't bind (running as root), so the test can
-  // skip.
+  // False where permissions don't bind (running as root), so the test can skip.
   lock(path: string): boolean;
 };
 
@@ -73,17 +64,14 @@ export function setTime(path: string, at: string): void {
   utimesSync(path, time, time);
 }
 
-// Fixed folder IDs, as the workspace would assign them.
 export const folderA: Ulid = ulid(1_767_225_600_000, new Uint8Array(10).fill(1));
 export const folderB: Ulid = ulid(1_767_225_600_000, new Uint8Array(10).fill(2));
 
-// A log that keeps what it's given.
 export function keptLog(): { log: Log; lines: { message: string; fields?: unknown }[] } {
   const lines: { message: string; fields?: unknown }[] = [];
   return { log: (message, fields) => lines.push({ message, fields }), lines };
 }
 
-// Every page one sync yields.
 export async function syncPages(
   source: FolderSource,
   cursor: string | null,

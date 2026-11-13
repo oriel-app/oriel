@@ -1,7 +1,3 @@
-// MCP's stdio transport: one JSON-RPC message a line on stdin, each answer a
-// line on stdout, and nothing else on stdout ever. Requests are answered as
-// they finish, so a slow call holds up no other.
-// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio
 import { StringDecoder } from "node:string_decoder";
 import { codes, type McpServer } from "./server.ts";
 
@@ -11,7 +7,6 @@ export const lineMost = 4 * 1024 * 1024;
 
 type Out = { write(text: string): unknown };
 
-// Resolves when the input ends and every request has its answer.
 export async function serveStdio(
   server: McpServer,
   input: AsyncIterable<string | Buffer> | Iterable<string | Buffer>,
@@ -45,7 +40,7 @@ export async function serveStdio(
     void done.finally(() => pending.delete(done));
   };
 
-  // A character may be split between chunks.
+  // A UTF-8 character may be split between chunks.
   const decoder = new StringDecoder("utf8");
   let held = "";
   let dropping = false;

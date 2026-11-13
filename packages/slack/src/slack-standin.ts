@@ -1,29 +1,18 @@
-// A stand-in for Slack's MCP server (OA-277), so Slack's support through a
-// source server can be built and tried with no Slack workspace: it reports
-// the real server's name and tool names, and answers each tool from
-// Ferrowick, `fixtures/slack`, in memory, in the real server's shapes, as
-// recorded in fixtures/slack-mcp/real-sync.json: Markdown meant for a
-// model, under a key of a JSON object. The person it reads as is the
-// fixture's first, who is in its picked channels. Writes change only this
-// process's copy. Never published, never bundled. Served over stdio by
-// packages/standin-mcp, and in memory to this package's tests:
-// `@oriel/slack/standin`.
+// Never published, never bundled: served over stdio by packages/standin-mcp, and in memory to
+// this package's tests.
 import { type StandInAnswer, type StandInTool, standInCalls } from "@oriel/core";
 import { SlackError } from "./api.ts";
 import { fixtureApi, loadSlackFixture, type SlackFixture } from "./fixture.ts";
 import { slackTools } from "./slack-mcp.ts";
 
-// Its JSON as a tool's text, as the server it stands in for answers.
 const ok = (value: unknown): StandInAnswer => ({
   content: [{ type: "text", text: JSON.stringify(value) }],
 });
-// One short sentence naming Slack's code, as a tool that failed answers.
 const failed = (words: string): StandInAnswer => ({
   content: [{ type: "text", text: words }],
   isError: true,
 });
 
-// What it reports in its handshake, as the real one does.
 export const slackInfo = { name: "Slack MCP", version: "standin" };
 
 const string = { type: "string" };
@@ -35,24 +24,17 @@ const schema = (properties: Record<string, unknown>, required: string[]) => ({
   required,
 });
 
-// Ferrowick in memory, as the stand-in starts from.
 export const standInWorkspace = (fixture: SlackFixture = loadSlackFixture()) => fixtureApi(fixture);
 
-// Its tools as a caller in this process, for tests.
 export const standInCaller = (tools: readonly StandInTool[] = slackStandIn()) =>
   standInCalls(tools);
 
-// The tools it serves, and what each is. Each read is marked read-only, as
-// the real server's are; each write isn't.
 export function slackStandIn(
   fixture: SlackFixture = loadSlackFixture(),
   workspace = standInWorkspace(fixture),
 ): StandInTool[] {
   const self = fixture.users[0]?.id ?? "";
-  // The channels the person is in: the fixture's picked ones, as they are
-  // at each call, so a scene can take one away, as when the person leaves.
   const yours = { has: (id: string) => fixture.picked.includes(id) };
-  // Through the fixture's own `fetch`, which writes as well as reads.
   const write = async (method: string, params: Record<string, string>) => {
     const response = await workspace.fetch(`https://slack.com/api/${method}`, {
       method: "POST",
@@ -80,12 +62,9 @@ export function slackStandIn(
     annotations: { readOnlyHint: readOnly },
     call,
   });
-  // A tool the real server has that Oriel never calls.
   const unused = (name: string, description: string, readOnly: boolean): StandInTool =>
     tool(name, description, {}, [], readOnly, async () => failed(`${name} isn't in the stand-in.`));
 
-  // A person as a message's header names them: their display name, else
-  // their real name; an app by its name.
   const nameOf = (message: Record<string, unknown>) => {
     const person = fixture.users.find((each) => each.id === message.user);
     if (person) return person.display_name || person.real_name;
@@ -94,10 +73,8 @@ export function slackStandIn(
   };
   const authorOf = (message: Record<string, unknown>) =>
     text(message.user) || text(message.bot_id) || "B0STANDIN";
-  // A `ts` as the server writes its time, in UTC.
   const timeOf = (ts: string) =>
     `${new Date(Math.floor(Number(ts)) * 1000).toISOString().slice(0, 19).replace("T", " ")} UTC`;
-  // A message's text as the server shows it: its text, and its files.
   const bodyOf = (message: Record<string, unknown>) => {
     const files = Array.isArray(message.files)
       ? (message.files as { name?: string; title?: string }[]).map(
@@ -168,8 +145,6 @@ export function slackStandIn(
           };
           const read = (more: Record<string, string>) =>
             workspace.api("conversations.history", { channel, ...more }) as Promise<Page>;
-          // Before `latest`, never at it, as the real one reads: every page,
-          // then as many as asked.
           let body: Page;
           if (typeof args.latest === "string") {
             const all: Record<string, unknown>[] = [];
@@ -325,7 +300,6 @@ export function slackStandIn(
         });
         if (body.ok !== true) return failed(`execution_failed: ${text(body.error) || "failed"}`);
         const ts = text(body.ts);
-        // As the real one answered a post (2026-11-07).
         return ok({
           message_link: `${fixture.team.url}archives/${channel}/p${ts.replace(".", "")}`,
           message_context: { message_ts: ts, channel_id: channel },

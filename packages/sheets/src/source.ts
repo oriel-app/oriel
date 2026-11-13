@@ -1,20 +1,3 @@
-// Google Sheets as a source (decision 0050), read-only for now: only the
-// spreadsheets the person picked, and in each only the tabs they mapped. An
-// item is a row of a mapped tab, keyed by its key cell, or a spreadsheet
-// itself, a doc.
-//
-// A sync asks Drive for each spreadsheet's `version`, and reads only those
-// whose version moved or whose mapping changed since the cursor: an
-// unchanged spreadsheet costs one request and changes nothing in the index.
-// A spreadsheet it reads is listed in full (`SyncPage.swept`), so its rows
-// that are gone, and its tabs no longer mapped, leave the index; a tab whose
-// mapping no longer fits its header row, or a spreadsheet that didn't
-// answer, keeps what the index had (`SyncPage.held`). One Drive can't find,
-// or one in the bin, is gone.
-//
-// Caps, as the folder's walk has: 5,000 rows a tab, 20 mapped tabs and 50
-// spreadsheets a connection, and 50,000 characters an item. What a sync
-// didn't read, and why, is in `report()`.
 import {
   type Instant,
   instant,
@@ -54,14 +37,12 @@ import { maxRows, readGrid } from "./grid.ts";
 import { type TableRow, tableOf } from "./table.ts";
 
 export type SheetsSource = Source<"sheets", SheetsAttrs, SheetsContent> & {
-  // What the last sync or read didn't read, and why.
   report(): SheetsReport;
 };
 
 export type SheetsSourceOptions = {
   google: Google;
   picks: SheetsPicks;
-  // Its connection's prefix, when it isn't the kind's first.
   prefix?: string;
   log: Log;
 };
@@ -70,8 +51,6 @@ export { maxRows };
 export const maxTabs = 20;
 export const maxSpreadsheets = 50;
 
-// Per tab: why its sync stopped, or which rows aren't items yet and what
-// wasn't read. Row numbers are as the sheet shows them.
 export type TabReport = {
   sheetId: number;
   title: string | null;
@@ -86,16 +65,12 @@ export type SheetsReport = {
   spreadsheets: {
     id: string;
     title: string | null;
-    // It isn't there to read, or didn't answer this time.
     problem?: "gone" | "failed";
     tabs: TabReport[];
   }[];
-  // Picks past the caps, which weren't read.
   unread: { spreadsheets: number; tabs: number };
 };
 
-// What a sync has read, per spreadsheet: its version, its mappings in short,
-// and the tabs it mapped.
 type Cursor = Record<string, { version: string; print: string }>;
 
 function parseCursor(text: string | null): Cursor | null {
@@ -119,7 +94,6 @@ function parseCursor(text: string | null): Cursor | null {
   }
 }
 
-// One spreadsheet as read: each mapped tab's rows, or why it stopped.
 type Read = {
   id: string;
   file: DriveFile;
@@ -134,7 +108,6 @@ type Read = {
 export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
   const { google, log } = options;
   const prefix = options.prefix ?? "sheets";
-  // The picks within the caps.
   let tabsLeft = maxTabs;
   const picks: SpreadsheetPick[] = options.picks.spreadsheets
     .slice(0, maxSpreadsheets)
@@ -149,7 +122,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
       options.picks.spreadsheets.reduce((n, s) => n + s.tabs.length, 0) -
       picks.reduce((n, s) => n + s.tabs.length, 0),
   };
-  // What was last read of each spreadsheet, by its ID, for reads.
   const cache = new Map<string, Read>();
   const reports = new Map<string, SheetsReport["spreadsheets"][number]>();
 
@@ -168,7 +140,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         capped: false,
       };
       if (!tab) {
-        // A deleted tab: its rows are gone.
         report.push({
           ...blank,
           title: null,
@@ -191,13 +162,10 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         duplicates: table.duplicates,
         keyless: table.keyless,
         hidden: table.hidden,
-        // A table read to the grid's end stops at the cap's rows, blank or
-        // not, so rows past them weren't read.
         capped: table.capped || (mapping.end === "grid" && mapping.header + maxRows + 1 < tab.rows),
       });
     }
-    // Two key cells whose hashes match, which only someone set on it could
-    // make, are as two rows with one key: neither is an item.
+    // Two key cells whose hashes match, which only someone set on it could make, name neither row.
     const hashes = Map.groupBy(
       [...tables].flatMap(([sheetId, t]) =>
         "rows" in t ? t.rows.map((row) => ({ sheetId, row })) : [],
@@ -225,8 +193,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
     };
   }
 
-  // The spreadsheet's records, and each one's text for Oriel's sync to find
-  // references in.
   function recordsOf(
     id: string,
     read: Read,
@@ -235,7 +201,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
     const spreadsheet = { id, title: read.title };
     const records: SheetsRecord[] = [];
     const texts: Record<string, string> = {};
-    // Rows by their key cell, this tab's first, for a parent column.
     const byKey = (sheetId: number, key: string) => {
       const own = read.tables.get(sheetId);
       const found =
@@ -244,7 +209,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
           : [...read.tables].flatMap(([other, t]) =>
               other !== sheetId && "rows" in t && t.rows.some((r) => r.key === key) ? [other] : [],
             );
-      // A name two tabs share names neither.
       return found.length === 1 && found[0] !== undefined ? found[0] : null;
     };
     const docKey = spreadsheetKey(id);
@@ -312,8 +276,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
     return { records, texts };
   }
 
-  // Reads the spreadsheet if its version or mapping moved since `known`,
-  // and keeps what it read. Null when unchanged.
   async function fresh(
     pick: SpreadsheetPick,
     known: { version: string; print: string } | undefined,
@@ -335,8 +297,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
     reports.set(id, { id, title: null, problem: "gone", tabs: [] });
   };
 
-  // What's read of the spreadsheet now: from the cache while its version
-  // hasn't moved.
   async function current(pick: SpreadsheetPick): Promise<Read | "gone"> {
     const had = cache.get(pick.id);
     const got = await fresh(pick, had && { version: had.file.version, print: had.print });
@@ -373,15 +333,11 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         try {
           got = await fresh(pick, known[pick.id]);
         } catch (error) {
-          // Signed out is the whole account's: the sync fails, and the
-          // person signs in to its server again. An answer its server gave
-          // that Oriel can't read stops the whole sync too (decision 0059).
           if (
             error instanceof ServerUnreadable ||
             (error instanceof SheetsError && error.status === 401)
           )
             throw error;
-          // It keeps what the index had, and is read again next time.
           log("sheets: a spreadsheet didn't read", {
             error: error instanceof Error ? error.message : String(error),
           });
@@ -407,8 +363,7 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
           next[pick.id] = { version: file.version, print: mappingPrint(pick) };
           continue;
         }
-        // A tab that stopped is read again next time, so its connection
-        // waits until the sheet or the mapping is fixed, across restarts.
+        // A stopped tab keeps no version, so it's read again next time, across restarts.
         const stopped = read.report.some((tab) => tab.stopped !== undefined);
         next[pick.id] = { version: stopped ? "" : file.version, print: read.print };
         const { records, texts } = recordsOf(pick.id, read);
@@ -424,7 +379,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         };
         yield page;
       }
-      // What it didn't read, in counts only: the report says which.
       const tabs = [...reports.values()].flatMap((r) => r.tabs);
       const missed = {
         failed: [...reports.values()].filter((r) => r.problem === "failed").length,
@@ -436,7 +390,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         tabsPastCap: unread.tabs,
       };
       if (Object.values(missed).some(Boolean)) log("sheets: some of it wasn't read", missed);
-      // Spreadsheets no longer picked leave with their rows.
       const dropped = Object.keys(known).filter((id) => !picked.has(id));
       for (const id of dropped) {
         cache.delete(id);
@@ -456,8 +409,6 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         const parsed = parseItemId(id);
         return parsed?.prefix === prefix ? [{ id, key: parsed.key }] : [];
       });
-      // Every spreadsheet whose version moved is read again, once, before
-      // any row is looked for: a row can be anywhere in its tab.
       if (wanted.length)
         for (const pick of picks) {
           if ((await current(pick)) === "gone") continue;
@@ -491,7 +442,6 @@ function spreadsheetContentOf(read: Read): SpreadsheetContent {
 
 function rowContentOf(read: Read, tab: TabInfo, row: TableRow): RowContent {
   const { text, note } = rowText(row.cells);
-  // Past the cap, the cells the text cut aren't read either.
   let used = 0;
   const cells =
     note === null

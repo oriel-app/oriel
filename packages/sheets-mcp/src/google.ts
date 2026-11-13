@@ -1,7 +1,3 @@
-// Calls to Google's Drive and Sheets APIs, with an access token from the
-// source given, and once more with a new one if Google refuses it. A call
-// that fails throws a `Refusal`: a short sentence for the person or model
-// that called the tool, which never quotes a token.
 import type { AccessSource } from "./access.ts";
 import type { Fetch } from "./oauth.ts";
 
@@ -15,16 +11,12 @@ export type Google = { fetch: Fetch; source: AccessSource };
 
 const requestMs = 30_000;
 
-// Google's own message, on one line, whole: cutting it could leave part of
-// a secret the server's redaction no longer knows. A 400's names what was wrong
-// with what the caller sent, such as a range that doesn't parse.
+// Google's message whole: cutting it could leave part of a secret the redaction no longer knows.
 function messageOf(json: unknown): string {
   const message = (json as { error?: { message?: unknown } } | null)?.error?.message;
   return typeof message === "string" ? message.replace(/\s+/g, " ").trim() : "";
 }
 
-// Why Google refused, as its error body has it: `reason` in Drive's, `reason`
-// in a Sheets API ErrorInfo's details.
 function reasonsOf(json: unknown): string[] {
   const error = (json as { error?: Record<string, unknown> } | null)?.error ?? {};
   const listed = [
@@ -48,8 +40,6 @@ function refusalOf(status: number, json: unknown): Refusal {
     return new Refusal(
       "The Google Cloud project behind this client hasn't turned on the Sheets API and the Drive API. Turn both on in the Cloud console, then try again.",
     );
-  // A sign-in without the scope the call needs, as one without Drive's
-  // read scope is for a spreadsheet's comments.
   if (
     status === 403 &&
     reasons.some((r) => /insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/.test(r))

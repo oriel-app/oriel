@@ -1,7 +1,3 @@
-// A mapped tab's grid as Google gives it, read the one way a sync and a
-// writer both read it (decision 0050): from its header row down, in chunks
-// of rows near Google's recommended 2 MB a request, until the table has
-// surely ended or is past the row cap.
 import type { Google, TabInfo } from "./google.ts";
 import type { TabMapping } from "./mapping.ts";
 import type { Grid } from "./table.ts";
@@ -10,8 +6,6 @@ export const maxRows = 5_000;
 // About Google's recommended 2 MB a request, at a generous 100 bytes a cell.
 const chunkCells = 20_000;
 
-// With `entered`, each cell carries what was entered in it too, as a
-// writer reads it.
 export async function readGrid(
   google: Google,
   id: string,
@@ -29,8 +23,6 @@ export async function readGrid(
     merges: [],
   };
   const merges = new Map<string, Grid["merges"][number]>();
-  // The header and the cap's rows, blank ones included, and one more to
-  // tell whether any followed.
   const limit = Math.min(tab.rows, start + maxRows + 2);
   for (let from = start; from < limit; from += chunk) {
     const to = Math.min(from + chunk, limit);
@@ -53,8 +45,6 @@ export async function readGrid(
   return { ...grid, merges: [...merges.values()] };
 }
 
-// Whether a blank row ends the table within these rows: one with nothing in
-// it that no merge reaches into.
 function endsIn(rows: Grid["rows"], from: number, top: number, merges: Grid["merges"]): boolean {
   for (let r = from; r < rows.length; r++) {
     const index = top + r;

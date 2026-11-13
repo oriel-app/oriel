@@ -1,9 +1,3 @@
-// The `sheets` namespace of a region's module (decision 0050): editing one
-// mapped cell of a row, and adding a row to a row's tab, each by Oriel's
-// field names, never a header. Bindings build it only for a region holding
-// rows Oriel may change: rows of a mapped tab, in a spreadsheet the person
-// can edit, through a connection that may propose changes. Reading a row is
-// `items.read()`, as for any item.
 import {
   idUnion,
   type IndexRecord,
@@ -25,14 +19,10 @@ import { sheetsAttrsOf } from "./attrs.ts";
 import { type FieldName, mappedColumns, type SheetsPicks } from "./mapping.ts";
 import { type EditableField, editableFields, maxText, sheetsOps } from "./ops.ts";
 
-// What only the composition root knows: each mapped tab's fields, by
-// `<spreadsheet ID>/<sheetId>`. Absent for a read-only connection, which
-// offers nothing to write.
 export type SheetsContext = { tabs: Readonly<Record<string, readonly FieldName[]>> } | undefined;
 
 const tabKey = (spreadsheet: string, sheetId: number) => `${spreadsheet}/${sheetId}`;
 
-// The context of a connection that may propose changes, from its picks.
 export function sheetsContextOf(picks: SheetsPicks): NonNullable<SheetsContext> {
   return {
     tabs: Object.fromEntries(
@@ -46,8 +36,6 @@ export function sheetsContextOf(picks: SheetsPicks): NonNullable<SheetsContext> 
   };
 }
 
-// The rows Oriel may change, by ID, each with its spreadsheet and tab: rows
-// of a mapped tab, in a spreadsheet the person can edit.
 function writableRows(
   records: readonly IndexRecord[],
   context: NonNullable<SheetsContext>,
@@ -71,7 +59,6 @@ function writableRows(
   );
 }
 
-// The fields a write may set, as the agent writes them.
 const fieldType = editableFields.map((f) => JSON.stringify(f)).join(" | ");
 const text = refine(
   string,

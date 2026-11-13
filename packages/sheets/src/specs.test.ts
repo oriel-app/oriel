@@ -1,5 +1,3 @@
-// The `sheets` namespace over the fixture's index, and how change sets
-// treat each op (decision 0050).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ItemId, itemId, type NamespaceHost, type NamespaceWrite } from "@oriel/core";
@@ -16,13 +14,11 @@ const rowId = (spreadsheet: string, sheetId: number, key: string) =>
   itemId("sheets", rowKey(spreadsheet, sheetId, key));
 const fw102 = rowId(tracker, 1100, "FW-102");
 const sprint = rowId(tracker, 2141, "00411");
-// A row of the contacts spreadsheet, which the account can only view.
 const contact = rowId(idOf("contacts"), 5100, "+44 1632 960101");
 const doc = itemId("sheets", spreadsheetKey(tracker));
 
 const connected = await sheetsDeclaredFixture.load().connect(0);
 
-// The region's IDs, as a namespace's host sees them.
 const host = (ids: readonly string[]): NamespaceHost => ({
   has: (id): id is ItemId => ids.includes(id),
   created: new Map(),
@@ -45,13 +41,10 @@ test("the namespace offers writes for rows of spreadsheets the person can edit, 
   const types = spec.types(scope([fw102, contact, doc, "jira:SYN-1" as ItemId])).join("\n");
   assert.ok(types.includes(JSON.stringify(fw102)));
   assert.ok(!types.includes(contact) && !types.includes(doc));
-  // Source content stays out of the `.d.ts`: IDs only, no titles.
   for (const record of connected.records) assert.ok(!types.includes(record.title), record.title);
   assert.ok(writes([fw102]).size > 0);
-  // A region with only a view-only row, or a spreadsheet, gets none.
   assert.deepEqual(spec.types(scope([contact, doc])), []);
   assert.deepEqual(spec.fns(scope([contact, doc])), []);
-  // A read-only connection gives no context, and offers nothing.
   assert.deepEqual(sheetsNamespace(connected.records, undefined).fns(scope([fw102])), []);
   assert.deepEqual(sheetsNamespace(connected.records, undefined).types(scope([fw102])), []);
 });
@@ -59,7 +52,6 @@ test("the namespace offers writes for rows of spreadsheets the person can edit, 
 test("setField refuses a key, an unmapped column, a view-only row and a row outside the region", () => {
   const set = writes([fw102, sprint]).get("setField") as NamespaceWrite;
   const region = host([fw102, sprint, contact]);
-  // Sprint 41 maps no link; a header is never a field.
   assert.throws(() => set.build([sprint, "link", "https://x.example"], region));
   assert.throws(() => set.build([fw102, "Status", "Done"], region));
   assert.throws(() => set.build([fw102, "key", "FW-1"], region));
@@ -91,7 +83,6 @@ test("an edit's revert writes back what was there", () => {
     args: { field: "status", value: null },
   });
   assert.ok("refused" in set.undo({ field: "status", value: "Done" }, applied({})));
-  // A row's title can't be emptied, so an empty one isn't put back.
   assert.ok("refused" in set.undo({ field: "title", value: "x" }, applied({ title: null })));
   assert.equal(sheetsSpecs.ops.setField?.args({ field: "title", value: " " }).ok, false);
 });

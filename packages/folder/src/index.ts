@@ -1,5 +1,3 @@
-// A local folder of markdown files, read-only (decision 0019). It has no
-// writer and no op catalogue.
 export {
   type FolderAttrs,
   folderAttrs,

@@ -38,7 +38,6 @@ test("files that share a key are all left out, and counted", () => {
 
 test("the walk stops at the total size; a file over the per-file cap doesn't count", async (t) => {
   const folder = tempFolder(t);
-  // Sparse files: sizes without writing the bytes.
   const sized = (name: string, size: number) => {
     const path = folder.write(name, "");
     truncateSync(path, size);

@@ -1,11 +1,3 @@
-// Making a folder connection (decision 0049): one step, a folder, from the
-// system's picker through the shell on the desktop app or a typed path under
-// `pnpm dev`, read-only (decision 0019). It identifies its real path. While a
-// kind opens one connection, another folder takes the place of the one
-// connected: one connected before comes back under its ID and number, and
-// any other is a new connection, with the next. The folder is the one
-// connector the window still connects itself (decision 0059): it's on the
-// person's disk, and nothing is hosted.
 import { homedir } from "node:os";
 import { basename, isAbsolute } from "node:path";
 import {
@@ -27,10 +19,8 @@ const given = object({
   ),
 });
 
-// A folder has nothing to set: it reads every file under it.
 export const folderOptions = object({});
 
-// How the window offers it.
 export const folderOffer: ConnectOffer = {
   firstRun: 2,
   mark: "F",
@@ -44,11 +34,9 @@ export const folderOffer: ConnectOffer = {
   catchUp: "The folder can catch up later.",
 };
 
-// What a connection reads: its name, the last part of its path.
 export const folderReads = ({ identity }: { identity: string }): string =>
   basename(identity) || identity;
 
-// The window's words for it, OA-191's and the sidebar's.
 export const folderConnect = {
   steps: [
     {

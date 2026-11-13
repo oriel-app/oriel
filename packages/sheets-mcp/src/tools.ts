@@ -1,6 +1,3 @@
-// The tools, each with what it takes and what it gives back, as JSON Schema,
-// and what it does. Four read and two write, and the annotations say which:
-// a client may refuse the writes by those, so they stay apart.
 import { type Bounds, columnLetters, formatRange, parseRange } from "./a1.ts";
 import { drive, type Google, Refusal, sheets, spreadsheetType } from "./google.ts";
 
@@ -21,11 +18,9 @@ export type Tool = {
   inputSchema: Schema;
   outputSchema: Schema;
   annotations: Annotations;
-  // What the tool found or did, as its output schema has it.
   call(args: Record<string, unknown>, google: Google): Promise<Record<string, unknown>>;
 };
 
-// Most cells one call reads or writes.
 export const cellCap = 5000;
 const pageMost = 100;
 const pageDefault = 25;
@@ -69,8 +64,6 @@ const object = (properties: Schema, required: string[] = Object.keys(properties)
   additionalProperties: false,
 });
 
-// A tool's arguments, read against what it takes. A wrong one is the
-// caller's to fix, so it comes back as a sentence.
 function want(args: Record<string, unknown>, name: string, kind: "string"): string;
 function want(args: Record<string, unknown>, name: string, kind: "string?"): string | undefined;
 function want(args: Record<string, unknown>, name: string, kind: "string" | "string?") {
@@ -281,7 +274,6 @@ const getSpreadsheet: Tool = {
       columnCount: count(p.gridProperties?.columnCount),
       frozenRowCount: count(p.gridProperties?.frozenRowCount),
     }));
-    // Each frozen header row, in one more call.
     const framed = tabs.filter((tab) => tab.frozenRowCount > 0);
     const headers = new Map<number, string[]>();
     if (framed.length) {
@@ -316,8 +308,6 @@ const getSpreadsheet: Tool = {
   },
 };
 
-// Where to read on from, after the first `kept` rows of what Google
-// returned: the same columns, from the next row to the range's end.
 function nextRange(returned: string, kept: number): string | null {
   const range = parseRange(returned);
   const b = range?.bounds;
@@ -328,9 +318,6 @@ function nextRange(returned: string, kept: number): string | null {
   return formatRange(range.tab, { ...b, startRow } as Required<typeof b>);
 }
 
-// A box's notes, and its rows and columns hidden by hand, from the Sheets
-// API's grid data: rows by number and columns by letter, as the sheet shows
-// them, and each note by its cell, at most `cellCap` of them.
 async function gridOf(google: Google, id: string, tab: string, box: Required<Bounds>) {
   const answer = (await sheets(google, "GET", `/v4/spreadsheets/${encodeURIComponent(id)}`, {
     ranges: formatRange(tab, box),
@@ -445,8 +432,6 @@ const readRange: Tool = {
     let kept = 0;
     while (kept < rows.length && cells + (rows[kept]?.length ?? 0) <= cellCap)
       cells += rows[kept++]?.length ?? 0;
-    // The grid of the rows that come back, across the range's columns, or
-    // across the cap's when even the first row is cut.
     const gridFor = async (height: number, width?: number) => {
       if (!grid) return {};
       const range = parseRange(returned);
@@ -487,7 +472,6 @@ const readRange: Tool = {
   },
 };
 
-// A comment or a reply as Drive gives it, or null for a deleted one.
 type Said = {
   author?: { displayName?: unknown };
   createdTime?: unknown;

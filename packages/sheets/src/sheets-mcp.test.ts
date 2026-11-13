@@ -1,7 +1,3 @@
-// Sheets through packages/sheets-mcp (OA-279): the parser over the server's
-// recorded answers (`fixtures/sheets-mcp/`, from its fixture mode), a sync
-// and a preview through it, and answers it can't read, which stop the sync
-// with the index as it was.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -25,7 +21,6 @@ import {
 } from "./sheets-mcp.ts";
 
 const backlog = "1q2w3e4r5t6y7u8i9o0pBacklogFixture";
-// As scripts/record-source-mcp.ts maps the shipped fixture's Backlog tab.
 const backlogPicks = {
   spreadsheets: [
     {
@@ -94,7 +89,6 @@ test("Oriel knows sheets-mcp by this checkout's command, and by no other", () =>
   };
   assert.ok(sheetsMcpMain.endsWith("/packages/sheets-mcp/src/main.ts"));
   assert.equal(serves(sheetsServer, found), true);
-  // Another program reporting its name isn't it.
   assert.equal(serves(sheetsServer, { ...found, command: "node /elsewhere/main.ts" }), false);
   assert.equal(serves(sheetsServer, { ...found, command: null }), false);
 });
@@ -112,7 +106,6 @@ test("read_range's cells as the server cuts them are read on, and nowhere else",
   const { records } = await sync(cut, fakePicks);
   assert.equal(records.filter((record) => record.facets.kind !== "doc").length, 3);
   assert.ok(server.calls.some((call) => call.args.range === "'Backlog'!A3:F1000"));
-  // Cut with a way on that isn't the next row, it stops.
   const astray: ToolCaller = async (call) => {
     const answer = await cut(call);
     const body = answer.structuredContent as Record<string, unknown> | undefined;
@@ -135,7 +128,6 @@ test("an answer Oriel can't read stops the sync, naming the server, with nothing
     broken("read_range", { values: [[{ cell: 1 }]], truncated: false }),
     broken("read_range", { values: [["a"]] }),
     broken("list_spreadsheets", { files: [] }),
-    // Text that isn't JSON.
     async (call: Parameters<ToolCaller>[0]) =>
       call.tool === "get_spreadsheet"
         ? { content: [{ type: "text", text: "Here are your tabs!" }] }
@@ -207,14 +199,12 @@ test("a grid or comments Oriel can't read stop the sync, naming the server", asy
         : answer;
     };
   for (const read of [
-    // No grid where it was asked for.
     changed("read_range", (body) => ({ ...body, hiddenRows: undefined })),
     changed("read_range", (body) => ({ ...body, hiddenRows: [0] })),
     changed("read_range", (body) => ({ ...body, hiddenRows: ["2"] })),
     changed("read_range", (body) => ({ ...body, hiddenColumns: ["a1"] })),
     changed("read_range", (body) => ({ ...body, notes: [{ cell: "Z", note: "x" }] })),
     changed("read_range", (body) => ({ ...body, notes: [{ cell: "B2", note: 3 }] })),
-    // A note outside the rows it read.
     changed("read_range", (body) => ({ ...body, notes: [{ cell: "B5000", note: "x" }] })),
     changed("list_comments", () => ({ comments: "none" })),
     changed("list_comments", () => ({ comments: [{ author: "A", content: "x" }] })),

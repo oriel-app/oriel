@@ -1,7 +1,3 @@
-// A Slack connection, opened (decision 0049) through Slack's MCP server in
-// the person's agent (decision 0059): its options name the public channels
-// it reads, by name or ID. What identifies it is the workspace the server
-// reads, which opening finds. A channel it can't find stops it opening.
 import {
   type IndexRecord,
   type Opened,
@@ -21,39 +17,26 @@ import type { SlackScope } from "./references.ts";
 import { searchChannel, slackServerReads } from "./slack-mcp.ts";
 import { maxChannels, slackSource } from "./source.ts";
 
-// What a Slack connection's writer is built from, by its line in
-// packages/changeset/src/writers.ts.
 export type SlackWrites = {
-  // Through a source server, the server's tools: its reads and its writes
-  // (decision 0059).
   through?: { read: ToolCaller; write: ToolCaller };
-  // A fixture's in-memory workspace, which a test, a shot or a timing made,
-  // as its own fetch: no token goes with it.
   memory?: typeof fetch;
-  // The channels the connection reads, by ID: the only ones written to.
   channels: readonly string[];
 };
 
 export type OpenedSlack = Opened<SlackContext, SlackScope, SlackWrites> & {
-  // The workspace's address, which identifies the connection.
   identity: string;
 };
 
-// The channels a connection's options pick.
 const pickedOf = (options: Readonly<Record<string, unknown>>): string[] =>
   Array.isArray(options.channels)
     ? options.channels.filter((name): name is string => typeof name === "string")
     : [];
 
-// Slack is read only through the source server it's on through.
 export async function openSlack(connection: ToOpen, via: OpenVia): Promise<OpenedSlack> {
   if (!via.server) throw new Error("Slack opens only through its source server");
   return openThrough(connection, via, via.server);
 }
 
-// A connection over a fixture's in-memory workspace (`send`), read and
-// written through it as Slack's Web API, with no token: what the fixture,
-// a test, a shot or a timing that acts in Slack as others do reads.
 export async function openMemory(
   connection: ToOpen,
   via: OpenVia,
@@ -61,8 +44,6 @@ export async function openMemory(
 ): Promise<OpenedSlack> {
   const api = memoryApi(send, readMethods, "the read side");
   const workspace = await connectSlack(api, pickedOf(connection.options));
-  // Channels it no longer finds don't fit its options: it waits for new
-  // ones (decision 0051).
   if (workspace.missing.length)
     throw new OptionsUnfit(
       `Slack has no public channel Oriel can see named ${workspace.missing.map((name) => `#${name}`).join(", ")}`,
@@ -83,7 +64,6 @@ export async function openMemory(
   };
 }
 
-// The channels and authors of the messages indexed, by ID.
 function* slackNames(records: readonly IndexRecord[]): Iterable<readonly [string, string]> {
   for (const record of records) {
     const attrs = slackAttrsOf(record);
@@ -93,12 +73,6 @@ function* slackNames(records: readonly IndexRecord[]): Iterable<readonly [string
   }
 }
 
-// A Slack connection through the source server Slack is on through
-// (decision 0059): the workspace the server reads, which must be the
-// connection's if it names one, and the channels its options pick, else the
-// first the person is in, as the server lists them. Every read goes through
-// the server's read tools, and the writer, built only in packages/changeset,
-// through its write tools, in another process.
 async function openThrough(
   connection: ToOpen,
   via: OpenVia,
@@ -110,9 +84,8 @@ async function openThrough(
   const named = URL.canParse(connection.identity) ? new URL(connection.identity).origin : null;
   if (named !== null && named !== new URL(workspace.url).origin)
     throw new OptionsUnfit(`${server.known.name} reads another Slack workspace than this one`);
-  // A picked public channel the person isn't in: by its name, as the
-  // server's search finds it in this workspace, or by its ID, as its
-  // history names it.
+  // The server doesn't list a picked channel the person isn't in: find it by name through its
+  // search, or by ID through its history.
   const missing: string[] = [];
   for (const want of workspace.missing) {
     if (/^[CG][A-Z0-9]{2,20}$/.test(want)) {
@@ -143,8 +116,6 @@ async function openThrough(
     log: via.log,
     whole: true,
   });
-  // Each sync and read lists the channels' names again, so a renamed one
-  // shows on the next.
   const source: typeof read = {
     ...read,
     sync: (cursor) => {
@@ -169,8 +140,6 @@ async function openThrough(
   };
 }
 
-// What the person sees when Slack can't be synced through its server,
-// naming it. A sync that fails this way keeps the index as it was.
 export function serverProblem(error: unknown, server: string): string {
   if (error instanceof ServerUnreadable)
     return `${server} answered in a way Oriel didn't expect, so Oriel kept the window as it was.`;

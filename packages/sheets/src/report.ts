@@ -1,9 +1,3 @@
-// What a Sheets connection's last sync left out, as Settings lists it under
-// the connection (decision 0050): rows that share a Row ID or have none, by
-// row number as the sheet shows them, for the person to fix in the sheet;
-// rows hidden by hand that weren't read; a tab past the row cap; a tab or a
-// spreadsheet that couldn't be read, and picks past the caps. A title is the
-// spreadsheet's own, shown as text.
 import { maxRows, maxSpreadsheets, maxTabs, type SheetsReport } from "./source.ts";
 
 const rows = (numbers: readonly number[]) =>

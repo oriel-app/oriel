@@ -1,16 +1,5 @@
-// Slack's MCP server's answers, read (OA-277): each tool answers with
-// Markdown meant for a model, as one string under a key of a JSON object in
-// a text block, with no structured content. Each reader here takes one
-// tool's answer, as recorded in fixtures/slack-mcp/real-*.json, and gives
-// the Web API's shape the source already checks. Anything it doesn't
-// recognise stops the sync (`ServerUnreadable`), naming the tool, never the
-// answer: the index stays as it was.
-//
-// A message's text is the source's, and may hold anything, such as a line
-// that reads like the next message's header. Where an answer counts what
-// it lists, the count must match what was read; elsewhere each message's
-// time must match its `ts`, and the `ts`s must run in order, so text that
-// only looks like a message is refused, not read as one.
+// A message's text may hold a line that reads like the next message's header, so counts must
+// match and each time its `ts`, in order: text that only looks like a message is refused.
 import { ServerUnreadable } from "@oriel/core";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -20,15 +9,12 @@ const tsShape = /^[0-9]{10}\.[0-9]{6}$/;
 const userShape = /^[UBW][A-Z0-9]{2,20}$/;
 const channelShape = /^[CG][A-Z0-9]{2,20}$/;
 
-// The Markdown under `key` of an answer's JSON.
 export function markdownOf(tool: string, body: unknown, key: string): string {
   if (!isObject(body) || typeof body[key] !== "string")
     throw new ServerUnreadable(`${tool} answered without its ${key}`);
   return body[key];
 }
 
-// The cursor a page's words give, or "" on the last. One that says more
-// remain but gives no way to them can't be read.
 function cursorOf(tool: string, words: string, more: RegExp, last: RegExp): string {
   const given = /cursor: [`"]([A-Za-z0-9+/=_-]{1,500})[`"]/.exec(words)?.[1];
   if (given) return given;
@@ -37,10 +23,8 @@ function cursorOf(tool: string, words: string, more: RegExp, last: RegExp): stri
   return "";
 }
 
-// A person's profile, from `slack_read_user_profile`'s lines, each at its
-// place: "User ID: U0…", "Username: …", "Display Name: …", "Real Name: …",
-// then the rest. A value is one line; a field Oriel reads that comes again
-// later, as text a person set could try, leaves the profile unread.
+// A value is one line; a field that comes again later, as text a person set could try, leaves
+// the profile unread.
 export function profileOf(
   tool: string,
   body: unknown,
@@ -61,13 +45,8 @@ export function profileOf(
   return { id, display_name: display, real_name: real };
 }
 
-// The person's channels, from `slack_list_user_channels`' Markdown, read
-// line by line, each field at its place: a heading that counts them, then a
-// section each, "### #name", "- **ID:**", "- **Type:**", an optional "-
-// **Purpose:**" whose text may run on, and "- **Archived:**", then a blank
-// line; last, where more remain, "---" and the cursor. A purpose with a
-// line like a field or a section, as a person could write, leaves the
-// answer unread: no field ever comes from one.
+// A purpose may run on over lines; one with a line like a field or a section, as a person could
+// write, leaves the answer unread.
 export function channelsOf(
   tool: string,
   body: unknown,
@@ -100,8 +79,6 @@ export function channelsOf(
     take("Type");
     if ((lines[i] ?? "").startsWith("- **Purpose:** ")) {
       i += 1;
-      // Its text runs on to the line before "- **Archived:**": none of it
-      // may read as a field or a section.
       while (!(lines[i] ?? "").startsWith("- **Archived:** ")) {
         if (i >= lines.length || field.test(lines[i] ?? "") || (lines[i] ?? "").startsWith("### #"))
           throw unread("listed a channel whose purpose reads like its fields");
@@ -115,7 +92,6 @@ export function channelsOf(
     if (!channelShape.test(id)) throw unread("listed a channel without its ID");
     channels.push({ id, name, is_archived: archived === "Yes" });
   }
-  // Last, where more remain, the cursor; then nothing.
   let next = "";
   if (head[2]) {
     const cursor =
@@ -136,8 +112,6 @@ export function channelsOf(
   return { channels, next };
 }
 
-// A message as the Web API gives it, as far as the server says: its `ts`,
-// author, text, and its thread's replies and latest reply where it has one.
 export type ReadMessage = {
   ts: string;
   user: string;
@@ -163,8 +137,6 @@ function wallOf(time: string): { seconds: number; zone: string } | null {
   };
 }
 
-// The offset of a time's zone from UTC, from a `ts` it's the time of: whole
-// quarter hours, or null when they can't be the same moment.
 function offsetOf(time: string, ts: string): { offset: number; zone: string } | null {
   const wall = wallOf(time);
   if (!wall) return null;
@@ -172,11 +144,8 @@ function offsetOf(time: string, ts: string): { offset: number; zone: string } | 
   return offset % 900 === 0 && Math.abs(offset) <= 14 * 3600 ? { offset, zone: wall.zone } : null;
 }
 
-// A message with what its thread line says: "Thread: 4 replies (latest:
-// 2026-10-31 13:39:10 PDT)". The latest reply's `ts` comes from its time,
-// to the second, which is all Oriel orders it by, in its zone's offset as
-// the page's headers give it. A zone none of them is in, as PST on a page
-// all PDT, gives no offset: the reply's `ts` is left for the caller to read.
+// A zone none of the page's headers is in, as PST on a page all PDT, gives no offset: the
+// reply's `ts` is left for the caller to read.
 function threaded(
   tool: string,
   message: ReadMessage,
@@ -200,18 +169,12 @@ function threaded(
   };
 }
 
-// A message Slack posted for a person joining the channel, as the server
-// shows it: as the Web API's `channel_join`, which isn't anyone's message.
+// The server shows a join as a message; the Web API calls it `channel_join`, nobody's message.
 const joined = (message: ReadMessage) =>
   new RegExp(`^<@${message.user}(?:\\|[^>]*)?> has joined the channel$`).test(message.text)
     ? { ...message, subtype: "channel_join" as const }
     : message;
 
-// A channel's messages, newest first, from `slack_read_channel`'s Markdown:
-// "Channel: #name (C0…)", then each message under its header, "=== Message
-// from Name <email> (U0…) at <time> ===", with its "Message TS:" line. Its
-// channel must be the one asked; each header's time must be its `ts`'s, and
-// each `ts` older than the last.
 export function historyOf(
   tool: string,
   body: unknown,
@@ -219,8 +182,6 @@ export function historyOf(
 ): {
   name: string;
   messages: ReadMessage[];
-  // Each message's author and time as its header gives them, for
-  // `conciseAgrees`.
   heads: { author: string; time: string; text: string }[];
   next: string;
 } {
@@ -265,19 +226,15 @@ export function historyOf(
   return { name: top[1] ?? "", messages, heads, next };
 }
 
-// The `ts` just after one, which a read's `latest`, never inclusive, takes
-// to end at that message.
+// Slack's `latest` is exclusive, so a read that ends at a message asks for just after it.
 export const justAfter = (ts: string): string => {
   const micros = BigInt(ts.replace(".", "")) + 1n;
   const digits = String(micros).padStart(16, "0");
   return `${digits.slice(0, -6)}.${digits.slice(-6)}`;
 };
 
-// Whether the same messages, read again in the concise format, "Name
-// <email>: text [time]" each, line up with a page's messages, author by
-// author, time by time and text by text. A header a message's text made up
-// can't also pass in the concise format: there it's part of its real
-// author's text, so the two part where it is.
+// A header a message's text made up can't also pass in the concise format, where it's part of
+// its real author's text, so the two disagree there.
 export function conciseAgrees(
   tool: string,
   body: unknown,
@@ -297,8 +254,6 @@ export function conciseAgrees(
     if (!words.startsWith(start, at))
       throw new ServerUnreadable(`${tool} listed messages that don't agree`);
     const close = last ? words.length - end.length : words.indexOf(`${end}\n\n`, at + start.length);
-    // Each message's text the same in both: a boundary one made up would
-    // move text from one message to another in one of them.
     if (
       close < at + start.length ||
       !words.startsWith(end, close) ||
@@ -310,11 +265,6 @@ export function conciseAgrees(
   if (at !== words.length) throw new ServerUnreadable(`${tool} listed messages that don't agree`);
 }
 
-// A message's thread, from `slack_read_thread`'s Markdown: the message,
-// "=== THREAD PARENT MESSAGE ===", then "=== THREAD REPLIES (N total) ===",
-// and "--- Reply i of N ---" for each, each with "From:", "Time:" and
-// "Message TS:" lines. The replies must be N, in order, each numbered; the
-// message must be the one asked.
 export function threadOf(
   tool: string,
   body: unknown,
@@ -381,10 +331,6 @@ export function threadOf(
   };
 }
 
-// A channel's address, from `slack_search_channels`' Markdown: under a
-// heading that counts them, each result's "Name: #…" and its one
-// "Permalink: [link](https://<workspace>.slack.com/archives/C0…)" line. A
-// purpose that holds a line like those leaves the answer unread.
 export function searchedChannelsOf(
   tool: string,
   body: unknown,
@@ -402,11 +348,6 @@ export function searchedChannelsOf(
     .slice(1);
   if (blocks.length !== Number(counted[1]))
     throw new ServerUnreadable(`${tool} listed channels Oriel can't count`);
-  // Each result's lines in the server's order, each at its place: "Name:",
-  // "Creator:" and "Created:" where given, a "Purpose:" whose text may run
-  // on, then "Permalink:", "Is Archived:" and "Channel Type:", and nothing
-  // after but blank lines and "---". A purpose with a line like one of
-  // them leaves the answer unread: no field ever comes from one.
   const label = /^(Name|Creator|Created|Purpose|Permalink|Is Archived|Channel Type):/;
   return blocks.map((block) => {
     const lines = block.split("\n");

@@ -1,9 +1,4 @@
-// What the agent reads to draft a Slack connection's channels, while it
-// waits for its options (decision 0051): the public channels the workspace
-// lists, each by name with the day it was last active, most lately active
-// first, read live. Only the fixture's workspace in memory waits so: one
-// through Slack's server reads the person's channels (decision 0059). A channel's name is the workspace's words, so it reaches
-// the agent only as a run's result.
+// A channel's name is the workspace's words, so it reaches the agent only as a run's result.
 import { array, maxPreviewRows, object, optional, type PreviewTable, string } from "@oriel/core";
 import type { SlackApi } from "./api.ts";
 import { tsInstant } from "./source.ts";
@@ -14,9 +9,6 @@ const listing = object({
 });
 const latest = object({ messages: array(object({ ts: string })) });
 
-// How many of the channels Slack lists first are read, one request each
-// for when it was last active; the preview shows the `maxPreviewRows` most
-// lately active of them.
 const maxListed = 100;
 
 export async function slackPreview(api: SlackApi): Promise<PreviewTable[]> {

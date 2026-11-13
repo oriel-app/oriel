@@ -4,7 +4,6 @@ import { googleAccess } from "./access.ts";
 import { type Fetch, tokenEndpoint } from "./oauth.ts";
 import type { TokenFile } from "./token-file.ts";
 
-// Made-up values; none is a real client or token.
 const client = { id: "123456789012-fakeclient.apps.googleusercontent.com", secret: null };
 
 function memoryFile(refresh: string | null): TokenFile & { writes: string[] } {
@@ -22,7 +21,6 @@ function memoryFile(refresh: string | null): TokenFile & { writes: string[] } {
   };
 }
 
-// Google's token endpoint, answering each refresh with the next reply.
 function endpoint(...replies: { status: number; body: unknown }[]) {
   const forms: URLSearchParams[] = [];
   const fetch: Fetch = async (input, init) => {

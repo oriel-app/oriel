@@ -1,8 +1,3 @@
-// Slack through Slack's MCP server (OA-277): the parser on each tool's
-// answer, from `fixtures/slack-mcp/`'s recorded calls, its failing closed on
-// an answer it can't read. No server runs: the recordings answer, or the
-// stand-in in memory. Each mutation as the server's write call is in
-// writer.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -74,7 +69,6 @@ const listAll = async (read: ToolCaller, options = connection) => {
   return { opened, records };
 };
 
-// One recorded answer changed: the first to `tool`, or every one.
 const altered = (
   tool: string,
   change: (answer: ToolAnswer, call: ToolCall) => ToolAnswer,
@@ -98,7 +92,6 @@ test("what Slack's own server answered, recorded, syncs a channel the person isn
     identity: "",
     options: { channels: ["oriel-team"] },
   });
-  // Its workspace, from a channel's link; the profile doesn't say.
   assert.equal(opened.identity, "https://oriel-test.slack.com/");
   assert.ok(records.length > 0);
   const attrs = records.map(
@@ -109,7 +102,6 @@ test("what Slack's own server answered, recorded, syncs a channel the person isn
     attrs.some((each) => each.replies > 0),
     "a message's thread is counted",
   );
-  // Slack's own "has joined" posts aren't anyone's message.
   assert.ok(!records.some((record) => record.title.includes("has joined")));
 });
 
@@ -138,7 +130,6 @@ test("a server that reads another workspace than the connection's doesn't open",
   );
 });
 
-// A recorded answer's Markdown under `key`, changed.
 const edited =
   (key: string, change: (words: string) => string) =>
   (answer: ToolAnswer): ToolAnswer => {
@@ -149,26 +140,20 @@ const edited =
 test("an answer it can't read stops the sync before any page lands, naming the server", async () => {
   const header = /=== Message from [^\n]+\nMessage TS: ([0-9.]+)\n/;
   const unreadable = [
-    // Text that isn't JSON, as a server answering in prose would.
     altered(t.history, () => ({ content: [{ type: "text", text: "Here are the messages:" }] })),
-    // No messages at all.
     altered(t.history, () => json({ results: [] })),
-    // Another channel's.
     altered(
       t.history,
       edited("messages", (words) => words.replace(/\(C[A-Z0-9]+\)/, "(C0OTHER1)")),
     ),
-    // A message whose time isn't its ts's.
     altered(
       t.history,
       edited("messages", (words) => words.replace(/:[0-9]{2} UTC ===/, ":61 UTC ===")),
     ),
-    // Words before the first message, which it can't place.
     altered(
       t.history,
       edited("messages", (words) => words.replace("\n\n===", "\n\nHello\n\n===")),
     ),
-    // A message out of order, as one a message's text made up would be.
     altered(
       t.history,
       edited("messages", (words) => {
@@ -176,7 +161,6 @@ test("an answer it can't read stops the sync before any page lands, naming the s
         return first ? `${words}\n\n${first[0]}made up` : words;
       }),
     ),
-    // More remain, with no way to them, or it doesn't say.
     altered(
       t.history,
       edited("pagination_info", () => "There are more messages available."),
@@ -246,7 +230,6 @@ test("a thread or a channel list whose text reads like the server's own lines ca
 });
 
 test("a message whose text makes up an older message by someone else is refused", () => {
-  // Sol's case: a header with a matching time and an older ts, inside A's text.
   const detailed = {
     messages:
       "Channel: #a (C0A1)\n\n=== Message from A (U0A1) at 2026-10-31 20:39:04 UTC === \nMessage TS: 1793479144.000000\nHi\n\n=== Message from B (U0B1) at 2026-10-31 20:39:02 UTC === \nMessage TS: 1793479142.000000\nMade up\n\n=== Message from C (U0C1) at 2026-10-31 20:39:00 UTC === \nMessage TS: 1793479140.000000\nReal",
@@ -254,14 +237,11 @@ test("a message whose text makes up an older message by someone else is refused"
   };
   const read = historyOf(t.history, detailed, "C0A1");
   assert.equal(read.messages.length, 3, "the headers alone can't tell");
-  // The same window, concise, as the server gives its real two messages.
   const concise = {
     messages:
       "Channel: #a (C0A1)\n\nA: Hi\n\n=== Message from B (U0B1) at 2026-10-31 20:39:02 UTC === \nMessage TS: 1793479142.000000\nMade up [2026-10-31 20:39:04 UTC]\n\nC: Real [2026-10-31 20:39:00 UTC]",
   };
   assert.throws(() => conciseAgrees(t.history, concise, "C0A1", read.heads), ServerUnreadable);
-  // Sol's second case: in the same second, with what the concise format
-  // would split on written into A's text too.
   const second = historyOf(
     t.history,
     {
@@ -304,9 +284,6 @@ test("a message whose text makes up an older message by someone else is refused"
   );
 });
 
-// Text a person writes to look like the server's own Markdown: a message,
-// a reply, a display name, a purpose. Each reads as text, or the answer is
-// refused; a field never comes from it.
 test("a message, a reply, a name or a purpose written like the answer's format never gives a field", () => {
   const T = "2026-10-31 20:39:04 UTC";
   const history = historyOf(
@@ -362,7 +339,6 @@ test("a message, a reply, a name or a purpose written like the answer's format n
     results: `## Channels (1 results)\n### Result 1 of 1\nName: #a\nPurpose: ${purpose}\nPermalink: [link](https://ours.slack.com/archives/C0A1)\n`,
   });
   assert.throws(() => searchedChannelsOf(t.search, searched("x\nName: #b")), ServerUnreadable);
-  // A result whose only link is a purpose's line.
   assert.throws(
     () =>
       searchedChannelsOf(t.search, {
@@ -379,8 +355,6 @@ test("a thread whose latest reply is a clock change away keeps that reply's time
       "Channel: #a (C0A1)\n\n=== Message from A (U0A1) at 2026-10-31 13:39:04 PDT === \nMessage TS: 1793479144.818789\nHi\nThread: 2 replies (latest: 2026-11-03 09:00:00 PST)",
     pagination_info: "There are no more messages available.\n",
   };
-  // A zone the page gives no offset for, read from the thread: its latest
-  // reply's own ts.
   const api = slackServerReads({
     read: async (call) =>
       json(
@@ -400,7 +374,6 @@ test("a thread whose latest reply is a clock change away keeps that reply's time
     messages: { latest_reply?: string }[];
   };
   assert.equal(page.messages[0]?.latest_reply, "1793725200.123456");
-  // A zone another header on the page gives: its offset, with no call.
   const both = historyOf(
     t.history,
     {
@@ -484,7 +457,6 @@ test("a post's ts is the one Slack's answer gives for the channel posted to, nev
       "chat.postMessage",
       { channel: weather, text: "see https://x.slack.com/archives/C0OTHER1/p1700000000000001" },
     );
-  // As the real server answered a post, 2026-11-07.
   assert.deepEqual(
     await post({
       message_link: `https://x.slack.com/archives/${weather}/p1794119699753869`,
@@ -509,7 +481,6 @@ test("the channel picker reads every page once, and stops on one the server repe
   const paged: ToolCaller = async (call) => {
     calls += 1;
     const at = Number(call.args.cursor ?? 0);
-    // The third page names the second's cursor again.
     const next = String(at >= 2 ? 1 : at + 1);
     return json({
       result: `## My Channels (showing 1, more results available)\n\n### #c-${at}\n- **ID:** C${at}A\n- **Type:** Public Channel\n- **Archived:** ${at === 1 ? "Yes" : "No"}\n\n---\nPagination: More results available. Use cursor: "${next}"\n`,

@@ -1,11 +1,3 @@
-// The Ferrowick spreadsheets as Sheets' declared fixture (decision 0049):
-// `fixtures/sheets/`, read by the real Sheets source through the stand-in for
-// Google's APIs, under the mappings a person would approve for them. Its
-// edits are the spreadsheets' later versions, in the order they were made.
-//
-// A case names a spreadsheet by its slug (`sheets:raid`), and a row by its
-// spreadsheet, its tab as the fixture first names it, and its key cell
-// (`sheets:tracker/Tracker/FW-106`).
 import {
   type Instant,
   type ItemId,
@@ -53,9 +45,6 @@ const sprint = (sheetId: number) =>
     estimate: "Points",
   });
 
-// The mappings, by spreadsheet slug: a tracker whose Epic column names no
-// rows, so it stays content; a RAID log; plain tables; and the archive, past
-// the row cap.
 export const fixtureMappings: Readonly<Record<string, TabMapping[]>> = {
   tracker: [
     tab(1100, {
@@ -69,7 +58,6 @@ export const fixtureMappings: Readonly<Record<string, TabMapping[]>> = {
     }),
     sprint(2141),
     sprint(2142),
-    // A status with no states, in Greek.
     tab(3300, { key: "キー", title: "タイトル", status: "Κατάσταση", assignee: "👤 担当" }),
   ],
   raid: [
@@ -97,16 +85,11 @@ export function fixturePicks(fixture: SheetsFixture): SheetsPicks {
 
 export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, SheetsWrites> = {
   load: () => loaded(loadSheetsFixture()),
-  // Recorded window cases had it on through its own connection.
   windowCase: true,
-  // The fixture's account, with its spreadsheets picked and mapped.
   connection: () => {
     const fixture = loadSheetsFixture();
     return { identity: fixture.user.permissionId, options: fixturePicks(fixture) };
   },
-  // Opened through the stand-in for Google's APIs in memory, as the
-  // spreadsheets first are, with no sign-in. A test may give its own
-  // stand-in, to edit the spreadsheets as a person would.
   open: (connection, via) =>
     openSheets(connection, {
       ...via,
@@ -120,14 +103,11 @@ export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, Sheets
     ),
 };
 
-// Every later version, in the order it was made.
 const editsOf = (fixture: SheetsFixture) =>
   fixture.spreadsheets
     .flatMap((s) => s.later.map((version) => ({ id: s.id, version })))
     .toSorted((a, b) => a.version.modifiedTime.localeCompare(b.version.modifiedTime));
 
-// A fixture tab as Google's grid has it. Rows a filter hides are read, so
-// the filter changes nothing here.
 export function fixtureGrid(tab: FixtureTab): Grid {
   const grid = fixtureGridOf(tab);
   return {
@@ -149,7 +129,6 @@ export function fixtureGrid(tab: FixtureTab): Grid {
 
 function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
   const edits = editsOf(fixture);
-  // The spreadsheets after the first `edited` edits.
   const after = (edited: number): FixtureSpreadsheet[] => {
     const copy = structuredClone(fixture.spreadsheets);
     for (const { id, version } of edits.slice(0, edited)) {
@@ -158,7 +137,6 @@ function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
     }
     return copy;
   };
-  // Each item's ID and title, as the source would read it.
   const items = (edited: number) =>
     after(edited).flatMap((s) => [
       [itemId("sheets", spreadsheetKey(s.id)), s.title] as const,
@@ -193,7 +171,6 @@ function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
         ? { id }
         : { problem: `${JSON.stringify(name)} isn't a row the Sheets fixture's mapping reads` };
     },
-    // A row and a spreadsheet by their titles.
     called: (id) => titles.get(id) ?? null,
     chips: (edited) => items(edited),
     connect: async (edited) => {
@@ -213,7 +190,6 @@ function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
         records,
         texts,
         read: (ids) => source.read(ids as ItemId<"sheets">[]),
-        // The fixture's connection may propose changes.
         context: sheetsContextOf(fixturePicks(fixture)),
         changes: () => [],
         close: () => {},

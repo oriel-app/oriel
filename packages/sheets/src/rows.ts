@@ -1,8 +1,4 @@
-// A row found again by its key, as a write and a diff need it (decision
-// 0050): rows move, so a row is found by its key cell in its mapped tab,
-// read as a sync reads it, never by its number. Its fields are what each
-// mapped cell holds as entered, so a value written back is the value that
-// was there: text stays text, a number a number. Reads only.
+// Rows move, so a row is found by its key cell, never by its number.
 import { createHash } from "node:crypto";
 import type { FieldReader, FieldValues, ItemId } from "@oriel/core";
 import { parseItemId } from "@oriel/core";
@@ -12,8 +8,6 @@ import { maxRows, readGrid } from "./grid.ts";
 import { type FieldName, type SheetsPicks, type TabMapping } from "./mapping.ts";
 import { type Cell, type Entered, type Grid, type TableRow, tableOf } from "./table.ts";
 
-// A mapped tab as read now: its grid with what each cell holds as entered,
-// and its table.
 export type TabRead = {
   spreadsheet: string;
   tab: TabInfo;
@@ -21,17 +15,12 @@ export type TabRead = {
   grid: Grid;
   columns: Partial<Record<FieldName, number>>;
   rows: TableRow[];
-  // The 0-based index of the table's last row, and whether rows past the
-  // cap weren't read.
   last: number;
   capped: boolean;
 };
 
-// A row of a tab read now: its 0-based index in the grid.
 export type RowAt = TabRead & { row: TableRow; index: number };
 
-// A field's value as a cell holds it: a formula as its text, which a write
-// refuses to touch.
 export const valueOf = (entered: Entered | undefined): unknown =>
   entered === undefined || entered === null
     ? null
@@ -39,13 +28,10 @@ export const valueOf = (entered: Entered | undefined): unknown =>
       ? entered.formula
       : entered;
 
-// A grid row's cells, 0-based, as the grid has them.
 export const cellsAt = (grid: Grid, index: number): readonly (Cell | null)[] =>
   grid.rows[index - grid.startRow] ?? [];
 
-// A digest of everything a row holds as entered, and its notes, so any edit
-// to it moves it and an edit elsewhere doesn't: a revert's check that nobody
-// touched a row Oriel added.
+// A revert's check that nobody touched a row Oriel added: notes count too, so any edit moves it.
 export function cellsDigest(cells: readonly (Cell | null)[]): string {
   const held = cells.map((cell) =>
     cell ? (cell.note === null ? (cell.entered ?? null) : [cell.entered ?? null, cell.note]) : null,
@@ -54,8 +40,6 @@ export function cellsDigest(cells: readonly (Cell | null)[]): string {
   return createHash("sha256").update(JSON.stringify(held)).digest("hex").slice(0, 16);
 }
 
-// The row's values for `fields`, from its cells: Oriel's field names, and
-// `cells`. A field its tab doesn't map is left out.
 export function rowValues(
   columns: Partial<Record<FieldName, number>>,
   cells: readonly (Cell | null)[],
@@ -70,7 +54,6 @@ export function rowValues(
   );
 }
 
-// Where a row is, from its stable ID: `<spreadsheet>/<sheetId>/<key>`.
 export function placeOf(
   stableId: string,
 ): { spreadsheet: string; sheetId: number; key: string } | null {
@@ -82,9 +65,6 @@ export function placeOf(
 export const stableIdOf = (spreadsheet: string, sheetId: number, key: string) =>
   `${tabPart(spreadsheet, sheetId)}${key}`;
 
-// Finds rows in the picked spreadsheets' mapped tabs. `where` remembers
-// which tab each key was last found in, so finding it again reads that tab
-// alone; a row can't change tabs, since its key hashes its tab's ID.
 export function rowFinder(
   google: Google,
   picks: SheetsPicks,
@@ -93,8 +73,6 @@ export function rowFinder(
   const mappingOf = (spreadsheet: string, sheetId: number) =>
     picks.spreadsheets.find((s) => s.id === spreadsheet)?.tabs.find((t) => t.sheetId === sheetId);
 
-  // A mapped tab, read now; "gone" when its spreadsheet or tab is, and why
-  // it stopped when its mapping no longer fits its header row.
   async function readTab(
     spreadsheet: string,
     sheetId: number,
@@ -123,15 +101,11 @@ export function rowFinder(
     };
   }
 
-  // The row whose key hashes to `key` in that tab, now.
   const rowIn = (read: TabRead, key: string): RowAt | null => {
     const row = read.rows.find((r) => rowKey(read.spreadsheet, read.tab.sheetId, r.key) === key);
     return row ? { ...read, row, index: row.number - 1 } : null;
   };
 
-  // The row, in the tab `place` names or, without one, wherever it was
-  // last found, or else in any mapped tab. "gone" when no mapped tab holds
-  // it as an item now.
   async function find(
     key: string,
     place?: { spreadsheet: string; sheetId: number },
@@ -155,8 +129,6 @@ export function rowFinder(
   return { readTab, find, mappingOf };
 }
 
-// How change sets read a row's fields while its connection is read-only,
-// so a change set made before can still be shown.
 export function rowReader(google: Google, picks: SheetsPicks, prefix: string): FieldReader {
   const finder = rowFinder(google, picks);
   return {

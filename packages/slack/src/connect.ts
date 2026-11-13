@@ -1,6 +1,3 @@
-// Connecting Slack: the workspace a token is for, and the channels the user
-// picked, by name or ID, found among the public channels it can see. A
-// channel that isn't found is reported, never guessed at.
 import { array, boolean, object, optional, string } from "@oriel/core";
 import type { SlackApi } from "./api.ts";
 
@@ -12,17 +9,14 @@ const listing = object({
 
 export type SlackWorkspace = {
   teamId: string;
-  // Its address, such as "https://example.slack.com/".
   url: string;
   channels: { id: string; name: string }[];
-  // What the user asked for that isn't one of its public channels.
   missing: string[];
-  // Whom the token or server reads as, where it said.
   self: string | null;
 };
 
-// With none picked and `firstOf` given, the first that many it lists: as
-// Slack's MCP server lists them, the channels the person is in.
+// Slack's MCP server lists only the channels the person is in, so with none picked, `firstOf`
+// takes the first of those.
 export async function connectSlack(
   api: SlackApi,
   picked: readonly string[],
@@ -72,7 +66,6 @@ export async function connectSlack(
   };
 }
 
-// Whom a token is for: the person Oriel reads Slack as, and posts as.
 export async function slackPerson(api: SlackApi): Promise<string> {
   const who = object({ user_id: string })(await api("auth.test", {}));
   if (!who.ok) throw new Error("slack: auth.test: unexpected reply");

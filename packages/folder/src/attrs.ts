@@ -1,7 +1,3 @@
-// What the index keeps per file beyond core's fields, what a read returns, and
-// how the folder shows in the window. A file has a title, a location and an
-// update time, and its one facet is its kind, "doc": directories aren't epics,
-// and a file has no people, state or estimate (decision 0019).
 import {
   type DetailsOf,
   type Facets,
@@ -14,33 +10,22 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// What a file is, in the declarations' `Item` (see `ItemDocs` in bindings):
-// shape only, never source text.
+// Shape only, never source text: this lands in the declarations' `Item`.
 export const folderItemDoc =
   "A folder item is a markdown file: its title is the file's name, its text the file, or a note that it's too large to read. It has no status, assignee or estimate.";
 
-// Nothing: core's fields say all the window needs about a file.
 export type FolderAttrs = Record<string, never>;
 
 export type FolderRecord = IndexRecord<"folder", FolderAttrs>;
 
-// A file's content, read live.
 export type FolderContent = {
-  // The file's name without `.md`, in NFC, as the walk found it: data, like
-  // the text.
   title: string;
-  // The file's text, or for a file too large to read, a note saying so.
   text: string;
-  // Oriel's words about how `text` was made, when it isn't simply the file's
-  // UTF-8 text: the file was too large, or invalid bytes were replaced. Null
-  // otherwise.
   note: string | null;
 };
 
 export const folderAttrs: Validator<FolderAttrs> = object({});
 
-// What a read returns, checked where it is used: a reader may sit behind any
-// transport.
 export const folderContent = object({
   title: string,
   text: string,
@@ -49,16 +34,11 @@ export const folderContent = object({
 
 export const folderFacets = (): Facets => ({ kind: "doc" });
 
-// A file has no type or status of its own beyond its kind, so the window shows
-// what core knows.
 export const folderDetails: DetailsOf = () => null;
 
-// A fixed-length hash of the folder's ID and the file's canonical relative
-// path (decision 0019): a file's name is its title, never its key.
+// A file's name is its title, never its key, so no name a person wrote reaches an ID.
 export const folderKeyShape = /^[0-9a-f]{16}$/;
 
-// A file's key is a hash, which means nothing to anyone, so it reads as a
-// file; its title says which.
 export const folderPresentation: Presentation = {
   name: "Folder",
   inSentence: "the folder",
@@ -68,9 +48,6 @@ export const folderPresentation: Presentation = {
   details: folderDetails,
 };
 
-// A file as the panel beside the page shows it, from a live read: its text,
-// read as markdown into the web's own blocks, and Oriel's note on how the
-// text was made, if any. A file too large to read is the note alone.
 export const folderPanel: PanelOf = (content) => {
   const read = folderContent(content);
   if (!read.ok) return null;

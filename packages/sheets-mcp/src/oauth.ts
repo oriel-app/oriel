@@ -1,23 +1,14 @@
-// Google's OAuth for installed apps: PKCE, a checked `state` and a loopback
-// redirect (RFC 8252), then the code's exchange, and refreshing. The client is
-// the person's own, from this server's environment. No problem here quotes a
-// code, a token, the client's ID or its secret.
-// https://developers.google.com/identity/protocols/oauth2/native-app
 import { type After, after, loopback } from "./loopback.ts";
 import { newState, pkce, type Random } from "./pkce.ts";
 
 export const authorizeEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
 export const tokenEndpoint = "https://oauth2.googleapis.com/token";
-// Reading and writing every spreadsheet the account can, and listing them by
-// name; nothing of Drive's but its files' names and dates.
 export const scopes = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.metadata.readonly",
 ] as const;
 
-// GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if it has one, as `login` reads
-// them and keeps them (token-file.ts). Google treats a
-// desktop client's secret as no secret, and PKCE does its work, so a client
+// Google treats a desktop client's secret as no secret, and PKCE does its work, so a client
 // with no secret leaves `client_secret` out of its requests.
 export type GoogleClient = { id: string; secret: string | null };
 
@@ -32,16 +23,13 @@ const clientForm = (client: GoogleClient): Record<string, string> => ({
   ...(client.secret === null ? {} : { client_secret: client.secret }),
 });
 
-// `expiresAt` is in milliseconds since the epoch.
 export type Tokens = { access: string; refresh: string; expiresAt: number };
 
 export type Fetch = typeof fetch;
 
 export type SignInIo = {
   fetch: Fetch;
-  // Opens the address in the person's browser.
   open: (url: string) => Promise<void>;
-  // Milliseconds since the epoch.
   now: () => number;
   random?: Random;
   after?: After;
@@ -53,7 +41,6 @@ export type SignIn =
 
 export type Refresh =
   | { status: "refreshed"; tokens: Tokens }
-  // Google refused the refresh token: expired, revoked, or another client's.
   | { status: "signed-out" }
   | { status: "failed"; problem: string };
 

@@ -1,22 +1,5 @@
-// What Oriel reads to help a person map a Sheets connection's tabs while it
-// waits for its options (decision 0051), and how a draft of them reads.
-//
-// The preview is each picked tab's first rows, read live, as the sheet shows
-// them: the cells as text under their column letters, the header among them,
-// and the tab by its spreadsheet's ID and `sheetId`, never its title. Every
-// cell, header and title is the sheet's own words, so it reaches the agent
-// only as a run's result.
-//
-// A draft names each column by its letter and each tab by its table's `at`,
-// so no header steers what the card says; Oriel draws the card from the
-// sheet, and applying a draft turns each letter into the header above it,
-// so the mapping keeps naming the same column when one is inserted or
-// moved (decision 0050).
-//
-// Through sheets-mcp (decision 0059) it's read through the server's read
-// tools, the same way. There, nothing was picked in Google's own page, so
-// a connection that maps no spreadsheet yet previews the person's most
-// recently changed ones, and a draft picks those it maps.
+// Every cell, header and title is the sheet's own words, so it reaches the agent only as a run's
+// result; a draft names columns by letter so no header steers what the card says.
 import {
   array,
   boolean,
@@ -51,24 +34,15 @@ import { memoryGoogle, picksOf } from "./open-connection.ts";
 import { recentSpreadsheets, serverGoogle } from "./sheets-mcp.ts";
 import { maxTabs } from "./source.ts";
 
-// The columns a preview shows, at most: past them a sheet is a database.
 const maxColumns = 52;
-// The tabs a list of names shows, at most.
 const maxListed = 1000;
-// The spreadsheets a connection through sheets-mcp that maps none previews.
 export const maxRecent = 5;
 
-// A tab's place in its source, as a table's `at` says it.
 const placeOf = (at: string): { id: string; sheetId: number } | null => {
   const [, id, sheetId] = /^([A-Za-z0-9_-]{10,100})\/(\d{1,12})$/.exec(at) ?? [];
   return id && sheetId ? { id, sheetId: Number(sheetId) } : null;
 };
 
-// The tables read first, then the tabs mapped, then the rest while there's
-// room, in that order: a tab the person asks about, and one the options
-// read, is always there, and first (OA-232). With `names`, each tab's name and place alone, from one
-// request a spreadsheet, as Settings lists them; a connection may have
-// hundreds.
 export async function sheetsPreview(
   connection: ToOpen,
   via: OpenVia,
@@ -140,7 +114,6 @@ const draftedTab = object({
   parent: optional(letter),
 });
 type DraftedTab = Infer<typeof draftedTab>;
-// One as Oriel writes it, with only the fields it maps.
 type Drafting = Pick<DraftedTab, "at" | "header" | "end" | "hidden" | "key" | "title">;
 export const sheetsDraft = refine(
   object({ tabs: array(draftedTab) }),
@@ -158,15 +131,12 @@ const draftOf = (draft: Readonly<Record<string, unknown>>): SheetsDraft | null =
 
 const text = (cell: string | null | undefined) => cell?.trim() ?? "";
 
-// Each field the drafted tab maps, with its column's letter.
 const lettersOf = (tab: DraftedTab): [FieldName, string][] =>
   fieldNames.flatMap((field) => {
     const at = tab[field];
     return at === undefined ? [] : [[field, at]];
   });
 
-// The drafted tab's data rows, as the preview has them: under its header,
-// to its first blank row, or to the preview's end.
 const bodyOf = (table: PreviewTable, tab: Pick<DraftedTab, "header" | "end">) => {
   const below = table.rows.slice(tab.header);
   const blank = below.findIndex((row) => row.every((cell) => text(cell) === ""));
@@ -185,8 +155,6 @@ function settle(
   for (const tab of draft.tabs) {
     const place = placeOf(tab.at);
     const table = tables.find((each) => each.at === tab.at);
-    // Only what the preview read: the picked spreadsheets, or, through
-    // sheets-mcp with none picked, the person's latest.
     if (!place || !table)
       return { problem: "A tab it maps isn't in the picked spreadsheets any more." };
     const headers = table.rows[tab.header - 1];
@@ -212,7 +180,6 @@ function settle(
   }
   return {
     ...options,
-    // As the card draws it: a tab the draft leaves out isn't read.
     spreadsheets: [
       ...picks.spreadsheets.map((pick) => pick.id),
       ...[...mapped.keys()].filter((id) => !picks.spreadsheets.some((pick) => pick.id === id)),
@@ -222,10 +189,6 @@ function settle(
 
 const isNumber = (cell: string) => /^-?[\d,.]+%?$/.test(cell);
 
-// Oriel's own guess at each tab, calling no model (decision 0051): the first
-// row as the header, the first column whose values are all present and
-// unique as the key, and the key as the title if it is text, else the first
-// text column. A tab with no such key isn't guessed: its person adds one.
 function guess(tables: readonly PreviewTable[]): Record<string, unknown> | null {
   const tabs = tables.flatMap((table): Drafting[] => {
     if (!table.at || !placeOf(table.at)) return [];
@@ -263,10 +226,8 @@ const fieldLabels: Record<FieldName, string> = {
   link: "Link",
   parent: "Parent",
 };
-// A field's label inside a sentence: "row ID", "title".
 const lower = (field: FieldName) => fieldLabels[field].replace(/^\w/, (c) => c.toLowerCase());
 
-// How many of a tab's rows the card shows under its columns.
 const shownRows = 3;
 
 function draw(
@@ -326,10 +287,6 @@ function draw(
   });
 }
 
-// The draft that reads as the options do now: each mapped tab's headers
-// turned back into the letters above them in the preview. A tab whose key
-// or title header isn't there is left out, and a field whose header isn't
-// is dropped, as the sheet no longer has them.
 function current(
   options: Readonly<Record<string, unknown>>,
   tables: readonly PreviewTable[],
@@ -356,9 +313,6 @@ function current(
   return { tabs };
 }
 
-// Each tab in the preview's names, in its order, and how the options read
-// it, in one line by its headers: a key that is the title too says so once.
-// A mapped tab the names don't have, as one deleted, is named by its place.
 function outline(
   options: Readonly<Record<string, unknown>>,
   tables: readonly PreviewTable[],
@@ -391,8 +345,6 @@ function outline(
   });
 }
 
-// The fields a column feeding them can't be taken from, as every tab read
-// needs them.
 const required: readonly FieldName[] = ["key", "title"];
 
 function edit(
@@ -404,7 +356,6 @@ function edit(
   const table = tables.find((each) => each.at === change.table);
   if (!table?.at) return { problem: "Oriel can't find that tab in the sheet." };
   const tab = draft.tabs.find((each) => each.at === change.table);
-  // In the order the preview lists them, as the card draws them.
   const placed = (tabs: DraftedTab[]) => {
     const order = (at: string) => tables.findIndex((each) => each.at === at);
     const next = { tabs: tabs.toSorted((a, b) => order(a.at) - order(b.at)) };
@@ -414,9 +365,6 @@ function edit(
   if ("read" in change) {
     if (!change.read) return placed(others);
     if (tab) return placed(draft.tabs);
-    // Oriel's guess, under the first header row it finds one under: the
-    // first row, or one after a blank row, as a title may sit above the
-    // table; never a row of the table itself.
     const blank = (row: readonly (string | null)[] | undefined) =>
       row?.every((cell) => text(cell) === "") ?? false;
     const guessed = table.rows.slice(0, 10).flatMap((row, at): DraftedTab[] => {
@@ -440,7 +388,6 @@ function edit(
       return { problem: `Choose a ${lower(field)} column.` };
     if (column !== null && !table.columns.includes(column))
       return { problem: `${table.name} has no column ${column} in what Oriel read.` };
-    // A column feeds one field, but a unique name may be key and title.
     const pair = (a: FieldName, b: FieldName) => required.includes(a) && required.includes(b);
     const taken = lettersOf(tab).find(
       ([other, at]) => other !== field && at === column && !pair(field, other),
@@ -453,7 +400,6 @@ function edit(
     if (taken) delete next[taken[0]];
     if (column === null) delete next[field];
     else next[field] = column;
-    // Which values mean which state are a status column's own.
     if (next["status"] !== tab.status) delete next["states"];
     return placed([...others, next as DraftedTab]);
   }
@@ -465,10 +411,6 @@ function edit(
   return placed([...others, { ...tab, ...set }]);
 }
 
-// What new options do to the rows a connection read (decision 0050): a tab
-// no longer read, or with a new key, loses the items it had, which
-// workstreams keep as items Oriel no longer has; one whose table now
-// begins, ends or skips rows elsewhere loses the rows it no longer covers.
 function said(
   before: Readonly<Record<string, unknown>>,
   after: Readonly<Record<string, unknown>>,
@@ -479,8 +421,6 @@ function said(
     pick.tabs.flatMap((tab) => {
       const table = tables.find((each) => each.at === `${pick.id}/${tab.sheetId}`);
       const name = table?.name ?? "A tab";
-      // The key's column, by where its header is, as the same column under
-      // another header row keeps its rows' keys.
       const keyAt = (mapping: TabMapping) => {
         const c = table?.rows[mapping.header - 1]?.findIndex(
           (cell) => text(cell) === mapping.key.trim(),
@@ -516,8 +456,6 @@ export const sheetsReview = {
     fix: "Draft a change to how Oriel reads the tab at {at}.",
   },
   draft: sheetsDraft,
-  // Spreadsheets just picked map no tab, as an Undo of the first mapping
-  // puts them back: nothing is read from them yet but each one itself.
   waits: (options) => picksOf(options).spreadsheets.every((pick) => pick.tabs.length === 0),
   doc: "Each tab by its table's `at`; each field by its column's letter; the header row by its number, 1 for the first; `end: \"blank\"` stops at the first blank row, so notes below the table aren't read; \"grid\" reads to the sheet's end, skipping blank rows. The key names each row, as an ID column does; rows that share one or have none are listed for the user to fix. `options` is how it reads now, in this form; a tab a draft leaves out isn't read.",
   settle,

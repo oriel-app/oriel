@@ -1,5 +1,3 @@
-// What the tests share: a small fixture, a server over the stand-in, and a
-// way to call a tool and read what it answered.
 import assert from "node:assert/strict";
 import { type AccessSource, fixedAccess } from "./access.ts";
 import type { Fixture } from "./fixture.ts";
@@ -83,7 +81,6 @@ export async function callTool(
   return answer.result as ToolResult;
 }
 
-// A call that worked: its structured result, which its text block holds too.
 export async function called(server: McpServer, name: string, args: Record<string, unknown> = {}) {
   const result = await callTool(server, name, args);
   assert.equal(result.isError, undefined, result.content[0]?.text);
@@ -91,7 +88,6 @@ export async function called(server: McpServer, name: string, args: Record<strin
   return result.structuredContent as Record<string, unknown>;
 }
 
-// A call that failed: its one sentence.
 export async function refused(server: McpServer, name: string, args: Record<string, unknown> = {}) {
   const result = await callTool(server, name, args);
   assert.equal(result.isError, true, JSON.stringify(result));

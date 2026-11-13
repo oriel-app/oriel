@@ -1,6 +1,3 @@
-// Where a tool call's access token comes from: the refresh token `login`
-// kept, exchanged for an access token held in memory until a minute before
-// it expires, or Google refuses it. The server never signs in on its own.
 import { type Fetch, type GoogleClient, refresh, type Tokens } from "./oauth.ts";
 import type { TokenFile } from "./token-file.ts";
 
@@ -9,13 +6,10 @@ export const notSignedIn = "Not signed in. Run `sheets-mcp login`.";
 export type Access = { status: "ok"; token: string } | { status: "refused"; problem: string };
 
 export type AccessSource = {
-  // `again`: Google refused the last token, so get another.
   access(again?: boolean): Promise<Access>;
-  // What must never be shown: the client's ID and secret, and every token.
   secrets(): string[];
 };
 
-// Fixture mode's: one made-up token, and nothing to hide.
 export const fixedAccess = (token: string): AccessSource => ({
   access: async () => ({ status: "ok", token }),
   secrets: () => [],
@@ -28,12 +22,9 @@ const earlyMs = 60_000;
 const projectOf = (id: string) => /^([0-9]{6,})-/.exec(id)?.slice(1) ?? [];
 
 export function googleAccess(deps: {
-  // The client to refresh with, read at each refresh; null when there's
-  // none, as before the first `login`.
   client: () => GoogleClient | null;
   file: TokenFile;
   fetch: Fetch;
-  // Milliseconds since the epoch.
   now: () => number;
 }): AccessSource {
   const { file } = deps;
@@ -41,7 +32,7 @@ export function googleAccess(deps: {
   let pending: Promise<Access> | null = null;
   const seen = new Set<string>();
 
-  // Each client refreshed with, whose ID and secret are never shown.
+  // Every client ever refreshed with, so one a `login` replaced is still never shown.
   const clients: GoogleClient[] = [];
 
   async function renew(): Promise<Access> {
@@ -71,7 +62,6 @@ export function googleAccess(deps: {
       if (again) held = null;
       if (held && deps.now() < held.expiresAt - earlyMs)
         return { status: "ok", token: held.access };
-      // Calls at once share one refresh.
       pending ??= renew().finally(() => (pending = null));
       return pending;
     },

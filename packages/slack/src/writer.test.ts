@@ -15,17 +15,14 @@ import { slackServer, slackServerApi, slackTools as t } from "./slack-mcp.ts";
 import { slackStandIn, standInCaller } from "./slack-standin.ts";
 import { slackWriter, slackWriterOf, writeApi } from "./writer.ts";
 
-// Stands in for packages/changeset, the only place that mints approvals in
-// production. These tests cover the Web API mapping, not the approval gate.
-// scripts/check-repo.ts allows this cast only in an adapter's writer test.
+// Stands in for packages/changeset, the only place that mints approvals; scripts/check-repo.ts
+// allows this cast only in an adapter's writer test.
 const approve = (request: WriteRequest<"slack">) =>
   request as Parameters<SourceWriter<"slack">["apply"]>[0];
 
 const fixture = loadSlackFixture();
 const [amara, , , dara] = fixture.users.map((user) => user.id);
 const random = "C0FW2RANDOM";
-// In the picked channel: Amara's own message with no replies, her question
-// with two, and Dara's decision.
 const own = "1789045200.000100";
 const question = "1790071200.000100";
 const decision = "1788444000.000100";
@@ -88,7 +85,6 @@ test("nothing is sent to a channel the server doesn't read, or as anyone but the
     writer.apply(request("reply", conversation(question), { text: "Hi", author: dara })),
     refused,
   );
-  // A conversation in a channel it doesn't read, even one it once did.
   const narrow = setup([random]);
   await assert.rejects(
     narrow.writer.apply(request("reply", conversation(question), { text: "Hi", author: amara })),
@@ -113,13 +109,11 @@ test("a reply goes in the conversation, and its undo's fields say whether anyone
     replies: 3,
     updated: result.after.updated,
   });
-  // Someone replies after it: the count moves, which a revert compares.
   workspace.replyAs(dara ?? "", weather, question, "Thanks!");
   assert.deepEqual(await writer.current(id, [field, "replies"]), {
     [field]: "Picked up: on it.",
     replies: 4,
   });
-  // An edit changes its text.
   workspace.edit(weather, field.slice("reply:".length), "Picked up.", amara ?? "");
   assert.deepEqual(await writer.current(id, [field]), { [field]: "Picked up." });
 });
@@ -191,8 +185,6 @@ test("through Slack's server, a post and a reply are each one write call, escape
   assert.deepEqual(written, [
     {
       tool: t.send,
-      // Escaped for the Web API, then for markdown: it posts as written,
-      // with no mention, link or bold.
       args: {
         channel_id: weather,
         message:
@@ -260,7 +252,6 @@ test("a post the server failed without saying why may have landed: it's no refus
     )
     .catch((caught: unknown) => caught);
   assert.ok(error instanceof Error && !(error instanceof SourceRefused));
-  // One naming Slack's code is a refusal, which made no change.
   const refusing = slackWriter({
     api: slackServerApi({
       read: tools,

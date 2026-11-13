@@ -1,5 +1,3 @@
-// The folder source as the sync worker and a region's reads use it. Each test
-// builds SPEC §8's folder cases in its own temporary directory.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { linkSync, renameSync, rmSync, symlinkSync } from "node:fs";
@@ -57,7 +55,6 @@ test("links aren't followed, to a file or a directory, inside the folder or out"
   const [page] = await syncPages(source, null);
   assert.deepEqual(titles(page?.records ?? []), ["inner", "real"]);
   assert.ok(page?.records.every((r) => !r.location.includes("outside")));
-  // Five links skipped, counted in the log's fields.
   assert.deepEqual(lines.at(-1)?.fields, { links: 5 });
   const read = await source.read(page?.records.map((r) => r.id as ItemId<"folder">) ?? []);
   assert.deepEqual(read.map((r) => r.status === "ok" && r.content.text).toSorted(), [
@@ -88,10 +85,8 @@ test("injection text in a file name and in a body stays data, never in an ID", a
   const [page] = await syncPages(source, null);
   const [record] = page?.records ?? [];
   assert.ok(record && page);
-  // The ID is hex digits only, so no text from the name can be in it.
   assert.match(record.id, /^folder:[0-9a-f]{16}$/);
   assert.equal(record.stableId, record.id.slice("folder:".length));
-  // The name is the title, and the body the text, as written.
   assert.equal(record.title, name);
   const [read] = await source.read([record.id as ItemId<"folder">]);
   assert.deepEqual(read, {
@@ -133,7 +128,6 @@ test("a folder whose path now leads through a link is refused, not followed", as
   folder.write("plan.md", "somewhere else", undefined, folder.outside);
   const source = sourceFor(folder.root);
   await syncPages(source, null);
-  // Someone swaps the picked folder for a link to another directory.
   renameSync(folder.root, `${folder.root}-moved`);
   symlinkSync(folder.outside, folder.root);
   await assert.rejects(syncPages(source, null), Error);

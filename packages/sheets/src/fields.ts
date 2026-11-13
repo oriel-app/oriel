@@ -1,17 +1,8 @@
-// Google's `fields` parameter: which parts of an answer to send. Fields are
-// comma-separated, a nested field is reached with `/` (Drive) or `.`
-// (Sheets), parentheses select several fields below one, and `*` is every
-// field at its level. A field the answer's type doesn't have is a `400`,
-// "Invalid field selection".
+// Google's `fields`: a nested field is `/` in Drive, `.` in Sheets; an unknown field is a `400`.
 // https://developers.google.com/workspace/drive/api/guides/fields-parameter
-// https://developers.google.com/workspace/sheets/api/guides/field-masks
 
-// What a field selects below it: null for all of it.
 export type Mask = Map<string, Mask | null>;
 
-// The fields a type has, as a tree: `true` where nothing below can be
-// selected. An array's elements share their type, so a schema names no
-// index.
 export type Schema = { readonly [field: string]: Schema | true };
 
 export function parseMask(text: string): Mask | { invalid: string } {
@@ -19,7 +10,6 @@ export function parseMask(text: string): Mask | { invalid: string } {
   let at = 0;
   const fail = () => ({ invalid: text.slice(at) || text });
 
-  // A list of selections up to `close` or the end, into `into`.
   const list = (into: Mask, close: string | null): boolean => {
     for (;;) {
       const path: string[] = [];
@@ -51,7 +41,6 @@ export function parseMask(text: string): Mask | { invalid: string } {
   return list(mask, null) ? mask : fail();
 }
 
-// Two selections of one field select what either does.
 function add(into: Mask, path: string[], below: Mask | null) {
   const [name, ...rest] = path;
   if (name === undefined) return;
@@ -68,7 +57,6 @@ function add(into: Mask, path: string[], below: Mask | null) {
   else add(next, rest, below);
 }
 
-// The first field the mask names that the schema doesn't have, as a path.
 export function unknownField(mask: Mask, schema: Schema, at = ""): string | null {
   for (const [name, below] of mask) {
     const path = at ? `${at}.${name}` : name;
@@ -83,7 +71,6 @@ export function unknownField(mask: Mask, schema: Schema, at = ""): string | null
   return null;
 }
 
-// The answer with only what the mask selects. Arrays keep every element.
 export function project(value: unknown, mask: Mask | null): unknown {
   if (mask === null || typeof value !== "object" || value === null) return value;
   if (Array.isArray(value)) return value.map((item) => project(item, mask));

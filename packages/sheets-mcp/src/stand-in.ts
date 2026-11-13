@@ -1,29 +1,5 @@
-// Google's Drive and Sheets APIs, answered from a fixture held in memory: a
-// `fetch` that answers at Google's own addresses, so the tools reach it as
-// they reach Google. `--fixture` serves the tools with it, and tests call
-// them against it. No network.
-//
-// It answers what the tools ask, as Google's reference has it:
-// - Drive's `files.list`, for spreadsheets by the `q` the tools write, newest
-//   first, a page at a time.
-//   https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list
-// - Drive's `comments.list`, oldest first, a page at a time, with no deleted
-//   comment unless asked; like Drive, it wants `fields`.
-//   https://developers.google.com/workspace/drive/api/reference/rest/v3/comments/list
-// - The Sheets API's `spreadsheets.get`, for the title and the tabs, and
-//   with `ranges`, each range's notes and the rows and columns hidden by
-//   hand in it, as `includeGridData` with those `fields` gives them.
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get
-// - `values.get` and `values.batchGet`, as formatted text by rows, with no
-//   empty cells at a row's end and no empty rows at the end.
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/get
-// - `values.update` and `values.append` (with `INSERT_ROWS`), refused with a
-//   `403` on a spreadsheet the account can only view. It computes no
-//   formulas: with `USER_ENTERED`, a cell keeps the text as entered.
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/update
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/append
-// Anything else is a `404`. Every request needs the access token, as
-// Google's do, and each is kept in `calls`, so a test can count them.
+// Answers as Google's reference has it, but computes no formulas: with `USER_ENTERED`,
+// a cell keeps the text as entered.
 import {
   type Bounds,
   columnIndex,
@@ -45,9 +21,7 @@ import {
 export const standInToken = "stand-in-access-token";
 
 export type StandInOptions = {
-  // The access token every request must carry.
   token?: string;
-  // A write's new `modifiedTime`; without it, a write leaves it as it was.
   now?: () => string;
 };
 
@@ -59,14 +33,9 @@ const statusOf: Record<number, string> = {
   403: "PERMISSION_DENIED",
   404: "NOT_FOUND",
 };
-// Google's error body, as both APIs send it.
-// https://cloud.google.com/apis/design/errors#http_mapping
 const refuse = (code: number, message: string) =>
   Response.json({ error: { code, message, status: statusOf[code] } }, { status: code });
 
-// The `q` the tools write: spreadsheets not in the bin, and maybe a name.
-// A quoted string escapes `'` and `\` with `\`.
-// https://developers.google.com/workspace/drive/api/guides/ref-search-terms
 const baseQuery = `mimeType='${spreadsheetType}' and trashed=false`;
 function nameIn(q: string): string | null | undefined {
   if (q === baseQuery) return null;
@@ -75,9 +44,8 @@ function nameIn(q: string): string | null | undefined {
   return (match[1] ?? "").replace(/\\(.)/g, "$1");
 }
 
-// "The contains operator only performs prefix matching for a name term":
-// `HelloWorld` is found by `Hello` but not `World`, and `Hello World` by
-// either, in any case.
+// Drive's `contains` matches only a prefix of a name's words: `HelloWorld` is found by
+// `Hello` but not `World`, and `Hello World` by either, in any case.
 const prefixed = (name: string, term: string) => {
   const [n, t] = [name.toLowerCase(), term.toLowerCase()];
   for (let i = 0; i < n.length; i++)
@@ -87,7 +55,7 @@ const prefixed = (name: string, term: string) => {
 
 export const spreadsheetUrl = (id: string) => `https://docs.google.com/spreadsheets/d/${id}/edit`;
 
-// What a row of cells sends: up to its last cell that holds anything.
+// Google sends a row only up to its last cell that holds anything.
 const trimmed = (row: readonly string[]) => {
   let end = row.length;
   while (end > 0 && row[end - 1] === "") end--;
@@ -96,9 +64,6 @@ const trimmed = (row: readonly string[]) => {
 
 type Box = Required<Bounds>;
 
-// A comment or a reply as Drive's Comment and Reply have them: its author
-// by name only, and no content once deleted.
-// https://developers.google.com/workspace/drive/api/reference/rest/v3/comments
 const said = (each: FixtureReply) => ({
   author: { kind: "drive#user", displayName: each.author },
   createdTime: each.createdTime,
@@ -124,8 +89,6 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
   const tabOf = (s: FixtureSpreadsheet, title: string | null) =>
     title === null ? s.tabs[0] : s.tabs.find((t) => t.title === title);
 
-  // A range's tab and box, cut to the tab's grid; null when it names no
-  // tab or isn't a range.
   function resolve(s: FixtureSpreadsheet, text: string): { tab: FixtureTab; box: Box } | null {
     const range = parseRange(text);
     const tab = range && tabOf(s, range.tab);
@@ -154,9 +117,6 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
     };
   }
 
-  // A box's notes and the rows and columns in it hidden by hand, as
-  // GridData has them: a value or a dimension's metadata a place each,
-  // with what's empty or false left out.
   function gridData(tab: FixtureTab, box: Box) {
     const notes = new Map<string, string>();
     for (const [cell, note] of Object.entries(tab.notes ?? {})) {
@@ -185,8 +145,6 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
     };
   }
 
-  // Rows inserted at `at`: the notes and hidden rows below move down with
-  // their rows, as Google's do.
   function moveDown(tab: FixtureTab, at: number, count: number) {
     if (tab.hiddenRows) tab.hiddenRows = tab.hiddenRows.map((n) => (n - 1 >= at ? n + count : n));
     if (tab.notes)
@@ -203,8 +161,7 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
   const cellText = (value: unknown): string | null =>
     value === null ? null : typeof value === "boolean" ? (value ? "TRUE" : "FALSE") : String(value);
 
-  // Writes rows of values into a tab from a corner, growing its grid to fit.
-  // A null leaves its cell as it was.
+  // A null leaves its cell as it was, as in Google's API.
   function write(tab: FixtureTab, row: number, column: number, values: unknown[][]) {
     for (const [i, line] of values.entries()) {
       const at = row + i;
@@ -386,12 +343,8 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
       return Response.json({ spreadsheetId: s.id, ...counts(box.startRow, box.startColumn) });
     }
 
-    // The table is the block of cells around the range's last cell that
-    // holds anything, out to the first empty row and column on each side,
-    // as Google finds it: with tables at A1:C2 and B4:D6, appending to the
-    // whole tab writes from B7, and to A1:A2 from A3. New rows go in after
-    // it, from its first column.
-    // https://developers.google.com/workspace/sheets/api/guides/values#append_values
+    // The table, as Google finds it: with tables at A1:C2 and B4:D6, appending to the whole tab
+    // writes from B7, and to A1:A2 from A3. New rows go after it, from its first column.
     const filled = (r: number, c: number) => (tab.rows[r]?.[c] ?? "") !== "";
     let seed: [number, number] | null = null;
     for (let r = Math.min(box.endRow, tab.rows.length) - 1; r >= box.startRow && !seed; r--)
@@ -410,7 +363,6 @@ export function standIn(fixture: Fixture, options: StandInOptions = {}) {
           for (let c = Math.max(columns[0], 0); c < columns[1]; c++) if (filled(r, c)) return true;
         return false;
       };
-      // One step out, to a side that holds anything, corners included.
       const grow = () => {
         const across: [number, number] = [t.startColumn - 1, t.endColumn + 1];
         const down: [number, number] = [t.startRow - 1, t.endRow + 1];
