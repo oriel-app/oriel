@@ -60,6 +60,7 @@ export function comments(src: string, jsx: boolean): Comment[] {
         break;
       } else if (c === "$" && at(i + 1) === "{") {
         advanceTo(i + 2);
+        prev = "punct";
         code(true);
         advanceTo(i + 1);
       } else advanceTo(i + 1);
@@ -87,6 +88,7 @@ export function comments(src: string, jsx: boolean): Comment[] {
       const c = at(i);
       if (c === "{") {
         advanceTo(i + 1);
+        prev = "punct";
         code(true);
         advanceTo(i + 1);
       } else if (c === "<" && at(i + 1) === "/") {
@@ -120,6 +122,7 @@ export function comments(src: string, jsx: boolean): Comment[] {
       if (c === '"' || c === "'") string(c);
       else if (c === "{") {
         advanceTo(i + 1);
+        prev = "punct";
         code(true);
         advanceTo(i + 1);
       } else advanceTo(i + 1);

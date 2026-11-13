@@ -33,6 +33,7 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
     t0,
   );
   const threadId = id(2);
+  // Written by hand: threadStore reads columns later migrations add.
   db.exec(`
     insert into threads (id, workspace_id, workstream_id, region_version, created_at)
     select '${threadId}', '${workspaceId}', workstream_id, max(version), '${t0}'

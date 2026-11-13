@@ -58,7 +58,6 @@ test("an item removed and added again is out of the versions between", () => {
 test("members are matched by stable ID, so a moved item is the same member", () => {
   const { workstreams, create, ids } = fresh();
   const workstream = create([syn1, m("SYN-13", "10013")]);
-  // SYN-13 moved to another project and is FER-7 now.
   const moved = m("FER-7", "10013");
   assert.equal(workstreams.add(workstream.id, [moved], user, later(1)), null);
   assert.deepEqual(ids(workstream.id, 1), ["jira:SYN-1", "jira:SYN-13"]);
