@@ -1,11 +1,3 @@
-// Settings (OA-181): its sections down the left, each its own address, with
-// room for more. Providers first: one row per provider instance, what Oriel
-// found for it and a switch, then the default model and the Title model,
-// picked from those connected and on. Usage: how much of each plan Oriel has
-// used, apart from the rows, which keep to what a person picks by. Connections: every connection, and Add a connection. General: how a time is written, where a thread's page goes after
-// an approval, and whether the desktop app asks before quitting while Oriel
-// works. Appearance: the theme and the text
-// size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
 import { Connections } from "./connections-page.tsx";
@@ -42,7 +34,6 @@ export function SettingsPage(props: {
   model: SettingsModel;
   connections: ConnectionsModel;
   connectors: Connectors;
-  // On the desktop app, the Claude Code row the first run shares.
   setup: SetupModel;
   section: SettingsSection;
   dispatch: Dispatch;
@@ -159,7 +150,6 @@ function Providers(props: {
         <ul class="provider-rows">
           {view.providers.map((provider) =>
             provider.kind === "claude-code" && cli ? (
-              // The first run's own row, with what Oriel can do for it.
               <ClaudeCodeRow
                 key={provider.id}
                 provider={provider}
@@ -216,7 +206,6 @@ function Providers(props: {
   );
 }
 
-// Looks for every provider again, and so asks each CLI about its plan again.
 function CheckAgain(props: { model: SettingsModel; send(msg: SettingsMsg): void }) {
   const { model, send } = props;
   return (
@@ -231,8 +220,6 @@ function CheckAgain(props: { model: SettingsModel; send(msg: SettingsMsg): void 
   );
 }
 
-// Settings' Usage: how much of each CLI's plan Oriel has used, one block a
-// CLI, apart from Providers' rows, which keep to what a person picks by.
 function Usage(props: { model: SettingsModel; view: SettingsView; send(msg: SettingsMsg): void }) {
   const { model, view, send } = props;
   const plans = view.providers.filter((provider) => provider.kind !== "api");
@@ -275,9 +262,6 @@ const windowNames: Record<PlanWindowView["kind"], string> = {
   week: "This week",
 };
 
-// How much of the person's plan Oriel has used (decision 0046): its own
-// turns and tokens today, and the plan's windows as their Claude Code or
-// Codex reports them, each with when it resets.
 function PlanUsage({ usage, name }: { usage: UsageView | null; name: string }) {
   const stamp = useStamp();
   if (usage === null) return null;
@@ -324,8 +308,6 @@ function PlanUsage({ usage, name }: { usage: UsageView | null; name: string }) {
   );
 }
 
-// Where a CLI is, when it isn't on the PATH Oriel was started with: the
-// full path to the `claude` or `codex` program. Saving checks it at once.
 function CliPath(props: {
   name: string;
   program: "claude" | "codex";
@@ -414,9 +396,6 @@ const afterApproveNames: Record<AfterApprove, string> = {
   next: "Go to the next thing that needs you",
 };
 
-// How a time is written, where a thread's page goes once an approval there
-// is accepted, and whether the desktop app asks before it quits while a
-// thread's turn runs or a change set applies. Only the desktop app quits.
 function General(props: { view: SettingsView; change(change: SettingsChange): void }) {
   const { view, change } = props;
   return (
@@ -515,8 +494,6 @@ function Asking(props: { view: SettingsView; change(change: SettingsChange): voi
   );
 }
 
-// One switch: a desktop notification when a thread newly needs you, while
-// Oriel's window isn't in front. Only the desktop app shows them.
 function Notifications(props: { view: SettingsView; change(change: SettingsChange): void }) {
   const { view, change } = props;
   return (
@@ -544,8 +521,6 @@ function Notifications(props: { view: SettingsView; change(change: SettingsChang
   );
 }
 
-// A setting picked from a few, as radio buttons. `group` names them where
-// one name shows more than once on the page.
 export function Choices(props: {
   name: string;
   group?: string;

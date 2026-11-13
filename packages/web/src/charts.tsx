@@ -1,13 +1,4 @@
-// The chart blocks (decision 0053, under 0030's guarantee): a
-// series over time, a timeline, a spread and a pivot. Every figure and line
-// here is one Oriel computed from a read and sent as data; this file only
-// places them. Thin marks in the theme's tokens, one series colour, hairline
-// axes; a dashed line is a projection (the fitted line and the forecast),
-// never a grid. Each mark carries its value in a tooltip, and the caption
-// under the block says how it was computed. A drawing is hidden from a screen
-// reader, which reads a visually hidden table of the same values instead
-// (chart-values.ts). `compact` is a pin's: smaller, with fewer labels, the
-// same marks.
+// Every figure and line here is one Oriel computed from a read and sent as data; this file only places them.
 import { useContext, useState } from "preact/hooks";
 import type { ChartBlock } from "@oriel/core/block-charts";
 import {
@@ -31,8 +22,6 @@ type Of<F extends ChartBlock["form"]> = Extract<BlockView, { form: F }>;
 
 const day = 86_400_000;
 
-// What a screen reader reads in a drawing's place: its values as a table,
-// out of sight.
 function Values({ table }: { table: ValueTable }) {
   return (
     <table class="visually-hidden">
@@ -60,7 +49,6 @@ function Values({ table }: { table: ValueTable }) {
   );
 }
 
-// Round ticks from zero up past `top`: 1, 2 or 5 times a power of ten.
 function ticks(top: number, most = 4): number[] {
   if (top <= 0) return [0, 1];
   const rough = top / most;
@@ -70,8 +58,6 @@ function ticks(top: number, most = 4): number[] {
   return Array.from({ length: count + 1 }, (_, i) => i * step);
 }
 
-// Dates to label along a time axis: about `most`, a whole number of days
-// apart, from the first.
 function dateTicks(from: number, to: number, most: number): number[] {
   const span = Math.max(to - from, day);
   const stepDays = Math.max(1, Math.ceil(span / day / most / 7) * 7);
@@ -80,15 +66,11 @@ function dateTicks(from: number, to: number, most: number): number[] {
   return out;
 }
 
-// A column from `base` up to `top`: its data end rounded, 4 units at most,
-// and square where it meets the baseline.
 function column(x: number, top: number, width: number, base: number): string {
   const r = Math.min(4, width / 2, Math.max(base - top, 0));
   return `M${x},${base}V${top + r}Q${x},${top} ${x + r},${top}H${x + width - r}Q${x + width},${top} ${x + width},${top + r}V${base}Z`;
 }
 
-// The drawing's width in its own units, about its width on the page, so
-// its text is the page's size; a pin's is narrower.
 const widthOf = (compact: boolean | undefined) => (compact ? 420 : 640);
 
 export function SeriesChart({ chart, compact }: { chart: Of<"series">; compact?: boolean }) {
@@ -121,10 +103,8 @@ export function SeriesChart({ chart, compact }: { chart: Of<"series">; compact?:
   const thick = Math.min(24, Math.max(2, (x(first + binWidth) - x(first)) * 0.7));
   const fit = fitLine(series);
   const last = points.at(-1);
-  // The value now: the running total as the read was answered.
   const reached = last?.value ?? 0;
   const values = seriesValues(chart);
-  // A point's tooltip: its row in the table.
   const tip = (i: number) => values.rows[i]?.join(": ");
   return (
     <>
@@ -236,7 +216,6 @@ export function TimelineChart({ chart, compact }: { chart: Of<"timeline">; compa
     asOf,
     ...lanes.flatMap((lane) => [lane.end, lane.due].flatMap((d) => (d ? [Date.parse(d)] : []))),
   );
-  // A little room past the last date, so today's line and an open end show.
   const span = Math.max(to - from, 7 * day) * 1.04;
   const at = (date: number) => `${((date - from) / span) * 100}%`;
   return (
@@ -359,8 +338,6 @@ export function SpreadChart({ chart, compact }: { chart: Of<"spread">; compact?:
           </text>
         )}
         {marks.map((mark, i) => {
-          // The median's label to its left and the 90th percentile's to its
-          // right, unless that runs off the drawing.
           const at = x(mark.value);
           const room = mark.label.length * 7;
           const left = i === 0 ? at - room > 0 : at + room > width;
@@ -379,15 +356,11 @@ export function SpreadChart({ chart, compact }: { chart: Of<"spread">; compact?:
   );
 }
 
-// A pivot: the person picks what goes down, across and what's shown, and
-// the window picks the grid Oriel already computed for it. Down only, it
-// reads as ranked bars; with columns, as a table shaded by value.
 export function PivotChart({ chart, compact }: { chart: Of<"pivot">; compact?: boolean }) {
   const [down, setDown] = useState(chart.initial.down);
   const [across, setAcross] = useState<string | null>(chart.initial.across);
   const [measure, setMeasure] = useState(chart.initial.measure);
-  // Each pick tells telemetry it was regrouped; a page with no panel, as a
-  // review link's, has nowhere to tell.
+  // A page with no panel, as a review link's, has nowhere to tell.
   const links = useContext(ItemLinksContext);
   const regrouped = () => links?.dispatch({ type: "pivotRegrouped" });
   const table =

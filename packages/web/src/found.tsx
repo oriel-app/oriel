@@ -1,10 +1,4 @@
-// What Oriel found in the person's agent (decision 0059), wherever it shows:
-// the overview's card when it changes, the first run's "see what Oriel
-// found", and Settings' Source servers. Each found server Oriel knows says
-// what it would turn on, with a click to turn that on; only a person turns
-// one on. Oriel never adds, removes, signs in or signs out of a server, so
-// nothing here does: a kind with none found names the server that would
-// turn it on, and links to its vendor's own instructions.
+// Only a person turns a server on. Oriel never adds, removes, signs in or signs out of a server, so nothing here does.
 import {
   type ConnectionsModel,
   type ConnectionsMsg,
@@ -23,11 +17,8 @@ const markOf = (connectors: Connectors, kind: string) =>
   connectors[kind]?.standIn?.offer.mark ??
   nameOf(connectors, kind).charAt(0);
 
-// "your agent" until Oriel has asked one.
 const agentOf = (servers: SourceServersView) => servers.agent ?? "your agent";
 
-// Found servers, each with what it turns on: a button while its kind is
-// off, and "On" once it is.
 export function FoundRows(props: {
   found: readonly FoundServerView[];
   connections: ConnectionsModel;
@@ -71,9 +62,6 @@ export function FoundRows(props: {
   );
 }
 
-// The overview's card, once what Oriel finds in the agent changes: what
-// appeared, with a click to turn each on, and what went. Dismissed, it
-// doesn't come back for the same change.
 export function FoundCard(props: {
   connections: ConnectionsModel;
   connectors: Connectors;
@@ -129,18 +117,12 @@ export function FoundCard(props: {
   );
 }
 
-// How often sync runs, by minutes.
 const syncChoices: { value: string; label: string }[] = [
   { value: "open", label: "When Oriel opens, and when you press Sync" },
   { value: "15", label: "Every 15 minutes" },
   { value: "60", label: "Every hour" },
 ];
 
-// Settings' Source servers: the person's servers that Oriel knows, each
-// with its kind and a switch; each kind on through its own connection, or
-// turned off; for each kind with none found, the server that would turn it
-// on; and how often sync runs. With no AI on to ask, every row says so, and
-// where to set one up, in place of what an AI listed before.
 export function SourceServers(props: {
   connections: ConnectionsModel;
   connectors: Connectors;
@@ -153,14 +135,11 @@ export function SourceServers(props: {
   const agent = agentOf(servers);
   const off = turnedOff(connections);
   const { noAgent } = servers;
-  // With no AI on, the one way to fix it, on each row.
   const setUp = (
     <Link route={{ page: "settings", section: "providers" }} dispatch={dispatch}>
       Set one up under Providers
     </Link>
   );
-  // Every kind with a row: those on or turned off, then those a server
-  // found would turn on.
   const rows = [
     ...servers.kinds.map((each) => ({
       kind: each.kind,
@@ -217,7 +196,6 @@ export function SourceServers(props: {
         <ul class="provider-rows">
           {rows.map((row) => {
             const name = nameOf(connectors, row.kind);
-            // As the person last turned it, at once; one refused flips back.
             const on = switchedOn(connections, row.kind, row.on);
             const problem = connections.switchProblems[row.kind] ?? row.problem;
             return (

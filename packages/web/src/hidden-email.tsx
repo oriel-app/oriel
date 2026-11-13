@@ -1,16 +1,11 @@
-// An account's email, hidden until the person clicks it: in its place, a
-// blurred string of the same shape whose letters aren't the email's, so a
-// screenshot or a screen share shows neither the email nor, unblurred, any
-// of it. A click shows the email; another hides it again. Each row starts
-// hidden.
+// Hidden behind a blurred string of the same shape whose letters aren't the email's,
+// so a screenshot or a screen share shows neither the email nor, unblurred, any of it.
 import { useState } from "preact/hooks";
 import { Tooltip } from "./tooltip.tsx";
 
 const letters = "abcdefghjkmnpqrstuvwxyz23456789";
 
-// The same length and punctuation as `email`, every other character
-// replaced by one drawn from a hash of the whole: stable for one email, and
-// nothing of it can be read back.
+// Drawn from a hash of the whole: stable for one email, and nothing of it can be read back.
 export function scrambled(email: string): string {
   let hash = 2166136261;
   for (const char of email) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);

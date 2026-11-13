@@ -1,4 +1,3 @@
-// A workstream: ask about it, see its threads, and curate its items.
 import { useEffect, useRef } from "preact/hooks";
 import { ChatInput, readsWith } from "./chat-input.tsx";
 import { ThreadMenu } from "./close-thread.tsx";
@@ -34,18 +33,12 @@ import type {
   ThreadSummaryView,
 } from "./view.ts";
 
-// `threads`: the workstream's, from the list the sidebar keeps, so they move as
-// it does. `ending`: what was last done to any workstream, or failed, and
-// `added`, the panel's adds, which this page shows among its own Undos, in
-// the one stack.
 export function WorkstreamPage(props: {
   model: WorkstreamModel;
-  // Every workstream, for the open ones an item can move to.
   workstreams: WorkstreamSummary[] | null;
   threads: ThreadSummaryView[];
   ending: EndingModel;
   added: Undos;
-  // Every add from the panel, or from a suggestion here, in flight or done.
   adds: PanelAdds;
   dispatch: Dispatch;
 }) {
@@ -55,7 +48,6 @@ export function WorkstreamPage(props: {
   const list = useRef<HTMLUListElement>(null);
   const suggestions = useRef<HTMLUListElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
-  // The item an undo brings back: its × takes focus once it shows again.
   const back = useRef<string | null>(null);
   const undo = (removal: Removal) => {
     back.current = removal.member.ref.id;
@@ -68,8 +60,7 @@ export function WorkstreamPage(props: {
     back.current = null;
     row.querySelector<HTMLButtonElement>(".remove-member")?.focus();
   }, [view]);
-  // A row's button that had focus hands it to the same one on the row
-  // below, or else above, so the keyboard stays in the list as rows go.
+  // So the keyboard stays in the list as rows go.
   const handOn = (rows: HTMLUListElement | null, id: string, button: string) => {
     const row = rowOf(rows, id);
     if (!row?.contains(document.activeElement)) return;
@@ -89,7 +80,6 @@ export function WorkstreamPage(props: {
       dispatch={dispatch}
     />
   );
-  // Deleted, or being deleted, the page holds only what went, and its Undo.
   if (deleted(ending, model.id)) {
     const gone = ending.ended?.workstreamId === model.id ? ending.ended : null;
     return (
@@ -121,19 +111,16 @@ export function WorkstreamPage(props: {
   const members = view.members.filter(
     (member) => !model.removing.some((each) => each.id === member.ref.id),
   );
-  // A suggestion goes once it's added, or on its way in.
   const suggested = model.suggested.filter((each) => {
     const add = addOf(props.adds, { item: each.ref.id, workstreamId: workstream.id });
     const going = add?.pending === "add" || add?.done != null;
     return !going && !members.some((member) => member.ref.id === each.ref.id);
   });
-  // An add from here the server refused, which the panel may not be open to
-  // say: its row stays, to try again.
+  // The panel may not be open to say so: its row stays, to try again.
   const refused = suggested.flatMap((each) => {
     const problem = addOf(props.adds, { item: each.ref.id, workstreamId: workstream.id })?.problem;
     return problem ? [`Couldn't add ${each.ref.key}: ${problem}`] : [];
   });
-  // Through the panel's add, so its Undo is one more note in the stack.
   const add = (member: MemberView) => {
     handOn(suggestions.current, member.ref.id, ".add-member");
     dispatch({
@@ -145,8 +132,6 @@ export function WorkstreamPage(props: {
       },
     });
   };
-  // An item open beside the Ask box that the workstream doesn't hold is
-  // read-only to the thread it starts (decision 0062).
   const readOnly = (id: string) => !members.some((member) => member.ref.id === id);
   return (
     <DropZone
@@ -279,9 +264,6 @@ export function WorkstreamPage(props: {
   );
 }
 
-// A row's move: the item as it's carried, from this workstream, and its
-// menu, which moves it as a drag onto the sidebar does: to each other open
-// workstream, or to a new one.
 function movingOf(
   member: MemberView,
   workstream: WorkstreamSummary,
@@ -312,7 +294,6 @@ function movingOf(
   };
 }
 
-// Who marked it done, when it wasn't the user.
 const doneBy: Record<NonNullable<WorkstreamSummary["done"]>["by"], string> = {
   user: "",
   agent: " by the agent",
@@ -323,7 +304,6 @@ const doneBy: Record<NonNullable<WorkstreamSummary["done"]>["by"], string> = {
 const rowOf = (list: HTMLUListElement | null, id: string) =>
   list?.querySelector(`[data-item="${CSS.escape(id)}"]`) ?? null;
 
-// "Removed OA-12 · Undo", one for each removal that can still be undone.
 const removed = (removals: readonly Removal[], onUndo: (removal: Removal) => void): UndoNote[] =>
   removals.map((removal) => {
     const { key } = removal.member.ref;
@@ -336,7 +316,6 @@ const removed = (removals: readonly Removal[], onUndo: (removal: Removal) => voi
     };
   });
 
-// Who changed a workstream, when it wasn't the user.
 const causes: Record<WorkstreamChangeView["cause"], string> = {
   user: "",
   agent: " · by the agent",
@@ -346,9 +325,6 @@ const causes: Record<WorkstreamChangeView["cause"], string> = {
   sync: " · by a sync",
 };
 
-// The workstream's versions, newest first, folded. What an agent did names
-// the thread it did it in, and what an outside tool did names the tool,
-// open while it is the latest version, with its Undo (decision 0058).
 function History({ view, dispatch }: { view: WorkstreamView; dispatch: Dispatch }) {
   const byTool = view.changes[0]?.tool !== undefined;
   return (
@@ -409,8 +385,6 @@ function History({ view, dispatch }: { view: WorkstreamView; dispatch: Dispatch 
   );
 }
 
-// `said`: the state the list itself says, as a Done page tab does, which a
-// row then names only when it waits on something.
 export function Threads(props: {
   threads: ThreadSummaryView[];
   dispatch: Dispatch;

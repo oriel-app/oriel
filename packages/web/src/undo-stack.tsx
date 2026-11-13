@@ -1,18 +1,3 @@
-// The one stack of Undo notes (OA-142), shown in the bead (decision 0056,
-// amended): the frame's own material, grown down from the band at the top
-// centre of the page column. It drops as a small bead and spreads to say
-// the newest note, with a count and the material's lips beneath it while
-// there are more; a new note reflows it and swaps its words; and as the last
-// one goes, its words go first, it narrows back to the bead, and the band
-// takes it back (bead-motion.ts). At rest it is still. What last failed
-// shows there too, until dismissed. None runs out while the pointer or focus
-// is on the bead, which opens it as a list, newest first, each with its
-// Undo. ⌘Z or Ctrl+Z undoes the newest that can be undone, and F8 takes the
-// keyboard there. The window's one status region (`BeadStatus`) reads each
-// note out once as it shows, and its alert what failed.
-// Every note's model hears one hold, through `onHold`: an Undo lets go of the
-// keyboard's, and a bead that goes, as when a page swaps it for another,
-// lets go of both, since no leave event comes.
 import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   type Aim,
@@ -49,12 +34,9 @@ const mac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 const shortcut = mac ? "Meta+Z" : "Control+Z";
 const hint = mac ? "⌘Z" : "Ctrl+Z";
 
-// Every note's hold goes the one way, whichever stack is on screen.
 export const holdUndos = (dispatch: Dispatch) => (by: Hold, held: boolean) =>
   dispatch({ type: "undoHeld", by, held });
 
-// What the bead says, newest first: the notes, and what failed among them.
-// The first is its face; the rest show as a count until it opens.
 type Said =
   | { kind: "problem"; key: string; problem: UndoProblem }
   | { kind: "note"; key: string; note: UndoNote };
@@ -66,23 +48,17 @@ export function UndoStack(props: {
   notes: readonly UndoNote[];
   problem?: UndoProblem | null;
   onHold(by: Hold, held: boolean): void;
-  // For a note's link.
   dispatch: Dispatch;
 }) {
   const { problem } = props;
-  // What it says, in the order each first showed, what failed among the
-  // notes: whatever is newest is the bead's face.
   const said: Said[] = inShowingOrder(shown, [
     ...props.notes.map((note) => ({ kind: "note" as const, key: note.key, note })),
-    // A failure with no note of its own is new when what it says is.
     ...(problem
       ? [{ kind: "problem" as const, key: problem.key ?? `problem ${problem.said}`, problem }]
       : []),
   ]).toReversed();
   shown = said.map((each) => each.key).toReversed();
   const notes = said.flatMap((each) => (each.kind === "note" ? [each.note] : [])).toReversed();
-  // What holds the bead now, and the latest `onHold`, for letting go after
-  // it has gone. Held, it opens; let go, its countdown starts again.
   const held = useRef<Held>(notHeld);
   const [open, setOpen] = useState(false);
   const letGo = useRef(0);
@@ -131,9 +107,7 @@ export function UndoStack(props: {
     return () => document.removeEventListener("keydown", onKey);
   }, [armed]);
 
-  // Show notes: F8, from anywhere, a text field included, takes the
-  // keyboard to the bead's newest action, where focus holds it open; Escape
-  // takes it back. Tab may be many stops away, and a note runs out.
+  // F8 takes the keyboard to the bead from anywhere: Tab may be many stops away, and a note runs out.
   const wrap = useRef<HTMLDivElement>(null);
   const cameFrom = useRef<HTMLElement | null>(null);
   const any = notes.length > 0 || problem != null;
@@ -151,7 +125,6 @@ export function UndoStack(props: {
         return;
       }
       if (event.key !== "F8" || event.metaKey || event.ctrlKey || event.altKey) return;
-      // With no action on its face, the bead itself, which focus opens.
       const face = wrap.current?.querySelector<HTMLElement>(".bead-layer");
       const action = face?.querySelector<HTMLElement>(".bead-action:not(:disabled)") ?? face;
       if (!action) return;
@@ -181,8 +154,6 @@ export function UndoStack(props: {
     hold("focus", false);
   }, [face === null]);
 
-  // Each note read out once, as it shows, or as what it says changes, in
-  // the window's one status region; what failed, in its alert.
   const telling = notes.flatMap((note) => {
     const words = note.heard ? `${note.said} ${note.heard}` : note.said;
     if (heard.get(note.key) === words) return [];
@@ -196,10 +167,7 @@ export function UndoStack(props: {
   });
   useEffect(() => tell?.({ alert: failed }), [failed]);
 
-  // What the bead draws, and how it moves (bead-motion.ts). `drawn` is the
-  // face its words show: the newest, once the last one's words have gone,
-  // and the last one while it leaves. The motion and the shape live in refs
-  // and are drawn straight to the page each frame, with no render.
+  // The motion and the shape live in refs and are drawn straight to the page each frame, with no render.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   const drawn = useRef<Face | null>(null);
   const latestFace = useRef(face);
@@ -222,19 +190,15 @@ export function UndoStack(props: {
       drawn.current = face;
     } else if (wording(drawn.current) !== wording(face)) {
       motion.current = change(now);
-      // Reduced motion swaps the words at once.
       if (motion.current.phase === "swapping") {
         refocus.current = bead.current?.contains(document.activeElement) === true;
         drawn.current = face;
       }
     } else drawn.current = face;
   } else if (drawn.current !== null) motion.current = leave(now);
-  // With nothing drawn, the next note starts from nothing.
   else motion.current = null;
   const showing = drawn.current;
 
-  // Each frame: the springs on, then the shape. A face whose words have
-  // gone gives way to the newest; one that has left, to nothing.
   const frames = useRef<ReturnType<typeof frameDriver> | null>(null);
   frames.current ??= frameDriver(
     { request: (run) => requestAnimationFrame(run), cancel: (id) => cancelAnimationFrame(id) },
@@ -261,7 +225,6 @@ export function UndoStack(props: {
   );
   useEffect(() => () => frames.current?.stop(), []);
 
-  // The shape now, straight to the page.
   const draw = () => {
     const at = sizes.current;
     const m = motion.current;
@@ -269,8 +232,6 @@ export function UndoStack(props: {
     const shape = { width: m.width.value, height: m.height.value, wanted: at.width };
     const column = at.column;
     body.current?.setAttribute("d", beadPath(shape, column, at.measures));
-    // The notes behind the newest, as the material's lips beneath it,
-    // until it opens as a list or goes.
     const face = drawn.current;
     const behind = face && face.said.length === 1 && m.phase !== "leaving" ? face.count - 1 : 0;
     lips.forEach((lip, i) =>
@@ -299,9 +260,6 @@ export function UndoStack(props: {
     if (box) box.style.pointerEvents = words > 0.5 ? "" : "none";
   };
 
-  // Its size, from its words laid out at their final width, as wide as the
-  // room the column leaves it: measured again as the column or the words
-  // change, so a resize reflows it rather than breaking the frame.
   const measure = () => {
     const box = wrap.current;
     const words = bead.current;
@@ -326,7 +284,6 @@ export function UndoStack(props: {
     aimAgain();
     draw();
   };
-  // Aimed anew at its size and the pointer, and moving if that moves it.
   const aimAgain = () => {
     const at = sizes.current;
     if (at && motion.current)
@@ -425,17 +382,12 @@ export function UndoStack(props: {
   );
 }
 
-// What changing to `face` from what shows means: other words, which go
-// before the new ones come, or the same, changed in place, as when it opens
-// as a list.
 const wording = (face: Face): string => {
   const [first] = face.said;
   const words = first?.kind === "note" ? first.note.said : (first?.problem.said ?? "");
   return `${face.key}\n${face.tone}\n${words}`;
 };
 
-// Its measures and its size now: the column it centres on, and its face's
-// width, clamped to the room, and height.
 type Sizes = { column: number; width: number; height: number; measures: Measures };
 
 const aimOf = (at: Sizes, hovered: boolean): Aim => ({
@@ -447,11 +399,7 @@ const aimOf = (at: Sizes, hovered: boolean): Aim => ({
 const reducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// The window's one status region and alert for the bead, there from the
-// start on every page but a review link's, whichever page's bead is on
-// screen (app.tsx); what each note last said there, so a bead that a
-// page swaps for another's doesn't say it again; and the order its notes
-// first showed in, so that bead keeps it.
+// What each note last said there, so a bead that a page swaps for another's doesn't say it again.
 const heard = new Map<string, string>();
 let shown: readonly string[] = [];
 type Told = { status?: string; alert?: string };
@@ -482,9 +430,7 @@ export function BeadStatus() {
   );
 }
 
-// One face of the bead: its count, then each thing it says, with its mark
-// and its Undo, link or Dismiss. A sentence cut short to fit keeps all its
-// words, for a screen reader; only its look ends in an ellipsis.
+// A sentence cut short to fit keeps all its words, for a screen reader; only its look ends in an ellipsis.
 function BeadFace(props: {
   face: Face;
   latest: string | null;
@@ -568,9 +514,6 @@ function NoteRow(props: {
   );
 }
 
-// What a note's mark draws: an apply under way, breathing; done, a check
-// that draws itself; nothing else needing the user, Oriel's own mark, its
-// panes lit one by one; or what failed.
 function BeadMark(props: { mark: Tone }) {
   switch (props.mark) {
     case "applying":
@@ -610,9 +553,6 @@ function BeadMark(props: { mark: Tone }) {
   }
 }
 
-// A note's Undo, in the bead or beside the change it undoes (decision
-// 0024). `keys`: whether ⌘Z or Ctrl+Z presses it; `hint`: whether it shows
-// that key.
 export function UndoButton(props: {
   label: string;
   disabled?: boolean;

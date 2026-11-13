@@ -46,7 +46,6 @@ import { standingIn } from "./connections.ts";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [model, dispatch] = useProgram(program, railMoved);
-  // Back and forward re-route the app from the address bar.
   useEffect(() => {
     const routed = () =>
       dispatch({ type: "routed", route: parseRoute(location.pathname, location.search) });
@@ -58,10 +57,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const dock = dockOf(model, useMatches(railRoom), dispatch);
   const itemFolded = dock?.folded === true;
   const chatOpen = onWindow(model.route) && model.chat.open;
-  // The composer moves, into the rail, back to the page's foot, or into an
-  // item's dock, and keeps the cursor if it had it.
   useComposerFocus([chatOpen, model.panel?.id, itemFolded]);
-  // Closing the drawer by hand gives focus back to the menu that opened it.
   const closeDrawer = () => {
     if (!document.querySelector(".shell[data-drawer]")) return;
     setDrawer(false);
@@ -72,9 +68,6 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       writeFolded(!was);
       return !was;
     });
-  // ⌘\ or Ctrl+\ folds the sidebar, where there is one to fold: not on a
-  // review link, and not on a narrow screen, where it's a drawer. Escape
-  // closes the drawer.
   useEffect(() => {
     const pressed = (event: KeyboardEvent) => {
       if (event.key === "\\" && (event.metaKey || event.ctrlKey) && !event.altKey) {
@@ -82,7 +75,6 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         event.preventDefault();
         fold();
       } else if (event.key === "Escape") {
-        // The drawer closes first, over the panel; then the panel.
         if (document.querySelector(".shell[data-drawer]")) closeDrawer();
         else if (document.querySelector(".item-panel")) dispatch({ type: "panelClosed" });
       }
@@ -90,16 +82,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
     addEventListener("keydown", pressed);
     return () => removeEventListener("keydown", pressed);
   }, []);
-  // Going somewhere closes the drawer. Opening it moves focus into it.
   useEffect(() => {
     // Focus left on a link in the closing drawer would vanish with it.
     if (matchMedia(narrow).matches && document.activeElement?.closest("#sidebar"))
       document.querySelector<HTMLElement>(".bar-menu")?.focus();
     setDrawer(false);
   }, [model.route]);
-  // The overview's count of the threads waiting on the user shows them: the
-  // sidebar opens, if it's folded or a drawer, a search in it clears, and
-  // their list takes focus, marked for a moment, once it shows.
   const needsYouAsked = useRef(false);
   const showNeedsYou = () => {
     needsYouAsked.current = true;
@@ -124,7 +112,6 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   useEffect(() => {
     if (needsYouAsked.current) markNeedsYou();
   }, [drawer, folded, model.search.query]);
-  // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return (
       model.review && (
@@ -133,17 +120,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         </ConnectorsContext.Provider>
       )
     );
-  // So does the first run, until it has finished (decision 0038), in the
-  // person's time format, as every page but a review link's.
   if (model.route.page === "setup")
     return (
       <TimeFormatContext.Provider value={timeFormat(model.settings)}>
         <SetupPage model={model} dispatch={dispatch} />
       </TimeFormatContext.Provider>
     );
-  // The panel's adds, where an approval took the page and how its apply
-  // ended, and a close that failed, as notes in whichever stack of Undos is
-  // on screen: the bead.
   const adds = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
   const edits = editUndos(model.panelEdits, (msg) => dispatch({ type: "panelEdit", msg }));
   const approved = approvedUndos(model.approved, (msg) => dispatch({ type: "approved", msg }));
@@ -239,16 +221,11 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   );
 }
 
-// Links to items on any page, and in the panel, open the panel; a thread's
-// page knows its items' addresses too.
 const noItems: ReadonlyMap<string, string> = new Map();
 
-// Where the sidebar is a drawer; window.css says the same.
+// window.css has the same breakpoint.
 const narrow = "(max-width: 760px)";
 
-// The window chat's rail opening or folding with no item open, where
-// there's room for a rail: the composer travels between the page's foot
-// and the rail (carry.ts). Under 1100 nothing travels; the sheet rises.
 function railMoved(before: Model, after: Model): boolean {
   const open = (model: Model) => onWindow(model.route) && model.chat.open && !model.panel;
   return (
@@ -261,13 +238,9 @@ function railMoved(before: Model, after: Model): boolean {
   );
 }
 
-// Where the window chat is a rail, and a thread's page stays beside the
-// open item, which needs no dock; window.css says the same.
+// window.css has the same breakpoint.
 const railRoom = "(min-width: 1100px)";
 
-// The conversation the open item takes the place of, or lies over, which
-// the panel carries in its dock: the window chat while it's open, at every
-// width, or, below 1100, the thread whose page this is (dock.tsx).
 function dockOf(model: Model, wide: boolean, dispatch: Dispatch): Docked | null {
   const { panel, route } = model;
   if (!panel) return null;
@@ -291,8 +264,6 @@ function dockOf(model: Model, wide: boolean, dispatch: Dispatch): Docked | null 
   };
 }
 
-// Where the cursor was in a composer that has since moved, it goes on in
-// the one on screen now: the panel's dock, the rail's, or the page's foot.
 // A composer gone takes the focus with it, which leaves it on the body.
 function useComposerFocus(moved: unknown[]) {
   const had = useRef(false);
@@ -316,7 +287,6 @@ function useComposerFocus(moved: unknown[]) {
   }, moved);
 }
 
-// Whether a media query matches, kept as the window resizes.
 function useMatches(query: string): boolean {
   const [matches, setMatches] = useState(() => matchMedia(query).matches);
   useEffect(() => {
@@ -329,7 +299,6 @@ function useMatches(query: string): boolean {
   return matches;
 }
 
-// Whether the sidebar was left folded, kept in this browser only.
 const foldedKey = "oriel.sidebar.folded";
 
 function readFolded(): boolean {
@@ -392,9 +361,6 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
               }
               dispatch={dispatch}
             />
-            {/* The chat hidden on Browse: its composer at the page's foot,
-                with its draft and Back to the chat, as on the overview,
-                until the person leaves. */}
             {model.chat.hiddenOnBrowse && (
               <OverviewComposer
                 chat={model.chat}
@@ -464,9 +430,6 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
   }
 }
 
-// On a narrow screen only: the menu, which opens the sidebar as a drawer and
-// counts the threads waiting on the user, and the brand. Wide screens have
-// the sidebar instead.
 function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu(): void }) {
   const { model, dispatch } = props;
   const { needsYou } = nav(model);

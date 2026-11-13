@@ -1,10 +1,3 @@
-// The sidebar, on every page but a review link: the window, the threads
-// waiting on the user, the user's workstreams with their threads under them, the
-// latest done threads, the sources, and Settings at the foot. It stays quiet unless something is
-// happening: what waits on the user is at the top, the rest fold.
-// On a wide screen it folds to a strip of icons, where the fold button counts
-// the threads waiting on the user; on a narrow one it's a drawer the menu
-// opens.
 import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
@@ -44,11 +37,8 @@ import {
 import { windowRoute } from "./update.ts";
 import { Tooltip } from "./tooltip.tsx";
 
-// A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
-// So many threads waiting on the user show until the user asks for the rest.
 const shownWaiting = 8;
-// So many done threads show; the rest are on the Done page.
 const shownDone = 5;
 
 export function Sidebar(props: {
@@ -139,11 +129,6 @@ export function Sidebar(props: {
   );
 }
 
-// The search field, at the top, with New thread beside it as an icon; folded,
-// both are icons, and the search's opens the sidebar at the field. Typing
-// finds threads by name, by what was said in them and by what their change
-// sets wrote. The arrow keys move through the results, Enter opens one, at
-// the change set that matched, and Escape clears the field.
 function ThreadSearch(props: {
   search: SearchModel;
   dispatch: Dispatch;
@@ -222,7 +207,6 @@ function ThreadSearch(props: {
   );
 }
 
-// What a search found, where the lists were.
 function SearchResults({ search, dispatch }: { search: SearchModel; dispatch: Dispatch }) {
   const shown = search.results ?? [];
   return (
@@ -257,7 +241,6 @@ function SearchResults({ search, dispatch }: { search: SearchModel; dispatch: Di
                 </span>
               )}
             </span>
-            {/* A name that matched is the title above already. */}
             {result.matched !== "name" && (
               <span class="search-result-excerpt">{result.excerpt}</span>
             )}
@@ -274,16 +257,10 @@ const listId = "thread-search-results";
 
 const optionId = (index: number) => `thread-search-${index}`;
 
-// Whether the field holds a query, so its results show instead of the lists.
 const searching = (search: SearchModel) => search.query.trim() !== "";
 
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
-// What needs the user, in sight on every page, at the top and never folded:
-// each thread waiting on a review or a reply, with what it waits on and its
-// workstream, which says why it's here, so it has no heading. When nothing
-// waits, nothing shows. Past a few, the rest show here when asked for. The
-// overview's count of them points here (`needsYouId`).
 function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
   const [all, setAll] = useState(false);
@@ -366,10 +343,6 @@ function threadMoves(thread: ThreadSummaryView, where: Nav, dispatch: Dispatch):
   );
 }
 
-// The user's workstreams, under a heading that folds them, which this
-// browser remembers; open until the user folds them. An item or a thread
-// dragged onto one moves there; an item onto the heading, a menu asks
-// whether to make a new workstream of it (moving.ts).
 function Workstreams({
   where,
   moving,
@@ -386,8 +359,6 @@ function Workstreams({
   );
   const { asking } = moving;
   const [shown, toggleShown] = useFold("oriel.sidebar.workstreams", true);
-  // Workstreams the user opened or closed by hand. Any other is open while it's
-  // the current one, and arriving at a workstream opens it whatever was set.
   const [set, setSet] = useState<ReadonlyMap<string, boolean>>(new Map());
   const current = where.workstreams?.find((entry) => entry.current)?.workstream.id ?? null;
   // Before paint, so an arrival never shows the workstream closed for a frame.
@@ -470,7 +441,6 @@ function WorkstreamEntry(props: {
 }) {
   const { entry, dispatch } = props;
   const { workstream, threads } = entry;
-  // Not where the item or thread came from: dropped there, it stays.
   const target = useMoveDrop(
     (item) => movesTo(item, workstream.id),
     (item) => props.onDrop(item),
@@ -497,7 +467,6 @@ function WorkstreamEntry(props: {
         ) : (
           <span class="nav-disclose" aria-hidden="true" />
         )}
-        {/* A swipe or right-click marks it done or deletes it (decision 0028). */}
         <WorkstreamMenu
           workstream={workstream}
           done={false}
@@ -565,9 +534,6 @@ function WorkstreamEntry(props: {
   );
 }
 
-// The latest done and handed-off threads, folded until the user opens them,
-// which this browser remembers. The rest are on the Done page, and dropped
-// ones on its Dropped tab, which a line under them leads to.
 function Done(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
   const [open, toggle] = useFold("oriel.sidebar.done", false);
@@ -632,15 +598,12 @@ function Done(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   );
 }
 
-// A heading that folds the section under it.
 function FoldHead(props: {
   open: boolean;
   onToggle(): void;
   controls: string;
   children: ComponentChildren;
-  // Beside the heading, at its end: what it says folded, or its actions.
   after?: ComponentChildren;
-  // What a drop on it does, and whether one it takes is over it now.
   drop?: ReturnType<typeof useMoveDrop>["props"];
   over?: boolean;
 }) {
@@ -663,9 +626,6 @@ function FoldHead(props: {
   );
 }
 
-// Whether a section of the sidebar is open, kept in this browser only, by
-// `key`; `opened` until the user folds or opens it. `show` opens it for now
-// without keeping that, as a source's problem does.
 function useFold(key: string, opened: boolean) {
   const [open, setOpen] = useState(() => readOpen(key, opened));
   const toggle = () => {
@@ -692,18 +652,8 @@ function writeOpen(key: string, open: boolean) {
   }
 }
 
-// Every connected source, at the foot, folded until the user opens it: one
-// line of how many, when the longest ago of them last synced, and a warning
-// mark while any has a problem. It draws the eye only while a sync runs or a
-// source has a problem, and a problem opens it. Open, each source is one row
-// drawn the same way, whatever the source: its name, its items, which open
-// Browse filtered to it, and when it last synced, with what that sync
-// changed under it when it changed anything, and Sync on hover or focus;
-// Sync all heads them. Adding a source is the last entry, which opens
-// Settings' Connections, where every connector is offered.
 function Sources(props: {
   connections: ConnectionsModel;
-  // Browse as the user last left it, which a row opens filtered to its source.
   browse: Extract<Route, { page: "window" }>;
   dispatch: Dispatch;
 }) {
@@ -761,8 +711,6 @@ function Sources(props: {
           {openConnections(sources).map((source) => {
             const syncing = sources.syncing.includes(source.id);
             const problem = sources.problems[source.id];
-            // Said under its last sync's time, unless a sync runs now or
-            // the last one didn't work.
             const changes = syncing || problem ? null : syncChanges(source.lastSync);
             return (
               <li key={source.id} class="source-row" data-syncing={syncing || undefined}>
@@ -835,8 +783,6 @@ export function MenuIcon() {
   );
 }
 
-// A panel at the window's edge: the sidebar's on the left, or, `right`,
-// the window chat's rail.
 export function PanelIcon(props: { right?: boolean }) {
   return (
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">

@@ -1,10 +1,5 @@
-// Noticed (decision 0052): the overview's strip of what
-// Oriel found unasked, and the pins. A card's kind, subject, headline, rule
-// and block are Oriel's; its one line is the agent's, checked by Oriel and
-// captioned as the agent's; a quote is shown only once found word for word.
-// Pin saves the card's block as a read rerun on each look; Ask about this
-// opens the window chat on it, by ID; Dismiss keeps it away until its
-// figures move on.
+// A card's one line is the agent's, checked by Oriel and captioned as the agent's;
+// a quote is shown only once found word for word.
 import type { SignalKind } from "@oriel/core/noticed";
 import { BlockFigure } from "./block.tsx";
 import { askAbout, type OverviewMsg } from "./overview.ts";
@@ -20,8 +15,6 @@ const kindLabels: Record<SignalKind, string> = {
   scope: "Scope grew",
 };
 
-// A card's or a pin's block at its first rows, as a pin shows it (0030). A
-// chart keeps every mark: its compact drawing is its own (decision 0053).
 function topOf(block: BlockView, n: number): BlockView {
   if (block.form === "rows")
     return {
@@ -51,8 +44,6 @@ export function NoticedStrip(props: {
 }) {
   const { view, dispatch } = props;
   const stamp = useStamp();
-  // Hidden with no model, and until a pass has something to say: none has
-  // run yet, or nothing holds now.
   const empty = view?.cards.length === 0;
   if (
     !view ||
@@ -175,7 +166,6 @@ export function NoticedStrip(props: {
   );
 }
 
-// The pins (decision 0030): each block rerun now, at its first rows.
 export function PinnedStrip(props: {
   pins: readonly PinView[];
   busy: string | null;

@@ -10,24 +10,15 @@ import { Tooltip } from "./tooltip.tsx";
 export function ChatInput(props: {
   draft: string;
   placeholder: string;
-  // The field's accessible name, each place's own ("Message", "Ask about
-  // this workstream").
   label: string;
   submitLabel?: "Send" | "Ask";
-  // A send on its way: the button waits.
   busy: boolean;
-  // The agent is answering, so Stop takes the button's place.
   running?: boolean;
   onStop?(): void;
-  // The one problem line, inside the frame.
   notice?: string | null;
-  // Raised where it floats over a thread; flat elsewhere.
   elevation?: "raised" | "flat";
-  // What the agent will read, such as "Reads 17 items · v3".
   reads?: string | null;
-  // Beside the button, such as Back to the chat.
   extra?: ComponentChildren;
-  // What floats over it, such as the pill for a change set out of view.
   above?: ComponentChildren;
   looking?: Looking;
   context?: ComponentChildren;
@@ -97,15 +88,8 @@ export function ChatInput(props: {
   );
 }
 
-// A composer's props, as a conversation draws its own and hands the same to
-// the item panel's dock (dock.tsx).
 export type Composer = Parameters<typeof ChatInput>[0];
 
-// What the next message is about, over the composer's field (decision
-// 0062): the item open beside it, "Looking at", with × to leave it out;
-// left out, dashed, "Not sending", with Add back; and the item opened since
-// beside a draft that keeps its own, dashed, which + adds. One outside the
-// thread's region says read-only.
 export type Looking = {
   lookingAt: LookingAt;
   readOnly(id: string): boolean;
@@ -175,8 +159,6 @@ function LookingChips(props: Looking) {
   );
 }
 
-// The foot's line with what the message is about: "Reads your whole
-// window, and SYN-99".
 export function readsWith(reads: string | null, lookingAt: LookingAt): string | null {
   const on = lookingAt.chips.filter((chip) => chip.on).map((chip) => chip.item);
   if (on.length === 0) return reads;

@@ -1,5 +1,3 @@
-// The window: clusters under a grouping, and items to pick into a workstream.
-// Controls stay out of the way until something is picked or hovered.
 import type { ComponentChildren } from "preact";
 import { useContext } from "preact/hooks";
 import { dragMove } from "./drag-move.ts";
@@ -50,7 +48,6 @@ const groupingNames: Record<GroupingId, string> = {
 export function WindowPage(props: {
   model: Model;
   workstreams: WorkstreamSummary[] | null;
-  // What asks to connect a source, or says one connected has nothing yet.
   connect: ComponentChildren;
   dispatch: Dispatch;
 }) {
@@ -106,9 +103,6 @@ const statusNames: Record<StatusCategory, string> = {
   done: "Done",
 };
 
-// Browse's filters (decision 0027): item search, then a source, a status
-// category and an assignee, each from what the index has. The search box
-// asks once typing pauses; Enter doesn't wait.
 function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   const { filter } = model;
   const send = (msg: WindowMsg) => dispatch({ type: "window", msg });
@@ -130,7 +124,6 @@ function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         onChange={(event) => pick(picked(event.currentTarget.value))}
       >
         <option value="">{any}</option>
-        {/* One the address names that the index doesn't have stays shown. */}
         {value && !options.some((option) => option.id === value) && (
           <option value={value}>{value}</option>
         )}
@@ -194,7 +187,6 @@ function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   );
 }
 
-// The fixture's date, as Browse writes it absolute.
 const fixtureDay = (instant: string) =>
   new Date(instant).toLocaleDateString(undefined, {
     day: "numeric",
@@ -236,8 +228,6 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   const shown = model.window;
   const stale = shown.grouping !== model.grouping || !sameFilter(model.shownFilter, model.filter);
   const derived = shown.clusters.some(({ row }) => row.origin.kind === "derived");
-  // Headings make room for an anchor's checkbox once any cluster has one, so
-  // they line up.
   const anchored = shown.clusters.some(({ row }) => row.anchor !== null);
   return (
     <>
@@ -415,7 +405,6 @@ const categories = [
   ["todo", "to do"],
 ] as const;
 
-// Items by status category, as one bar. Its parts are counts, not estimates.
 export function StatusBar({ status }: { status: ClusterRow["status"] }) {
   const shown = categories.filter(([category]) => status[category] > 0);
   if (shown.length === 0) return <span class="status-bar empty" />;
@@ -429,12 +418,9 @@ export function StatusBar({ status }: { status: ClusterRow["status"] }) {
   );
 }
 
-// A cluster's items as far as they have loaded, and the next page's button.
 function Items(props: {
   id: string;
   cluster: ClusterRow;
-  // How many items the list holds once loaded, and whether a filter chose
-  // them.
   size: number;
   matching: boolean;
   items: ItemRow[];
@@ -493,7 +479,6 @@ function Items(props: {
   );
 }
 
-// The next page of a cluster's items: on its way, failed, or a button.
 function More(props: {
   cluster: ClusterRow;
   size: number;
@@ -538,7 +523,6 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
   const { item, picked, dispatch } = props;
   const connectors = useContext(ConnectorsContext);
   const columns = columnsOf(connectors, item);
-  // Dragged onto a workstream in the sidebar, it joins it (moving.ts).
   const carried = {
     kind: "item" as const,
     id: item.id,
@@ -593,7 +577,6 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
   );
 }
 
-// What can be done with picked items. It appears once something is picked.
 function Selection(props: {
   model: Model;
   workstreams: WorkstreamSummary[] | null;

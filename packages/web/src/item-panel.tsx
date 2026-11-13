@@ -1,8 +1,4 @@
-// The panel beside the page: an item in its source's own view, read live, as
-// Oriel's own elements. Source text is always text here: a file's markdown is
-// read into the same blocks an agent's reply is, and anything else shows as
-// written, line by line, or in the blocks its source's side read it into.
-// Nothing here sets HTML.
+// Source text is always text here. Nothing here sets HTML.
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect, useId, useRef } from "preact/hooks";
 import { ChatInput } from "./chat-input.tsx";
@@ -34,18 +30,11 @@ import { Tooltip } from "./tooltip.tsx";
 
 export function ItemPanel(props: {
   model: PanelModel;
-  // Where the item is in the list it was opened from, if it was.
   place: { index: number; count: number } | null;
   workstream: CurrentWorkstream | null;
-  // The window's adds, among them any of this item.
   adds: PanelAdds;
-  // A stand-in's item's form, if open, and its saved edits (decision 0059).
   edits: PanelEdits;
-  // At its foot, below 1100 over a conversation: that conversation's
-  // composer (`PanelDock`).
   dock?: ComponentChildren;
-  // Not beside a conversation: "Ask about this" takes the item to the
-  // window chat, still open (decision 0025).
   askable?: boolean;
   dispatch: Dispatch;
 }) {
@@ -54,21 +43,17 @@ export function ItemPanel(props: {
   const connectors = useContext(ConnectorsContext);
   const heading = useRef<HTMLHeadingElement>(null);
   const steps = useRef<HTMLElement>(null);
-  // Closing gives focus back to what had it when the panel opened.
   useEffect(() => {
     const before = document.activeElement;
     return () => {
       if (before instanceof HTMLElement && before.isConnected) before.focus();
     };
   }, []);
-  // Opening an item moves focus to it, unless the user is stepping with the
-  // buttons, which keep it.
   useEffect(() => {
     if (!steps.current?.contains(document.activeElement)) heading.current?.focus();
   }, [model.id]);
   const step = (by: 1 | -1) => dispatch({ type: "panelStepped", by });
-  // Up and down step through the list, wherever focus is but in a field or a
-  // menu, which have their own uses for them.
+  // Not in a field or a menu, which have their own uses for the arrow keys.
   const listed = place !== null;
   useEffect(() => {
     if (!listed) return;
@@ -83,7 +68,6 @@ export function ItemPanel(props: {
     return () => removeEventListener("keydown", pressed);
   }, [listed]);
   const shown = view?.id === model.id ? view : null;
-  // Until the first read arrives, what the page knew of it.
   const glimpse = shown ? null : model.glimpse;
   const href = safeHref(shown?.url ?? null);
   const readAgain = () => dispatch({ type: "panel", msg: { type: "readAgainClicked" } });
@@ -91,8 +75,7 @@ export function ItemPanel(props: {
     if (clickTo(event) !== "browser")
       dispatch({ type: "sourceOpened", id: model.id, via: "panel" });
   };
-  // The panel arrives once; its contents are drawn afresh for each item it
-  // shows, so they fade in again where the panel itself stays put.
+  // Its contents are drawn afresh for each item, so they fade in again where the panel itself stays put.
   return (
     <aside
       class="item-panel"
@@ -260,15 +243,9 @@ export function ItemPanel(props: {
   );
 }
 
-// The conversation under the item, docked at the panel's foot (dock.tsx):
-// the latest answer's first two lines, or the message just sent while the
-// agent works on it, "Chat" to give the conversation the screen, and its
-// composer, with what the next message is about.
 export function PanelDock() {
   const dock = useContext(PanelDockContext);
   if (!dock) return null;
-  // A first question on its way has no thread yet: the chat keeps its
-  // words, as sent, until the answer starts one.
   const latest =
     latestOf(dock.view) ?? (dock.asked ? { kind: "sent" as const, text: dock.asked } : null);
   const working = dock.asked !== null || dock.view?.running === true;
@@ -295,9 +272,6 @@ export function PanelDock() {
   );
 }
 
-// Adding the item to the workstream the page is about, and then what came of
-// it, with its Undo, which is also a note in the window's stack; or that it's
-// in the workstream already.
 function AddTo(props: {
   view: ItemPanelView;
   adds: PanelAdds;
@@ -354,14 +328,11 @@ function AddTo(props: {
   );
 }
 
-// An item as the stack's note names it: by its key where it has one that
-// means something, or else by its title.
 const itemName = (view: ItemPanelView, connectors: Connectors): string => {
   const key = keyLabel(view, connectors);
   return key === view.key || view.title === null ? key : `“${view.title}”`;
 };
 
-// Whether a key goes to something the user is typing in, a menu or a dialog.
 const typing = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable ||
@@ -377,11 +348,8 @@ function StepIcon({ up }: { up?: boolean }) {
   );
 }
 
-// The form a stand-in's item is edited in, if its read gives one.
 const editable = (view: ItemPanelView) => (view.read.status === "ok" ? view.read.edit : undefined);
 
-// A stand-in's item's form (decision 0059): each field as its source names
-// it, saved at once, with an Undo in the window's stack.
 function EditFields(props: { form: EditForm; name: string; send(msg: PanelEditMsg): void }) {
   const { form, send } = props;
   const id = useId();
@@ -502,8 +470,6 @@ function PanelBody({ view }: { view: ItemPanelView }) {
   }
 }
 
-// When the last message above was said, in any block, so a conversation's
-// days read on across its message and its replies.
 const lastSaid = (blocks: PanelBlock[]): string | null =>
   blocks.flatMap((block) => (block.kind === "messages" ? block.messages : [])).at(-1)?.at ?? null;
 
@@ -560,12 +526,6 @@ function Block({ block, before }: { block: PanelBlock; before: string | null }) 
 
 const minute = 60_000;
 
-// Messages as a conversation reads: one header for each day, saying how long
-// after the message before it was when that's a day or more; each message
-// with who wrote it and when, a run by one person within a few minutes under
-// their name once. Mentions are set apart, text written with structure keeps
-// it, as a description does, files are listed apart from the text, and an
-// edit is marked after it.
 function Messages({ messages, before }: { messages: PanelMessage[]; before: string | null }) {
   const days = daysOf(messages, before);
   return (
@@ -635,7 +595,6 @@ function Messages({ messages, before }: { messages: PanelMessage[]; before: stri
   );
 }
 
-// A day as a header names it, in the reader's zone and words.
 const dayName = (instant: string): string =>
   new Date(instant).toLocaleDateString(undefined, {
     weekday: "long",
@@ -643,11 +602,9 @@ const dayName = (instant: string): string =>
     day: "numeric",
   });
 
-// The time of day alone, under a header that names the day.
 const clock = (instant: string): string =>
   new Date(instant).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
-// Text as written: blank lines part paragraphs, and each line stays a line.
 function Plain({ spans }: { spans: PanelInline[] }) {
   return (
     <div class="panel-plain">
