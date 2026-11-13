@@ -6428,9 +6428,14 @@ const dropping = async () => {
   dropThread = await ask("What's left before checkout ships?", on, id);
   return on;
 };
-async function dragOnto(page: Page, from: Locator, onto: Locator, hold = false): Promise<void> {
+// drop-look-over ends holding its drag, for its shot, on a page the next
+// scene in its lane reuses.
+async function letGo(page: Page): Promise<void> {
   await page.mouse.move(1, 1);
   await page.mouse.up();
+}
+async function dragOnto(page: Page, from: Locator, onto: Locator, hold = false): Promise<void> {
+  await letGo(page);
   await from.hover();
   await page.mouse.down();
   const box = await onto.boundingBox();
@@ -6441,6 +6446,7 @@ async function dragOnto(page: Page, from: Locator, onto: Locator, hold = false):
 const railRow = (page: Page, n: number) => page.locator(".rail .members .member").nth(n);
 const threadComposer = (page: Page) => page.locator("main.thread .composer");
 async function openDropThread(page: Page): Promise<void> {
+  await letGo(page);
   await page.goto(new URL(`/threads/${dropThread}`, page.url()).href);
   await railRow(page, 1).waitFor();
 }
@@ -6576,6 +6582,8 @@ scenes.push(
     test: "a Browse row dropped on the window chat's composer goes in Looking at, and the follow-up is about it",
     act: async (page) => {
       if (!beside(page)) return;
+      await letGo(page);
+      await page.reload();
       await overviewShown(page);
       await askChat(page, "What's holding up saved cards?", ".window-chat .reply .chip", docking);
       await page.evaluate(
