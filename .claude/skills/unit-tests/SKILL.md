@@ -8,10 +8,10 @@ description: Which layer a change gets a test at (unit, flow, upgrade, live or n
 Pick the lowest layer that would have caught the bug a person would hit. Most changes need one test or none.
 
 - **Unit:** only the keep rule's classes below, including guards exercised through routes or UI code. Not for wording, labels or happy paths.
-- **Flow:** anything a person does across pages: the first run, Needs you, pills, scroll, a thread's states. A shots scene that asserts as well as shoots, or a design-system page.
+- **Flow:** anything a person does across pages: the first run, Needs you, pills, scroll, a thread's states. A behaviour test (`pnpm ui-test`, decision 0063) or a design-system page.
 - **Upgrade:** a migration or a stored shape. A database copied from the last release, run through the new code.
 - **Live:** agent-facing text (the system prompt, the module, tools, a tool result). An eval recording.
-- **None:** copy, layout and one-line UI changes. The shots and `ui-check` cover them.
+- **None:** copy, layout and one-line UI changes. Their proof is before/after shots in the PR, which a person looks at, and `ui-check`. A shot is evidence, never a test.
 
 A change that crosses pages and touches stored data gets both a flow and an upgrade check, not five unit tests. When a bug reaches main, add the one test at the layer that would have caught it.
 
@@ -34,6 +34,14 @@ A test goes if it pins wording, a label or a list that grows with every kind; re
 - Pass time in (`now`). Code under test never reads the clock.
 - Fixtures over mocks. Model calls replay cassettes; unit tests never touch the network.
 - Each test owns its data (a fresh schema or temp dir) and never depends on run order.
-- For copy and layout, use shots or the design-system site.
+- For copy and layout, use before/after shots or the design-system site.
+
+## Behaviour tests
+
+- A behaviour test is a scene in `scripts/shots.ts` with a `test:` line saying what it checks. Its steps reach the state, as for its picture; its checks go in `check(...)`, `expectCount` or `atOnce()`, which `pnpm ui-test` runs and `pnpm shots` skips. A check only reads, so the picture is the same either way. A scene that checks without a `test:` line fails `pnpm shots`.
+- It runs light at 1280, and at 390 too (`testAt`) only where the behaviour differs by width.
+- Retrying waits only: a locator's `waitFor`, `waitForURL`, `until`. No `waitForTimeout`, no counted frames.
+- A scene of its own server (`make`) when its steps change what another scene shows. Tests run in parallel lanes, each with its own servers, in the scenes' order, so a test never depends on a scene before it that isn't a test.
+- Break the behaviour once by hand and watch the test fail before you commit.
 - Tests that define behavior aren't edited in the PR they validate.
 - A guard's test should fail when the guarded line breaks: break it once by hand before you commit.
