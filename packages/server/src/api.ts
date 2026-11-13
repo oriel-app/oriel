@@ -1,7 +1,5 @@
-// The JSON routes. Every route is behind the Host/Origin guard (site.ts),
-// which also refuses a request that changes state unless it carries this
-// server's own Origin. On top of that, a POST must send JSON, within its
-// route's size cap. GETs read; nothing a GET does opens, decides or writes.
+// Behind site.ts's Host/Origin guard, which refuses a state change without this server's own Origin.
+// A POST must send JSON within its route's size cap; nothing a GET does opens, decides or writes.
 import {
   type Actor,
   type Call,
@@ -92,30 +90,18 @@ export type ApiDeps = {
   workspaceId: Ulid;
   workstreams: WorkstreamStore;
   threads: ThreadStore;
-  // The index's live records, from every source.
   records(): readonly IndexRecord[];
-  // Oriel's own actions, through the one dispatcher (decision 0024).
   dispatch: Dispatch;
-  // The user's Undo of a line under the agent's reply, or their redo of it.
   undoLine(at: LinePlace, call: Call, actor: Actor): Promise<{ undo: Call | null }>;
   changeSets: ChangeSets;
   turns: Turns;
   views: Views;
-  // Oriel's own threads and change sets, and the one search over them.
   reads: OrielReads;
-  // One item for the panel beside the page, read live, and when the index
-  // last saw it change.
   items: ItemPanels;
   emit(event: TelemetryEvent): void;
   now(): Instant;
-  // Syncs the sources that change outside Oriel, once, so a dropped link to
-  // an item made since the last sync can be found. What went wrong, in plain
-  // words, or null.
   refresh(): Promise<string | null>;
-  // Revert conflicts in plain words.
   explain(conflicts: readonly Conflict[]): string;
-  // Browse: a grouping's clusters as rows, with no items, and one page of a
-  // cluster's items, or null when the grouping has no such cluster now.
   browse: {
     rows(grouping: GroupingId, filter: BrowseFilter): WindowView;
     page(
@@ -125,21 +111,10 @@ export type ApiDeps = {
       filter: BrowseFilter,
     ): ClusterPageView | null;
   };
-  // The overview, as the page and the window chat's `window.overview()`
-  // read it (decision 0027).
   overview(): Promise<OverviewView>;
-  // Noticed's strip and the pins (decision 0052).
   noticed?: NoticedService;
-  // Every connection as the window shows them, which kinds it may connect
-  // now, and whether there's a folder picker. Connecting, configuring,
-  // syncing and disconnecting one are actions (decision 0049).
   connections(): ConnectionsView;
-  // Asks the agent picked in Settings for its MCP servers again, as Sync
-  // does (decision 0059), once that look ends.
   lookForServers(): Promise<void>;
-  // The list a connection picks from through its source server, of the
-  // option `field` names, its first when none is named (decision 0059): a
-  // read, which keeps nothing.
   choices(
     id: string,
     query: string,
@@ -147,32 +122,18 @@ export type ApiDeps = {
   ): Promise<
     { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
   >;
-  // A connector's folder step, or null when it has none or the window
-  // doesn't connect it now: the field it fills and what the picker asks.
   folderStep(kind: string): { field: string; prompt: string } | null;
-  // A waiting connection's review step (decision 0051).
-  // A connection's review step (decision 0051), and in Settings, with the
-  // table the person edits by hand (OA-232).
   review(id: string, fresh: boolean, tab?: string): Promise<OptionsReviewView>;
-  // A review's draft with one of the person's edits made, drawn again.
   redraw(id: string, given: unknown, edit: ReviewEdit): Promise<ReviewRedrawn>;
-  // The words that start a waiting connection's onboarding turn, or the
-  // turn that drafts a change to one of its tables, or null when no turn
-  // should start; and that its onboarding turn started in `thread`.
   onboard(id: string, tab?: string): Promise<string | null>;
   onboarded(id: string, thread: string): void;
-  // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
   settings: SettingsService;
-  // The outside tools the person connects to the MCP door, and where the
-  // door listens (decision 0058).
   outside: { tools: OutsideTools; door: Door | null };
-  // The desktop app's first run and its commands for the person's CLI.
   setup: Setup;
   log: Log;
 };
 
-// Body caps, in bytes.
 const smallBody = 4 * 1024;
 const listBody = 64 * 1024;
 const messageBody = 32 * 1024;
@@ -184,7 +145,6 @@ const json = (status: number, value: unknown): Reply => ({
 });
 const problem = (status: number, error: string): Reply => json(status, { error });
 
-// A path segment as it was before the browser encoded it; "" if it can't be.
 function decoded(segment: string): string {
   try {
     return decodeURIComponent(segment);
@@ -210,7 +170,6 @@ const nameValue = refine(
 );
 const textValue = messageText;
 const maxDropped = 50;
-// A search reads this much of its query, and finds this many at most.
 const maxQueryChars = 200;
 const searchLimit = 20;
 const droppedFile = object({
@@ -230,9 +189,7 @@ const droppedBody = object({
     `expected at most ${maxDropped}`,
   ),
 });
-// A thread's first message, and the items open beside it (decision 0062).
 const openThreadBody = object({ text: optional(textValue), about: unknown });
-// A question in the window chat, with the items open beside it.
 const startQuestionValue = union(...startQuestions.map((question) => literal(question)));
 const messageBodyValue = object({
   text: textValue,
@@ -244,16 +201,13 @@ const messageBodyValue = object({
     }),
   ),
 });
-// A thread from nothing, and what its new workstream is called, if the user
-// named it. How long a name may be is the dispatcher's to check.
+// How long a name may be is the dispatcher's to check.
 const newThreadBody = object({
   text: textValue,
   workstreamName: optional(string),
   about: unknown,
 });
-// What a thread's first message is about, checked before the thread is
-// made, so a refused one makes none: the shape `thread.say` takes, as a
-// message in a thread that exists sends it.
+// Checked before the thread is made, so a refused one makes none.
 function firstAbout(about: unknown): { about?: LookingAt } {
   if (about === undefined) return {};
   const looked = lookingAt(about);
@@ -261,8 +215,7 @@ function firstAbout(about: unknown): { about?: LookingAt } {
   return { about: looked.value };
 }
 const tokenBody = object({ token: string });
-// A reason goes with a rejection only. How long a holder's may be is the
-// dispatcher's to check.
+// How long a holder's reason may be is the dispatcher's to check.
 const reviewDecision = refine(
   object({
     token: string,
@@ -282,8 +235,7 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
-// Open as a thread names the chat it opens, so a chat the window has moved
-// on from since isn't the one moved.
+// Names the chat it opens, so a chat the window has moved on from since isn't the one moved.
 const openBody = object({ thread: ulidValue });
 const setupCommand = object({
   command: union(
@@ -293,7 +245,6 @@ const setupCommand = object({
     literal("update"),
     literal("cancel"),
   ),
-  // Which CLI, Claude Code when absent; Oriel only signs Codex in.
   cli: optional(union(literal("claude-code"), literal("codex"))),
 });
 const setupAi = object({
@@ -311,11 +262,8 @@ const setupProgress = object({
   ),
 });
 const typedText = (max: number) => refine(string, (text) => text.length <= max, `at most ${max}`);
-// What the person gave a connector's steps, which its own validator checks.
 const connectBody = object({ kind: unknown, given: unknown });
 const pickerBody = object({ kind: string, given: optional(unknown) });
-// The window makes a workstream from a cluster or from picked items; a workstream from
-// nothing comes only with its thread.
 const windowWorkstream = refine(
   unknown,
   (body) =>
@@ -326,7 +274,7 @@ const windowWorkstream = refine(
   "expected a cluster or picked items",
 );
 const tinyBody = 256;
-// A source's table by its place, as a preview gives it: IDs, never a name.
+// IDs, never a name.
 const tableAt = refine(
   string,
   (at) => /^[A-Za-z0-9_-]{1,100}\/[A-Za-z0-9_-]{1,40}$/.test(at),
@@ -340,7 +288,7 @@ const windowEvent = union(
   }),
   object({ name: literal("cluster.opened") }),
   object({ name: literal("cluster.closed") }),
-  // By the item, whose source the event keeps; the item itself isn't kept.
+  // The event keeps the item's source, never the item.
   object({ name: literal("item.panel-opened"), item: itemIdValue }),
   object({
     name: literal("item.source-opened"),
@@ -358,9 +306,7 @@ const windowEvent = union(
     rank: count,
   }),
   object({ name: literal("overview.opened") }),
-  // A pivot block regrouped in the window, by nothing but that it was.
   object({ name: literal("block.regrouped") }),
-  // Make a workstream on a cluster the overview suggested.
   object({
     name: literal("overview.suggestion-made"),
     workstreamId: refine(string, isUlid, "expected a workstream ID"),
@@ -374,7 +320,6 @@ const windowEvent = union(
     name: literal("window-chat.question-used"),
     question: startQuestionValue,
   }),
-  // The first run's Show details, copied for someone helping the person.
   object({
     name: literal("first-run.details-copied"),
     what: union(
@@ -382,7 +327,6 @@ const windowEvent = union(
       literal("sign-in"),
       literal("update"),
       literal("test"),
-      // A connector's first sync that stopped, by its kind.
       ...sourceKinds.map((kind) => literal(kind)),
     ),
   }),
@@ -405,14 +349,10 @@ async function readJson<T>(request: Request, limit: number, validator: Validator
   return result.value;
 }
 
-// An action's refusal as an HTTP status.
 const actionStatus = { invalid: 400, refused: 403, "not-found": 404, conflict: 409 } as const;
 
-// The window's door is the user's.
 const user: Actor = { kind: "user" };
 
-// The line under the agent's reply an Undo names, as `?thread=…&seq=…&line=…`,
-// or null for an Undo from anywhere else.
 function linePlace(params: URLSearchParams): LinePlace | null {
   const [thread, seq, index] = [params.get("thread"), params.get("seq"), params.get("line")];
   if (thread === null && seq === null && index === null) return null;
@@ -424,7 +364,6 @@ function linePlace(params: URLSearchParams): LinePlace | null {
   return { ...at, thread: at.thread };
 }
 
-// The grouping a Browse request names.
 function groupingOf(params: URLSearchParams): GroupingId {
   const grouping = params.get("grouping");
   if (!isGroupingId(grouping))
@@ -432,9 +371,7 @@ function groupingOf(params: URLSearchParams): GroupingId {
   return grouping;
 }
 
-// Browse's filters from a request, a query cut as the threads' search cuts
-// it. A source or an assignee the index doesn't have keeps nothing, so an
-// old address shows that, rather than failing.
+// A source or an assignee the index doesn't have keeps nothing, so an old address shows that, rather than failing.
 function filterOf(params: URLSearchParams): BrowseFilter {
   const filter = browseFilter(params);
   if (params.get("status")?.trim() && !filter.status)
@@ -442,7 +379,6 @@ function filterOf(params: URLSearchParams): BrowseFilter {
   return filter.q ? { ...filter, q: filter.q.slice(0, maxQueryChars) } : filter;
 }
 
-// A count of items from a request: a whole number, 0 when absent.
 function fromOf(params: URLSearchParams): number {
   const from = Number(params.get("from") ?? 0);
   if (!Number.isSafeInteger(from) || from < 0)
@@ -450,8 +386,6 @@ function fromOf(params: URLSearchParams): number {
   return from;
 }
 
-// A change-set refusal (`ChangeSetError`, by its name and code) as an HTTP
-// status; null for any other error.
 function changeSetStatus(error: unknown): number | null {
   if (!isChangeSetError(error)) return null;
   return error.code === "not-found" ? 404 : error.code === "invalid" ? 400 : 409;
@@ -464,12 +398,9 @@ type Route = {
 };
 
 const ulidPart = "([0-9A-HJKMNP-TV-Z]{26})";
-// An item ID, as one path segment (`jira%3ASYN-12`).
 const itemPart = "([^/]{1,512})";
-// A chat entry's place in its thread.
 const seqPart = "([1-9][0-9]{0,8})";
-// Workstreams were called groups until OA-98: /api/groups/… still answers as
-// /api/workstreams/…, for a tab opened before then.
+// Workstreams were once called groups: /api/groups/… still answers, for a tab opened before then.
 const at = (path: string) =>
   new RegExp(
     `^/api${path.replaceAll(":id", ulidPart).replaceAll(":item", itemPart).replaceAll(":seq", seqPart)}$`,
@@ -509,8 +440,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     }
     return questionLabel(kind, name);
   };
-  // The window chat a question goes to: the one open, or the first of a new
-  // one, on an empty workstream of its own.
   const windowChatThread = async (): Promise<{ thread: Ulid; made: boolean }> => {
     const open = deps.threads.windowChat(deps.workspaceId, deps.now());
     if (open) return { thread: open.id, made: false };
@@ -524,7 +453,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     });
     return { thread, made: true };
   };
-  // A workstream marked done or reopened, and how many threads came along.
   const ended = async (
     id: string,
     carried: number,
@@ -539,15 +467,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     return set;
   };
 
-  // An item ID from a request, of a declared kind, with its kind.
   const mustItem = (text: string) => {
     const parsed = parseDeclared(text);
     if (!parsed) throw new Refused(400, "expected an item ID");
     return { id: text as ItemId, source: parsed.kind };
   };
 
-  // A change set as the window shows it, with what can be done with it, as
-  // the change set engine says.
   const viewOf = async (set: ChangeSet) =>
     changeSetView(
       set,
@@ -600,9 +525,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       const shown = views.entry(message, threadId);
       if (shown) send({ type: "entry", entry: shown }, message.seq);
     };
-    // Watch first, then catch up, in one synchronous step, so no entry falls
-    // between the two.
-    // A deleted thread says so, last.
+    // Watch first, then catch up, in one synchronous step, so no entry falls between the two.
     const unwatch = turns.watch(threadId, (event) => {
       if (event.type === "message") entry(event.message);
       else if (event.type === "change-set")
@@ -614,9 +537,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         out.end();
       } else status();
     });
-    // A thread's page hears the rest of the workspace change on this stream
-    // too, so a tab holds one stream at most: browsers allow few per host.
-    // Its own thread's moves are the status and change-set events above.
+    // A thread's page hears the rest of the workspace on this stream too, so a tab holds one stream at most:
+    // browsers allow few per host.
     const unwatchAny = turns.watchAny((moved) => {
       if (moved !== threadId) send({ type: "threads" });
     });
@@ -635,9 +557,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     };
   };
 
-  // The workspace changed: a thread moved, or one of Oriel's own actions
-  // changed something, whoever called it. One empty event each time, which
-  // pages answer by loading again what they show.
   const anyStream = (): Reply => {
     const out = channel<string>(() => stop());
     const stop = turns.watchAny(() => out.push('data: {"type":"threads"}\n\n'));
@@ -652,15 +571,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
 
   const routes: Route[] = [
     {
-      // Settings (OA-181): the person's providers, models and look. No
-      // reply carries a key, only whether one is set.
+      // No reply carries a key, only whether one is set.
       method: "GET",
       path: at("/settings"),
       run: async () => json(200, deps.settings.view()),
     },
     {
-      // How much of the person's plan Oriel has used, under Claude Code's
-      // row: counts, and the plan's windows from the CLI (decision 0046).
       // A POST, since it starts the CLI: only the window's own origin asks.
       method: "POST",
       path: at("/settings/usage"),
@@ -670,7 +586,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // One change, applied at once.
       method: "POST",
       path: at("/settings"),
       async run(_, request) {
@@ -684,8 +599,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The outside tools the person connected, and where the MCP door
-      // listens, or why it's closed (decision 0058). No token is in it.
+      // No token is in it.
       method: "GET",
       path: at("/outside-tools"),
       run: async () =>
@@ -704,8 +618,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         }),
     },
     {
-      // The person connects an outside tool, by a name they give it, to read
-      // only or to read and act. Its token is in this reply alone.
+      // Its token is in this reply alone.
       method: "POST",
       path: at("/outside-tools"),
       async run(_, request) {
@@ -724,7 +637,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Refused from its next request, and its open streams end.
       method: "POST",
       path: at("/outside-tools/:id/revoke"),
       async run([id = ""], request) {
@@ -734,7 +646,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Check again: looks for every provider, as at startup.
       method: "POST",
       path: at("/settings/look"),
       async run(_, request) {
@@ -743,16 +654,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The desktop app's setup, and the CLI rows it shares with Settings
-      // (decisions 0038 and 0048). Under `pnpm dev`, all null.
       method: "GET",
       path: at("/setup"),
       run: async () => json(200, await deps.setup.view()),
     },
     {
-      // A command for the person's Claude Code or Codex, from a fixed list.
-      // One that runs on, as an install does, answers at once; the page asks
-      // again.
+      // A command from a fixed list.
       method: "POST",
       path: at("/setup/cli"),
       async run(_, request) {
@@ -766,8 +673,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The AI the first run continues with: a CLI once its test turn
-      // answers.
       method: "POST",
       path: at("/setup/ai"),
       async run(_, request) {
@@ -782,8 +687,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The first run's own steps, each done or skipped, its end, and the
-      // overview's one-time line dismissed.
       method: "POST",
       path: at("/setup/progress"),
       async run(_, request) {
@@ -797,8 +700,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // How every connector shows, connected or not, from its declaration:
-      // the page keeps no list of sources (decision 0049).
       method: "GET",
       path: at("/connectors"),
       run: async () => json(200, { connectors: connectorViews }),
@@ -809,9 +710,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       run: async () => json(200, deps.connections()),
     },
     {
-      // Connects what the person gave across a connector's steps, as a
-      // folder's path: checked before anything is kept, then synced into the
-      // index at once. A refusal names the fields it's about.
       method: "POST",
       path: at("/connections"),
       async run(_, request) {
@@ -824,8 +722,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A waiting connection's review step: Oriel's guess and the agent's
-      // draft, each drawn from the source, never from the drafter's words.
+      // Drawn from the source, never from the drafter's words.
       method: "GET",
       path: at("/connections/:id/review"),
       // Try again reads the source afresh; the window's own polling doesn't.
@@ -837,11 +734,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The review step's draft with one of the person's edits made, such
-      // as another column for the title, drawn again from the source, with
-      // the options it would set and what they do to the items the
-      // connection has. A redraw: nothing is kept, and applying is the
-      // person's own `source.configure`, or the held draft's Apply.
       method: "POST",
       path: at("/connections/:id/review"),
       async run([id = ""], request) {
@@ -854,11 +746,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The onboarding turn of a connection just made (decision 0051): one
-      // turn of the window chat, the person's, from the connector's own
-      // words, which name nothing synced. None when the agent can't draft,
-      // or one started already. With a table, by its `at`, an ID, the
-      // person's Ask Oriel about it in Settings, in the same way (OA-232).
+      // From the connector's own words, which name nothing synced.
       method: "POST",
       path: at("/connections/:id/draft"),
       async run([id = ""], request) {
@@ -872,9 +760,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // On the desktop app, a folder step through the system's folder
-      // picker, through the shell; then the connection is made as a typed
-      // folder's is. Cancelling changes nothing.
       method: "POST",
       path: at("/connections/picker"),
       async run(_, request) {
@@ -898,8 +783,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The list a connection picks from through its source server, for
-      // Settings to pick from (decision 0059). A read: nothing is kept.
       method: "POST",
       path: at("/connections/:id/pick"),
       async run([id = ""], request) {
@@ -915,10 +798,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Sets a connection's options, which apply at once: it syncs with
-      // them, and a sync that fails says why beside it. Its Undo puts back
-      // the options it replaced. A spreadsheet's mappings are longer than
-      // most.
+      // A spreadsheet's mappings are longer than most.
       method: "POST",
       path: at("/connections/:id/options"),
       async run([id = ""], request) {
@@ -930,9 +810,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Looks for the person's source servers again, as pressing sync does
-      // (decision 0059): a read of the agent's own list, which turns nothing
-      // on. The reply is every connection, with what it found.
       method: "POST",
       path: at("/servers/look"),
       async run(_, request) {
@@ -942,8 +819,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The overview's card of what Oriel found, dismissed: it shows again
-      // only for another change.
       method: "POST",
       path: at("/servers/dismiss"),
       async run(_, request) {
@@ -953,9 +828,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A full sweep of a connection, so what was made or deleted in its
-      // source since the last sync shows. Its source failing it is a 502:
-      // the request was fine.
+      // Its source failing it is a 502: the request was fine.
       method: "POST",
       path: at("/connections/:id/sync"),
       async run([id = ""], request) {
@@ -967,9 +840,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Disconnects a connection: its options and its items go,
-      // and workstreams that held them keep them as items the index no
-      // longer has. The window asks first.
       method: "POST",
       path: at("/connections/:id/disconnect"),
       async run([id = ""], request) {
@@ -979,14 +849,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Browse's first reply: the clusters, with no items (decision 0027).
       method: "GET",
       path: at("/browse"),
       run: async (_, _request, url) =>
         json(200, deps.browse.rows(groupingOf(url.searchParams), filterOf(url.searchParams))),
     },
     {
-      // A page of one cluster's items, as the user opens it or asks for more.
       method: "GET",
       path: at("/browse/items"),
       async run(_, _request, url) {
@@ -1002,7 +870,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The overview, computed now (decision 0027).
       method: "GET",
       path: at("/overview"),
       async run() {
@@ -1010,15 +877,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Noticed's cards and the pins, computed now; a pass runs in the
-      // background when the signals on offer changed, and this never waits
-      // for it.
       method: "GET",
       path: at("/noticed"),
       run: async () => json(200, await mustNoticed().view()),
     },
     {
-      // Dismiss a card: it stays away until its figures move on.
       method: "POST",
       path: at("/noticed/dismiss"),
       async run(_, request) {
@@ -1028,7 +891,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Pin a card's block to the overview, as its saved read (decision 0030).
       method: "POST",
       path: at("/noticed/pin"),
       async run(_, request) {
@@ -1046,10 +908,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The user left the overview: what it showed is seen (decision 0027).
-      // `seq` is the last change log entry the page counted, so one that
-      // committed after it rendered stays unseen. The overview calls this as
-      // the user leaves it.
+      // `seq` is the last change log entry the page counted, so one that committed after it rendered stays unseen.
       method: "POST",
       path: at("/overview/leave"),
       async run(_, request) {
@@ -1060,7 +919,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What only the window knows happened, each event with fixed fields.
       method: "POST",
       path: at("/telemetry"),
       async run(_, request) {
@@ -1089,8 +947,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The sidebar's search over the workspace's threads and what their
-      // change sets wrote: the one search the agent's thread.find() runs.
       method: "GET",
       path: at("/search"),
       async run(_, _request, url) {
@@ -1113,8 +969,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // An item for the panel beside the page, read live. A source that
-      // doesn't answer is a plain sentence; a missing item is a view.
       method: "GET",
       path: at("/items/:item"),
       async run([item = ""]) {
@@ -1138,10 +992,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // An Undo: the call the server gave for one of Oriel's own actions,
-      // sent back as it is, so only an action that undoes another. The reply
-      // is that call's own undo, and what went wrong, if anything did. One from a line under the agent's reply
-      // names the line, which then says what came of it.
+      // The call the server gave, sent back as it is, so only an action that undoes another comes this way.
       method: "POST",
       path: /^\/api\/actions\/([a-z]+\.[a-z]+)$/,
       async run([name = ""], request, url) {
@@ -1151,8 +1002,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const done = at
           ? await deps.undoLine(at, { action: name, input } as Call, user)
           : await deps.dispatch.untyped(name, input, user);
-        // What went wrong after it applied, such as a connection's options
-        // that don't fit its source (decision 0051), is said too.
         const { problem } = done as { problem?: unknown };
         return json(200, { undo: done.undo, ...(typeof problem === "string" ? { problem } : {}) });
       },
@@ -1195,10 +1044,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What the user dropped on the workstream or one of its threads: links, text
-      // and file names, as dropped.ts reads them. What names nothing in the
-      // index is retried once after a sync, then refused in plain words; the
-      // rest is added as the user picking it would be.
       method: "POST",
       path: at("/workstreams/:id/drop"),
       async run([id = ""], request) {
@@ -1252,8 +1097,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Marks the workstream done, with its open threads, or reopens it, with
-      // those (decision 0028).
       method: "POST",
       path: at("/workstreams/:id/done"),
       async run([id = ""], request) {
@@ -1274,7 +1117,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // `threads`: how many threads the user was told go with it.
       method: "POST",
       path: at("/workstreams/:id/delete"),
       async run([id = ""], request) {
@@ -1305,10 +1147,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         json(200, { threads: await views.threads(deps.workspaceId) } satisfies ThreadsView),
     },
     {
-      // A thread from nothing, with its first message: on a new workstream with no
-      // items, where the agent may only create them, as when a plan starts
-      // with its epic. Until that message is sent, the thread is only a draft
-      // in the browser, so one abandoned leaves nothing behind.
+      // Until its first message is sent, the thread is only a draft in the browser, so one abandoned leaves nothing behind.
       method: "POST",
       path: at("/threads"),
       async run(_, request) {
@@ -1325,18 +1164,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The window chat the window shows (decision 0027): the newest one the
-      // user hasn't left with New chat, while it is working; else none, and
-      // the next question makes one.
       method: "GET",
       path: at("/window-chat"),
       run: async () =>
         json(200, { thread: deps.threads.windowChat(deps.workspaceId, deps.now())?.id ?? null }),
     },
     {
-      // A question in the window chat. The first makes its thread, on an
-      // empty workstream of its own, which shows in the sidebar from then on;
-      // opening the overview makes nothing.
       method: "POST",
       path: at("/window-chat/messages"),
       async run(_, request) {
@@ -1350,7 +1183,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // New chat: the window chat starts afresh with the next question.
       method: "POST",
       path: at("/window-chat/new"),
       async run(_, request) {
@@ -1360,8 +1192,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Open as a thread: the window chat becomes its workstream's own
-      // thread, and the window starts a fresh one (OA-355).
       method: "POST",
       path: at("/window-chat/open"),
       async run(_, request) {
@@ -1446,7 +1276,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Sync now: the thread as it is at its workstream's latest version.
       method: "POST",
       path: at("/threads/:id/sync"),
       async run([id = ""], request) {
@@ -1466,7 +1295,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What deleting the thread would lose, for the person to confirm.
       method: "GET",
       path: at("/threads/:id/deletion"),
       async run([id = ""]) {
@@ -1506,8 +1334,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         return changeSetReply(input.changeSet);
       },
     },
-    // A second look, when the person asks; and a change one suggested,
-    // added (decision 0054).
     {
       method: "POST",
       path: at("/change-sets/:id/second-look"),
@@ -1567,8 +1393,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A message held in the thread, from anyone but the user: they send it
-      // to the agent, as it is or edited, or discard it.
       method: "POST",
       path: at("/threads/:id/held/:seq/send"),
       async run([id = "", place = ""], request) {
@@ -1579,10 +1403,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A draft of the agent's held in the thread (decision 0051): the user
-      // applies it, as it is or with their edit of its input, as their own
-      // call of its action, whose Undo comes back; or discards it, below. One
-      // its action refuses stays held, and the reply says why.
       method: "POST",
       path: at("/threads/:id/held/:seq/apply"),
       async run([id = "", place = ""], request) {
@@ -1603,7 +1423,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Retries an approved change set that stopped partway.
       method: "POST",
       path: at("/change-sets/:id/apply"),
       async run([id = ""], request) {
@@ -1614,8 +1433,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Ends a change set that can go no further. The warnings name changes
-      // that may already have landed, for the person to check.
       method: "POST",
       path: at("/change-sets/:id/dismiss"),
       async run([id = ""], request) {
@@ -1661,8 +1478,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What a review link's page asks for once the person opens it: the
-      // diff, without the thread.
       method: "POST",
       path: at("/review/open"),
       async run(_, request) {
@@ -1670,9 +1485,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const opened = await changeSets.openReview(token);
         if (!opened)
           throw new Refused(404, "This review link has expired, was revoked, or was already used.");
-        // Its thread went with a workstream the user deleted, which they may
-        // bring back, and the link with it (decision 0028). That counts as
-        // refused, not opened (OA-143).
         const { workspaceId } = deps;
         const changeSetId = opened.changeSet.id;
         if (!(await liveChangeSet(deps, changeSetId))) {
@@ -1690,8 +1502,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         }
         deps.emit({ name: "review-link.opened", at: deps.now(), workspaceId, changeSetId });
         await changeSets.reviewLinkOpened(token);
-        // With how each connector shows, from its declarations alone, so the
-        // page names an item as the thread does: the page asks no other route.
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),
@@ -1723,8 +1533,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Ends what is left of a change set that started landing, as the
-      // thread's dismiss does. The warnings name what may have landed.
       method: "POST",
       path: at("/review/dismiss"),
       async run(_, request) {

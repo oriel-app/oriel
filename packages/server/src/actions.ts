@@ -1,12 +1,5 @@
-// The handlers of Oriel's own actions, and the one dispatcher every door
-// calls (decision 0024). Core declares each action; the dispatcher checks
-// its input, refuses an actor its class or doors rule out, runs it, records
-// who acted, counts the call once in telemetry and publishes once to the
-// window's streams. A direct action's handler gives back the call that
-// undoes it, built from what actually changed. Nothing here reaches a
-// source's writer: writing to a source takes an approved change set. A
-// stand-in's item a person edits in its panel (decision 0059) changes through
-// its connection's own edit, never a writer, and only by the person's hand.
+// Nothing here reaches a source's writer: writing to a source takes an approved change set.
+// A stand-in's item changes through its connection's own edit, never a writer, and only by the person's hand.
 import {
   type ActionDeclaration,
   type ActionInput,
@@ -42,14 +35,9 @@ import type { NoticedService } from "./noticed.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
 import { clippedTitle, identity, memberOf } from "./views.ts";
 
-// What a workstream made for a thread from nothing is called, until a change set
-// creates its epic and it takes that epic's name.
 export const blankWorkstreamName = "New workstream";
-// What the window chat's own workstream is called until the user names it.
 export const windowChatName = "Window chat";
 
-// A refusal the doors map: the window's routes to 400, 403, 404 or 409.
-// `conflict`: not now, while something else is under way or missing.
 export class ActionError extends Error {
   readonly code: "invalid" | "refused" | "not-found" | "conflict";
   constructor(code: ActionError["code"], message: string) {
@@ -59,29 +47,17 @@ export class ActionError extends Error {
   }
 }
 
-// What a call changed, for the window's streams: a workstream, and whether its
-// members changed, which moves its working threads, or that it went with its
-// threads; a thread, and whether an
-// entry already in its chat changed, as a held message settles, or it moved
-// to its workstream's latest version, or whether it is gone; or a change set
-// of a thread, and whether it is applying now.
 export type Changed =
   | { workstream: Ulid; members: boolean }
-  // Deleted, with the threads that went with it.
   | { workstream: Ulid; deleted: readonly Ulid[] }
   | { thread: Ulid; chat?: true; moved?: Move }
   | { thread: Ulid; deleted: true }
   | { thread: Ulid; changeSet: Ulid; applying: boolean };
 
-// A connection the user connects, configures or syncs from the window, as it
-// stands then; or what went wrong, in plain words, with the fields of its
-// connector's steps it is about.
 export type SourceOutcome =
   | { connection: ConnectionView }
   | { problem: string; fields?: readonly string[] };
 
-// A change-set refusal (`ChangeSetError`, by its name and code), which the
-// window's routes map by its code.
 export const isChangeSetError = (error: unknown): error is Error & { code: string } =>
   error instanceof Error && error.name === "ChangeSetError" && "code" in error;
 
@@ -89,14 +65,9 @@ export type ActionDeps = {
   workspaceId: Ulid;
   workstreams: WorkstreamStore;
   threads: ThreadStore;
-  // The index's live records, from every source.
   records(): readonly IndexRecord[];
-  // A grouping's clusters as the window shows them now.
   clusters(grouping: GroupingId): Cluster[];
-  // What a change set created, which joins its workstream before the index has it.
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
-  // What becomes of a thread's chat: the user's message, which starts a
-  // turn; a message held in it, whoever it is from; and its running turn.
   turns: Pick<
     Turns,
     | "say"
@@ -110,37 +81,20 @@ export type ActionDeps = {
     | "continued"
   >;
   changeSets: ChangeSets;
-  // Second looks at change sets (decision 0054): one taken when the person
-  // asks, changes one suggested, added, and one dismissed (OA-257). Absent
-  // where no model runs the agent.
   secondLook?: {
     take(changeSetId: Ulid): Promise<void>;
     add(changeSetId: Ulid, look: Ulid, places: readonly number[]): Promise<ChangeSet>;
     dismiss(changeSetId: Ulid, look: Ulid): void;
   };
-  // After a change set applied, partly or in full: what it created joins
-  // the workstream, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
-  // A person's edit of a stand-in's item, through its connection (decision
-  // 0059): the values it set, before and after. Any other item is refused.
   edit(
     item: ItemId,
     values: Readonly<Record<string, unknown>>,
   ): Promise<{ before: Record<string, unknown>; after: Record<string, unknown> }>;
-  // Connections (decision 0049): connecting one through its connector's
-  // steps, setting its options, the sync the user asks for, and
-  // disconnecting it. Each checks what its connector declares, as the
-  // composition root supplies it. One the workspace doesn't have, or a
-  // flag makes, or that isn't open, is an ActionError.
   sources: {
-    // `counted`: it emitted `source.connected`, as a connection's first sync
-    // into the workspace does.
     connect(
       input: ActionInput<"source.connect">,
     ): Promise<{ outcome: SourceOutcome; counted: boolean }>;
-    // `changed`: the options whose values changed, by name; `replaced`: the
-    // options it had before, which its Undo puts back. Set, its sync's
-    // problem, if that failed, comes with it.
     configure(input: ActionInput<"source.configure">): Promise<{
       outcome: SourceOutcome | { connection: ConnectionView; problem?: string };
       changed: readonly string[];
@@ -153,42 +107,18 @@ export type ActionDeps = {
       input: ActionInput<"source.disconnect">,
     ): Promise<Pick<ConnectionView, "id" | "kind" | "number">>;
   };
-  // Which kinds are on (decision 0059): one turned on, by the person,
-  // through a source server found for it, or one off by choice, and one
-  // turned off, by the person or the agent. Each gives the server it was
-  // on through, for its Undo; a kind Oriel has none of, or one already in
-  // that state, is an ActionError. And the overview's card of what Oriel
-  // found, dismissed.
   kinds: {
     on(kind: string, server: string | undefined): Promise<{ server: string | null }>;
     off(kind: string, by: "person" | "agent"): Promise<{ server: string | null }>;
     dismiss(): void;
   };
-  // What a draft would replace now, such as the options a connection has,
-  // to tell one the user can still apply from one they've moved past, and
-  // the name of what it sets; null when that's gone (decision 0051).
   drafted(draft: Draft): { over: unknown; name: string } | null;
-  // A draft's input as its action takes it, such as columns by letter
-  // settled into the headers above them, read from the source now; it
-  // throws why the draft no longer fits. As drafted when absent.
   settle?(draft: Draft): Promise<Record<string, unknown>>;
-  // The open workstream holding an item, as the overview lists it: what
-  // Continue in… carries a request about it to (decision 0062). Absent,
-  // none does.
   holding?(item: ItemId): { id: Ulid; name: string } | null;
-  // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
-  // A thread's change sets still to apply, pending or approved: whether
-  // each waits on the user, and the items it names.
   unsettled(threadId: Ulid): Promise<{ waits: boolean; names: readonly ItemId[] }[]>;
-  // Moves the workspace's last-seen stamp to `at` and change log entry
-  // `seq`, never back.
   markSeen(at: Instant, seq: number): void;
-  // Noticed's dismissals and pins (decision 0052); absent
-  // where the app has none.
   noticed?: () => NoticedService;
-  // Calls `then` once `ms` have passed, unless the call it gives back
-  // cancels that first.
   later(ms: number, then: () => void): () => void;
   emit(event: TelemetryEvent): void;
   publish(changed: Changed): void;
@@ -202,10 +132,7 @@ type Counted = TelemetryEvent extends infer E
     : never
   : never;
 
-// What a handler did. `events` are the SPEC §7 events that count it; with
-// none, the dispatcher counts it as `action.called`; `counted` when what it
-// called counts it, as the change set engine and a turn do, so nothing is
-// counted twice.
+// `counted` when what it called counts it, as the change set engine and a turn do, so nothing is counted twice.
 type Outcome<O> = {
   output: O;
   undo: Call | null;
@@ -213,7 +140,6 @@ type Outcome<O> = {
   events: Counted[] | "counted";
 };
 
-// `cause` is what a workstream's log records as having made a version.
 type Handler<N extends ActionName> = (
   input: ActionInput<N>,
   actor: Actor,
@@ -221,18 +147,13 @@ type Handler<N extends ActionName> = (
   cause: WorkstreamChange["cause"],
 ) => Promise<Outcome<unknown>>;
 
-// The user's own doing goes unsaid in an event; anyone else is named.
 const by = (actor: Actor): { by?: Actor } => (actor.kind === "user" ? {} : { by: actor });
 
-// What only the user may ask of an action, in the window: anyone else is
-// refused it, whatever door they came through.
+// Anyone else is refused, whatever door they came through.
 const userOnly = (actor: Actor, what: string) => {
   if (actor.kind !== "user") throw new ActionError("refused", `only the user ${what}`);
 };
 
-// The agent and outside tools, whom the host holds to what a person may
-// still do (decision 0024); and the agent's own thread, whose turn is the
-// one acting.
 const bound = (actor: Actor) => actor.kind === "agent" || actor.kind === "tool";
 const ownThread = (actor: Actor) => (actor.kind === "agent" ? actor.threadId : null);
 const keys = (ids: readonly string[]) => ids.map((id) => parseItemId(id)?.key ?? id).join(", ");
@@ -244,7 +165,6 @@ const mustWorkstream = (deps: ActionDeps, id: Ulid) => {
   return workstream;
 };
 
-// A thread this workspace has.
 const mustThread = (deps: ActionDeps, id: Ulid) => {
   const thread = deps.threads.get(id, deps.now());
   if (!thread || thread.workspaceId !== deps.workspaceId)
@@ -252,8 +172,7 @@ const mustThread = (deps: ActionDeps, id: Ulid) => {
   return thread;
 };
 
-// A change set this workspace has, or null. One of a deleted thread, kept
-// for what it wrote, is gone with it.
+// One of a deleted thread, kept for what it wrote, is gone with it.
 export const liveChangeSet = async (
   deps: Pick<ActionDeps, "changeSets" | "threads" | "workspaceId" | "now">,
   id: Ulid,
@@ -269,8 +188,7 @@ const mustChangeSet = async (deps: ActionDeps, id: Ulid) => {
   return set;
 };
 
-// Who decides a change set: the user, in its thread, or a review link's
-// holder, who presents the link's token, which the engine checks.
+// A review link's holder presents its token, which the engine checks.
 const approverOf = (actor: Actor, token: string | undefined): Approver => {
   if (actor.kind === "review-link" && token !== undefined)
     return { via: "review-link", token, by: actor.by };
@@ -278,13 +196,8 @@ const approverOf = (actor: Actor, token: string | undefined): Approver => {
   throw new ActionError("invalid", "only a review link's holder gives its token, and they must");
 };
 
-// Applies a change set, and tells when that starts and when it ends. The
-// engine marks it applying before `apply` returns its promise, so the first
-// reload sees that. What it created then joins its workstream. Meanwhile it
-// may stall, its last send unanswered for a send's lease (OA-82), and the
-// window should see it stuck, with no word from its source to say so: once
-// the lease could have run, and each minute after, it looks, and tells the
-// window again when that has changed.
+// The engine marks it applying before `apply` returns its promise, so the first reload sees that.
+// A send may go unanswered past its lease with no word from the source, so it looks again then, and each minute after.
 const applyTold = async (deps: ActionDeps, set: ChangeSet) => {
   const applying = deps.changeSets.apply(set.id);
   const told = (applying: boolean) =>
@@ -320,15 +233,11 @@ const applyTold = async (deps: ActionDeps, set: ChangeSet) => {
 
 const lookAgainMs = 60_000;
 
-// Whether a held draft can no longer apply: what it was drafted over has
-// changed since, or is gone (decision 0051).
 const stale = (deps: ActionDeps, held: { draft: Draft; over: unknown }): boolean => {
   const now = deps.drafted(held.draft);
   return now === null || JSON.stringify(now.over) !== JSON.stringify(held.over);
 };
 
-// The fields of an action's input that say what it acts on, by their type
-// as an ID, which an edit of its draft keeps.
 const fixedFields = (action: ActionName): string[] =>
   alternatives(action).flatMap((shape) =>
     Object.entries(shape.fields).flatMap(([key, field]) =>
@@ -336,8 +245,6 @@ const fixedFields = (action: ActionName): string[] =>
     ),
   );
 
-// What in a thread waits on the user, in words, or null: a change set to
-// decide, or a message held for them.
 async function waitsOn(
   deps: ActionDeps,
   threadId: Ulid,
@@ -351,8 +258,7 @@ async function waitsOn(
   return null;
 }
 
-// Items as the index has them now. One it doesn't have is refused, unless
-// the change set acting created it, as it joins before the next sync.
+// One the index doesn't have is refused, unless the change set acting created it, as it joins before the next sync.
 async function members(
   deps: ActionDeps,
   ids: readonly string[],
@@ -370,10 +276,6 @@ async function members(
   });
 }
 
-// What a new workstream is called, where it came from and what it holds: a copy
-// of a cluster's members, its anchor included; picked items; or nothing.
-// `size` is how many items it starts with. `named`: the user gave a thread's
-// workstream its name, so it's theirs, as after a rename.
 async function newWorkstream(
   input: ActionInput<"workstream.create">,
   actor: Actor,
@@ -425,10 +327,6 @@ async function newWorkstream(
   };
 }
 
-// A thread left, by New chat or Continue in… (decision 0027): a window chat
-// is the window's no longer, so the rail starts a fresh one, and the thread
-// is marked done, unless something in it still waits on the user, which
-// `settles` leaves out. `mark`: when it was marked, for an Undo.
 async function leaveChat(
   deps: ActionDeps,
   actor: Actor,
@@ -443,16 +341,12 @@ async function leaveChat(
   return { kept, events: !done || done.events === "counted" ? [] : done.events, mark };
 }
 
-// Marks a thread done: from its page or a list, by the agent or a tool, or
-// as New chat leaves the window chat.
 async function markDone(
   { thread: id, via }: ActionInput<"thread.done">,
   actor: Actor,
   deps: ActionDeps,
 ): Promise<Outcome<Record<string, never>>> {
   const thread = mustThread(deps, id);
-  // The thread stays in Needs you while it waits on the user, for a
-  // change set or a held message, and isn't closed under another turn.
   if (bound(actor)) {
     if (thread.id !== ownThread(actor) && deps.running(thread.id))
       throw new ActionError("refused", "the agent is answering in it");
@@ -460,8 +354,6 @@ async function markDone(
     if (waits) throw new ActionError("refused", `${waits}, so it stays in Needs you`);
   }
   const at = deps.now();
-  // Marked done already, it keeps who marked it and when, so there is
-  // nothing to undo and no mark to count.
   if (!deps.threads.markDone(thread.id, at, actor))
     return { output: {}, undo: null, changed: null, events: [] };
   return {
@@ -472,7 +364,6 @@ async function markDone(
       {
         name: "thread.marked-done",
         threadId: thread.id,
-        // Only the user closes it from somewhere in the window.
         ...(actor.kind === "user" ? { via: via ?? "page" } : { by: actor }),
       },
     ],
@@ -480,8 +371,6 @@ async function markDone(
 }
 
 function openThread(deps: ActionDeps, workstream: Workstream) {
-  // The first thread on a window chat's workstream is that window chat,
-  // made by its first question; any later one is an ordinary thread.
   const chat =
     workstream.origin.kind === "window" &&
     deps.threads.ofWorkstream(workstream.id, deps.now()).length === 0;
@@ -510,9 +399,6 @@ const handlers = {
       deps.now(),
     );
     const added = (change?.added ?? []).map((member) => member.id);
-    // A window chat's workstream that gains a member is a real workstream,
-    // and its chat that workstream's thread (decision 0027): the window
-    // starts a fresh chat (OA-347).
     if (added.length && workstream.origin.kind === "window")
       for (const { thread } of deps.threads.ofWorkstream(workstream.id, deps.now()))
         deps.threads.moveWindowChat(thread.id);
@@ -533,8 +419,8 @@ const handlers = {
 
   "workstream.remove": async ({ workstream: id, items }, actor, deps, cause) => {
     const workstream = mustWorkstream(deps, id);
-    // By identity: a moved item is removed under its current handle, and
-    // one the index no longer has under the handle the workstream shows.
+    // By identity: a moved item is removed under its current handle,
+    // and one the index no longer has under the handle the workstream shows.
     const held = deps.workstreams.region(workstream.id, workstream.version)?.items ?? [];
     const records = deps.records();
     const named = items.map((item) => {
@@ -542,9 +428,8 @@ const handlers = {
       if (!member) throw new ActionError("invalid", `${item} isn't in this workstream`);
       return member;
     });
-    // A change set still to apply in any of the workstream's threads would
-    // stop partway without what it names (decision 0018), and a turn running
-    // in another of them works in the workstream as it is.
+    // A change set still to apply in any of its threads would stop partway without what it names,
+    // and a turn running in another of them works in the workstream as it is.
     if (bound(actor)) {
       const others = deps.threads.ofWorkstream(workstream.id, deps.now());
       if (others.some(({ thread }) => thread.id !== ownThread(actor) && deps.running(thread.id)))
@@ -561,8 +446,6 @@ const handlers = {
         );
     }
     const change = deps.workstreams.remove(workstream.id, named, cause, deps.now());
-    // Back under the handle the index has now; one it no longer has can't
-    // come back, and is `gone`, for the line under a reply to say why.
     const live = new Map(records.map((record) => [identity(record), record.id]));
     const removed = change?.removed ?? [];
     const back = removed.flatMap((member) => live.get(identity(member)) ?? []);
@@ -592,8 +475,6 @@ const handlers = {
     if (named) deps.workstreams.rename(id, name, "user");
     return {
       output: { workstream: id },
-      // One made for a thread from nothing, or the window chat, is that
-      // thread's from the start.
       undo:
         origin.kind === "thread" || origin.kind === "window"
           ? null
@@ -620,7 +501,6 @@ const handlers = {
       );
     const after = mustWorkstream(deps, id);
     const renamed = after.name !== before.name || after.namedBy !== before.namedBy;
-    // Back to the name it had, and to whoever gave it.
     const back = {
       workstream: before.id,
       name: before.name,
@@ -635,9 +515,6 @@ const handlers = {
     };
   },
 
-  // Every open thread is marked done with it. The agent and tools are held
-  // to what holds a thread in Needs you, in any of its threads (decision
-  // 0028).
   "workstream.done": async ({ workstream: id }, actor, deps) => {
     const workstream = mustWorkstream(deps, id);
     if (bound(actor)) {
@@ -658,7 +535,6 @@ const handlers = {
       }
     }
     const at = deps.now();
-    // Done already, it keeps who marked it and when.
     const marked = deps.threads.markWorkstreamDone(workstream.id, at, actor);
     if (marked === null)
       return { output: { threads: [] as Ulid[] }, undo: null, changed: null, events: [] };
@@ -666,7 +542,6 @@ const handlers = {
       output: { threads: marked },
       undo: { action: "workstream.reopen", input: { workstream: workstream.id, mark: at } },
       changed: { workstream: workstream.id, members: false },
-      // Each thread it marked counts as marked done too, for its time to done.
       events: [
         {
           name: "workstream.marked-done",
@@ -700,10 +575,7 @@ const handlers = {
     };
   },
 
-  // One no thread ever used goes with its log; one threads use is hidden
-  // with them, as the user confirmed, told how many (decision 0028). Not
-  // while a turn runs in one of them or a change set of theirs applies:
-  // either may yet write.
+  // Not while a turn runs in one of them or a change set of theirs applies: either may yet write.
   "workstream.delete": async ({ workstream: id, threads: told }, _actor, deps) => {
     const workstream = mustWorkstream(deps, id);
     const its = deps.threads.ofWorkstream(workstream.id, deps.now()).map(({ thread }) => thread.id);
@@ -767,7 +639,6 @@ const handlers = {
 
   "thread.reopen": async ({ thread: id, mark }, _actor, deps) => {
     const thread = mustThread(deps, id);
-    // What a change set settled, or handed off, a message reopens.
     if (thread.state !== "done" || thread.doneBy !== "marked")
       throw new ActionError("refused", "it isn't marked done");
     if (!deps.threads.reopen(thread.id, mark ?? null))
@@ -783,7 +654,6 @@ const handlers = {
   "held.send": async ({ thread: id, seq, text }, _actor, deps) => {
     const thread = mustThread(deps, id);
     const sent = deps.turns.sendHeld(thread.id, seq, text);
-    // A review link's holder's message is why they rejected the change set.
     const rejected = sent.from.kind === "review-link" ? { rejected: sent.from.changeSet } : {};
     if (sent.from.kind === "thread")
       return {
@@ -829,11 +699,6 @@ const handlers = {
     return { output: {}, undo: null, changed: { thread: thread.id, chat: true }, events: [event] };
   },
 
-  // The draft held at `seq` applies as the user's own call of its action,
-  // as drafted or with the user's edit, which keeps what it acts on, and
-  // gives that call's Undo. One whose options moved since, or whose
-  // connection is gone, can't apply; one its action refuses stays held, and
-  // the user hears why (decision 0051).
   "held.apply": async ({ thread: id, seq, edit }, actor, deps) => {
     const thread = mustThread(deps, id);
     const held = deps.threads.held(thread.id).find((h) => h.seq === seq);
@@ -855,8 +720,6 @@ const handlers = {
     const output = called.output as SourceOutcome | { thread: Ulid; workstream: Ulid };
     if (!("connection" in output) && "problem" in output)
       throw new ActionError("refused", output.problem);
-    // Kept as it applied, edited or not: the options the connection has now,
-    // or the thread a request continued in.
     const as =
       "connection" in output
         ? { ...input, options: output.connection.options }
@@ -939,7 +802,6 @@ const handlers = {
     };
   },
 
-  // The turn counts the question, and tells the thread's pages.
   "thread.say": async ({ thread: id, text, about }, _actor, deps) => {
     const thread = mustThread(deps, id);
     const { seq } = deps.turns.say(thread.id, text, about);
@@ -962,7 +824,6 @@ const handlers = {
   },
 
   // Not while its agent answers: its turn works in the version it started in.
-  // A thread already at the latest version stays where it is.
   "thread.sync": async ({ thread: id }, _actor, deps) => {
     const thread = mustThread(deps, id);
     if (deps.running(thread.id)) throw new ThreadBusy();
@@ -1012,7 +873,6 @@ const handlers = {
       output: {},
       undo: null,
       changed: { thread: set.threadId, changeSet: set.id, applying: false },
-      // The engine counts an edit that changed something.
       events: edited.hash === set.hash ? [] : "counted",
     };
   },
@@ -1025,14 +885,10 @@ const handlers = {
         "refused",
         "a second look is only of a change set nobody has decided on",
       );
-    // The look tells the thread's pages itself, as only it changed: the
-    // diff stands, so they needn't read it again.
     await deps.secondLook.take(set.id);
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  // Shown no more, and stopped if it still runs: the change set offers
-  // Approve and Reject again (OA-257).
   "changeset.dismiss-look": async ({ changeSet: id, look }, _actor, deps) => {
     const set = await mustChangeSet(deps, id);
     if (!deps.secondLook) throw new ActionError("refused", "second looks are off here");
@@ -1042,7 +898,6 @@ const handlers = {
       if (error instanceof RangeError) throw new ActionError("not-found", error.message);
       throw error;
     }
-    // As for taking one, the look tells the thread's pages itself.
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
@@ -1059,14 +914,11 @@ const handlers = {
       output: {},
       undo: null,
       changed: { thread: added.threadId, changeSet: added.id, applying: false },
-      // The engine counts the edit, and the second look its suggestion.
       events: "counted",
     };
   },
 
-  // Approving is what lets Oriel write, so replay follows it (decision
-  // 0003). The decision stands even if applying it is refused (another
-  // apply is under way, say): the change set says where it stands, and why.
+  // The decision stands even if applying it is refused (another apply is under way, say).
   "changeset.approve": async ({ changeSet: id, hash, token }, actor, deps) => {
     const set = await mustChangeSet(deps, id);
     await deps.changeSets.decide(set.id, "approved", approverOf(actor, token), hash);
@@ -1089,10 +941,7 @@ const handlers = {
     }
   },
 
-  // A rejection is the thread's to answer: it asks what was wrong, and the
-  // user's reply is the answer, so a rejection in the thread takes no reason
-  // (OA-145). A review link's holder can't reply: their reason is held in
-  // the thread for the user, whatever the turn or the caps, and is shorter.
+  // A review link's holder can't reply in the thread, so their reason is held there for the user.
   "changeset.reject": async ({ changeSet: id, hash, reason, token }, actor, deps) => {
     const set = await mustChangeSet(deps, id);
     const approver = approverOf(actor, token);
@@ -1112,9 +961,8 @@ const handlers = {
       decided,
       approver.via === "review-link" ? { by: approver.by, reason: reason ?? null } : null,
     );
-    // The person's own rejection has an Undo; a review link's holder has
-    // nowhere to undo from, and the link died with the decision (OA-258). A
-    // revert's has none: Revert again makes another.
+    // A review link's holder has nowhere to undo from, and the link died with the decision.
+    // A revert's has none: Revert again makes another.
     const undo =
       approver.via === "thread" && decided.decision && set.revertOf === null
         ? {
@@ -1130,11 +978,8 @@ const handlers = {
     };
   },
 
-  // Rejecting's Undo (OA-258): the change set awaits review again, as it
-  // was, and the thread says so, for the person and the agent. Only while
-  // the thread hasn't moved on from it: once the person has said anything
-  // to the agent since, it is working from the rejection, and they ask it
-  // for the change again instead.
+  // Only while the thread hasn't moved on: once the person has said anything to the agent since,
+  // it is working from the rejection, and they ask it for the change again instead.
   "changeset.unreject": async ({ changeSet: id, decision }, _actor, deps) => {
     const set = await mustChangeSet(deps, id);
     const rejection = set.decision;
@@ -1158,8 +1003,6 @@ const handlers = {
     };
   },
 
-  // Counted as `changeset.applied` only once it has applied in full, by
-  // whichever call: this one is counted as itself.
   "changeset.apply": async ({ changeSet: id }, _actor, deps) => {
     const set = await mustChangeSet(deps, id);
     return {
@@ -1170,8 +1013,6 @@ const handlers = {
     };
   },
 
-  // The warnings name changes that may already have landed, for the person
-  // to check.
   "changeset.dismiss": async ({ changeSet: id, hash, token }, actor, deps) => {
     const set = await mustChangeSet(deps, id);
     const dismissed = await deps.changeSets.dismiss(set.id, approverOf(actor, token), hash);
@@ -1179,7 +1020,6 @@ const handlers = {
       output: { warnings: dismissed.warnings },
       undo: null,
       changed: { thread: set.threadId, changeSet: set.id, applying: false },
-      // The engine counts one it dismissed, not one that was already.
       events: dismissed.changeSet.decision?.id === set.decision?.id ? [] : "counted",
     };
   },
@@ -1214,16 +1054,12 @@ const handlers = {
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  // Counted as `source.connected` when the connection first syncs into the
-  // workspace, and otherwise, failed or connected again, as itself.
   "source.connect": async (input, _actor, deps) => {
     const { outcome, counted } = await deps.sources.connect(input);
     return { output: outcome, undo: null, changed: null, events: counted ? "counted" : [] };
   },
 
-  // Its Undo puts back the options it replaced. Which options changed is
-  // counted, never their values.
-  // What the edit was, the stand-in's store counts as it writes.
+  // Which options changed is counted, never their values.
   "item.edit": async (input, _actor, deps) => {
     const { before, after } = await deps.edit(input.item, input.values);
     return {
@@ -1255,8 +1091,6 @@ const handlers = {
     };
   },
 
-  // How often the user asks says whether Oriel should sync on its own. What
-  // a sync changed, every page watching hears from the sync itself.
   "source.sync": async (input, _actor, deps) => {
     const { outcome, of } = await deps.sources.sync(input);
     return {
@@ -1267,9 +1101,7 @@ const handlers = {
     };
   },
 
-  // Who turned a kind on or off is counted, by its kind only, never the
-  // source server's name (decision 0059). Its Undo turns it back, through
-  // the server it was on through.
+  // Counted by its kind only, never the source server's name.
   "source.off": async ({ kind }, actor, deps) => {
     const by = actor.kind === "agent" ? "agent" : "person";
     const { server } = await deps.kinds.off(kind, by);
@@ -1294,7 +1126,6 @@ const handlers = {
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  // Every page watching hears from the index, as after a sync.
   "source.disconnect": async (input, _actor, deps) => {
     const gone = await deps.sources.disconnect(input);
     return {
@@ -1305,11 +1136,7 @@ const handlers = {
     };
   },
 
-  // The window chat's old thread is no longer the window's. A turn still
-  // running in it stops, so it proposes nothing behind the user's back. It
-  // is then marked done as the user's action, as `thread.done` does, unless
-  // a change set or a held message in it waits on them: then it stays
-  // working, in Needs you (decision 0027).
+  // A turn still running in the old chat stops, so it proposes nothing behind the user's back.
   "window.new-chat": async (_, actor, deps) => {
     const thread = deps.threads.windowChat(deps.workspaceId, deps.now());
     if (!thread) return { output: { left: null }, undo: null, changed: null, events: [] };
@@ -1323,8 +1150,6 @@ const handlers = {
     };
   },
 
-  // Open as a thread: only the chat the window shows moves; one already
-  // moved, left or ended stays as it is.
   "window.open-as-thread": async ({ thread: id }, _actor, deps) => {
     const chat = deps.threads.windowChat(deps.workspaceId, deps.now());
     if (chat?.id !== id) return { output: { moved: false }, undo: null, changed: null, events: [] };
@@ -1332,11 +1157,6 @@ const handlers = {
     return { output: { moved: true }, undo: null, changed: { thread: id }, events: [] };
   },
 
-  // Continue in…: the user's request in the window chat goes on in a thread
-  // on the item's open workstream, or on a new one named for it, held there
-  // as from the window chat and sent as theirs, about what it was about and
-  // the item. The window chat is left as New chat leaves it (decision 0027);
-  // a Continue offered in it settles with it.
   "window.continue": async ({ thread: id, item, seq }, actor, deps) => {
     const chat = mustThread(deps, id);
     if (!deps.threads.isWindowChat(chat.id))
@@ -1386,7 +1206,6 @@ const handlers = {
     deps.publish({ thread: to });
     // Left as New chat leaves it: its turn stops, so none holds a draft later.
     deps.turns.stop(chat.id);
-    // Any Continue offered in the chat settles as it is left.
     const offer = (held: Held) => "draft" in held && held.draft.action === "window.continue";
     const left = await leaveChat(deps, actor, chat.id, "continue", offer);
     events.push(...left.events, {
@@ -1440,10 +1259,7 @@ const noticedOf = (deps: ActionDeps) => {
   return noticed;
 };
 
-// Why `actor` may not call the action, or null. A review-link holder may only
-// decide or dismiss the change set the link names, as the change set engine
-// checks. A change set acts only through what follows its apply, and a sync
-// through what follows it.
+// A review-link holder may only decide or dismiss the change set the link names, as the change set engine checks.
 export function refusal(name: ActionName, actor: Actor): string | null {
   const declared: ActionDeclaration = actions[name];
   if (actor.kind === "user") return null;
@@ -1457,13 +1273,8 @@ export function refusal(name: ActionName, actor: Actor): string | null {
 
 type Output<N extends ActionName> = Awaited<ReturnType<(typeof handlers)[N]>>["output"];
 type Result<N extends ActionName> = Output<N> & { undo: Call | null };
-// A call site names the action and passes its own input type, so a renamed
-// key fails to typecheck rather than at run time. `untyped` is for the doors
-// whose action is known only at run time: an Undo sent back to
-// /api/actions/:name, and the intents a turn's run recorded. Either way the
-// dispatcher checks the input. An Undo of what someone else did names them
-// in `undoes`, which its events carry. One from the list under a thread's
-// agent's reply names that thread (`via`), which a workstream's log records.
+// `untyped` is for doors whose action is known only at run time: an Undo sent back, and a turn's recorded intents.
+// Either way the dispatcher checks the input.
 export type Dispatch = {
   <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor): Promise<Result<N>>;
   untyped(
@@ -1475,8 +1286,6 @@ export type Dispatch = {
   ): Promise<{ undo: Call | null }>;
 };
 
-// An action's input from what a request carried, checked as the dispatcher
-// checks it: each field is named, so a renamed key fails to typecheck too.
 export type Fields<N extends ActionName> =
   ActionInput<N> extends infer I
     ? I extends unknown

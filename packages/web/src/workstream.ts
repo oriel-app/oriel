@@ -1,6 +1,3 @@
-// A workstream's page: its members, its threads, and asking about it, which
-// opens a thread. Items are added from the window, or dropped here, and
-// removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import {
@@ -18,11 +15,7 @@ import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView 
 
 export { undoMs };
 
-// A removal the user can still undo: the member as it showed, the workstream
-// version the removal made, which tells it from every other, and the call
-// that undoes it, as the server gave it, or null when it can't be undone.
-// `countdown` counts the times its countdown started; only the latest one's
-// end hides it.
+// `countdown` counts the times its countdown started; only the latest one's end hides it.
 export type Removal = {
   member: MemberView;
   version: number;
@@ -35,26 +28,15 @@ export type WorkstreamModel = {
   view: WorkstreamView | null;
   status: "loading" | "ready" | "failed";
   draft: string;
-  // What the Ask box's question is about: the item open beside it (decision
-  // 0062), which the new thread's first message carries.
   lookingAt: LookingAt;
-  // The name being edited, or null.
   name: string | null;
   pending: boolean;
   notice: string | null;
-  // What the last load that failed said, as when another tab deleted the
-  // workstream. A load that works clears it from the notice.
   lost: string | null;
-  // Members removed with ×, hidden at once, in order: the first is being
-  // removed, and the rest wait for it, so each answer is known to be its own.
-  // `member` is null when the page hadn't loaded it.
+  // The first is being removed, and the rest wait for it, so each answer is known to be its own.
   removing: readonly { id: string; member: MemberView | null }[];
-  // Removals that can still be undone, oldest first.
   removals: readonly Removal[];
-  // What the page suggests adding: an empty workstream's suggestions,
-  // kept while all it holds came from them, so several go in one by one.
   suggested: readonly MemberView[];
-  // The user is on the undos, by pointer or keyboard: none runs out meanwhile.
   held: Held;
 };
 
@@ -64,7 +46,6 @@ export type WorkstreamMsg =
   | { type: "looking"; msg: LookingMsg }
   | { type: "memberRemoved"; id: string }
   | { type: "undoClicked"; version: number }
-  // The Undo of an outside tool's change, in the workstream's history.
   | { type: "toolUndoClicked"; version: number }
   | { type: "undoHeld"; by: Hold; held: boolean }
   | { type: "undoExpired"; workstreamId: string; version: number; countdown: number }
@@ -131,8 +112,7 @@ export function updateWorkstream(
     case "undoClicked": {
       const undone = model.removals.find((each) => each.version === msg.version);
       if (!undone?.undo) return [model, []];
-      // Its Undo goes, and with it, maybe without a word, the focus that held
-      // the rest: the keyboard lets go of them. A pointer still on them holds.
+      // Its Undo goes, and with it, maybe without a word, the focus that held the rest. A pointer still on them holds.
       const rest = model.removals.filter((each) => each !== undone);
       const [released, restarts] = hold({ ...model, removals: rest }, "focus", false, again);
       return [
@@ -195,15 +175,11 @@ const expired = (workstreamId: string, { version, countdown }: Removal): Msg => 
   msg: { type: "undoExpired", workstreamId, version, countdown },
 });
 
-// Once neither pointer nor keyboard holds them, every removal held gets its
-// full time again.
 function again(model: WorkstreamModel): [WorkstreamModel, Effect[]] {
   const removals = model.removals.map((each) => ({ ...each, countdown: each.countdown + 1 }));
   return [{ ...model, removals }, removals.map((each) => expiry(expired(model.id, each)))];
 }
 
-// The server says what can be undone: only an item the window still has can
-// be added back.
 export const undoable = (removal: Removal): boolean => removal.undo !== null;
 
 // A reply's view, unless one already shown is newer: answers to a removal and
@@ -211,7 +187,6 @@ export const undoable = (removal: Removal): boolean => removal.undo !== null;
 const newer = (model: WorkstreamModel, view: WorkstreamView): WorkstreamView =>
   model.view && model.view.workstream.version > view.workstream.version ? model.view : view;
 
-// A reply's view, as `newer` picks it, and what the page suggests with it.
 function viewed(
   model: WorkstreamModel,
   answer: WorkstreamView,
@@ -223,8 +198,6 @@ function viewed(
   return { view, suggested: fromThem ? model.suggested : [] };
 }
 
-// The workstream loaded, or failed to: a load that works takes back what a
-// failed one said, and that Oriel couldn't be reached.
 function loaded(model: WorkstreamModel, msg: Replied): WorkstreamModel {
   if (!msg.ok) {
     const lost = errorOf(msg.body);
@@ -251,9 +224,7 @@ export function workstreamReplied(
   switch (tag.kind) {
     case "workstreamChanged": {
       if (tag.id !== model.id) return [model, []];
-      // The first removal waiting is the one answered, and the next goes now;
-      // unless the answer still holds it, as one to a removal sent before
-      // the page was opened again does.
+      // Unless the answer still holds it, as one to a removal sent before the page was opened again does.
       const [done, ...rest] = model.removing;
       const next = rest[0] ? [removal(model.id, rest[0].id)] : [];
       if (!msg.ok) return [{ ...model, removing: rest, notice: errorOf(msg.body) }, next];
@@ -274,14 +245,11 @@ export function workstreamReplied(
         [...next, ...(undo ? [expiry(expired(model.id, undo))] : [])],
       ];
     }
-    // The undo landed: the workstream, as it is now, loads again.
     case "restored": {
       if (tag.id !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
       return [model, [get(`/api/workstreams/${model.id}`, { kind: "workstream", id: model.id })]];
     }
-    // Loaded, or loaded again after the workspace changed, maybe in another
-    // tab, which may have deleted it: the page says why it can't go on.
     case "workstream":
     case "workstreamSynced":
       if (tag.id !== model.id) return [model, []];
@@ -311,12 +279,9 @@ export function workstreamReplied(
   }
 }
 
-// What a workstream or thread with no items asks for: there is nothing to ask
-// about, so the agent can only create items, as when planning an epic.
 export const planPrompt =
   "What are you planning? Describe it, and ask for an epic and its stories…";
 
-// The workstream page's ask box, worded for how many items the workstream has.
 export function askPrompt(size: number): string {
   if (size === 0) return planPrompt;
   if (size === 1) return "Ask about this item…";
