@@ -11,11 +11,13 @@ import type { UndoProblem } from "./undos.ts";
 import type { ThreadSummaryView } from "./view.ts";
 
 // A thread's row with its menu: Mark done, unless it is done, and Delete.
-// With `swipe`, a swipe left shows the same actions, in that order.
+// With `swipe`, a swipe left shows the same actions, in that order. `moves`
+// head the menu, not the swipe.
 export function ThreadMenu(props: {
   thread: ThreadSummaryView;
   dispatch: Dispatch;
   swipe?: boolean;
+  moves?: MenuItem[];
   class?: string;
   children: ComponentChildren;
 }) {
@@ -38,7 +40,11 @@ export function ThreadMenu(props: {
     },
   ];
   return (
-    <ContextMenu label={`Actions for ${title}`} items={items("menu")} class={props.class}>
+    <ContextMenu
+      label={`Actions for ${title}`}
+      items={[...(props.moves ?? []), ...items("menu")]}
+      class={props.class}
+    >
       {props.swipe ? (
         <Swipeable actions={items("swipe")}>{props.children}</Swipeable>
       ) : (

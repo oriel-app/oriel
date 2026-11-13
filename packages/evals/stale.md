@@ -1,0 +1,1 @@
+- OA-313: a new Oriel note, `continued`, reads to the agent as Oriel's quote of another thread's conversation the user sent on (Continue in…, decision 0027); no recorded request carries one, and the module and prompt are unchanged.

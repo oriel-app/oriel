@@ -584,7 +584,7 @@ function EntryBody(props: EntryProps) {
     case "note":
       return (
         <li class="oriel-note" role="note">
-          <OrielNote note={entry.note} />
+          <OrielNote note={entry.note} view={props.view} />
         </li>
       );
     // A limit is a per-thread cap that ended the turn; a run's own cap stays
@@ -617,7 +617,9 @@ function EntryBody(props: EntryProps) {
 
 // One of Oriel's own lines, never the agent's (OA-91): after a rejection,
 // what the user can do next; once they undid it, that it awaits them again.
-function OrielNote({ note }: { note: NoteView }) {
+function OrielNote({ note, view }: { note: NoteView; view: ThreadView }) {
+  if (note.kind === "continued-in")
+    return <p>This conversation goes on in {threadChip(note.threadId, view)}.</p>;
   if (note.kind === "unrejected") return <p>Rejection undone. The change awaits your review.</p>;
   if (note.kind === "moving")
     return (
@@ -708,11 +710,18 @@ export const readOnlyIn =
 export const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 
+const threadChip = (id: string, view: ThreadView) => {
+  const chip = view.chips[id];
+  return chip ? <Chip id={id} view={chip} /> : "another thread";
+};
+
 // Who a held message is from, each kind of sender in its own words. A
 // review link may be held by anyone. The window chat's is the user's own
 // request, carried on by Continue in…, which links back.
-function heldFrom(from: HeldFrom) {
+function heldFrom(from: HeldFrom, view: ThreadView) {
   switch (from.kind) {
+    case "thread":
+      return <>From {threadChip(from.threadId, view)}:</>;
     case "review-link":
       return (
         <>
@@ -783,11 +792,11 @@ function HeldMessage(props: {
   // Carried on from the window chat and sent there, it is the user's
   // message below: only where it came from shows.
   if (block.from.kind === "window-chat" && block.outcome === "sent")
-    return <p class="held-from">{heldFrom(block.from)}</p>;
+    return <p class="held-from">{heldFrom(block.from, view)}</p>;
   return (
     <section class="held-message" aria-busy={busy}>
       <p class="held-by">
-        <span>{heldFrom(block.from)}</span>
+        <span>{heldFrom(block.from, view)}</span>
         {block.outcome === null && (
           <span class="state-chip" data-waiting="held">
             {waitingNames.held}

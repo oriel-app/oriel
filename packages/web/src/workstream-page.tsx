@@ -24,7 +24,7 @@ import {
 import type { UndoNote, Undos } from "./undos.ts";
 import { addOf, type PanelAdds } from "./panel-adds.ts";
 import type { MenuItem } from "./menu.tsx";
-import type { Carried, MovingMsg } from "./moving.ts";
+import type { CarriedItem, MovingMsg } from "./moving.ts";
 import type {
   MemberView,
   WorkstreamChangeView,
@@ -303,9 +303,10 @@ function movingOf(
   workstream: WorkstreamSummary,
   workstreams: WorkstreamSummary[] | null,
   dispatch: Dispatch,
-): { item: Carried; menu: MenuItem[] } {
+): { item: CarriedItem; menu: MenuItem[] } {
   const { ref, row } = member;
-  const item: Carried = {
+  const item: CarriedItem = {
+    kind: "item",
     id: ref.id,
     key: ref.key,
     title: row?.title ?? ref.title ?? null,

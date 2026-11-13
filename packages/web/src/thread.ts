@@ -1043,11 +1043,11 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     ...model,
     view: { ...view, entries: [...view.entries, entry], lastSeq: entry.seq },
   };
-  // A new change set or workstream version: fetch what the view lacks.
+  // A new change set, workstream version or onward thread: fetch what the view lacks.
   const effects: Effect[] =
     entry.kind === "change-set"
       ? [diffOf(entry.changeSetId), refresh(model)]
-      : entry.kind === "marker"
+      : entry.kind === "marker" || (entry.kind === "note" && entry.note.kind === "continued-in")
         ? [refresh(model)]
         : [];
   return [next, effects];

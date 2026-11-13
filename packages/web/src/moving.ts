@@ -8,6 +8,7 @@
 // from Browse came from no workstream, and only joins. What it did shows as
 // one note in the window's stack, whose Undo sends back both calls the server
 // gave, and runs out as every note does.
+// A thread never changes workstream: it goes on in a new thread there.
 import { type Effect, errorOf, post, type Replied, undoing } from "./http.ts";
 import type { Msg } from "./root.ts";
 import {
@@ -21,23 +22,34 @@ import {
   type Undos,
 } from "./undos.ts";
 import { oneItemName } from "./update.ts";
-import type { Undoable, UndoView, WorkstreamSummary } from "./view.ts";
+import type { ContinuedView, Undoable, UndoView, WorkstreamSummary } from "./view.ts";
 
 // A workstream, by its ID and its name as the window showed it then.
 export type Place = { id: string; name: string };
 
 // The item being moved: its ID, its key and title as a person reads them,
 // and the workstream it came from, null when it came from none.
-export type Carried = { id: string; key: string; title: string | null; from: Place | null };
+export type CarriedItem = {
+  kind: "item";
+  id: string;
+  key: string;
+  title: string | null;
+  from: Place | null;
+};
+export type CarriedThread = { kind: "thread"; id: string; title: string | null; from: Place };
+export type Carried = CarriedItem | CarriedThread;
 
-// What a move did: the item, where it went, whether that workstream was
+// What a move did: what moved, where it went, whether that workstream was
 // made for it, and the calls that undo it, the join's first.
 export type Move = { item: Carried; to: Place; made: boolean; undos: UndoView[] };
+
+const named = (carried: Carried): string =>
+  carried.kind === "item" ? carried.key : `“${carried.title ?? "New thread"}”`;
 
 export type MovingModel = {
   // Dropped on the Workstreams heading: the menu that asks whether to make a
   // new workstream of it, open where the pointer let go.
-  asking: { item: Carried; at: { x: number; y: number } } | null;
+  asking: { item: CarriedItem; at: { x: number; y: number } } | null;
   // A move in flight: the item and where it goes, null for a new workstream,
   // and, once it has joined, where it went and the call that undoes that.
   pending: { item: Carried; to: Place | null; joined: Place | null; undo: UndoView | null } | null;
@@ -55,9 +67,9 @@ export type MovingModel = {
 
 export type MovingMsg =
   | { type: "dropped"; item: Carried; to: Place }
-  | { type: "droppedOnHeading"; item: Carried; at: { x: number; y: number } }
+  | { type: "droppedOnHeading"; item: CarriedItem; at: { x: number; y: number } }
   // Make a new workstream of it: from the heading's menu, or the row's.
-  | { type: "newClicked"; item: Carried }
+  | { type: "newClicked"; item: CarriedItem }
   | { type: "askCancelled" }
   | { type: "undoClicked" }
   | { type: "undoHeld"; by: Hold; held: boolean }
@@ -86,9 +98,13 @@ export function updateMoving(model: MovingModel, msg: MovingMsg): [MovingModel, 
     case "dropped": {
       const { item, to } = msg;
       if (busy(model) || !movesTo(item, to.id)) return [model, []];
+      const call =
+        item.kind === "thread"
+          ? post(`/api/threads/${item.id}/continue`, { workstream: to.id }, { kind: "moveJoined" })
+          : post(`/api/workstreams/${to.id}/add`, { items: [item.id] }, { kind: "moveJoined" });
       return [
         { ...model, asking: null, pending: { item, to, joined: null, undo: null }, problem: null },
-        [post(`/api/workstreams/${to.id}/add`, { items: [item.id] }, { kind: "moveJoined" })],
+        [call],
       ];
     }
     case "droppedOnHeading":
@@ -160,9 +176,18 @@ export function movingReplied(model: MovingModel, msg: Replied): [MovingModel, E
       const { item } = pending;
       if (!msg.ok)
         return [
-          { ...model, pending: null, problem: `Couldn't move ${item.key}: ${errorOf(msg.body)}` },
+          {
+            ...model,
+            pending: null,
+            problem: `Couldn't move ${named(item)}: ${errorOf(msg.body)}`,
+          },
           [],
         ];
+      if (item.kind === "thread" && pending.to) {
+        const { undo } = msg.body as Undoable<ContinuedView>;
+        const to = pending.to;
+        return done(model, { item, to, made: false, undos: undo ? [undo] : [] }, null);
+      }
       // An add answers with the workstream's view, a create with its summary.
       const body = msg.body as Undoable<{ workstream?: WorkstreamSummary } & Partial<Place>>;
       const joined: Place = pending.to ?? { id: body.id ?? "", name: body.name ?? "" };
@@ -187,7 +212,7 @@ export function movingReplied(model: MovingModel, msg: Replied): [MovingModel, E
         return done(
           model,
           move(pending, joined, []),
-          `${item.key} joined “${joined.name}”, but couldn't leave “${item.from?.name}”: ${errorOf(msg.body)}`,
+          `${named(item)} joined “${joined.name}”, but couldn't leave “${item.from?.name}”: ${errorOf(msg.body)}`,
         );
       const left = (msg.body as Undoable<unknown>).undo;
       return done(model, move(pending, joined, left ? [left] : []), null);
@@ -203,7 +228,7 @@ export function movingReplied(model: MovingModel, msg: Replied): [MovingModel, E
           : moved;
       const problem = msg.ok
         ? model.problem
-        : `Couldn't undo moving ${moved?.item.key ?? "it"}: ${errorOf(msg.body)}`;
+        : `Couldn't undo moving ${moved ? named(moved.item) : "it"}: ${errorOf(msg.body)}`;
       // Once every call has landed, it's gone from the stack.
       const over = still === 0 && left !== null && left.undos.length === 0;
       return [
@@ -234,6 +259,8 @@ function move(pending: NonNullable<MovingModel["pending"]>, joined: Place, left:
 // What a move did, in a sentence.
 export function movedText(move: Move): string {
   const { item, to, made } = move;
+  if (item.kind === "thread")
+    return `Moved ${named(item)} from “${item.from.name}” to “${to.name}”.`;
   if (made) return `Moved ${item.key} to a new workstream, “${to.name}”.`;
   if (item.from === null) return `Added ${item.key} to “${to.name}”.`;
   return `Moved ${item.key} from “${item.from.name}” to “${to.name}”.`;

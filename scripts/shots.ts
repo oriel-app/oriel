@@ -1893,6 +1893,51 @@ async function dropOnHeading(page: Page): Promise<void> {
   await page.locator(".context-menu:popover-open").waitFor();
 }
 
+let movingThread = "";
+const threadMoving = async () => {
+  const serving = await moving();
+  movingThread = await ask("What's left on checkout?", serving, moveFrom);
+  return serving;
+};
+const waitingIn = (page: Page, name: string) =>
+  page.locator(".sidebar .nav-waiting li", {
+    has: page.locator(".nav-waiting-workstream", { hasText: name }),
+  });
+const movedThread = /^Undo: Moved “.+” from “Checkout polish” to “Gift cards”\.$/;
+async function moveThread(page: Page, hold = false, open = false): Promise<void> {
+  await page.mouse.move(1, 1);
+  await page.mouse.up();
+  if (open) {
+    await page.goto(new URL(`/threads/${movingThread}`, page.url()).href);
+    await page.locator(".chat .reply").first().waitFor();
+  } else await overviewShown(page);
+  await openSidebar(page);
+  const row = waitingIn(page, "Checkout polish");
+  await row.waitFor();
+  if (narrow(page)) {
+    await row.locator(".nav-link").click({ button: "right" });
+    await page.locator(".context-menu:popover-open").waitFor();
+    if (hold) return;
+    await page.getByRole("menuitem", { name: "Move to “Gift cards”" }).click();
+  } else {
+    await row.locator(".nav-name").hover();
+    await page.mouse.down();
+    const box = await sidebarWorkstream(page, "Gift cards").boundingBox();
+    if (!box) throw new Error("nothing to drop on");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+    if (hold) return;
+    await page.mouse.up();
+  }
+  await page.getByRole("button", { name: movedThread }).waitFor({ state: "attached" });
+  await waitingIn(page, "Gift cards").waitFor();
+  await waitingIn(page, "Checkout polish").waitFor({ state: "detached" });
+  if (narrow(page)) return page.keyboard.press("Escape");
+  if (open) return;
+  const card = (name: string) => page.locator(".overview-workstream", { hasText: name });
+  await card("Gift cards").getByText("1 waiting on you").waitFor();
+  await card("Checkout polish").getByText("1 done").waitFor();
+}
+
 // After you approve, set to go on to the next thing that needs you: a
 // server of each shot's own, with a change set to review on the checkout
 // epic, and with `others`, a plan proposed before it, which is next in
@@ -4693,6 +4738,71 @@ const scenes: Scene[] = [
       await page.locator("h1", { hasText: "Stories still needing estimates" }).waitFor();
       const asked = page.locator(".user-message", { hasText: "Which stories here still need" });
       if ((await asked.count()) !== 1) throw new Error("Try again said the message twice");
+    },
+  },
+  {
+    name: "drag-thread",
+    path: "/",
+    make: threadMoving,
+    act: (page) => moveThread(page),
+    test: "a thread dropped on another workstream goes on in a new thread there, in Needs you and on its card, and the old one is done",
+    testAt: [390],
+  },
+  {
+    name: "drag-thread-over",
+    path: "/",
+    make: threadMoving,
+    act: async (page) => {
+      await moveThread(page, true);
+      if (narrow(page)) return;
+      await sidebarWorkstream(page, "Gift cards").and(page.locator("[data-drop-over]")).waitFor();
+    },
+  },
+  {
+    name: "drag-thread-held",
+    path: "/",
+    make: threadMoving,
+    act: async (page) => {
+      await moveThread(page);
+      await openSidebar(page);
+      await waitingIn(page, "Gift cards").locator(".nav-link").click();
+      await page.locator(".held-message .chip").waitFor();
+      await page.locator(".held-text", { hasText: "What's left on checkout?" }).waitFor();
+      await pointerAway(page);
+    },
+  },
+  {
+    name: "drag-thread-open",
+    path: "/",
+    make: threadMoving,
+    test: "a thread moved from its own page links where it went, and Undo takes the link away",
+    act: async (page) => {
+      await moveThread(page, false, true);
+      const note = page.locator(".oriel-note", { hasText: "This conversation goes on in" });
+      await note.locator(".chip a").waitFor();
+      await page.locator(".bead").hover();
+      await page.getByRole("button", { name: movedThread }).click();
+      await note.waitFor({ state: "detached" });
+      await openSidebar(page);
+      await waitingIn(page, "Checkout polish").waitFor();
+      if (narrow(page)) await page.keyboard.press("Escape");
+      await pointerAway(page);
+    },
+  },
+  {
+    name: "drag-thread-undone",
+    path: "/",
+    make: threadMoving,
+    test: "a thread move's Undo puts the thread back in Needs you under its own workstream",
+    act: async (page) => {
+      await moveThread(page);
+      await page.locator(".bead").hover();
+      await page.getByRole("button", { name: movedThread }).click();
+      await openSidebar(page);
+      await waitingIn(page, "Checkout polish").waitFor();
+      await waitingIn(page, "Gift cards").waitFor({ state: "detached" });
+      if (narrow(page)) await page.keyboard.press("Escape");
+      await pointerAway(page);
     },
   },
 ];

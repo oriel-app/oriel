@@ -85,7 +85,7 @@ An item dragged to a workstream (see [Drag to move](/patterns/drag-to-move)) is 
 - **It leans with the pull.** About 3°, never more than 4° (`leanStep` in `drag-card.ts`), clockwise as it's pulled right, as a card held at its left edge trails. It eases back to level when the pointer stops. The pull and the lean follow on short exponential lags (50ms and 100ms), stepped by real time, so they look the same at any frame rate.
 - **It's cheap.** A dragover only notes where the pointer is; one animation frame moves the card by its `transform`, and nothing reads layout but at the start. It's in the top layer (a manual popover), so nothing clips it, and the pointer passes through it.
 - **Dropped, it's set down.** It comes level, shrinks to 94% and fades, in 240ms on `--ease-spring`, the one tiny overshoot.
-- **Dropped nowhere, it goes back at once.** It slides toward its row and fades as it goes, in 80ms; the row, dimmed while it was away, comes back. The page takes every drop of an item, its own places or not (`anywhere` in `drag-item.ts`), so the system never refuses one: macOS slides a refused drag back to where it started before the drag ends, and the card would wait on it for most of a second (OA-314).
+- **Dropped nowhere, it goes back at once.** It slides toward its row and fades as it goes, in 80ms; the row, dimmed while it was away, comes back. The page takes every drop of an item or a thread, its own places or not (`anywhere` in `drag-move.ts`), so the system never refuses one: macOS slides a refused drag back to where it started before the drag ends, and the card would wait on it for most of a second (OA-314).
 
 ## Menus
 

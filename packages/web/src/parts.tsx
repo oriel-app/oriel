@@ -13,9 +13,9 @@ import {
 } from "./chip.ts";
 import { type Connectors, noConnectors } from "./connectors.ts";
 import { carries, type Dropped, readDrop } from "./drop.ts";
-import { dragItem } from "./drag-item.ts";
+import { dragMove } from "./drag-move.ts";
 import { ContextMenu, type MenuItem } from "./menu.tsx";
-import type { Carried } from "./moving.ts";
+import type { CarriedItem } from "./moving.ts";
 import { type Inline, opens, parse, type Prose, quoteKey } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
@@ -788,7 +788,7 @@ export function Member({
   inRegion?: boolean;
   // On a workstream's page: the row drags to another workstream in the
   // sidebar, and its menu moves it as a keyboard can (moving.ts).
-  moving?: { item: Carried; menu: MenuItem[] };
+  moving?: { item: CarriedItem; menu: MenuItem[] };
 }) {
   const { ref, row } = member;
   const cells = (
@@ -836,7 +836,7 @@ export function Member({
         class={row ? "member" : "member gone"}
         data-item={ref.id}
         data-movable
-        {...dragItem(moving.item)}
+        {...dragMove(moving.item)}
       >
         <ContextMenu label={`Move ${ref.key}`} items={moving.menu} class="member-menu">
           {cells}
