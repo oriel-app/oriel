@@ -96,7 +96,8 @@ const items = refine(
   `expected 1 to ${maxItems} items`,
 );
 // Where in the window the user closed a thread from: its page, a list's menu
-// or swipe, or New chat or Continue in the window chat (decision 0027).
+// or swipe, or New chat or Continue in… in the window chat, or a thread
+// dragged onto another workstream, which goes on there (decision 0027).
 export const closeVia = optional(
   union(
     literal("page"),
@@ -339,6 +340,28 @@ export const actions = {
       why: "Its Undo would delete the thread, which is the user's (decision 0024).",
     },
     closed: { agent: unsaid, tool: untold },
+  },
+  // The thread never changes workstream: its region versions and change sets
+  // only mean anything on the one it has, so it goes on in a new thread.
+  "thread.continue": {
+    doc: "Goes on with a thread's conversation in a new thread on another workstream.",
+    input: object({ thread: threadId, workstream: workstreamId }),
+    class: {
+      kind: "person-only",
+      why: "Where the user's conversation goes on is the user's call.",
+      inverse: "thread.uncontinue",
+    },
+  },
+  "thread.uncontinue": {
+    doc: "Undoes Continue in…: deletes the new thread and reopens the one it came from.",
+    input: object({
+      thread: threadId,
+      mark: optional(refine(string, isInstant, "expected when it was marked done")),
+    }),
+    class: {
+      kind: "person-only",
+      why: "It deletes a thread, which is the user's (decision 0024).",
+    },
   },
   // The user's message, which starts a turn to answer it, with the items
   // it is about, open beside the composer as they sent it (decision 0062).

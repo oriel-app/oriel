@@ -33,6 +33,7 @@ import type {
   SecondLookView,
   ChatEntry,
   Chips,
+  HeldFrom,
   ChipView,
   DiffView,
   WorkstreamChangeView,
@@ -574,17 +575,28 @@ export function views(deps: ViewDeps) {
       const { from, text, outcome } = message;
       // Who it is from, as the user reads it: what each sender says of
       // itself, less Oriel's own bookkeeping.
-      const sender =
+      const sender: HeldFrom =
         from.kind === "review-link"
           ? { kind: from.kind, by: from.by, changeSetId: from.changeSet }
-          : { kind: from.kind, chatId: from.chat };
+          : from.kind === "thread"
+            ? { kind: from.kind, threadId: from.thread }
+            : { kind: from.kind, chatId: from.chat };
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "note") {
       // The agent alone reads of unknown chips: the answer showed each. A
       // check of the answer's quotes captions them (`ThreadView.quotes`).
-      if (message.note.kind === "unknown-chips" || message.note.kind === "quotes") return null;
+      if (
+        message.note.kind === "unknown-chips" ||
+        message.note.kind === "quotes" ||
+        message.note.kind === "continued"
+      )
+        return null;
       const { note } = message;
+      if (note.kind === "continued-in")
+        return threads.get(note.thread, deps.now())
+          ? { ...at, kind: "note", note: { kind: note.kind, threadId: note.thread } }
+          : null;
       return {
         ...at,
         kind: "note",
@@ -921,7 +933,7 @@ export function views(deps: ViewDeps) {
         }),
         writable: deps.writable,
         chips: await chips(
-          [...new Set([...answered(entries), ...evidence, ...looked(entries)])],
+          [...new Set([...answered(entries), ...evidence, ...looked(entries), ...linked(entries)])],
           id,
         ),
         quotes: Object.fromEntries(
@@ -1023,6 +1035,15 @@ const looked = (entries: readonly ChatEntry[]): string[] =>
 
 // The IDs a thread's answers name as chips. An answer streams in as many
 // text entries, which may split an ID, so each run of them is read whole.
+const linked = (entries: readonly ChatEntry[]): string[] =>
+  entries.flatMap((entry) =>
+    entry.kind === "held" && entry.from.kind === "thread"
+      ? [entry.from.threadId]
+      : entry.kind === "note" && entry.note.kind === "continued-in"
+        ? [entry.note.threadId]
+        : [],
+  );
+
 export function answered(entries: readonly ChatEntry[]): string[] {
   const answers: string[] = [];
   let last: ChatEntry | undefined;

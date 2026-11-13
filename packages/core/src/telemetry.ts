@@ -25,7 +25,8 @@ import type { SignalKind } from "./noticed.ts";
 //   `changeset.applied` or `thread.marked-done`, whichever came first
 // Where the user closed a thread from: its page, or a menu on a list, or a
 // swipe on one.
-// Or New chat, or Continue, in the window chat, which marks the old chat done.
+// Or New chat, or Continue in… (in the window chat, or a thread dragged onto
+// another workstream), which marks the old thread done.
 export type CloseVia = "page" | "menu" | "swipe" | "new-chat" | "continue";
 
 // Events that can come from an Oriel action say who acted in `by`, which only
@@ -108,6 +109,14 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       rejected?: Ulid;
       held?: { from: HeldSender["kind"]; edited: boolean };
     }
+  | {
+      name: "thread.continued";
+      threadId: Ulid;
+      from: Ulid;
+      workstreamId: Ulid;
+      kept: boolean;
+    }
+  | { name: "held-message.sent"; threadId: Ulid; from: HeldSender["kind"]; edited: boolean }
   // The user discarded a held message, so it never reached the agent.
   | { name: "held-message.discarded"; threadId: Ulid; from: HeldSender["kind"] }
   // A draft the agent made, held for the user, by its action; the user

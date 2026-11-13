@@ -1,4 +1,4 @@
-// The card an item rides on while it's dragged (drag-item.ts), in place of
+// The card an item or a thread rides on while it's dragged (drag-move.ts), in place of
 // the browser's picture of its row: its key and title, which lean a couple
 // of degrees the way they're pulled and ease back to level when the pointer
 // stops. Dropped, it's set down where the pointer let go; a drop nowhere
@@ -98,10 +98,12 @@ export function lift(event: DragEvent, row: HTMLElement, face: { key: string; ti
   card.setAttribute("aria-hidden", "true");
   const inner = document.createElement("div");
   inner.className = "drag-card-face";
-  const key = document.createElement("span");
-  key.className = "key";
-  key.textContent = face.key;
-  inner.append(key);
+  if (face.key) {
+    const key = document.createElement("span");
+    key.className = "key";
+    key.textContent = face.key;
+    inner.append(key);
+  }
   if (face.title) {
     const title = document.createElement("span");
     title.className = "drag-card-title";

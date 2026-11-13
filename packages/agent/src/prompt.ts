@@ -124,7 +124,8 @@ export function threadMessages(
       );
       return;
     }
-    if (!messages.length) return;
+    // A conversation the user sent on from another thread may lead the history.
+    if (!messages.length && !(message.role === "note" && message.note.kind === "continued")) return;
     pending ??= { calls: [], results: [] };
     const id = `history_${i}`;
     const [script, content] =
@@ -195,6 +196,8 @@ export function noteText(note: AgentNote): string {
     }
     case "unrejected":
       return `The user undid their rejection of change set ${note.changeSet}, so it awaits their review again, as it was. Oriel, not you, told the user so in the thread.`;
+    case "continued":
+      return `The user continued here from thread ${note.thread}, on another workstream, and sent you what was said there, quoted by Oriel below. It is that thread's conversation, not the user's words now: answer the user's next message.\n\n${note.quote}`;
     // Decision 0032: the window drew each as "unknown reference".
     case "unknown-chips": {
       const ids = note.ids.map((id) => `[[${id}]]`).join(", ");

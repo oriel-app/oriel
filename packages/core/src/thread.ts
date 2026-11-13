@@ -48,6 +48,8 @@ export type Thread = {
 // below. The window chat's is the user's own request, carried on by Continue
 // in… (decision 0027): `seq` is its place in the window chat `chat`, and
 // `about` what it was about there, so it is about the same items here.
+// A thread's quotes the agent's words too, so it reaches the agent as Oriel's
+// note, never as the user's.
 export const heldSender = union(
   object({
     kind: literal("review-link"),
@@ -61,6 +63,7 @@ export const heldSender = union(
     seq: refine(number, (n) => Number.isInteger(n) && n > 0, "expected a chat entry's place"),
     about: lookingAt,
   }),
+  object({ kind: literal("thread"), thread: refine(string, isUlid, "expected a thread ID") }),
 );
 export type HeldSender = Infer<typeof heldSender>;
 
@@ -69,6 +72,7 @@ export type HeldSender = Infer<typeof heldSender>;
 export const maxHeldChars: Record<HeldSender["kind"], number> = {
   "review-link": maxReasonChars,
   "window-chat": maxMessageChars,
+  thread: maxMessageChars,
 };
 
 // What a held message says: not blank, and within its sender's limit.
@@ -116,7 +120,16 @@ const quoteCheck = object({
   found: boolean,
 });
 export type QuoteCheck = Infer<typeof quoteCheck>;
-export const agentNote = union(rejectedNote, unrejectedNote, unknownChipsNote);
+const continuedNote = object({
+  kind: literal("continued"),
+  thread: refine(string, isUlid, "expected a thread ID"),
+  quote: refine(
+    string,
+    (text) => text.trim() !== "" && text.length <= maxMessageChars,
+    "expected a quote",
+  ),
+});
+export const agentNote = union(rejectedNote, unrejectedNote, unknownChipsNote, continuedNote);
 export type AgentNote = Infer<typeof agentNote>;
 // Oriel offers a change set that moves its stand-in's issues into a kind
 // that turned on (decision 0059): their count, and the two by name.
@@ -135,10 +148,16 @@ const movedNote = object({
   into: string,
   workstreams: array(refine(string, isUlid, "expected a workstream ID")),
 });
+const continuedInNote = object({
+  kind: literal("continued-in"),
+  thread: refine(string, isUlid, "expected a thread ID"),
+});
 export const orielNote = union(
   rejectedNote,
   unrejectedNote,
   unknownChipsNote,
+  continuedNote,
+  continuedInNote,
   movingNote,
   movedNote,
   object({

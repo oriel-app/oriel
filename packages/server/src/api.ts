@@ -43,6 +43,7 @@ import {
 import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
 import { connectorViews, parseDeclared, sourceKinds, sources } from "@oriel/sources";
 import {
+  type ContinuedView,
   type DeletedView,
   type DeletionView,
   browseFilter,
@@ -1449,6 +1450,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, smallBody, emptyBody);
         await deps.dispatch("thread.sync", checked("thread.sync", { thread: id }), user);
         return json(200, await threadView(id as Ulid));
+      },
+    },
+    {
+      method: "POST",
+      path: at("/threads/:id/continue"),
+      async run([id = ""], request) {
+        const { workstream } = await readJson(request, smallBody, object({ workstream: unknown }));
+        const input = checked("thread.continue", { thread: id, workstream });
+        const { thread, kept, undo } = await deps.dispatch("thread.continue", input, user);
+        return json(201, { thread, kept, undo } satisfies Undoable<ContinuedView>);
       },
     },
     {

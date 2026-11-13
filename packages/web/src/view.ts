@@ -317,7 +317,8 @@ export type HeldFrom =
   | { kind: "review-link"; by: string; changeSetId: string }
   // The user's own request, carried on from the window chat by Continue
   // in… (decision 0027).
-  | { kind: "window-chat"; chatId: string };
+  | { kind: "window-chat"; chatId: string }
+  | { kind: "thread"; threadId: string };
 
 // One of Oriel's lines in a thread, as the server's OrielNote has them:
 // a change set of the thread was rejected, here or on its review link, and
@@ -330,7 +331,8 @@ export type NoteView =
   // (decision 0059).
   | { kind: "moving"; changeSetId: string; from: string; into: string; items: number }
   // That move applied, and the workstreams that hold its items now.
-  | { kind: "moved"; changeSetId: string; into: string; workstreams: WorkstreamRef[] };
+  | { kind: "moved"; changeSetId: string; into: string; workstreams: WorkstreamRef[] }
+  | { kind: "continued-in"; threadId: string };
 
 // A workstream as a line links to it.
 export type WorkstreamRef = { id: string; name: string };
@@ -521,6 +523,8 @@ export type ActionLineView = {
 // what the action changed (decision 0024). The window sends it back as it
 // is, to `POST /api/actions/<action>`, which answers with its own undo.
 export type UndoView = { action: string; input: unknown };
+
+export type ContinuedView = { thread: string; kept: boolean };
 export type Undoable<T> = T & { undo: UndoView | null };
 
 // Every thread in the workspace.

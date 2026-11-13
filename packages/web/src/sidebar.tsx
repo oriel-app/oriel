@@ -9,9 +9,15 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import { WorkstreamMenu } from "./end-workstream.tsx";
-import { useItemDrop } from "./drag-item.ts";
-import { Menu } from "./menu.tsx";
-import { type Carried, type MovingModel, type MovingMsg, movesTo } from "./moving.ts";
+import { dragMove, useMoveDrop } from "./drag-move.ts";
+import { Menu, type MenuItem } from "./menu.tsx";
+import {
+  type Carried,
+  type CarriedThread,
+  type MovingModel,
+  type MovingMsg,
+  movesTo,
+} from "./moving.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { changeSetStateNames, stateNames } from "./chip.ts";
 import {
@@ -26,6 +32,7 @@ import {
 } from "./parts.tsx";
 import type { Model } from "./root.ts";
 import type { Route } from "./route.ts";
+import type { ThreadSummaryView } from "./view.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
 import {
   type ConnectionsModel,
@@ -286,8 +293,13 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
     <nav id={needsYouId} class="sidebar-needs" aria-label="Needs you" tabIndex={-1}>
       <ul class="nav-waiting">
         {shown.map((thread) => (
-          <li key={thread.id}>
-            <ThreadMenu thread={thread} dispatch={dispatch} swipe>
+          <li key={thread.id} {...dragThread(thread)}>
+            <ThreadMenu
+              thread={thread}
+              dispatch={dispatch}
+              swipe
+              moves={threadMoves(thread, where, dispatch)}
+            >
               <Link
                 route={{ page: "thread", id: thread.id }}
                 dispatch={dispatch}
@@ -321,10 +333,43 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
 
 export const needsYouId = "needs-you";
 
+const carriedThread = (thread: ThreadSummaryView): CarriedThread => ({
+  kind: "thread",
+  id: thread.id,
+  title: thread.title,
+  from: { id: thread.workstream.id, name: thread.workstream.name },
+});
+
+const dragThread = (thread: ThreadSummaryView) =>
+  thread.state === "working" ? dragMove(carriedThread(thread)) : {};
+
+function threadMoves(thread: ThreadSummaryView, where: Nav, dispatch: Dispatch): MenuItem[] {
+  if (thread.state !== "working") return [];
+  const carried = carriedThread(thread);
+  return (where.workstreams ?? []).flatMap(({ workstream }) =>
+    movesTo(carried, workstream.id)
+      ? [
+          {
+            label: `Move to “${workstream.name}”`,
+            onSelect: () =>
+              dispatch({
+                type: "moving",
+                msg: {
+                  type: "dropped",
+                  item: carried,
+                  to: { id: workstream.id, name: workstream.name },
+                },
+              }),
+          },
+        ]
+      : [],
+  );
+}
+
 // The user's workstreams, under a heading that folds them, which this
-// browser remembers; open until the user folds them. An item dragged onto
-// one moves there; onto the heading, a menu asks whether to make a new
-// workstream of it (moving.ts).
+// browser remembers; open until the user folds them. An item or a thread
+// dragged onto one moves there; an item onto the heading, a menu asks
+// whether to make a new workstream of it (moving.ts).
 function Workstreams({
   where,
   moving,
@@ -335,9 +380,9 @@ function Workstreams({
   dispatch: Dispatch;
 }) {
   const move = (msg: MovingMsg) => dispatch({ type: "moving", msg });
-  const heading = useItemDrop(
-    () => true,
-    (item, at) => move({ type: "droppedOnHeading", item, at }),
+  const heading = useMoveDrop(
+    (carried) => carried.kind === "item",
+    (item, at) => item.kind === "item" && move({ type: "droppedOnHeading", item, at }),
   );
   const { asking } = moving;
   const [shown, toggleShown] = useFold("oriel.sidebar.workstreams", true);
@@ -397,7 +442,7 @@ function Workstreams({
               key={entry.workstream.id}
               entry={entry}
               open={isOpen(entry)}
-              thread={where.thread}
+              where={where}
               onToggle={() => toggle(entry)}
               onDrop={(item) =>
                 move({
@@ -418,15 +463,15 @@ function Workstreams({
 function WorkstreamEntry(props: {
   entry: NavWorkstream;
   open: boolean;
-  thread: string | null;
+  where: Nav;
   onToggle(): void;
   onDrop(item: Carried): void;
   dispatch: Dispatch;
 }) {
   const { entry, dispatch } = props;
   const { workstream, threads } = entry;
-  // Not where the item came from: dropped there, it stays.
-  const target = useItemDrop(
+  // Not where the item or thread came from: dropped there, it stays.
+  const target = useMoveDrop(
     (item) => movesTo(item, workstream.id),
     (item) => props.onDrop(item),
   );
@@ -464,7 +509,7 @@ function WorkstreamEntry(props: {
             route={{ page: "workstream", id: workstream.id }}
             dispatch={dispatch}
             class="nav-link"
-            aria-current={entry.current && props.thread === null ? "page" : undefined}
+            aria-current={entry.current && props.where.thread === null ? "page" : undefined}
           >
             <span class="nav-name">{workstream.name}</span>
             {busy > 0 && <span class="working-dot" title={`${plural(busy, "agent")} working`} />}
@@ -477,13 +522,18 @@ function WorkstreamEntry(props: {
       {open && (
         <ul id={listId} class="nav-threads">
           {threads.slice(0, shown).map((thread) => (
-            <li key={thread.id}>
-              <ThreadMenu thread={thread} dispatch={dispatch} swipe>
+            <li key={thread.id} {...dragThread(thread)}>
+              <ThreadMenu
+                thread={thread}
+                dispatch={dispatch}
+                swipe
+                moves={threadMoves(thread, props.where, dispatch)}
+              >
                 <Link
                   route={{ page: "thread", id: thread.id }}
                   dispatch={dispatch}
                   class="nav-link nav-thread"
-                  aria-current={thread.id === props.thread ? "page" : undefined}
+                  aria-current={thread.id === props.where.thread ? "page" : undefined}
                 >
                   <span
                     class="state-dot"
@@ -591,7 +641,7 @@ function FoldHead(props: {
   // Beside the heading, at its end: what it says folded, or its actions.
   after?: ComponentChildren;
   // What a drop on it does, and whether one it takes is over it now.
-  drop?: ReturnType<typeof useItemDrop>["props"];
+  drop?: ReturnType<typeof useMoveDrop>["props"];
   over?: boolean;
 }) {
   return (

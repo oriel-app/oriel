@@ -72,6 +72,14 @@ const words: { [N in ActionName]: Words } = {
     `mark ${place} done`,
   ],
   "thread.reopen": (_, place) => [`Reopened ${place}`, `reopen ${place}`],
+  "thread.continue": (_, place) => [
+    `Carried ${place}'s conversation to another workstream`,
+    `carry ${place}'s conversation to another workstream`,
+  ],
+  "thread.uncontinue": (_, place) => [
+    `Took back carrying a conversation to ${place}`,
+    `take back carrying a conversation to ${place}`,
+  ],
   // A person's, or closed to the agent, so never the agent's; worded all the
   // same.
   "window.new-chat": () => ["Started a fresh window chat", "start a fresh window chat"],

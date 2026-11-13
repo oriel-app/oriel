@@ -18,6 +18,7 @@ import {
   type Instant,
   type Log,
   type LookingAt,
+  maxMessageChars,
   maxUnknownChips,
   type OrielNote,
   type Reader,
@@ -232,10 +233,15 @@ export function history(
     }
     if (message.role === "note") {
       // Oriel's check of an answer's quotes is the window's, to caption them,
-      // and its offer to move its tracker's issues, and where they went, are
-      // the person's to read.
+      // its offer to move its tracker's issues, and where they went, and
+      // where Continue in… carried the conversation, are the person's to read.
       const { note } = message;
-      if (note.kind !== "quotes" && note.kind !== "moving" && note.kind !== "moved")
+      if (
+        note.kind !== "quotes" &&
+        note.kind !== "moving" &&
+        note.kind !== "moved" &&
+        note.kind !== "continued-in"
+      )
         out.push({ role: "note", note, at: message.at });
       continue;
     }
@@ -272,6 +278,32 @@ export function history(
     }
   }
   return out;
+}
+
+export function quoted(messages: readonly Message[]): string {
+  const said = history(messages, () => "").flatMap((m) =>
+    m.role === "user"
+      ? [`The user:\n${m.text}`]
+      : m.role === "assistant"
+        ? [`The agent:\n${m.text}`]
+        : [],
+  );
+  const left = "(Earlier messages left out.)";
+  const room = maxMessageChars - left.length - 2;
+  const kept: string[] = [];
+  let length = 0;
+  for (const each of said.toReversed()) {
+    const next = length + each.length + (kept.length > 0 ? 2 : 0);
+    if (next > room) {
+      // The latest alone is too long: its end, which is the most recent.
+      if (kept.length === 0) kept.push(`…${each.slice(each.length - room + 1)}`);
+      break;
+    }
+    kept.unshift(each);
+    length = next;
+  }
+  const all = kept.join("\n\n");
+  return kept.length < said.length ? `${left}\n\n${all}` : all;
 }
 
 export type Turns = ReturnType<typeof turns>;
@@ -734,6 +766,12 @@ export function turns(deps: TurnDeps) {
       publish(set.threadId, { type: "status", running: running.has(set.threadId) });
     },
 
+    continued(from: Ulid, to: Ulid): void {
+      hold(to, { kind: "thread", thread: from }, quoted(threads.messages(from)));
+      note(from, { kind: "continued-in", thread: to });
+      publish(from, { type: "status", running: running.has(from) });
+    },
+
     // The user sends the message held at `seq` to the agent, as it was or as
     // they edited it, whoever it is from. It goes as their message, as a
     // typed one does, so the turn and the words are theirs. Refused mid-turn
@@ -748,13 +786,27 @@ export function turns(deps: TurnDeps) {
       // A draft is applied, never sent (decision 0051).
       if (!held || !("from" in held)) throw new NothingHeld();
       if (running.has(threadId)) throw new ThreadBusy();
+      const sent = text ?? held.text;
+      // Never the user's words, so it starts no turn.
+      if (held.from.kind === "thread") {
+        const quote = { kind: "continued" as const, thread: held.from.thread, quote: sent };
+        const seq = threads.append(
+          threadId,
+          { role: "note", note: quote },
+          deps.newId(),
+          deps.now(),
+        );
+        threads.settle(threadId, at, "sent");
+        published(threadId, seq);
+        publish(threadId, { type: "status", running: false });
+        return { seq, from: held.from, edited: sent !== held.text };
+      }
       // A review link's holder answers what was wrong with the change set
       // they rejected: held while Oriel couldn't ask, mid-turn, it asks
       // first, so the agent reads the reason as that answer.
       const capped = capReached(threads.messages(threadId), deps.caps) !== null;
       if (held.from.kind === "review-link" && held.from.askFirst && !capped)
         ask(threadId, held.from.changeSet, "review-link");
-      const sent = text ?? held.text;
       // Sent on, the words and the turn are the user's; a request carried
       // on from the window chat is about what it was about there.
       const about = held.from.kind === "window-chat" ? held.from.about : undefined;

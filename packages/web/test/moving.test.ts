@@ -14,7 +14,7 @@ import {
 
 const a = { id: "01JBZ0000000000000000000A1", name: "Checkout" };
 const b = { id: "01JBZ0000000000000000000B1", name: "Gift cards" };
-const item: Carried = { id: "jira:SYN-23", key: "SYN-23", title: null, from: a };
+const item: Carried = { kind: "item", id: "jira:SYN-23", key: "SYN-23", title: null, from: a };
 
 const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
   type: "replied",
