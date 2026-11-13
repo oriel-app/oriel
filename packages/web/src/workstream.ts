@@ -224,7 +224,8 @@ export function workstreamReplied(
   switch (tag.kind) {
     case "workstreamChanged": {
       if (tag.id !== model.id) return [model, []];
-      // Unless the answer still holds it, as one to a removal sent before the page was opened again does.
+      // A reply that still holds the first removal, as one to a removal sent before the page was opened again,
+      // leaves it waiting.
       const [done, ...rest] = model.removing;
       const next = rest[0] ? [removal(model.id, rest[0].id)] : [];
       if (!msg.ok) return [{ ...model, removing: rest, notice: errorOf(msg.body) }, next];

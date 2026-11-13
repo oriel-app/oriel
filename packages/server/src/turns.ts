@@ -467,6 +467,7 @@ export function turns(deps: TurnDeps) {
     }
   };
 
+  // `by`: only a turn the user started applies the agent's actions.
   const launch = (
     thread: Thread,
     said: { text: string; about: About | null },

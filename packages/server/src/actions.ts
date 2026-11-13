@@ -1059,7 +1059,6 @@ const handlers = {
     return { output: outcome, undo: null, changed: null, events: counted ? "counted" : [] };
   },
 
-  // Which options changed is counted, never their values.
   "item.edit": async (input, _actor, deps) => {
     const { before, after } = await deps.edit(input.item, input.values);
     return {
@@ -1073,6 +1072,7 @@ const handlers = {
     };
   },
 
+  // Which options changed is counted, never their values.
   "source.configure": async (input, _actor, deps) => {
     const { outcome, changed, replaced } = await deps.sources.configure(input);
     if (!("connection" in outcome) || changed.length === 0)
@@ -1266,6 +1266,7 @@ export function refusal(name: ActionName, actor: Actor): string | null {
   if (actor.kind === "review-link")
     return declared.reviewLink ? null : `${name} isn't for a review link`;
   if (declared.class.kind === "person-only") return `${name} is the user's: ${declared.class.why}`;
+  // A change set or a sync acts only through what follows its own apply or sync.
   if (actor.kind === "change-set" || actor.kind === "sync") return null;
   const closed = declared.closed?.[actor.kind === "agent" ? "agent" : "tool"];
   return closed === undefined ? null : `${name} is closed to ${actor.kind}s: ${closed}`;
