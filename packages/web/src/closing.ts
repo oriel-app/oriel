@@ -1,21 +1,12 @@
-// Closing a thread from any list of threads, without opening it: marking it
-// done, as its page's button does, or deleting it, which asks once first and
-// says what deleting would lose. What else must reload once one closes is
-// the app's to say (root.ts).
 import type { Connectors } from "./connectors.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type { DeletedView, DeletionView } from "./view.ts";
 
-// Where the person closed it from: a menu on the thread's row, or a swipe.
 export type CloseVia = "menu" | "swipe";
 
 export type ClosingModel = {
-  // The thread the person asked to delete, until they confirm or cancel, and
-  // what deleting it would lose, once the server says.
   asking: { threadId: string; title: string; via: CloseVia; deletion: DeletionView | null } | null;
-  // Threads with a request in flight.
   pending: readonly string[];
-  // What the last request said, when it failed.
   problem: string | null;
 };
 
@@ -48,7 +39,6 @@ export function updateClosing(model: ClosingModel, msg: ClosingMsg): [ClosingMod
     }
     case "deleteConfirmed": {
       const { asking } = model;
-      // Only once the person has been told what it would lose.
       if (asking?.deletion == null || model.pending.includes(asking.threadId)) return [model, []];
       const { threadId, via } = asking;
       return [
@@ -63,7 +53,6 @@ export function updateClosing(model: ClosingModel, msg: ClosingMsg): [ClosingMod
   }
 }
 
-// The server's replies to these requests.
 export function closingReplied(model: ClosingModel, msg: Replied): ClosingModel {
   const { tag } = msg;
   if (tag.kind !== "markedDone" && tag.kind !== "deletion" && tag.kind !== "deleted") return model;
@@ -83,13 +72,9 @@ export function closingReplied(model: ClosingModel, msg: Replied): ClosingModel 
   }
 }
 
-// What a delete reply says happened.
 export const deletedOf = (msg: Replied): DeletedView | null =>
   msg.ok && msg.tag.kind === "deleted" ? (msg.body as DeletedView) : null;
 
-// What the person is told before deleting: what goes, and what deleting
-// would lose that the source keeps. Its sources are connections, by prefix
-// (`kind.2`), each named as its connector is in a sentence.
 export function deletionWarning(deletion: DeletionView, connectors: Connectors): string {
   const { applied, reverted, unconfirmed, sources } = deletion;
   const names = sources.map(

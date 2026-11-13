@@ -1,6 +1,3 @@
-// A held message, from anyone but the user, here a review link's holder: the
-// user edits it in the composer before sending, and neither the edit nor the
-// user's own draft is lost along the way.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
@@ -13,7 +10,6 @@ const id = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-11-01T09:00:00.000Z";
-// Where the held message is in the chat.
 const seq = 3;
 
 const rejectedSet = changeSetView({
@@ -81,14 +77,11 @@ test("Edit moves the words into the composer, and Send there posts what the user
   let [model] = send(onPage(), { type: "draftChanged", text: "Half a thought" });
   let effects: Effect[];
   [model, effects] = send(model, { type: "heldEditClicked", seq });
-  // The composer holds the message's words, and has the focus.
   assert.equal(thread(model).draft, "One story too many.");
   assert.deepEqual(effects, [{ type: "focusComposer" }]);
   [model] = send(model, { type: "draftChanged", text: "  Drop the third story. " });
-  // The composer's Send sends it as the held message, edited, not as a new one.
   const [sent, posts] = send(model, { type: "sendClicked" });
   assert.deepEqual(posts, [posted("send", { text: "Drop the third story." })]);
-  // So does the card's own Send to agent.
   assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], posts);
   const [done] = update(sent, replied(tag, { seq: 4 }));
   assert.equal(thread(done).draft, "");
@@ -104,7 +97,6 @@ test("an edit emptied out sends nothing; Cancel puts back what the composer held
   [model] = send(model, { type: "heldEditCancelled", seq });
   assert.equal(thread(model).draft, "Half a thought");
   assert.equal(thread(model).composing, null);
-  // Sent as it is, then, and the composer keeps the user's own words.
   assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], [posted("send", {})]);
   const [sent] = send(model, { type: "heldSendClicked", seq });
   assert.equal(thread(update(sent, replied(tag, { seq: 4 }))[0]).draft, "Half a thought");
@@ -113,13 +105,11 @@ test("an edit emptied out sends nothing; Cancel puts back what the composer held
 test("an edit of a message another page sent stays in the composer as the user's own words", () => {
   const [editing] = send(onPage(), { type: "heldEditClicked", seq });
   assert.equal(thread(editing).composing?.seq, seq);
-  // Still held, the edit stays one of it.
   const [kept] = update(editing, replied({ kind: "thread", id }, viewWith(held(null))));
   assert.equal(thread(kept).composing?.seq, seq);
   const [reloaded] = update(editing, replied({ kind: "thread", id }, viewWith(held("sent"))));
   assert.equal(thread(reloaded).composing, null);
   assert.equal(thread(reloaded).draft, "One story too many.");
-  // Send now sends a message of the user's own.
   const [, effects] = send(reloaded, { type: "sendClicked" });
   assert.equal((effects[0] as { url?: string }).url, `/api/threads/${id}/messages`);
 });

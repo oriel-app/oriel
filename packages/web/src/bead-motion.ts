@@ -1,14 +1,3 @@
-// The bead's shape and motion (decision 0056, amended): the frame's own
-// material growing out of the band along the page column's top. It drops as
-// a small bead, spreads to its note's width, its words come in once it has
-// spread, and leaving, its words go first, it narrows back to the bead, and
-// the band takes it back. Springs, not timed curves: height leads with a
-// little overshoot, width follows, softer. At rest nothing moves but the
-// swell under the pointer, and no frame runs.
-//
-// Pure: the geometry and the time step come in, and nothing here reads
-// layout or the clock (undo-stack.tsx measures and draws).
-
 export type Spring = {
   value: number;
   velocity: number;
@@ -25,7 +14,6 @@ const spring = (value: number, stiffness: number, damping: number): Spring => ({
   damping,
 });
 
-// One step of `dt` seconds toward its target.
 export function stepSpring(s: Spring, dt: number): Spring {
   const force = s.stiffness * (s.target - s.value) - s.damping * s.velocity;
   const velocity = s.velocity + force * dt;
@@ -35,35 +23,24 @@ export function stepSpring(s: Spring, dt: number): Spring {
 export const springSettled = (s: Spring): boolean =>
   Math.abs(s.target - s.value) < 0.05 && Math.abs(s.velocity) < 0.05;
 
-// Springs step in whole ticks, whatever the frame rate, so a second of
-// frames at 60 a second lands where a second at 144 does.
+// Springs step in whole ticks, whatever the frame rate, so a second at 60 frames lands where
+// a second at 144 does.
 export const tick = 1 / 240;
 // A longer frame, as after a hidden tab, counts as this long.
 const longestFrame = 0.1;
 
-// The frame's and the bead's measures, in pixels, from window.css.
 export type Measures = {
-  // The bead it drops as, before it spreads.
   seed: number;
-  // How far each neck reaches along the band once it has spread.
   neck: number;
-  // The column's top corners, which the necks never reach.
   corner: number;
-  // What it keeps clear of the corners, beyond its necks.
   gap: number;
-  // Its lower corners.
   radius: number;
-  // How much taller it grows under the pointer.
   swell: number;
 };
 
-// The widest it may be in a column `column` wide: the column less, on each
-// side, the corner, a neck and the gap.
 export const room = (column: number, m: Measures): number =>
   Math.max(m.seed, column - 2 * (m.corner + m.neck + m.gap));
 
-// How wide a face `natural` wide shows, and whether its sentence is cut
-// short to fit, ending in an ellipsis.
 export function fit(natural: number, column: number, m: Measures) {
   const most = room(column, m);
   return { width: Math.max(m.seed, Math.min(natural, most)), clamped: natural > most };
@@ -73,11 +50,7 @@ export function fit(natural: number, column: number, m: Measures) {
 const k = 0.5523;
 const n = (x: number) => Math.round(x * 100) / 100;
 
-// The bead's outline below the band, `w` by `h`, centred at `cx` in a
-// column `column` wide, the band's lower edge at y = 0. Its necks flare wide
-// and shallow while it gathers, and tighten as it spreads to `wanted`, like
-// surface tension letting go; never past the corner. It reaches a little up
-// into the band, so no seam shows. Near no height, it's nothing: flat.
+// It reaches a little up into the band, so no seam shows.
 export function beadPath(
   shape: { width: number; height: number; wanted: number },
   column: number,
@@ -110,8 +83,6 @@ export function beadPath(
   ].join("");
 }
 
-// One of the lips beneath it while it holds more notes (`depth` 1 or 2):
-// the material's edge, narrower and a little lower each.
 export function lipPath(
   shape: { width: number; height: number },
   column: number,
@@ -136,9 +107,6 @@ export function lipPath(
   ].join("");
 }
 
-// Where its words are shown from, as the shape reveals them: the rested
-// box, `wanted` by `rested`, cut to the shape now, from the top and both
-// sides. The words never move with the shape; only this does.
 export function wordsClip(
   shape: { width: number; height: number },
   wanted: number,
@@ -153,35 +121,20 @@ export function wordsClip(
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
-// --- Motion ---------------------------------------------------------------
-
-// Hidden: nothing below the band. Dropping: the bead grows down, then
-// spreads, its words to come. Shown: its words in. Changing: a new note while
-// one shows, its words going; then swapping, waiting for the new ones to be
-// laid out, when the shape reflows to them. Leaving: words, then width,
-// then height.
 export type Phase = "hidden" | "dropping" | "shown" | "changing" | "swapping" | "leaving";
 
 export type Motion = {
   phase: Phase;
-  // Seconds since the phase began.
   at: number;
   height: Spring;
   width: Spring;
   words: Spring;
-  // Time not yet stepped: under one tick.
   carry: number;
-  // Reduced motion: no drop or spread. It shows at its size, its words swap
-  // at once, and it only fades, in and out; `words` is how far.
   reduced: boolean;
 };
 
-// What it grows to: its face's width, clamped to the room, and height; and
-// whether the pointer is on it.
 export type Aim = { width: number; height: number; hovered: boolean };
 
-// When it spreads, once dropping; and when, leaving, it narrows and the band
-// takes it back.
 const spreadsAt = 0.11;
 const narrowsAt = 0.09;
 const goesAt = 0.23;
@@ -198,11 +151,9 @@ export const still = (seed: number): Motion => ({
 
 const enter = (m: Motion, phase: Phase): Motion => ({ ...m, phase, at: 0 });
 
-// A note shows with none showing, or as the last one leaves.
 export function arrive(m: Motion, seed: number, reduced: boolean): Motion {
   if (m.phase !== "hidden" && m.phase !== "leaving") return m;
   if (reduced) {
-    // At its size from its first step, fading in: not at rest until it has.
     const from = still(seed);
     return { ...enter(from, "shown"), words: { ...from.words, target: 1 }, reduced };
   }
@@ -210,24 +161,19 @@ export function arrive(m: Motion, seed: number, reduced: boolean): Motion {
   return { ...enter(m, "dropping"), reduced };
 }
 
-// Another note while one shows: its words go, the shape reflows, and the
-// new ones come. Reduced motion swaps them at once.
 export function change(m: Motion): Motion {
   if (m.phase !== "shown" && m.phase !== "dropping") return m;
   return enter(m, m.reduced ? "swapping" : "changing");
 }
 
-// The new words are laid out: the shape goes to them, and they come in.
 export const swapped = (m: Motion): Motion =>
   m.phase === "swapping" ? enter(m, m.reduced ? "shown" : "dropping") : m;
 
-// The last note goes.
 export function leave(m: Motion): Motion {
   if (m.phase === "hidden" || m.phase === "leaving") return m;
   return enter(m, "leaving");
 }
 
-// `dt` seconds on, toward `aim`, in whole ticks.
 export function advance(
   m: Motion,
   dt: number,
@@ -240,7 +186,6 @@ export function advance(
   return { ...next, carry: Math.max(0, next.carry - steps * tick) };
 }
 
-// Where each spring is headed in phase, `at` seconds in, toward `aim`.
 function targets(m: Motion, at: number, aim: Aim, sizes: Pick<Measures, "seed" | "swell">) {
   const { seed } = sizes;
   let height = m.height.target;
@@ -270,13 +215,10 @@ function targets(m: Motion, at: number, aim: Aim, sizes: Pick<Measures, "seed" |
       }
       break;
   }
-  // Under the pointer it swells, a little taller; never as it goes.
   if (aim.hovered && m.phase !== "leaving" && m.phase !== "hidden") height += sizes.swell;
   return { height, width, words };
 }
 
-// Aimed anew, as when the pointer comes, the column resizes or the face
-// opens as a list: a bead at rest isn't, until it gets there.
 export function retarget(m: Motion, aim: Aim, sizes: Pick<Measures, "seed" | "swell">): Motion {
   const to = targets(m, m.at, aim, sizes);
   return {
@@ -318,8 +260,6 @@ function once(m: Motion, aim: Aim, sizes: Pick<Measures, "seed" | "swell">): Mot
 
 const snap = (s: Spring): Spring => ({ ...s, value: s.target, velocity: 0 });
 
-// Whether nothing moves: hidden, or shown and settled. A frame runs only
-// while this is false.
 export function resting(m: Motion): boolean {
   if (m.phase === "hidden") return true;
   return (
@@ -330,21 +270,14 @@ export function resting(m: Motion): boolean {
   );
 }
 
-// Settled, it sits exactly on its targets, so nothing drifts.
 export const settle = (m: Motion): Motion =>
   resting(m) ? { ...m, height: snap(m.height), width: snap(m.width), words: snap(m.words) } : m;
 
-// --- Frames ---------------------------------------------------------------
-
-// The browser's animation frames, or a test's.
 export type Frames = {
   request(run: (now: number) => void): number;
   cancel(id: number): void;
 };
 
-// Runs `step` once a frame, with the seconds since the last, only while
-// `moving()` says something does. `kick` after anything that may start it
-// moving; at rest it requests nothing.
 export function frameDriver(frames: Frames, run: { moving(): boolean; step(dt: number): void }) {
   let id = 0;
   let last: number | null = null;

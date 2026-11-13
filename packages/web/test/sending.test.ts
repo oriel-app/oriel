@@ -1,5 +1,3 @@
-// OA-107, fixed in c27653bc (#91): a message sent while scrolled up didn't
-// take the user to the latest entry, so they didn't see it or the reply.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
@@ -16,7 +14,6 @@ function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   return [model, effects];
 }
 
-// The page, once it renders what the update asked for, goes to the latest entry.
 const rendered: Msg = { type: "thread", msg: { type: "rendered" } };
 const shows = ([model, effects]: [Model, Effect[]]) =>
   effects.some((e) => e.type === "rendered") &&
@@ -58,7 +55,6 @@ test("sending while scrolled up lands at the latest entry, and stays there for t
   })[0];
   const sent = run(typed, { type: "thread", msg: { type: "sendClicked" } });
   assert.equal(shows(sent), true);
-  // The message arrives, then the reply starts: each keeps the page there.
   const said = run(sent[0], entry({ seq: 3, at, kind: "user", text: "Why?" }));
   assert.equal(shows(said), true);
   assert.equal(shows(run(said[0], reply(4))), true);

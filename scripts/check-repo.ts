@@ -372,11 +372,27 @@ export const commentsCleaned = [
   "packages/linear/",
   "packages/tracker/",
   "packages/standin-mcp/",
+  "packages/web/",
 ];
 export const commentsCleanedLater = [
   "packages/core/src/telemetry.ts",
   "scripts/check-repo.ts",
   "scripts/shots.ts",
+  "packages/web/src/block.tsx",
+  "packages/web/src/connect-steps.tsx",
+  "packages/web/src/connections-page.tsx",
+  "packages/web/src/http.ts",
+  "packages/web/src/new-message.tsx",
+  "packages/web/src/other-pages.tsx",
+  "packages/web/src/overview-page.tsx",
+  "packages/web/src/parts.tsx",
+  "packages/web/src/settings-page.tsx",
+  "packages/web/src/thread-page.tsx",
+  "packages/web/src/thread.ts",
+  "packages/web/src/to-review.tsx",
+  "packages/web/src/undo-stack.tsx",
+  "packages/web/src/window-chat.ts",
+  "packages/web/src/workstream-page.tsx",
 ];
 
 export function matches(name: string, entry: string): boolean {

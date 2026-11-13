@@ -1,20 +1,8 @@
-// Adding the panel's item to the workstream the page is about (OA-149), and
-// its Undo, which is one more note in the window's stack (OA-152): the same
-// entry shows there and beside the add, so undoing either undoes both, and
-// its Undo runs out as every note's does. Each add is kept whatever item the
-// panel shows, so one in flight, or its Undo, can't go twice, and stepping
-// away and back finds it as it was. Leaving the page lets go of its Undo, as
-// of every note's; the add itself is still said beside the item.
+// Adds are kept whatever item the panel shows, so one in flight, or its Undo, can't go twice.
 import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
 import { expiry, type Held, type Hold, hold, holding, notHeld, type Undos } from "./undos.ts";
 import type { Undoable, UndoView, WorkstreamView } from "./view.ts";
 
-// One item's add to one workstream: the workstream by its name then, and the
-// item's key as a person reads it, for the stack's note. What's in flight,
-// the add or its Undo; once the add answered, the workstream version it made
-// and the call that undoes it, null when the item was in already. `shown`:
-// whether its Undo still shows. `countdown`: which of the adds' countdowns
-// is its Undo's latest; only that one's end lets it go.
 export type PanelAdd = {
   item: string;
   key: string;
@@ -27,13 +15,10 @@ export type PanelAdd = {
   problem: string | null;
 };
 
-// `countdowns`: how many countdowns have started, so none is mistaken for
-// another, whichever add it was for.
 export type PanelAdds = { adds: readonly PanelAdd[]; held: Held; countdowns: number };
 
 export const noAdds: PanelAdds = { adds: [], held: notHeld, countdowns: 0 };
 
-// Which add: its item, and the workstream it went to.
 export type AddOf = { item: string; workstreamId: string };
 
 export type PanelAddMsg =
@@ -46,7 +31,6 @@ export type PanelAddMsg =
   | ({ type: "undoExpired"; countdown: number } & AddOf)
   | ({ type: "problemDismissed" } & AddOf);
 
-// A workstream as a page on screen shows it: its version, and its members then.
 export type ShownWorkstream = { id: string; version: number; members: ReadonlySet<string> };
 
 const same = (add: PanelAdd, of: AddOf) =>
@@ -55,7 +39,6 @@ const same = (add: PanelAdd, of: AddOf) =>
 export const addOf = (adds: PanelAdds, of: AddOf): PanelAdd | null =>
   adds.adds.find((each) => same(each, of)) ?? null;
 
-// Whether its Undo shows, in the stack and beside the add.
 export const undoable = (add: PanelAdd): add is PanelAdd & { done: { undo: UndoView } } =>
   add.shown && add.done?.undo != null;
 
@@ -71,8 +54,6 @@ const drop = (adds: PanelAdds, of: AddOf): PanelAdds => ({
 
 export function updateAdds(adds: PanelAdds, msg: PanelAddMsg): [PanelAdds, Effect[]] {
   switch (msg.type) {
-    // Through Oriel's action for it (workstream.add, decision 0024), as
-    // adding from the window is.
     case "addClicked": {
       const { id, name } = msg.workstream;
       const of = { item: msg.item.id, workstreamId: id };
@@ -98,7 +79,6 @@ export function updateAdds(adds: PanelAdds, msg: PanelAddMsg): [PanelAdds, Effec
         ],
       ];
     }
-    // Through the one path every Undo takes.
     case "undoClicked": {
       const add = addOf(adds, msg);
       if (!add || add.pending || !undoable(add)) return [adds, []];
@@ -118,7 +98,6 @@ export function updateAdds(adds: PanelAdds, msg: PanelAddMsg): [PanelAdds, Effec
   }
 }
 
-// Its Undo's full time, from now, on a countdown no other has had.
 function counted(adds: PanelAdds, add: PanelAdd): [PanelAdds, Effect[]] {
   const countdown = adds.countdowns + 1;
   const next = { ...add, countdown };
@@ -130,8 +109,6 @@ function counted(adds: PanelAdds, add: PanelAdd): [PanelAdds, Effect[]] {
   return [put({ ...adds, countdowns: countdown }, next), undoable(next) ? [ends] : []];
 }
 
-// The pointer or keyboard on the stack holds every note in it; once neither
-// does, each Undo gets its full time again.
 export function holdAdds(adds: PanelAdds, by: Hold, held: boolean): [PanelAdds, Effect[]] {
   return hold(adds, by, held, (base) =>
     base.adds
@@ -146,10 +123,6 @@ export function holdAdds(adds: PanelAdds, by: Hold, held: boolean): [PanelAdds, 
   );
 }
 
-// The answer to an add or its Undo, whichever item the panel shows by then,
-// if it is the one in flight: an add shows what it did, with its Undo
-// running out; an Undo that landed takes the add away; a refusal says why,
-// and an Undo refused stays to try again, with its full time.
 export function addsReplied(adds: PanelAdds, msg: Replied): [PanelAdds, Effect[]] {
   const { tag } = msg;
   if (tag.kind !== "panelAdded" && tag.kind !== "panelAddUndone") return [adds, []];
@@ -171,20 +144,14 @@ export function addsReplied(adds: PanelAdds, msg: Replied): [PanelAdds, Effect[]
   });
 }
 
-// Leaving a page: every Undo goes, as every note's does, and what went wrong
-// with it; what is in flight still answers.
 export const addsLeft = (adds: PanelAdds): PanelAdds => ({
   ...adds,
   adds: adds.adds.map((add) => (add.pending ? add : { ...add, shown: false, problem: null })),
   held: notHeld,
 });
 
-// The adds that still stand, by what a page shows of a workstream: one goes
-// once it shows the workstream, at the version the add made or later,
-// without the item, as when it was removed some other way. One it shows
-// with the item at a later version stands as of that version. A page that
-// shows an older version tells nothing, and neither does one shown while
-// the add or its Undo is in flight: their answer does.
+// A page showing an older version tells nothing, and neither does one shown while the add or
+// its Undo is in flight: their answer does.
 export function standingAdds(adds: PanelAdds, shown: ShownWorkstream): PanelAdds {
   let changed = false;
   const standing = adds.adds.flatMap((add) => {
@@ -200,9 +167,6 @@ export function standingAdds(adds: PanelAdds, shown: ShownWorkstream): PanelAdds
   return changed ? { ...adds, adds: standing } : adds;
 }
 
-// For the open item's adds, once the workstreams list shows a workstream
-// changed since its add stood: that workstream, loaded again, says whether
-// it still does.
 export function checkAdd(
   adds: PanelAdds,
   item: string,
@@ -215,29 +179,21 @@ export function checkAdd(
   });
 }
 
-// An add's workstream, loaded again, as after its Undo failed: only the
-// workstream says whether that was because the add no longer stands.
 export const recheckAdd = (workstreamId: string): Effect[] => [
   get(`/api/workstreams/${workstreamId}`, { kind: "panelAddChecked", workstreamId }),
 ];
 
-// What a workstream's view shows of it, for `standingAdds`.
 export const shownOf = (view: WorkstreamView): ShownWorkstream => ({
   id: view.workstream.id,
   version: view.workstream.version,
   members: new Set(view.members.map((member) => member.ref.id)),
 });
 
-// What the add did, in a sentence beside it, where the item goes without
-// saying; or null before it answers.
 export function addedText(add: PanelAdd): string | null {
   if (add.done === null) return null;
   return add.done.undo ? `Added to “${add.name}”.` : `Already in “${add.name}”.`;
 }
 
-// Each add's Undo, as a note in the window's stack, which names the item;
-// and the last Undo that failed, which the stack says too, wherever the
-// panel is.
 export function addUndos(adds: PanelAdds, send: (msg: PanelAddMsg) => void): Undos {
   const of = ({ item, workstreamId }: PanelAdd): AddOf => ({ item, workstreamId });
   const notes = adds.adds.filter(undoable).map((add) => {
@@ -250,7 +206,6 @@ export function addUndos(adds: PanelAdds, send: (msg: PanelAddMsg) => void): Und
       disabled: add.pending !== null,
     };
   });
-  // Until dismissed, though its Undo may run out meanwhile.
   const failed = adds.adds.findLast((add) => add.problem !== null && add.done?.undo != null);
   const problem = failed && {
     said: `Couldn't undo adding ${failed.key}: ${failed.problem}`,

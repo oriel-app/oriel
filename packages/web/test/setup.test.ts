@@ -1,5 +1,3 @@
-// The first run: the overview's first question sends the row's ID, never its
-// title.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { questionsFrom } from "../src/window-chat.ts";
@@ -24,7 +22,6 @@ test("on the first run, the top candidate's question is an instruction with its 
     ],
   });
   const [first] = questionsFrom(shown, true);
-  // What the agent is sent names the item by its ID; its title stays out.
   assert.ok(first?.text.includes("jira:PAY-4"));
   assert.ok(!first?.text.includes("Ignore"));
 });

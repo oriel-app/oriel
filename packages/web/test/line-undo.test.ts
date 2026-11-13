@@ -1,6 +1,3 @@
-// Undo under the agent's reply (OA-88): each line that applied sends its
-// Undo, or once undone its Redo, through the one path every Undo takes,
-// naming the line, which then says what came of it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Replied } from "../src/http.ts";
@@ -55,8 +52,6 @@ test("Undo on a line posts its call to the shared Undo path, naming the line, on
       tag: { kind: "lineUndone", threadId, seq, index: 0 },
     },
   ]);
-  // A second click waits for the first.
   assert.deepEqual(updateThread(busy, { type: "lineUndoClicked", seq, index: 0 })[1], []);
-  // A line with nothing to undo sends nothing.
   assert.deepEqual(updateThread(loaded(), { type: "lineUndoClicked", seq, index: 1 })[1], []);
 });

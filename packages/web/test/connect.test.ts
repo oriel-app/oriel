@@ -26,8 +26,6 @@ const post = (url: string, body: unknown, tag: Replied["tag"]): Effect => ({
   tag,
 });
 
-// OA-278, fixed in 8ba71728 (#229): a tracker connected in the first run
-// counted as replaced by the stand-in it took over from, so its row vanished.
 test("a tracker connected in the first run stays in its list once the stand-in steps aside", () => {
   const tracker = {
     ...connectors.jira!,

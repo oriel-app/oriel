@@ -1,5 +1,5 @@
-// A review link's page: no thread, no window. Nothing is opened until the
-// person asks, with a POST, since chat apps fetch links to preview them.
+// Nothing is opened until the person asks, with a POST, since chat apps fetch links to preview
+// them.
 import { type Effect, errorOf, post, type Replied } from "./http.ts";
 import type { ChangeSetView, NextStepView, ReviewView } from "./view.ts";
 
@@ -8,27 +8,16 @@ export type ReviewModel = {
   stage: "closed" | "opening" | "open" | "deciding" | "decided" | "dead";
   view: ReviewView | null;
   name: string;
-  // The step the reviewer picked as their answer, before they send it.
   answer: ReviewStep | null;
-  // What's wrong with it, to go with rejecting it: held in the thread for
-  // whoever shared the link.
   reason: string;
   decided: ChangeSetView | null;
-  // What the reviewer did, once decided; and, for a dismissal, what it said
-  // may have landed.
   outcome: "approved" | "rejected" | "dismissed" | null;
   warnings: readonly string[];
   problem: string | null;
-  // The change as the reviewer's refused decision saw it, until the page
-  // opens it again.
   reviewed: { hash: string; revisedAt: string | null } | null;
-  // The reviewer's decision was refused because the change was altered
-  // since the page showed it: when, if the agent's revision did it.
   altered: { at: string | null } | null;
 };
 
-// The steps a review link can take: deciding, and dismissing what is left.
-// The rest (retry, remove, revert) belong to the thread.
 export type ReviewStep = Extract<
   NextStepView["kind"],
   "approve" | "approve-rest" | "reject" | "dismiss"
@@ -39,18 +28,12 @@ export type ReviewMsg =
   | { type: "nameChanged"; name: string }
   | { type: "answerPicked"; answer: ReviewStep }
   | { type: "reasonChanged"; reason: string }
-  // The one button, which does what the answer says.
   | { type: "submitClicked" }
   | { type: "decideClicked"; kind: "approved" | "rejected" }
   | { type: "dismissClicked" };
 
-// What the reviewer's form shows, in its order, under the change: their
-// answer, the note only once they pick Reject, their name, and the one
-// button, once there's an answer for it to send. With one step offered,
-// that's the answer, and there's nothing to pick.
 export type ReviewPart = "answer" | "note" | "name" | "submit";
 
-// The reviewer's answer: the one they picked, or the only one offered.
 export function answerOf(model: ReviewModel): ReviewStep | null {
   const steps = model.view ? reviewSteps(model.view) : [];
   if (model.answer !== null && steps.includes(model.answer)) return model.answer;
@@ -70,7 +53,6 @@ export function reviewParts(model: ReviewModel): ReviewPart[] {
   ];
 }
 
-// What the change set engine offers that a review link can do, in its order.
 export const reviewSteps = (view: ReviewView): ReviewStep[] =>
   view.changeSet.nextSteps.flatMap((step) =>
     step.kind === "approve" ||
@@ -135,7 +117,6 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
         rejected: ["reject"],
         dismissed: ["dismiss"],
       };
-      // Only what the change set engine offers is sent.
       if (
         model.stage !== "open" ||
         view === null ||
@@ -174,9 +155,6 @@ export function reviewReplied(model: ReviewModel, msg: Replied): [ReviewModel, E
     if (!msg.ok) return [{ ...model, stage: "dead", problem: errorOf(msg.body) }, []];
     const view = msg.body as ReviewView;
     const { reviewed } = model;
-    // Opened again after a refused decision, and the change isn't what the
-    // reviewer decided on: their review wasn't saved, and the page says so
-    // instead of the refusal.
     if (reviewed && view.diff.hash !== reviewed.hash) {
       const { revisedAt } = view.changeSet;
       return [
@@ -194,8 +172,6 @@ export function reviewReplied(model: ReviewModel, msg: Replied): [ReviewModel, E
     return [{ ...model, stage: "open", view, reviewed: null }, []];
   }
   if (msg.tag.kind === "reviewDecided") {
-    // Refused, as when the change changed after the page showed it (OA-309):
-    // the page shows it as it is now, with why.
     if (!msg.ok)
       return [
         {

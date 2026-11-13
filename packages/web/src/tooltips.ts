@@ -1,10 +1,6 @@
-// Where a tooltip shows: above its control, or below it when there's no
-// room above, centred on it and kept inside the window, in viewport pixels.
-
 type Box = { top: number; bottom: number; left: number; right: number };
 type Size = { width: number; height: number };
 
-// Between the control and its tooltip, and kept clear of the window's edges.
 const gap = 6;
 const edge = 8;
 
@@ -21,8 +17,6 @@ export function placeTooltip(
     : { top: control.bottom + gap, left, side: "below" };
 }
 
-// Whether a tooltip only repeats its control's accessible name, which a
-// screen reader then hears once, as the name.
 export const repeatsName = (text: string, name: string | null): boolean =>
   name !== null && squash(name) === squash(text);
 

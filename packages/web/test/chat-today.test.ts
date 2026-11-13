@@ -1,5 +1,3 @@
-// The review link's one button: nothing is sent until the person picks an
-// answer, and what is sent is that answer, bound to the diff they saw.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Replied } from "../src/http.ts";
@@ -43,7 +41,6 @@ test("the one button sends what the answer says, and the note only with Reject",
     hash: "h1",
     reason: "Plan only the gift card story.",
   });
-  // Typed, then switched to Approve and apply: the note isn't sent.
   assert.deepEqual(body("approve"), {
     token: "tok",
     changeSet: "01JBZ0000000000000000000C1",

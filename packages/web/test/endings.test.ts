@@ -1,5 +1,3 @@
-// Deleting a workstream (decision 0028) asks first, sends the thread count
-// the person saw so the server can refuse a stale one, and can be undone.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Ended, endingReplied, initEnding, updateEnding } from "../src/ending.ts";

@@ -1,13 +1,3 @@
-// After an approval in a thread, as Settings' "After you approve" says: the
-// page stays, or once Oriel accepts the approval, before its apply ends, it
-// goes on to what needs the user next: the next change set to review in the
-// same thread (`nextToReview`), or else the next thread that needs them
-// (`nextNeedingYou`), with a note in the bead that links back. With nothing
-// else needing them, this thread included, it stays and says so. Only Approve on a thread's own page moves it: no other
-// page sends one from the window. While the note shows, the approval's own
-// answer says how the apply ended: Applied, or the problem, which stays
-// until dismissed. Either way it reaches the thread left as it would have
-// anyway, in Needs you.
 import { errorOf, type Effect } from "./http.ts";
 import { nav, nextNeedingYou } from "./nav.ts";
 import { expected, goingTo, nextToReview } from "./thread.ts";
@@ -28,34 +18,22 @@ import {
 
 export type ApprovedNote = {
   changeSetId: string;
-  // The thread it was approved in.
   left: { id: string; title: string | null };
-  // The thread the page went to, or null when it stayed.
   to: { id: string; title: string | null } | null;
-  // The change set in the same thread the page went to, next to review.
   next: string | null;
-  // Whether nothing else needed the user, this thread included.
   caughtUp: boolean;
-  // Whether the page is there yet, and its heading has taken focus.
   arrived: boolean;
   focused: boolean;
-  // Whether its apply has ended, applied, as the approval's answer says.
-  // Until then it's applying.
   applied: boolean;
 };
 
 export type ApprovedModel = {
-  // The note, while it shows.
   note: ApprovedNote | null;
-  // The change set last acted on, so the approval's answer, after its
-  // stream said it started applying, doesn't act again.
+  // The stream and the approval's answer can both say it was accepted: this stops the second
+  // acting again.
   last: string | null;
-  // The times its countdown started; only the latest one's end hides it.
   countdown: number;
   held: Held;
-  // The apply that failed while its note showed, said until dismissed,
-  // wherever the page goes: the change set, by the thread it was approved
-  // in, and why.
   failed: { changeSetId: string; title: string | null; why: string } | null;
 };
 
@@ -72,10 +50,6 @@ export const initApproved = (): ApprovedModel => ({
   failed: null,
 });
 
-// The change set whose approval, sent from the thread's page on screen,
-// Oriel has just accepted: its apply started, as the thread's stream says,
-// or the approval was answered first. Null for anything else, and for one
-// already acted on.
 export function accepted(model: Model, msg: Msg): string | null {
   const { thread, route } = model;
   if (thread === null || route.page !== "thread" || route.id !== thread.id) return null;
@@ -92,10 +66,6 @@ export function accepted(model: Model, msg: Msg): string | null {
   return model.approved.last === id ? null : id;
 }
 
-// A change set clicked again, as with Approve the rest once its apply
-// stopped: its next approval may move the page again, and its problem, if
-// it failed, goes.
-// Its problem, if it failed, goes as it's tried again.
 export function sending(model: ApprovedModel, msg: Msg): ApprovedModel {
   if (msg.type !== "thread" || msg.msg.type !== "changeSetClicked") return model;
   const { changeSetId } = msg.msg;
@@ -107,15 +77,9 @@ export function sending(model: ApprovedModel, msg: Msg): ApprovedModel {
   };
 }
 
-// Once an approval is accepted on the page `before` shows, with `next` the
-// app after it: the page goes on to the next thread that needs the user,
-// or stays, saying nothing else does. Staying, as Settings may say, says
-// nothing.
 export function approvedIn(before: Model, next: Model, changeSetId: string): [Model, Effect[]] {
   const left = before.thread;
   if (left === null || afterApprove(next.settings) === "stay") return [next, []];
-  // The thread as the decision leaves it: another change set in it to
-  // review comes first.
   const ahead = expected(left);
   const here = ahead && nextToReview(ahead, changeSetId);
   const to = here === null ? nextNeedingYou(nav(before).waiting, left.id) : null;
@@ -141,9 +105,6 @@ export function approvedIn(before: Model, next: Model, changeSetId: string): [Mo
   return [{ ...next, thread, approved }, [...scrolling, ...going, ...expiry]];
 }
 
-// The approval's answer, once the apply ends, while its note shows: the
-// note says Applied, with its full time again, or gives way to the problem.
-// An answer after the note has gone changes nothing here.
 export function answered(model: ApprovedModel, msg: Msg): [ApprovedModel, Effect[]] {
   const { note } = model;
   if (note === null || note.applied || msg.type !== "replied") return [model, []];
@@ -155,7 +116,6 @@ export function answered(model: ApprovedModel, msg: Msg): [ApprovedModel, Effect
   return [{ ...model, note: null, failed }, []];
 }
 
-// Why an apply that answered stopped short of applied, or null if it didn't.
 function stopped(body: unknown): string | null {
   if (typeof body !== "object" || body === null) return "It stopped before all of it applied.";
   const problem = "problem" in body && typeof body.problem === "string" ? body.problem : null;
@@ -170,8 +130,6 @@ function stopped(body: unknown): string | null {
   return problem ?? "It stopped before all of it applied.";
 }
 
-// Going to `route`: the note goes with the page it was shown on, except on
-// the way to the thread it moved to.
 export function arriving(model: ApprovedModel, route: Route): ApprovedModel {
   const { note } = model;
   if (note === null) return model;
@@ -180,8 +138,6 @@ export function arriving(model: ApprovedModel, route: Route): ApprovedModel {
   return { ...model, note: null, held: notHeld };
 }
 
-// Once the thread moved to has loaded, its heading takes focus, once, so a
-// screen reader starts there.
 export function focusing(model: Model): [Model, Effect[]] {
   const { note } = model.approved;
   if (note?.to == null || !note.arrived || note.focused) return [model, []];
@@ -195,7 +151,6 @@ export function focusing(model: Model): [Model, Effect[]] {
 export function updateApproved(model: ApprovedModel, msg: ApprovedMsg): [ApprovedModel, Effect[]] {
   switch (msg.type) {
     case "undoHeld":
-      // Once nothing holds it, the note gets its full time again.
       return hold(model, msg.by, msg.held, (left) =>
         left.note === null ? [left, []] : restart(left, expired),
       );
@@ -214,10 +169,6 @@ const expired = (countdown: number): Msg => ({
 
 const named = (title: string | null) => `“${title ?? "New thread"}”`;
 
-// What the note says: the change set approved, by its thread's name as its
-// chip names it, applying and then applied, and a link back when the page
-// left the thread; or that nothing else needs the user. A screen reader
-// hears where the page went, too.
 export function approvedText(note: ApprovedNote): {
   said: string;
   heard: string | null;
@@ -237,8 +188,6 @@ export function approvedText(note: ApprovedNote): {
   };
 }
 
-// The note, for the bead, keeping its key as it changes from applying to
-// applied, or to its problem, so the one shape changes.
 export function approvedUndos(model: ApprovedModel, send: (msg: ApprovedMsg) => void): Undos {
   const { note, failed } = model;
   const problem = failed && {

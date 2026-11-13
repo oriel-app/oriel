@@ -1,6 +1,4 @@
-// The window chat's questions to start from (decisions 0027 and 0030): a
-// row's name, which may be synced text, shows on its button but is never
-// what the question sends.
+// A row's name may be synced text: it shows on its button but is never what the question sends.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { init, type Model, update } from "../src/root.ts";
@@ -34,10 +32,6 @@ test("the questions to start from never send a row's name", () => {
   }
 });
 
-// Data a person can lose (OA-355): the chat moving into its workstream as
-// the person types a follow-up about an item. Without `handedOver` the
-// words stayed in the moved thread, out of sight, and the fresh chat's
-// first question went about nothing, or about whatever was open next.
 test("words typed to the window chat as it moves go on in the fresh chat, about the same item", () => {
   const [start] = init({ page: "overview" });
   const item = { id: "jira:SYN-99", key: "SYN-99", title: null, under: 4 };

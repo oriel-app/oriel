@@ -1,11 +1,5 @@
-// The markdown an agent writes, as plain data the page renders as elements:
-// paragraphs, headings, lists, quotes, code, tables and rules, with bold,
-// italics, code and links inside them: to the web, or to a thread in Oriel,
-// as the agent's thread.* reads give it. It never becomes HTML, since a reply can
-// quote source content anyone can write. A reply is read while it streams, so
-// a mark without its closing half stays as typed. In an agent's answer only,
-// `[[id]]` is a chip, and a quote whose first line is one is quoted from it
-// (decision 0032); anywhere else, as in a source's own text, each is text.
+// It never becomes HTML, since a reply can quote source content anyone can write. A reply is
+// read while it streams, so a mark without its closing half stays as typed.
 import { inAppRoute, type Route, safeHref } from "./route.ts";
 
 export type Inline =
@@ -15,10 +9,7 @@ export type Inline =
   | { kind: "strong" | "em"; children: Inline[] }
   | { kind: "link"; href: string; children: Inline[] }
   | { kind: "route"; route: Route; children: Inline[] }
-  // A person or a channel a source's text names; markdown has neither.
   | { kind: "mention" | "channel"; text: string }
-  // `[[id]]` in an agent's answer: an item, thread, change set or workstream
-  // by its ID, which Oriel draws with its name and state.
   | { kind: "chip"; id: string };
 
 export type Prose =
@@ -26,8 +17,6 @@ export type Prose =
   | { kind: "heading"; level: number; children: Inline[] }
   | { kind: "list"; ordered: boolean; start: number; tight: boolean; items: Prose[][] }
   | { kind: "quote"; children: Prose[] }
-  // A quote from the item `id` names, as its lines after the chip say it
-  // (`text`): Oriel checks it against that item as the turn ends.
   | { kind: "quote-from"; id: string; text: string; children: Prose[] }
   | { kind: "code"; text: string }
   | { kind: "table"; head: Inline[][]; rows: Inline[][][] }
@@ -36,16 +25,14 @@ export type Prose =
 const blank = (line: string) => line.trim() === "";
 const indent = (line: string) => line.length - line.trimStart().length;
 
-// Each pattern runs in steps that grow with the line, never faster: a line is source content
-// the agent may quote, and is read again with every streamed chunk. `s` lets
-// `.` take any character, so `$` can't fail after a long backtrack.
+// A pattern's cost must grow only with the line's length: a line is source content, reparsed
+// with every streamed chunk. `s` lets `.` take any character, so `$` can't fail after a backtrack.
 const fence = /^ {0,3}(`{3,}|~{3,})/;
 const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/s;
 const rule = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const quote = /^ {0,3}> ?(.*)$/s;
 const marker = /^( *)([-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*))?$/s;
 
-// A heading's text without the closing `#`s some writers add.
 function headingText(raw: string): string {
   const text = raw.trimEnd();
   let end = text.length;
@@ -55,7 +42,6 @@ function headingText(raw: string): string {
     : text;
 }
 
-// A table's second line: one `---` cell, aligned or not, for each heading.
 function tableRule(line: string, columns: number): boolean {
   // One column needs a `|` on this line too, or any `---` under a line
   // ending in `|` would make a table.
@@ -64,8 +50,6 @@ function tableRule(line: string, columns: number): boolean {
   return cells.length === columns && cells.every((cell) => /^:?-+:?$/.test(cell.trim()));
 }
 
-// The fence a line opens. Backticks with another backtick after them on the
-// line are code inside a sentence, not a fence.
 function fenceOf(line: string): string | undefined {
   const opened = fence.exec(line)?.[1];
   if (opened?.[0] === "`" && line.includes("`", line.indexOf(opened) + opened.length))
@@ -73,13 +57,11 @@ function fenceOf(line: string): string | undefined {
   return opened;
 }
 
-// Whether lines[i] heads a table: the line under it rules one cell per heading.
 const startsTable = (lines: readonly string[], i: number) => {
   const line = lines[i] ?? "";
   return line.includes("|") && tableRule(lines[i + 1] ?? "", cellTexts(line).length);
 };
 
-// Whether lines[i] starts a block, and so ends the paragraph above it.
 const startsBlock = (lines: readonly string[], i: number) => {
   const line = lines[i] ?? "";
   return (
@@ -92,21 +74,15 @@ const startsBlock = (lines: readonly string[], i: number) => {
   );
 };
 
-// Quotes, lists and marks nest at most this deep; deeper, they read as text.
 const deepest = 8;
 
-// `chips`: whether `[[id]]` is a chip, as in an agent's answer, and only there.
+// Only an agent's answer reads `[[id]]` as a chip; in a source's own text it stays text.
 export function parse(text: string, { chips = false } = {}): Prose[] {
   return blocks(text.replace(/\r\n?/g, "\n").split("\n"), 0, chips);
 }
 
-// What `[[…]]` holds to be a chip: an item's ID, qualified by its connection
-// (`kind:KEY-45`, or `kind.2:KEY-4` from a later connection), or one of Oriel's own, a ULID. Anything
-// else stays as typed. Loose, so an ID Oriel doesn't know gets its note, and
-// bounded, so the ID fits it.
 const chipId = /^(?:[a-z]{1,20}(?:\.[0-9]{1,4})?:[^\s[\]]{1,500}|[0-9A-HJKMNP-TV-Z]{26})$/;
 
-// The IDs an agent's answer names as chips, once each, in order.
 export function chipIds(text: string): string[] {
   const found = new Set<string>();
   const inlines = (each: readonly Inline[]) => {
@@ -130,9 +106,6 @@ export function chipIds(text: string): string[] {
   return [...found];
 }
 
-// What an agent's answer quotes from items, each once, in order, nested ones
-// too. A quote reads as one only with its item and its text both, which is
-// how Oriel finds its check again.
 export type QuoteFrom = { id: string; text: string };
 
 export function quotesFrom(text: string): QuoteFrom[] {
@@ -150,7 +123,6 @@ export function quotesFrom(text: string): QuoteFrom[] {
 
 export const quoteKey = (quote: QuoteFrom): string => `${quote.id}\n${quote.text}`;
 
-// A quote's first line, alone, as a chip: `> [[kind:KEY-45]]`.
 const quotedChip = /^\s*\[\[\s*([^\][\s]+)\s*\]\]\s*$/;
 
 function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[] {
@@ -165,7 +137,6 @@ function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[
     }
     const opened = fenceOf(line);
     if (opened) {
-      // Closed by a fence of the same kind at least as long, or by the end.
       const code: string[] = [];
       i++;
       while (i < lines.length) {
@@ -241,8 +212,6 @@ function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[
   return out;
 }
 
-// A list runs while its items share a marker kind. A line indented past the
-// marker belongs to the item above it, as does a line that starts nothing new.
 function list(
   lines: readonly string[],
   from: number,
@@ -256,7 +225,6 @@ function list(
     found ? (found[3] !== undefined ? found[2]?.at(-1) : found[2]) : undefined;
   const sameKind = kind(first);
   const base = first?.[1]?.length ?? 0;
-  // Each item's lines, and the column its own text starts at.
   const items: { lines: string[]; at: number }[] = [];
   let tight = true;
   let gap = false;
@@ -303,7 +271,6 @@ function list(
   return i;
 }
 
-// A table line's cells, split at each `|` that isn't escaped as `\|`.
 function cellTexts(line: string): string[] {
   const trimmed = line
     .trim()
@@ -315,7 +282,7 @@ function cellTexts(line: string): string[] {
 const cells = (line: string, chips: boolean): Inline[][] =>
   cellTexts(line).map((cell) => inline(cell, 0, chips));
 
-// A paragraph's lines, with each line break kept: agents break lines on purpose.
+// Each line break is kept: agents break lines on purpose.
 function joined(lines: readonly string[], chips: boolean): Inline[] {
   return lines.flatMap((line, i) =>
     i === 0 ? inline(line, 0, chips) : [{ kind: "break" as const }, ...inline(line, 0, chips)],
@@ -326,16 +293,14 @@ const punctuation = /[!-/:-@[-`{-~]/;
 const word = /[\p{L}\p{N}]/u;
 const space = (char: string | undefined) => char === undefined || /\s/.test(char);
 
-// How many of `char` start at `at`.
 function runAt(text: string, at: number, char: string): number {
   let end = at;
   while (text[end] === char) end++;
   return end - at;
 }
 
-// One line, read once whatever it holds: each `[` knows its `]` before the
-// line is read, and a search for a mark's closing half that found none is
-// remembered, since one from further on finds none either.
+// Each `[` knows its `]` before the line is read, and a failed search for a closing mark is
+// remembered, since one from further on finds none either: a line is read once.
 type Line = {
   text: string;
   depth: number;
@@ -425,8 +390,6 @@ export function inline(text: string, depth = 0, chips = false): Inline[] {
   return out;
 }
 
-// `[[id]]`, its two pairs of brackets each other's, holding a chip's ID, in
-// a line that reads chips.
 function chip(line: Line, from: number): { node: Inline; end: number } | null {
   if (!line.chips || line.text[from + 1] !== "[") return null;
   const inner = line.brackets.get(from + 1);
@@ -435,7 +398,6 @@ function chip(line: Line, from: number): { node: Inline; end: number } | null {
   return chipId.test(id) ? { node: { kind: "chip", id }, end: inner + 2 } : null;
 }
 
-// Where `from` is past every place a search for `key` already failed from.
 const failedBefore = (line: Line, key: string, from: number) =>
   from >= (line.failed.get(key) ?? Number.POSITIVE_INFINITY);
 
@@ -452,23 +414,16 @@ function closingTicks(line: Line, from: number, length: number): number {
   return -1;
 }
 
-// Whether a reply's link opens, given the sites the thread's items come from:
-// a reply can be steered by what it quotes, so a link elsewhere could send what
-// it carries in its address anywhere, behind a label that says otherwise.
+// A reply can be steered by what it quotes, so a link elsewhere could send what its address
+// carries anywhere, behind a label that says otherwise.
 export const opens = (href: string, sites: ReadonlySet<string>): boolean =>
   sites.has(URL.parse(href)?.origin ?? "");
 
-// What follows a link's label: `(`, its target, an optional title in quotes
-// or parentheses, and `)`, with spaces between them. The target is an address
-// without spaces, its parentheses in pairs as in `wiki/Foo_(bar)`, or any text
-// in `<…>`. A `[` or `]` ends the scan, and so does running past this many
-// characters, so each part of a line is read for one link at most. The cost:
-// a link whose address or title holds a bracket (`?f[a]=1`, `"[OA-13] …"`)
-// stays as typed.
+// A `[` or `]` ends the scan, as does this length, so each part of a line is read for one link
+// at most. The cost: a link whose address or title holds a bracket stays as typed.
 const longestTarget = 2_048;
 
-// `[label](https://…)`, or `[label](/threads/…)` to a thread in Oriel. A link
-// that is to neither stays as typed.
+// A link to anything but the web or a thread in Oriel stays as typed.
 function link(line: Line, from: number): { node: Inline; end: number } | null {
   const { text } = line;
   const close = line.brackets.get(from);
@@ -515,10 +470,6 @@ function link(line: Line, from: number): { node: Inline; end: number } | null {
   return { node: { kind: "link", href, children: children() }, end: at + 1 };
 }
 
-// `**strong**`, `*em*`, `***both***`, and the same with `_`. An opening mark is
-// followed by a non-space, a closing one follows a non-space, and an `_` inside
-// a word (snake_case) marks nothing. Of a longer opening run, the marks that
-// open nothing stay as typed in front.
 function emphasis(
   line: Line,
   from: number,
@@ -542,8 +493,6 @@ function emphasis(
   return null;
 }
 
-// Where a mark of this size closes: a run as long as it, or `***`, which
-// closes it with its last marks (`*a **b***`). Other runs are nested marks.
 function closingMark(line: Line, from: number, char: string, size: number): number {
   const key = char.repeat(size);
   if (failedBefore(line, key, from)) return -1;

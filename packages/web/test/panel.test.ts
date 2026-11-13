@@ -1,5 +1,3 @@
-// The open item lives in the page's address, but never a review link's, and
-// only an item ID opens a panel.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { withItem } from "../src/nav.ts";

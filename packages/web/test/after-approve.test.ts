@@ -1,6 +1,3 @@
-// After you approve with "go on" set (Settings, General): another change set
-// awaiting review in the same thread comes before any other thread, and a
-// thread still waiting on the user is never "all caught up" (OA-259, #206).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { approvedUndos } from "../src/approved.ts";
@@ -47,8 +44,6 @@ const replied = (tag: Replied["tag"], body: unknown, ok = true): Msg => ({
 const step = (model: Model, msg: Msg): [Model, Effect[]] => update(model, msg);
 const after = (model: Model, msg: Msg): Model => step(model, msg)[0];
 
-// On the thread's page, its change set diffed, "go on" picked, and `others`
-// in Needs you. The thread holds `changeSets` and `entries` when given.
 function onPage(
   others: ThreadSummaryView[],
   changeSets: ChangeSetView[] = [changeSetView({ id: setId, status: "open" })],

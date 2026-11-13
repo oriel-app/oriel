@@ -1,11 +1,3 @@
-// Where the page is: the overview, at `/`; Browse, at /browse (with a
-// grouping, its filters, and maybe a workstream it is adding items to; `/`
-// with any of those, Browse's address before the overview took `/`, opens
-// it too), a workstream, a thread, a new thread not started yet, the Done page
-// (the threads no longer working, in two tabs, a page at a time), Settings,
-// a page per section, or a review link. A thread's address may name one of
-// its change sets, to open the thread there. On any page but a review
-// link's, `item` is the item open in the panel beside it, by its ID.
 import { isItemId } from "./item-id.ts";
 import {
   type BrowseFilter,
@@ -26,13 +18,8 @@ export type Page =
   | { page: "workstream"; id: string }
   | { page: "thread"; id: string; changeSet?: string }
   | { page: "new-thread" }
-  // `tab`: the dropped threads; absent for the done and handed-off ones.
-  // `number`: the tab's page, from 1; absent for the first.
   | { page: "done"; tab?: "dropped"; number?: number }
-  // Settings, at one of its sections (OA-181).
   | { page: "settings"; section: SettingsSection }
-  // The desktop app's first run (decision 0038), which every page opens on
-  // until it has finished.
   | { page: "setup" }
   | { page: "review"; token: string };
 
@@ -132,12 +119,9 @@ function pageUrl(route: Page): string {
   }
 }
 
-// The element a change set's block is on a thread's page, which the page
-// scrolls to when its address names that change set.
 export const changeSetAnchor = (changeSetId: string): string => `change-set-${changeSetId}`;
 
-// A thread's page, or a change set on one, at an address inside Oriel, as a
-// reply links to it: a path, never another site. Anything else is null.
+// A path inside Oriel, never another site; anything else is null.
 export function inAppRoute(target: string): Route | null {
   if (!target.startsWith("/threads/")) return null;
   const url = URL.parse(target, "http://oriel.invalid");

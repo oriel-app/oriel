@@ -1,27 +1,14 @@
-// What changed between two versions of a field's text, for a diff to mark
-// only the words that differ. Lines first, so a long description shows its
-// changed lines among unchanged ones; then words within the changed lines.
-
-// A run of text, and whether it differs from the other side.
 export type Piece = { text: string; changed: boolean };
 
-// Unchanged lines, or a change: the lines it replaces and those it puts in
-// their place, with their changed words marked. Null when there are none.
 export type Hunk =
   | { kind: "same"; lines: string[] }
   | { kind: "change"; before: Piece[] | null; after: Piece[] | null };
 
 type Op = { kind: "same" | "removed" | "added"; text: string };
 
-// Past this many cells, the middle of a sequence (after the shared start and
-// end) counts as changed throughout instead of being compared item by item.
 const maxCells = 250_000;
-// Below this share of unchanged words, a change reads as a rewrite: marking
-// the few words it shares would only scatter marks.
 const minShared = 0.4;
 
-// The longest common subsequence of two sequences, as the ops that turn one
-// into the other.
 function sequence(a: readonly string[], b: readonly string[]): Op[] {
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
@@ -43,7 +30,6 @@ function middle(a: readonly string[], b: readonly string[]): Op[] {
   const removed = (text: string): Op => ({ kind: "removed", text });
   const added = (text: string): Op => ({ kind: "added", text });
   if (a.length * b.length > maxCells) return [...a.map(removed), ...b.map(added)];
-  // Each cell: the length of the longest common subsequence of a[i..], b[j..].
   const width = b.length + 1;
   const table = new Uint32Array((a.length + 1) * width);
   for (let i = a.length - 1; i >= 0; i -= 1)
@@ -73,15 +59,11 @@ function middle(a: readonly string[], b: readonly string[]): Op[] {
   return [...ops, ...a.slice(i).map(removed), ...b.slice(j).map(added)];
 }
 
-// Words, runs of space, and each other character on its own.
 const tokens = (text: string): string[] =>
   text.match(/\s+|[\p{L}\p{N}\p{M}_'’]+|[^\s\p{L}\p{N}\p{M}_'’]/gu) ?? [];
 
 const isSpace = (text: string) => /^\s+$/.test(text);
 
-// Adjacent pieces alike in being changed or not, as one, with the space at
-// either end of a change, or a change of space alone, left unmarked: where a
-// comparison puts a space is arbitrary, and a marked space reads as nothing.
 function joined(pieces: readonly Piece[]): Piece[] {
   const merge = (list: readonly Piece[]) => {
     const out: Piece[] = [];
@@ -110,9 +92,6 @@ function joined(pieces: readonly Piece[]): Piece[] {
   );
 }
 
-// Both texts, each with the words it doesn't share with the other marked.
-// Space between two changes counts as changed, so a changed phrase is
-// marked as one.
 export function words(before: string, after: string): { before: Piece[]; after: Piece[] } {
   const ops = sequence(tokens(before), tokens(after));
   const was: Piece[] = [];
@@ -137,8 +116,6 @@ export function words(before: string, after: string): { before: Piece[]; after: 
   return { before: joined(was), after: joined(now) };
 }
 
-// The texts by line: runs of unchanged lines, and each change between them.
-// An empty text has no lines.
 export function lines(before: string, after: string): Hunk[] {
   const split = (text: string) => (text === "" ? [] : text.replaceAll("\r\n", "\n").split("\n"));
   const hunks: Hunk[] = [];

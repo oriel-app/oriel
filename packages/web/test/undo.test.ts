@@ -15,7 +15,6 @@ import { itemRef, itemRow, memberView, workstreamSummary, workstreamView } from 
 
 const workstreamId = "01JBZ0000000000000000000G1";
 
-// What ⌘Z or Ctrl+Z undoes: the latest of the stack's notes that can be.
 const latestUndo = (model: WorkstreamModel) =>
   latestNote(
     model.removals.map((each) => ({ version: each.version, onUndo: undoable(each) || null })),
@@ -48,8 +47,6 @@ const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
   ok,
   body,
 });
-// The server's answer to removing `gone`, with the call that undoes it: none
-// for an item the window no longer has.
 const undoOf = (action: string, item: MemberView) => ({
   action,
   input: { workstream: workstreamId, items: [item.ref.id] },
@@ -83,8 +80,6 @@ test("undo adds the item back, as a new version the workstream's threads follow"
   const [undoing, sent] = updateWorkstream(shown, { type: "undoClicked", version: 4 });
   assert.deepEqual(undoing.removals, []);
   assert.deepEqual(requests(sent), [addedBack(b)]);
-  // Once it lands, the workstream loads again. The server orders members by
-  // item, so it's back where it was.
   const [, reload] = workstreamReplied(undoing, restored(b));
   assert.deepEqual(requests(reload), [`GET /api/workstreams/${workstreamId} undefined`]);
   const [back] = workstreamReplied(
@@ -95,28 +90,24 @@ test("undo adds the item back, as a new version the workstream's threads follow"
     back.view?.members.map((each) => each.ref.key),
     ["OA-11", "OA-12", "OA-13"],
   );
-  // The sidebar's counts move with it.
   const root: Model = {
     ...initRoot({ page: "workstream", id: workstreamId })[0],
     workstream: undoing,
   };
   const [, reloads] = updateRoot(root, restored(b));
   assert.ok(requests(reloads).some((each) => each.startsWith("GET /api/workstreams ")));
-  // Undone once is undone: a second click, or ⌘Z after it, sends nothing.
   assert.deepEqual(updateWorkstream(undoing, { type: "undoClicked", version: 4 })[1], []);
 });
 
 test("removals in a row go one at a time, and each can be undone", () => {
   let [model, sent] = updateWorkstream(loaded(), { type: "memberRemoved", id: a.ref.id });
   assert.equal(requests(sent).length, 1);
-  // Clicked before the first answered: hidden now, sent once it has.
   [model, sent] = updateWorkstream(model, { type: "memberRemoved", id: c.ref.id });
   assert.deepEqual(sent, []);
   assert.deepEqual(
     model.removing.map((each) => each.id),
     [a.ref.id, c.ref.id],
   );
-  // The same × twice is one removal.
   assert.deepEqual(updateWorkstream(model, { type: "memberRemoved", id: c.ref.id })[0], model);
   [model, sent] = workstreamReplied(model, removed(view(4, [b, c]), a));
   assert.deepEqual(requests(sent), [
@@ -130,7 +121,6 @@ test("removals in a row go one at a time, and each can be undone", () => {
       ["OA-13", 5],
     ],
   );
-  // ⌘Z takes the latest; the other stays undoable.
   assert.equal(latestUndo(model)?.version, 5);
   [model, sent] = updateWorkstream(model, { type: "undoClicked", version: 5 });
   assert.deepEqual(requests(sent), [addedBack(c)]);

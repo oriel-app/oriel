@@ -1,6 +1,3 @@
-// OA-118, fixed in c27653bc (#91): an Undo under the agent's reply also left
-// a version marker later in the chat, saying the change twice. It folds into
-// the reply's list.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { entriesOf } from "../src/thread.ts";

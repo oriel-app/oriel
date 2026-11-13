@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { carrying } from "./carry.ts";
 import { type Program, type Running, start } from "./program.ts";
 
-// Runs `program` for as long as the calling component is mounted. The program
-// is read once, on mount. `carried`: whether a change from one model to the
-// next carries the composer, which a View Transition draws (carry.ts).
+// The program is read once, on mount.
 export function useProgram<Model, Msg, Effect>(
   program: Program<Model, Msg, Effect>,
   carried?: (before: Model, after: Model) => boolean,

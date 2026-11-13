@@ -1,6 +1,3 @@
-// The panel's add to a workstream and its Undo (OA-149, OA-152): one Undo
-// per add, kept across stepping away and back, so neither an add nor its
-// Undo goes twice, and a failed or raced Undo leaves the add as it is.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
@@ -18,8 +15,6 @@ const gets = (effects: readonly Effect[]) =>
     effect.type === "http" && effect.method === "GET" ? [effect.url] : [],
   );
 
-// Runs each message in turn, then each navigate it asks for, as the browser
-// would.
 function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   return msgs.reduce<[Model, Effect[]]>(
     ([at, all], msg) => {
@@ -44,7 +39,6 @@ const posts = (effects: readonly Effect[]) =>
       : [],
   );
 
-// The timers an update starts, as the messages they send.
 const timers = (effects: readonly Effect[]) =>
   effects.flatMap((effect) => (effect.type === "after" ? [[effect.ms, effect.msg] as const] : []));
 
@@ -89,7 +83,6 @@ const undone = (ok: boolean, error = ""): Msg => ({
 const away: Msg = { type: "panelStepped", by: 1 };
 const back: Msg = { type: "panelStepped", by: -1 };
 
-// The panel's item's add, and the notes the window's stack shows.
 const addHere = (model: Model): PanelAdd | null => addOf(model.panelAdds, of);
 const notes = (model: Model) =>
   addUndos(model.panelAdds, () => {}).notes.map(({ said, label, disabled }) => ({
@@ -100,7 +93,6 @@ const notes = (model: Model) =>
 
 test("undoing from the note or beside the add is one Undo: it clears both, and can't go twice", () => {
   const [added] = run(browsing(), add, addedAt(4, ["jira:SYN-2"]));
-  // The stack's note and the line's button send the same message, as ⌘Z does.
   const [undoing, sent] = run(added, undoClicked);
   assert.deepEqual(posts(sent), ["/api/actions/workstream.remove"]);
   assert.equal(notes(undoing)[0]?.disabled, true);
@@ -115,14 +107,12 @@ test("an add or its Undo in flight is kept across stepping away and back, so nei
   assert.equal(adding.panel?.id, "jira:SYN-2");
   assert.equal(addHere(adding)?.pending, "add");
   assert.deepEqual(run(adding, add)[1], []);
-  // Its answer, wherever the panel is by then, shows when it comes back.
   const [answered] = run(adding, away, addedAt(4, ["jira:SYN-2"]));
   assert.equal(answered.panel?.id, "jira:SYN-3");
   assert.equal(notes(answered).length, 1);
   const [undoing] = run(answered, back, undoClicked, away, back);
   assert.equal(addHere(undoing)?.pending, "undo");
   assert.deepEqual(run(undoing, undoClicked)[1], []);
-  // Closed and opened again, too.
   const [reopened] = run(
     undoing,
     { type: "panelClosed" },
@@ -142,14 +132,11 @@ test("a failed Undo asks whether the add still stands, and the workstream decide
   const [model] = run(browsing(), add, addedAt(4, ["jira:SYN-2"]));
   const failed = (error: string): [Model, Effect[]] =>
     run(model, undoClicked, undone(false, error));
-  // Refused: the item had gone from the workstream some other way.
   const [refused, asked] = failed("jira:SYN-2 isn't in this workstream.");
   assert.deepEqual(gets(asked), [`/api/workstreams/${workstream}`]);
   assert.ok(addHere(refused)?.problem);
   const [gone] = run(refused, checked(5, []));
   assert.equal(addHere(gone), null);
-  // A server error: the add still stands, and its Undo stays to try again,
-  // with its full time.
   const [broken, retried] = failed("Something went wrong. Try again.");
   assert.equal(timers(retried).length, 1);
   const [stands] = run(broken, checked(4, ["jira:SYN-2"]));
@@ -180,10 +167,8 @@ test("an Undo's own answer settles it: a reload that shows it landed first takes
     body: view(5, []),
   });
   assert.equal(addHere(reloaded)?.pending, "undo");
-  // A second add can't go before it answers, and once it has, the add goes.
   assert.deepEqual(run(reloaded, add)[1], []);
   assert.equal(addHere(run(reloaded, undone(true))[0]), null);
-  // An answer for a request no longer in flight changes nothing.
   const [readded] = run(run(reloaded, undone(true))[0], add);
   assert.equal(addHere(run(readded, undone(true))[0])?.pending, "add");
 });
