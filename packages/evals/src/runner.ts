@@ -1,8 +1,3 @@
-// A round: every case run through the system under test, once or `reps`
-// times (trials), graded, and written to its own directory under the gitignored
-// `.evals/`: one JSONL line per trial (`results.jsonl`), a full transcript per
-// trial (`transcripts/`), and a summary per split with a confidence interval and
-// what the round's model calls cost (`summary.json`).
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
@@ -72,46 +67,29 @@ import { gradeRefs, resolver, shown } from "./shown.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
 import { buildWorld, caseWorld, fixedId, waitingConnectionId } from "./world.ts";
 
-// What the system under test gets for one case. Everything it sends to the
-// model must follow from this and from earlier responses (no clock, no
-// randomness), or its cassettes won't replay.
+// Everything it sends to the model must follow from this and from earlier responses
+// (no clock, no randomness), or its cassettes won't replay.
 export type SystemInput = {
   case: EvalCase;
-  // Every fixture the round loaded.
   fixtures: Fixtures;
-  // The fixture region the case names, if any, and the items its region
-  // holds beside it.
   region: LoadedCase["region"];
   items: readonly ItemId[];
-  // The eval clock: fixed, so prompts that depend on time still replay.
   now: Instant;
   model: string;
-  // Its only way to the model: cassettes, recording or replaying.
   fetch: Fetch;
 };
 
-// What it hands back: the mutations its change set captured, the calls its
-// intents applied as (none, when it says nothing of them), the reply the user
-// sees, and its transcript, kept verbatim for the case's transcript file.
 export const systemOutput = object({
   mutations: array(capturedMutation),
   intents: optional(array(object({ action: string, input: record(unknown) }))),
-  // The drafts the turn held for the user (decision 0051).
   drafts: optional(array(object({ action: string, input: record(unknown) }))),
-  // Each block the turn showed, with what its read answered.
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
-  // How many times the turn called sketch(), shown or refused.
   sketches: optional(number),
-  // How many show() calls Oriel refused.
   refusedBlocks: optional(number),
-  // A second look's: whether Oriel kept what it recorded, and the findings
-  // it kept (kind 9).
   look: optional(object({ kept: boolean, findings: array(storedFinding) })),
   reply: string,
   transcript: array(unknown),
 });
-// A system may leave its intents, blocks and sketches out, as one that
-// never asks for any.
 export type SystemOutput = Omit<
   Infer<typeof systemOutput>,
   "intents" | "drafts" | "blocks" | "sketches" | "refusedBlocks" | "look"
@@ -128,20 +106,14 @@ export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
 
 export const caseResult = object({
   id: string,
-  // The case's content, its golden diff included, so a comparison can tell an
-  // edited case from the one it replaced.
   hash: string,
   split,
   kind: number,
-  // Which of the case's trials this is, from 0; absent for the first.
   rep: optional(number),
-  // The case's group in a climb, which a comparison guards on its own;
-  // absent outside one.
   group: optional(string),
   outcome: union(literal("pass"), literal("fail"), literal("error")),
   grades: array(
     object({
-      // Noticed's rounds grade with their own three (src/noticed/).
       grader: union(
         graderName,
         literal("refs"),
@@ -155,33 +127,27 @@ export const caseResult = object({
     }),
   ),
   error: nullable(string),
-  // Why a case that finished in a live round saved no cassettes, so it won't
-  // replay; null otherwise.
   unrecorded: nullable(string),
   ms: number,
 });
-// `rep` and `group` are left out when absent, so a round of single trials
-// outside a climb reads as rounds always have.
 export type CaseResult = Omit<Infer<typeof caseResult>, "rep" | "group"> & {
   rep?: number;
   group?: string;
 };
 
-// A case's `waiting` and `failing` marks are notes about the agent, not the
-// case, so marking or unmarking it still compares with the round before.
+// `waiting` and `failing` are notes about the agent, not the case, so marking or unmarking
+// a case still compares with the round before.
 export function caseHash(loaded: LoadedCase): string {
   const { waiting: _waiting, failing: _failing, ...graded } = loaded.case;
   const content = canonicalJson({ case: graded, golden: loaded.golden });
   return createHash("sha256").update(content).digest("hex");
 }
 
-// What a round's model calls cost: the system under test's and the judge's.
 export type Spend = { usd: number; tokens: Usage };
 
 export type Summary = {
   model: string;
   judgeModel: string;
-  // Trials a case; absent for one. Each split's rate counts trials.
   reps?: number;
   splits: Record<Split, Rate & { failed: number; errored: number }>;
   spend?: Spend;
@@ -191,21 +157,14 @@ export type Round = { results: CaseResult[]; summary: Summary };
 
 export type RoundOptions = {
   cases: readonly LoadedCase[];
-  // The fixtures the cases were loaded against.
   fixtures: Fixtures;
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
-  // The cassettes one trial's model calls go through, the judge's included.
-  // They are committed only when the trial finishes without error.
   transport: (caseId: string, rep: number) => Cassettes;
-  // Trials a case. Absent: one.
   reps?: number;
-  // Each case's group, by ID, in a climb.
   groups?: ReadonlyMap<string, string>;
-  // This round's directory.
   out: URL;
-  // Milliseconds, read only to time each case.
   clock: () => number;
   now: Instant;
   concurrency?: number;
@@ -216,8 +175,8 @@ export async function runRound(options: RoundOptions): Promise<Round> {
     throw new Error(`the judge model must differ from the model under test (${options.model})`);
   mkdirSync(new URL("transcripts/", options.out), { recursive: true });
   const reps = options.reps ?? 1;
-  // Every case's first trial, then every case's second, and so on, so a
-  // network outage costs many cases a trial each, not one case all of them.
+  // Every case's first trial, then every case's second, so a network outage costs many
+  // cases a trial each, not one case all of them.
   const trials = Array.from({ length: reps }, (_, rep) =>
     options.cases.map((loaded) => ({ loaded, rep })),
   ).flat();
@@ -241,8 +200,8 @@ async function runCase(
 ): Promise<{ result: CaseResult; spend: Spend }> {
   const evalCase = loaded.case;
   const tape = options.transport(evalCase.id, rep);
-  // Models as requested and as each response reports itself, so an alias
-  // can't hide that the judge and the system under test are one model.
+  // As requested and as each response reports itself, so an alias can't hide that the
+  // judge and the system under test are one model.
   const tested = watched(tape.fetch);
   const judged = watched(tape.fetch);
   const started = options.clock();
@@ -274,7 +233,6 @@ async function runCase(
     if (both) throw new Error(`the judge and the system under test both ran ${both}`);
     unrecorded = tape.commit();
   } catch (caught) {
-    // Never empty: an error is an error even when it says nothing.
     const said = caught instanceof Error ? caught.message : String(caught);
     error = said || `${caught instanceof Error ? caught.name : "a throw"}, no message`;
   }
@@ -329,7 +287,6 @@ function total(spends: readonly Spend[]): Spend {
   );
 }
 
-// Graders run in the case's order; a throw is the case's error.
 async function grade(
   loaded: LoadedCase,
   output: SystemOutput,
@@ -337,8 +294,6 @@ async function grade(
   transport: Fetch,
 ): Promise<Grade[]> {
   const grades: Grade[] = [];
-  // Graders read the reply as the user reads it, its chips drawn (decision
-  // 0032).
   const seen = shown(
     output.reply,
     resolver({
@@ -351,14 +306,12 @@ async function grade(
         : null,
     }),
   );
-  // What the reply quotes from items, under their chips, as written.
   const quoted = quotesFrom(output.reply);
   const under = (id: string) => quoted.filter((quote) => quote.id === id).map((q) => q.text);
   const checked = quoted.length
     ? await inWorld(loaded, options, (world) => checkQuotes([output.reply], world.reader.read))
     : [];
   output = { ...output, reply: seen.text };
-  // A second look's reply is never shown (kind 9): only what Oriel kept is.
   const shownReply = loaded.case.kind !== 9;
   const refs = shownReply ? gradeRefs(seen) : null;
   if (refs) grades.push(refs);
@@ -397,8 +350,6 @@ async function grade(
       grades.push(gradeIntents(calls, output.intents ?? [], output.mutations, fixedId));
     }
     if (expectation.grader === "surfaced") {
-      // Named as its fixture says a reply calls it, such as a file by its
-      // title; otherwise by its key.
       const id = named(loaded, expectation.item);
       const called = fixtureOf(options.fixtures, id)?.called?.(id);
       const item = called ? { title: called } : id;
@@ -442,11 +393,8 @@ async function grade(
   return grades;
 }
 
-// Every run that searched: its queries and what they found, so the judge can
-// tell reach that searched from reach that didn't, and a search that found
-// nothing from none at all. A hit found by its text has the excerpts search()
-// gave the agent, which the escape hatch's event leaves out (OA-242): the
-// run's queries are searched again in the case's world, which gives the same.
+// The run's event leaves out the excerpts search() gave the agent, so its queries are
+// searched again in the case's world, which gives the same.
 async function searchesOf(
   transcript: readonly unknown[],
   loaded: LoadedCase,
@@ -466,7 +414,6 @@ async function searchesOf(
   return inWorld(loaded, options, async (world) =>
     Promise.all(
       runs.map(async ({ queries, hits }) => {
-        // Every excerpt each item was found with, one per query that found it so.
         const excerpts = new Map<string, Set<string>>();
         for (const [query, limit] of queries)
           for (const hit of await world.reader.search(String(query), Number(limit ?? 20)))
@@ -484,14 +431,12 @@ async function searchesOf(
   );
 }
 
-// An item the case names, by ID; loading the case resolved it.
 function named(loaded: LoadedCase, item: string): ItemId {
   const id = loaded.named.get(item);
   if (id === undefined) throw new Error(`${item} was not loaded`);
   return id;
 }
 
-// The case's world, built for one look and closed after it.
 async function inWorld<T>(
   loaded: LoadedCase,
   options: RoundOptions,
@@ -505,14 +450,10 @@ async function inWorld<T>(
   }
 }
 
-// The region's items as their sources hold them once the case's edits are
-// applied; an item that is gone says so.
 const evidence = (loaded: LoadedCase, options: RoundOptions): Promise<unknown[]> =>
   inWorld(loaded, options, (world) => world.evidence());
 
-// Notes each model a caller asks for and each model a response reports, and
-// what each response's tokens cost. A response is read from a copy, so a
-// streamed body still streams to the caller.
+// A response is read from a copy, so a streamed body still streams to the caller.
 function watched(inner: Fetch): {
   fetch: Fetch;
   models: () => Promise<string[]>;
@@ -554,12 +495,10 @@ function watched(inner: Fetch): {
   return { fetch, models, spend };
 }
 
-// A model in both lists, counting an alias and its snapshots as one.
 function shared(a: readonly string[], b: readonly string[]): string | null {
   return a.find((x) => b.some((y) => sameModel(x, y))) ?? null;
 }
 
-// Runs `work` over `items`, at most `limit` at a time, keeping input order.
 async function pool<T, R>(
   items: readonly T[],
   limit: number,
@@ -592,10 +531,8 @@ function summarize(results: readonly CaseResult[], options: RoundOptions): Summa
   };
 }
 
-// Cases marked `failing`, by ID: the grader each is known to fail.
 export type Failing = ReadonlyMap<string, GraderName>;
 
-// A known failure fails the marked grader and no other.
 function knownFailure(r: CaseResult, failing: Failing): boolean {
   const marked = failing.get(r.id);
   return (
@@ -618,7 +555,6 @@ export function formatRound(round: Round, failing: Failing = new Map()): string 
       continue;
     }
     const known = knownFailure(r, failing);
-    // Past a known failure, name what else broke.
     const marked = known ? undefined : failing.get(r.id);
     const why = r.error ?? r.grades.find((g) => !g.pass && g.grader !== marked)?.detail ?? "";
     const which = r.rep ? `, trial ${r.rep + 1}` : "";
@@ -629,12 +565,8 @@ export function formatRound(round: Round, failing: Failing = new Map()): string 
   return lines.join("\n");
 }
 
-// CI replays to guard the pipeline, not the model's judgement (SPEC §8): any
-// error fails, and so does a failed deterministic case; a failed judged case
-// does not. A case in `failing` is a known failure of one grader: failing
-// that grader alone doesn't fail a replay, but failing another or passing
-// does, so the mark goes once the agent does better and can't hide a
-// different regression. A live round fails only on errors.
+// CI guards the pipeline, not the model's judgement, so a failed judged case doesn't fail it.
+// Passing a `failing` case fails too, so the mark goes once the agent does better.
 export function exitCode(
   results: readonly CaseResult[],
   mode: "live" | "replay",
@@ -643,7 +575,6 @@ export function exitCode(
   const broken = results.some((r) => {
     if (r.outcome === "error") return true;
     if (mode === "live") return false;
-    // A judged case's verdict never fails CI, marked or not.
     if (failing.has(r.id))
       return r.outcome === "pass" || (!isJudged(r.kind) && !knownFailure(r, failing));
     return r.outcome === "fail" && !isJudged(r.kind);

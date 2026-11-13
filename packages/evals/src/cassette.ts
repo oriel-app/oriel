@@ -1,13 +1,5 @@
-// Record and replay for model calls. A cassette is one Messages API exchange,
-// stored as `<key>.json`, where the key is a hash of the request's method, URL
-// and body. Headers are neither stored nor hashed, so no API key can land in a
-// cassette and a replay needs none.
-//
-// Cassettes live in `tests/cassettes/<case>/<model>+<judge>/`, one set per
-// pair of model under test and judge, so a round with other models never
-// touches the set CI replays. Commit cassettes with the code that recorded
-// them: any change to what the system under test sends changes their keys, and
-// CI replays only what is committed.
+// Headers are neither stored nor hashed, so no API key can land in a cassette.
+// Any change to what the system under test sends changes the keys: commit cassettes with it.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -17,7 +9,6 @@ import { canonicalJson } from "./canonical.ts";
 
 const cassette = object({
   request: object({ method: string, url: string, body: unknown }),
-  // A JSON body is stored parsed; a streamed body is stored as its text.
   response: object({ status: number, body: unknown }),
 });
 export type Cassette = Infer<typeof cassette>;
@@ -26,27 +17,18 @@ export function cassetteKey(request: Cassette["request"]): string {
   return createHash("sha256").update(canonicalJson(request)).digest("hex");
 }
 
-// Names that are safe as one path segment.
 const segment = (name: string) => name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.*$/, "_");
 
-// One case's cassettes for one model under test and one judge.
 export function cassetteDir(root: URL, caseId: string, model: string, judge: string): URL {
   return new URL(`${segment(caseId)}/${segment(model)}+${segment(judge)}/`, root);
 }
 
-// One case's cassettes, in their own directory. Replay reads them and never
-// touches the network. Record calls `live` for every request and keeps each
-// successful exchange in memory; a failed one is passed through unrecorded,
-// so a rate limit never becomes a fixture. `commit` then replaces the
-// directory's cassettes with exactly the kept ones. Call it only once the case
-// has finished without error, so a case that fails partway keeps its last good
-// recording. It also refuses, and says why, when a response went unrecorded:
-// that case wouldn't replay. In replay, `commit` does nothing.
+// A failed exchange is never recorded, so a rate limit can't become a fixture. Call `commit`
+// only once the case finished without error, so a partial run keeps the last good recording.
 export type CassetteOptions =
   | { mode: "replay"; dir: URL }
   | { mode: "record"; dir: URL; live: Fetch };
 
-// `commit` returns why it saved nothing, or null once saved (or in replay).
 export type Cassettes = { fetch: Fetch; commit: () => string | null };
 
 export function cassettes(options: CassetteOptions): Cassettes {
@@ -111,9 +93,7 @@ function parseBody(text: string): unknown {
   }
 }
 
-// How a replay says a request has no cassette: what the system under test
-// sends changed since its case was recorded, so the case is stale, not broken.
-// The agent's turn wraps it in its own words.
+// The agent's turn wraps this in its own words, so it is matched as a substring.
 const missing = "no cassette for this ";
 export const isMissingCassette = (error: string | null) => error?.includes(missing) ?? false;
 

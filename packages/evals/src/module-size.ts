@@ -1,16 +1,10 @@
-// What a connector adds to a region's module: its item doc, and its
-// namespace as its fixture connects it, in a region holding one of its
-// items, beside the base every region has. Its declaration's budget caps it
-// (OA-26), and a test checks each declared connector's.
 import { bindingsFor, type ItemDocs, type Namespaces } from "@oriel/bindings";
 import { type ItemId, parseItemId, type Reader, type Region } from "@oriel/core";
 import type { Fixture } from "./fixtures.ts";
 import { fixedId } from "./world.ts";
 
-// The module never reads.
 const reader: Reader = { read: async () => [], search: async () => [] };
 
-// A region holding these items.
 export const regionOf = (ids: readonly ItemId[]): Region => ({
   workstreamId: fixedId,
   version: 1,
@@ -22,17 +16,11 @@ export const regionOf = (ids: readonly ItemId[]): Region => ({
 export const moduleOf = (ids: readonly ItemId[], namespaces: Namespaces, items: ItemDocs) =>
   bindingsFor(regionOf(ids), { reader, namespaces, items }).dts;
 
-// Bytes without the ID lines, which grow with the region, not the source.
 export const shape = (text: string) => text.replace(/^ {2}\| ".*$\n?/gm, "").length;
 
 export type ModuleSize = {
-  // The one of its fixture's items whose region it adds most to, as a
-  // region of rows Oriel may change gets a namespace a spreadsheet's
-  // doesn't.
   item: ItemId;
-  // The module of a region holding it, with no namespace or item doc.
   base: number;
-  // What its item doc and namespace add.
   added: number;
   namespaces: Namespaces;
   items: ItemDocs;
@@ -42,8 +30,6 @@ export async function moduleSize(
   kind: string,
   { declaration, loaded }: Fixture,
 ): Promise<ModuleSize> {
-  // A fixture with no items before its edits, as a fresh stand-in's
-  // (decision 0059), is measured after them.
   const first = await loaded.connect(0);
   const connection =
     first.records.length > 0 || loaded.edits === 0

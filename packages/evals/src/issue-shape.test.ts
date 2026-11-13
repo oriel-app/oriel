@@ -1,8 +1,5 @@
-// Each tracker's agent side, as text, is byte for byte what it was before
-// core's issue shape built it (OA-327): its module, its writes, its ops'
-// lines, its panel and what it takes in. The golden copies were taken on
-// main at 333c03e8 and live in tests/golden/module-<kind>.txt; a change to one
-// is a change to what the agent reads.
+// The goldens live in tests/golden/module-<kind>.txt; a change to one is a change to
+// what the agent reads.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";

@@ -14,7 +14,6 @@ import type { Fetch } from "./anthropic.ts";
 import { type Night, type NightIo, recordNight } from "./nightly.ts";
 import { streamed, tempDir } from "./testing.ts";
 
-// Every cassette under `root`, by path, with its bytes.
 const tapes = (root: URL) =>
   new Map(
     readdirSync(root, { recursive: true, withFileTypes: true })
@@ -27,8 +26,6 @@ const tapes = (root: URL) =>
 const of = (all: Map<string, string>, id: string) =>
   [...all].filter(([path]) => path.startsWith(`${id}/`));
 
-// Decision 0061 as amended by OA-342: history grows only by cassettes whose
-// requests changed, since every live draw answers differently.
 test("the night records only cases whose requests changed or stale.md names, and still writes nightly.json", async (t) => {
   const dir = pathToFileURL(`${realpathSync(fileURLToPath(tempDir(t)))}/`);
   const env = fileURLToPath(new URL(".env", dir));
@@ -49,7 +46,6 @@ test("the night records only cases whose requests changed or stale.md names, and
     );
   writeCase("undo-a", "How do I undo a change here?");
   writeCase("undo-b", "Can I take back an applied change?");
-  // Each draw answers differently, as the live model does.
   let draws = 0;
   const network: Fetch = async () =>
     streamed({ text: `Revert it from the thread (draw ${++draws}).` });
@@ -76,8 +72,6 @@ test("the night records only cases whose requests changed or stale.md names, and
   const recorded = tapes(new URL("cassettes/", dir));
   assert.ok(of(recorded, "undo-a").length && of(recorded, "undo-b").length);
 
-  // Nothing changed: both cases are drawn, nightly.json is written, and no
-  // cassette is touched.
   const before = draws;
   assert.equal((await recordNight(night("2026-11-11"))).code, 0);
   assert.ok(draws > before);
@@ -88,7 +82,6 @@ test("the night records only cases whose requests changed or stale.md names, and
     [true, true],
   );
 
-  // One case's request changed: only its cassettes are recorded again.
   writeCase("undo-b", "Can I take back a change once it's applied?");
   assert.equal((await recordNight(night("2026-11-12"))).code, 0);
   const changed = tapes(new URL("cassettes/", dir));
@@ -96,7 +89,6 @@ test("the night records only cases whose requests changed or stale.md names, and
   assert.notDeepEqual(of(changed, "undo-b"), of(recorded, "undo-b"));
   assert.equal(nightly().cases["undo-b"]?.kept, false);
 
-  // stale.md naming a case records it again, and the night removes stale.md.
   writeFileSync(new URL("stale.md", dir), "`undo-a`: the module says Revert differently\n");
   assert.equal((await recordNight(night("2026-11-13"))).code, 0);
   const named = tapes(new URL("cassettes/", dir));

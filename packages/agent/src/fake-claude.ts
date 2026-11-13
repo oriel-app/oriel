@@ -1,8 +1,3 @@
-// A fake Claude Code's control channel, for tool-host.test.ts: a real child
-// process, so a test can kill it mid-call and see its descendants die. It
-// answers as Claude Code 2.1.319 does (decision 0060's measurements), with
-// what FAKE_CLAUDE (JSON) asks. Every call that reaches its "server" is a
-// line in the journal first, so a test counts what was sent.
 import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -14,9 +9,7 @@ type Fake = {
   capability?: boolean;
   servers?: { name: string; url: string; status?: string }[];
   hooksOn?: boolean;
-  // Ignores SIGTERM, and outlives its stdin, so only SIGKILL stops it.
   ignoreTerm?: boolean;
-  // Starts a descendant that ignores SIGTERM too, and journals its PID.
   descendant?: boolean;
   silentStart?: boolean;
 };
@@ -42,7 +35,6 @@ const error = (id: unknown, said: string) =>
   out({ type: "control_response", response: { subtype: "error", request_id: id, error: said } });
 const textAnswer = (text: string) => ({ content: [{ type: "text", text }] });
 let asked = 0;
-// A `slow` call, answered once Oriel has answered the fake's question.
 let slow: unknown = null;
 
 createInterface({ input: process.stdin }).on("line", (line) => {
@@ -82,8 +74,6 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return error(id, `MCP server not connected: ${server}`);
   journal(`call ${tool} ${request.result_not_for_model === true ? "not-for-model" : "for-model"}`);
   if (tool === "echo") return ok(id, textAnswer(JSON.stringify(request.arguments)));
-  // A call that never answers. It asks Oriel something first, which Oriel
-  // declines, so a test knows the call is out.
   if (tool === "slow") slow = id;
   if (tool === "hang" || tool === "slow")
     return out({

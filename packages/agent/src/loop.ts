@@ -1,18 +1,3 @@
-// The agent loop (SPEC §1.1): one user message in a thread, run to completion.
-// The model gets a constant system prompt and one tool, `run`, whose
-// description declares the region's module. Each call typechecks and runs a
-// script in the sandbox with fresh bindings, records the run and its reads,
-// and returns the transcript as the tool result. It repeats until the model
-// stops, a per-thread cap ends the turn (SPEC §9), or the signal aborts. Each
-// response may use only what the thread's token cap leaves.
-//
-// One proposal per turn (proposal.ts): the mutations of the last run in the
-// turn that finished and captured any, and the intents of the last that
-// recorded any. A later run replaces an earlier one's, as the model is told,
-// and a run that fails proposes nothing. Both settle when the turn ends,
-// however it ends, except on abort. A run's additions to the thread's own
-// workstream apply as it ends instead, and the runs after it work in the
-// version they made (OA-312).
 import { createHash } from "node:crypto";
 import { type Log, object, type Run, type RunLimits, type RunResult, string } from "@oriel/core";
 import type { Agent, AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
@@ -38,9 +23,7 @@ const runInput = object({ script: string });
 
 type End = Extract<ModelEvent, { kind: "end" }>;
 
-// With less room than this left under the token cap, the turn stops rather
-// than ask for a response: with thinking always on, a reply needs room to
-// think as well as answer.
+// With thinking always on, a reply needs room to think as well as answer.
 export const minResponseTokens = 4_096;
 
 export function agent(deps: AgentDeps): Agent {
@@ -54,14 +37,9 @@ async function* turn(
   baseLog: Log,
 ): AsyncGenerator<AgentEvent, void, undefined> {
   const { thread } = input;
-  // The version of the workstream the turn's runs use: the one it started
-  // in, until a run adds to it.
   let { region } = input;
   const { limits } = deps;
   const log: Log = (message, fields) => baseLog(message, { thread_id: thread.id, ...fields });
-  // This turn's tokens: every finished response, and what a response cut off
-  // by an abort or a failure had reported (`inFlight`), so `done` and the
-  // thread's `spent` count it too.
   const used = { inputTokens: 0, outputTokens: 0 };
   let inFlight: Usage = noUsage;
   const settle = () => {
@@ -71,9 +49,6 @@ async function* turn(
   };
   const spent = input.spent.inputTokens + input.spent.outputTokens;
   const total = () => spent + used.inputTokens + used.outputTokens;
-  // What the cap leaves for the next response's output, after its input:
-  // `nextInput` is what the turn already knows of that input, the previous
-  // response's input and output, which the next request sends again.
   const room = (nextInput: number) => limits.maxTokensPerThread - total() - nextInput;
   const done = (): AgentEvent => ({ kind: "done", usage: { ...used } });
   const limit = (reason: string): AgentEvent => {
@@ -88,7 +63,6 @@ async function* turn(
     limit(
       `This thread has reached its budget of ${limits.maxTokensPerThread} tokens, so the agent stopped.`,
     );
-  // A run may capture no more than a change set may hold.
   const runLimits: RunLimits = {
     ...limits.run,
     maxMutations: Math.min(limits.run.maxMutations, limits.maxMutationsPerChangeSet),
@@ -117,9 +91,6 @@ async function* turn(
   const proposed = proposal();
   const turnShows = turnShown(deps.newId);
 
-  // One `run` call: refused without a run if it isn't one, else a run in the
-  // sandbox, recorded whatever its outcome. `charge` is the usage of the
-  // response that asked for it.
   async function* runCall(
     call: ToolCall,
     charge: Usage,
@@ -134,8 +105,6 @@ async function* turn(
     const { script } = parsed.value;
     signal.throwIfAborted();
     const runId = deps.newId();
-    // Its bindings, with show() and sketch(), each read they answer noted
-    // for blocks.
     const shown = turnShows.run(runId, (asked) =>
       deps.bindingsFor(region, thread.id, asked, proposed.runOptions(deps, input, runId)),
     );
@@ -176,12 +145,9 @@ async function* turn(
       throw error;
     }
     record(result.outcome, result);
-    // A run-level cap (wall time, reads, mutations, output) shows here as the
-    // run's outcome, not as a `limit`: the model reads the error and can go on.
     yield { kind: "run.finished", runId, result };
     yield* shown.ran(result);
     const joined = yield* proposed.joined(deps, input, region, runId, result, signal, log);
-    // The model reads the module of the region the rest of the turn uses.
     const moved = joined.region.version !== region.version;
     region = joined.region;
     const now = moved
@@ -204,8 +170,6 @@ async function* turn(
     };
   }
 
-  // A second look's module, whose `challenge` the runs reach, declares the
-  // same as each run's.
   const declared = deps.bindingsFor(
     region,
     thread.id,
@@ -225,8 +189,6 @@ async function* turn(
     let nextInput = 0;
     for (;;) {
       signal.throwIfAborted();
-      // Each response may use only what the cap leaves, and none is asked
-      // for when that isn't enough for a useful one.
       const maxOutputTokens = room(nextInput);
       if (maxOutputTokens < minResponseTokens) {
         yield tokenLimit();
@@ -271,8 +233,6 @@ async function* turn(
         break;
       }
       if (!calls.length) break;
-      // A run whose result no response could read would act for nothing: no
-      // reads, no record, no change set.
       if (room(nextInput) < minResponseTokens) {
         yield limit(
           `This thread ran out of its budget of ${limits.maxTokensPerThread} tokens before the agent could act on the request.`,
@@ -299,8 +259,6 @@ async function* turn(
   }
 
   yield* turnShows.settle();
-  // A second look proposes nothing: the server keeps what its runs captured
-  // as suggestions only.
   if (!input.challenge) yield* proposed.settle(deps, thread, signal, log);
   yield done();
 }

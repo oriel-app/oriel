@@ -1,19 +1,15 @@
-// Shared by this package's tests only.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { pathToFileURL } from "node:url";
 
-// A fresh directory, removed when the test ends.
 export function tempDir(t: TestContext): URL {
   const path = mkdtempSync(join(tmpdir(), "oriel-evals-"));
   t.after(() => rmSync(path, { recursive: true, force: true }));
   return pathToFileURL(`${path}/`);
 }
 
-// A Messages API response holding one text block, from the judge's model
-// unless another is named.
 export function message(
   text: string,
   { model = "claude-sonnet-5-5", stop = "end_turn" }: { model?: string; stop?: string } = {},
@@ -29,8 +25,6 @@ export function message(
   });
 }
 
-// A streamed Messages API response, as the API would send it: some text,
-// then a call to the agent's run tool when `script` is given.
 export function streamed(
   { text, script }: { text: string; script?: string },
   model = "claude-opus-5-5",

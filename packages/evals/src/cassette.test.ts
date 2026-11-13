@@ -18,8 +18,6 @@ const post = (value: unknown, headers: Record<string, string> = {}) => ({
   body: JSON.stringify(value),
 });
 
-// A stand-in for the network that answers each request with `answer()` and
-// keeps the requests it saw.
 function network(answer: () => Response = () => message("SYN-45 is in SYN-3.")) {
   const seen: Request[] = [];
   const fetch: Fetch = async (input, init) => {
@@ -32,7 +30,6 @@ function network(answer: () => Response = () => message("SYN-45 is in SYN-3.")) 
 test("a cassette stores the request body and no headers, so no API key lands in it", async (t) => {
   const dir = tempDir(t);
   const net = network();
-  // As `pnpm evals` composes them: the key is added below the cassettes.
   const tape = cassettes({
     mode: "record",
     dir,
@@ -64,7 +61,6 @@ test("a cassette stores the request body and no headers, so no API key lands in 
   assert.deepEqual(Object.keys(stored.response), ["status", "body"]);
 });
 
-// OA-122 (#119): evals sent an API version of their own, not the server's.
 test("evals send the API version the server sends", async () => {
   const net = network(() => streamed({ text: "Hi." }));
   const live = anthropicFetch("sk-ant-api03-LIVEKEY", net.fetch);

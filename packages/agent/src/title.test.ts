@@ -1,5 +1,3 @@
-// The titler against hand-written responses: the key goes nowhere but its
-// header.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspect } from "node:util";

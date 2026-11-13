@@ -15,11 +15,10 @@ import type { Fetch } from "./anthropic.ts";
 import { type Io, main, modelKey, parseCommand } from "./cli.ts";
 import { streamed, tempDir } from "./testing.ts";
 
-// A temp directory by its real path: on macOS the temp root is under a link
-// (/var), and a .env is read only with no link on the way to it.
+// On macOS the temp root is under a link (/var), and a .env is read only with no link
+// on the way to it.
 const realDir = (t: TestContext) => pathToFileURL(`${realpathSync(fileURLToPath(tempDir(t)))}/`);
 
-// A fake key, and a fake token beside it that must never be read.
 const fakeKey = "sk-ant-fake-0123456789abcdef";
 const fakeToken = "github_pat_fake0123456789abcdef";
 const envText = `GH_TOKEN=${fakeToken}\nANTHROPIC_API_KEY=${fakeKey}\n`;
@@ -39,18 +38,15 @@ test("the model key comes from the named .env, which must be a regular file with
   symlinkSync(path, link);
   const linkedDir = fileURLToPath(new URL("linked", dir));
   symlinkSync(fileURLToPath(dir), linkedDir);
-  // A link above the file is refused too: at the open on macOS, after it elsewhere.
   assert.ok("problem" in (await modelKey(join(linkedDir, ".env"), root)));
   for (const env of [link, fileURLToPath(dir), "/dev/null"])
     assert.ok("problem" in (await modelKey(env, root)), env);
-  // A second, hard link to the .env is refused too, the original with it.
   linkSync(path, fileURLToPath(new URL("hard.env", dir)));
   assert.ok("problem" in (await modelKey(path, root)));
   const none = fileURLToPath(new URL("none", dir));
   assert.ok("problem" in (await modelKey(none, root)));
 });
 
-// One case, graded without a judge.
 function writeCase(dir: URL): URL {
   const cases = new URL("cases/", dir);
   mkdirSync(cases);

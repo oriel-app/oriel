@@ -1,10 +1,3 @@
-// What a tracker's agent side gives, as text: its module in a few regions
-// (none of its items, all of them, made around an epic, its stories alone,
-// and its fixture's named regions), what its writes build or refuse, each
-// op's line, fields and revert, its panel for every item, and what it makes
-// of a stand-in's issues. Core's issue shape builds each tracker's agent side
-// (OA-327), and a golden copy of this text, taken before it did, keeps every
-// eval, budget and cassette where it was.
 import { bindingsFor, type Namespaces } from "@oriel/bindings";
 import {
   type ItemId,
@@ -57,11 +50,8 @@ const triedAsync = async (run: () => Promise<unknown>): Promise<unknown> => {
 };
 
 export type Probes = {
-  // Values each write's last parameter is tried with, by write name.
   values: Readonly<Record<string, readonly unknown[]>>;
-  // A stand-in's issues for its takeIssues.
   taken: readonly TakenIssue[];
-  // Arguments each op's line is tried with, by op name.
   args: Readonly<Record<string, readonly unknown[]>>;
 };
 
@@ -118,7 +108,6 @@ export async function capture(kind: string, { declaration, loaded }: Fixture, pr
         r.origin,
       ]),
     ];
-    // The fixture's named regions are read as modules only.
     const named = new Set(loaded.regions.map((r) => r.name));
     say("item doc", d.itemDoc);
     for (const [name, ids, origin] of regions) {
@@ -152,7 +141,6 @@ export async function capture(kind: string, { declaration, loaded }: Fixture, pr
       const result: Record<string, unknown> = {};
       for (const fn of spec.fns(scope)) {
         if (fn.kind === "read") {
-          // Every item's view once, in the region of them all.
           if (fn.name === "listItems" && name !== "all") continue;
           result[fn.name] = await triedAsync(() =>
             fn.run(fn.params.length ? [ids[0] ?? `${kind}:NOPE-1`] : [], host),

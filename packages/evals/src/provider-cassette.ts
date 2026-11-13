@@ -1,8 +1,4 @@
-// One turn of the agent's Anthropic provider, two requests long, recorded as
-// cassettes from hand-written streams rather than the live API. CI replays
-// them in provider-cassette.test.ts: a request whose shape changed has no
-// cassette, so the replay pins what the provider sends as well as how it reads
-// what comes back. After a deliberate change to the request, re-record with
+// After a deliberate change to the request, re-record with
 // `node packages/evals/src/provider-cassette.ts` and commit the cassettes.
 import { anthropicProvider, type ModelEvent, type ToolSpec } from "@oriel/agent";
 import type { Fetch } from "./anthropic.ts";
@@ -10,8 +6,7 @@ import { cassettes } from "./cassette.ts";
 
 export const providerCassettes = new URL("../../../tests/cassettes/_provider/", import.meta.url);
 
-// Not the agent's own prompt or tool: this pins the provider's shapes, and
-// prompt changes shouldn't need a re-recording.
+// Not the agent's own prompt or tool, so prompt changes don't need a re-recording.
 const system = "You answer questions about a region's items with the run tool.";
 const tool: ToolSpec = {
   name: "run",
@@ -44,8 +39,6 @@ const start = (usage: object) => ({
   },
 });
 
-// What the API would stream: first a thinking block, a line of text and a
-// run, then, once the run's result is back, the answer.
 export const streams = [
   sse([
     start({
@@ -118,7 +111,6 @@ async function collect(responses: AsyncIterable<ModelEvent>): Promise<ModelEvent
   return events;
 }
 
-// The turn: a question, the run the model asks for, its result, the answer.
 export async function providerTurn(fetch: Fetch): Promise<ModelEvent[][]> {
   const conversation = anthropicProvider({ apiKey: "not-a-key", fetch }).converse({
     system,
@@ -127,7 +119,6 @@ export async function providerTurn(fetch: Fetch): Promise<ModelEvent[][]> {
     signal: new AbortController().signal,
     log: () => {},
   });
-  // Room for the provider's whole default output, so `max_tokens` is 64000.
   const room = { maxOutputTokens: 64_000 };
   const first = await collect(conversation.next([], room));
   const callIds = first.flatMap((event) => (event.kind === "call" ? [event.call.id] : []));

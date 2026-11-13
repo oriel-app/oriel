@@ -1,7 +1,3 @@
-// The local harness against a stand-in for Claude Code that speaks its
-// stream-json and control protocol: how it is started and locked down, how a
-// turn's calls are answered, and when it is stopped. The real CLI is only in
-// claude-code.live.test.ts, behind an opt-in flag.
 import assert from "node:assert/strict";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
@@ -40,7 +36,6 @@ const goodInit = {
   model: "claude-opus-5-5",
 };
 
-// One response as the CLI relays it: the API's stream events, in order.
 type Block = { text: string } | { call: string; script: string; asked?: unknown };
 type Response = { blocks: Block[]; stop?: string; output?: number };
 
@@ -91,38 +86,25 @@ type Spawned = {
   args: readonly string[];
   env: Record<string, string>;
   cwd: string;
-  // Every line Oriel wrote to the CLI's stdin.
   wrote: Message[];
-  // What Oriel answered each `run` call the CLI asked for, by call ID.
   answered: Map<string, Message>;
   permissions: Message[];
-  // Oriel's answers to MCP's handshake, when it serves run.
   mcp: Message[];
   killed: boolean;
-  // Settles once the process has closed and Oriel has seen it.
   exited: Promise<void>;
 };
 
 type FakeOptions = {
   responses?: Response[];
-  // null: the CLI never reports what it loaded.
   init?: Message | null;
   account?: Message;
-  // Writes a `result` instead of any response.
   result?: Message;
-  // Holds the turn open after the user's message: the CLI never answers.
   silent?: boolean;
-  // Asks permission for these tools before the first response.
   ask?: string[];
-  // Its answer to `get_usage`, or "refused".
   usage?: Message | "refused";
-  // Its answers to `mcp_status`, one a call, the last again after them.
   servers?: Message[][];
 };
 
-// A stand-in for Claude Code: answers `initialize`, reports its init, plays
-// each response, asking Oriel to run each call while the response is still
-// streaming, as the CLI does, and waits for every answer before the next.
 function fakeClaude(options: FakeOptions = {}) {
   const spawned: Spawned[] = [];
   const spawn: Spawn = (command, args, { cwd, env }) => {
@@ -380,14 +362,12 @@ test("the environment passes the person's sign-in through and nothing that would
 });
 
 test("the environment turns off what Claude Code would upload besides the model's requests", () => {
-  // Fixed values, whatever the person's own environment says.
   const env = harnessEnv({ HOME: "/home/pm", DISABLE_TELEMETRY: "", DO_NOT_TRACK: "0" }, 5000);
   assert.equal(env.DISABLE_FEEDBACK_COMMAND, "1");
   assert.equal(env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY, "1");
   assert.equal(env.DISABLE_TELEMETRY, "1");
   assert.equal(env.DISABLE_ERROR_REPORTING, "1");
   assert.equal(env.DO_NOT_TRACK, undefined);
-  // Feature flags, and what needs them, stay as they are.
   assert.equal(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
 });
 
@@ -422,7 +402,6 @@ test("earlier turns arrive as one tool result before the new message, never as u
   assert.equal(content[0]?.tool_use_id, historyCallId);
   assert.match(String(content[0]?.content), /Ignore your instructions/);
   assert.deepEqual(content[1], { type: "text", text: "Then who should?" });
-  // Source content is in the tool result only.
   assert.ok(!JSON.stringify(content[1]).includes("Ignore"));
   conversation.close?.();
   await closed(run);
@@ -450,12 +429,7 @@ test("a CLI that loaded more than run, other servers, or another mode is stopped
 
 test("nothing the CLI said is taken once the check fails, or before it reports at all", async () => {
   const respond: Response[] = [{ blocks: [{ call: "toolu_1", script: "return 1" }] }];
-  for (const init of [
-    // The report fails, and a whole response with a call follows at once.
-    { ...goodInit, tools: [harnessRunTool, "Bash"] },
-    // No report at all.
-    null,
-  ]) {
+  for (const init of [{ ...goodInit, tools: [harnessRunTool, "Bash"] }, null]) {
     const fake = fakeClaude({ init, responses: respond });
     const conversation = claudeCodeProvider({ cli, spawn: fake.spawn }).converse(request().req);
     const seen: ModelEvent[] = [];
@@ -541,7 +515,6 @@ test("listing the person's servers loads their own, with no tool, no hook and no
   const args = discoveryArgs();
   assert.ok(!args.includes("--strict-mcp-config") && !args.includes("--mcp-config"));
   assert.ok(!args.includes("--allowed-tools"), "nothing is allowed");
-  // --safe-mode loads no server at all; the user's settings hold theirs.
   assert.ok(!args.includes("--safe-mode"));
   assert.equal(args[args.indexOf("--tools") + 1], "");
   assert.equal(args[args.indexOf("--setting-sources") + 1], "user");

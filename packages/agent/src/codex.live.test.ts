@@ -1,14 +1,5 @@
-// The harness against the real Codex. Skipped unless ORIEL_LIVE_CODEX=1: it
-// starts the person's Codex and spends a little of their plan. Two checks
-// from outside:
-// - A turn on their own sign-in, from a folder planted with a project
-//   config.toml, an AGENTS.md, an MCP server, hooks and skills, none of which
-//   may load or run, and a file the model is asked to write, which Codex's
-//   own tool must not write.
-// - The same Codex binary with a planted CODEX_HOME of its own (never the
-//   person's) and a stand-in model on localhost, which records the request
-//   Codex sends: exactly which tools the model gets, and what of a person's
-//   own config.toml still reaches it.
+// Skipped unless ORIEL_LIVE_CODEX=1: it starts the person's Codex and spends a little of their
+// plan.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -36,8 +27,6 @@ const run: ToolSpec = {
   },
 };
 
-// Everything Codex would load for a project, or from a home, waiting in
-// `root`, with a marker each one would leave if it ran.
 function plant(root: string, config: string) {
   const marker = (name: string) => join(root, `${name}-ran`);
   const touch = (name: string) => `["/usr/bin/touch", "${marker(name)}"]`;
@@ -107,12 +96,10 @@ test(
     const found = await checkCodex();
     assert.ok(found.ok, found.ok ? "" : found.problem.message);
     const root = mkdtempSync(join(tmpdir(), "oriel-planted-"));
-    // A project root, for Codex.
     mkdirSync(join(root, ".git"));
     const marker = plant(root, ".codex");
     const wanted = join(root, "written.txt");
     const model = found.models.find((m) => m.isDefault)?.id ?? found.models[0]?.id ?? "";
-    // The harness makes its working directory under this one.
     const before = process.env.TMPDIR;
     process.env.TMPDIR = root;
     const logged: string[] = [];
@@ -150,8 +137,6 @@ test(
   },
 );
 
-// A stand-in for the model's endpoint: it keeps each request Codex sends and
-// answers with one line of text.
 async function standIn() {
   const requests: Record<string, unknown>[] = [];
   const server = createServer((req, res) => {
@@ -204,8 +189,6 @@ test(
     const { requests, overrides, close } = await standIn();
     try {
       const env = { ...process.env, CODEX_HOME: home };
-      // The model a plan serves by default, whose own metadata picks some of
-      // its tools, as the person's sign-in would.
       const model = found.models.find((m) => m.isDefault)?.id ?? found.models[0]?.id ?? "";
       const conversation = codexProvider({ cli: found.cli, model, env, overrides }).converse({
         system: "ORIEL SYSTEM PROMPT",
@@ -222,7 +205,6 @@ test(
           (t: { name?: string; type?: string; tools?: unknown }): string =>
             t.tools ? `${t.name}{${named(t.tools).join(",")}}` : (t.name ?? t.type ?? ""),
         );
-      // Top-level tools, and tools in a namespace, as Codex's request has them.
       const tools = [
         ...named(sent.tools),
         ...(Array.isArray(sent.input) ? sent.input : []).flatMap(
@@ -230,7 +212,6 @@ test(
             item.type === "additional_tools" ? named(item.tools) : [],
         ),
       ];
-      // And the tools code mode's `exec` declares inside its isolate.
       const nested = [...input.matchAll(/declare const tools: \{ ([a-z_0-9]+)\(/g)].map(
         (m) => m[1],
       );
@@ -250,7 +231,6 @@ test(
         "run",
       ]);
       assert.ok(input.includes("ORIEL SYSTEM PROMPT"));
-      // Codex's own prompt is replaced, and the skill isn't attached.
       assert.ok(!input.includes("You are Codex"), input.slice(0, 400));
       assert.ok(!input.includes(secret), "the planted skill was attached");
       for (const name of ["mcp", "hook", "notify"])

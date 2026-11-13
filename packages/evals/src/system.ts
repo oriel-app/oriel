@@ -1,14 +1,3 @@
-// What `pnpm evals` and `evals:ci` run each case through: the agent
-// (`@oriel/agent`) answering the case's prompt as one turn of a new thread,
-// in the case's world (world.ts), with the real bindings over its region and
-// the real sandbox. It reaches the model through the Anthropic provider over
-// the round's cassettes, so a live round records and CI replays.
-//
-// Runs, the change set, the intents and the drafts are kept in memory: every
-// intent applies, as the calls the server's dispatcher would get, and every
-// draft is held, as the server holds it for the user. The change-set engine itself
-// needs the server's database (runs, workstreams and the index); the agent hands
-// it the same mutations either way.
 import {
   type AgentDeps,
   type AgentEvent,
@@ -47,8 +36,6 @@ import { itemNamed } from "./fixtures.ts";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
 import { buildWorld, caseWorld, member, type World } from "./world.ts";
 
-// The thread's caps (SPEC §9). Generous enough for any case to finish, small
-// enough that a case that loops can't run up a large bill.
 export const evalLimits: AgentLimits = {
   maxTurnsPerThread: 20,
   maxTokensPerThread: 300_000,
@@ -64,13 +51,9 @@ export const evalLimits: AgentLimits = {
   maxMutationsPerChangeSet: 50,
 };
 
-// The provider's own key, a placeholder: the live transport sets the real one
-// on each request, and a replay needs none.
 const transportKey = "set-by-the-eval-transport";
 
 export type AgentSystemOptions = {
-  // Default: one Deno sandbox for the process, timed by the real clock, which
-  // only enforces wall time and never reaches the model.
   sandbox?: () => Sandbox;
   limits?: AgentLimits;
 };
@@ -95,7 +78,6 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const newId = counter(input.now);
   const records = memoryRecords(newId, input.now, world.region, (id) => member(input.fixtures, id));
   const answered = new Map<string, Answered>();
-  // Every sketch() call, shown or refused.
   let sketches = 0;
   const { region } = world;
   const thread: Thread = {
@@ -124,8 +106,6 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         ...(run?.challenge ? { challenge: run.challenge } : {}),
         ...(run?.revise ? { revise: run.revise } : {}),
       });
-      // What each read answered, so the blocks grader can build each block
-      // again from its read.
       return {
         ...bindings,
         read: async (fn, args) => {
@@ -145,8 +125,6 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     now: () => input.now,
     newId,
   };
-  // A second look (kind 9): the case's diff, and what each run recorded, as
-  // the server checks it.
   const look = secondLook(input, region, world);
   const events: AgentEvent[] = [];
   for await (const event of agent(deps).turn(
@@ -162,7 +140,6 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     { signal: new AbortController().signal, log: () => {} },
   ))
     events.push(event);
-  // A turn the agent couldn't finish is the system's error, not a grade.
   const ended = events.find((e) => e.kind === "error" || e.kind === "limit");
   if (ended?.kind === "error") throw new Error(`the agent's turn failed: ${ended.message}`);
   if (ended?.kind === "limit") throw new Error(`the agent hit a limit: ${ended.reason}`);
@@ -172,7 +149,6 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     );
     const kept = keep(results, look.recorded);
     return {
-      // What a companion would add, as the person would add it.
       mutations: kept?.companions ?? [],
       look: { kept: kept !== null, findings: kept?.findings ?? [] },
       reply: replyOf(events),
@@ -200,8 +176,6 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   };
 }
 
-// A second look's host over the case's diff, with what each run recorded,
-// checked as the server checks it; null for any other case.
 function secondLook(input: SystemInput, region: Region, world: World) {
   const challenge = input.case.challenge;
   if (!challenge) return null;
@@ -227,8 +201,6 @@ function secondLook(input: SystemInput, region: Region, world: World) {
   return { host, recorded };
 }
 
-// What the user sees: the agent's text, a paragraph break wherever a run
-// came between.
 export function replyOf(events: readonly AgentEvent[]): string {
   let reply = "";
   let between = false;
@@ -244,7 +216,6 @@ export function replyOf(events: readonly AgentEvent[]): string {
   return reply;
 }
 
-// IDs that sort in the order they were made, from the eval clock.
 function counter(now: Instant): () => Ulid {
   let n = 0;
   return () => {
@@ -255,9 +226,6 @@ function counter(now: Instant): () => Ulid {
   };
 }
 
-// Runs and change sets in memory. As the change-set engine does, a capture
-// needs its run recorded first. The thread's region gains what the calls
-// applied so far add to its workstream, as the server's would (OA-312).
 function memoryRecords(
   newId: () => Ulid,
   now: Instant,
@@ -335,7 +303,6 @@ function memoryRecords(
       async revisable(id, threadId) {
         return made.get(id)?.threadId === threadId ? null : "not this thread's";
       },
-      // A revision is graded as the turn's change set, as a capture is.
       async revise(id, ref, mutations) {
         const before = made.get(id);
         if (!before || !runs.has(ref.id)) throw new Error(`no change set ${id}`);
@@ -346,7 +313,6 @@ function memoryRecords(
       },
     },
   };
-  // The turn's change set: a turn captures at most one.
   return {
     ...recorder,
     captured: () => sets.at(-1) ?? [],

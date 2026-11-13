@@ -1,7 +1,4 @@
-// A Noticed case's window: the fixtures' items as their syncs leave them,
-// changed by the case's plants, with a change log of what the plants say a
-// sync saw, and the case's workstreams. Everything is a function of the case,
-// so a round replays.
+// Everything is a function of the case, so a round replays.
 import type { Evidence } from "@oriel/agent";
 import {
   type ChangeLogEntry,
@@ -21,11 +18,8 @@ import type { NoticedCase } from "./case.ts";
 
 export type NoticedWorld = {
   input: SignalInput;
-  // Each item's title and text, as a read of its source gives them now.
   read: (ids: readonly ItemId[]) => Promise<Evidence[]>;
-  // A case's name for a signal, as Oriel's signal ID.
   signalId: (ref: string) => string;
-  // Workstream IDs by name, for a transcript.
   workstreamIds: ReadonlyMap<string, string>;
   close: () => void;
 };
@@ -35,7 +29,6 @@ const day = 86_400_000;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// SYN's generated items, as an index holds them: `pnpm perf`'s big world.
 function bigRecords(count: number, names: ReadonlyMap<string, string>): IndexRecord[] {
   const issues = generated(count);
   const byKey = new Map(issues.map((issue) => [issue.key, issue]));
@@ -88,7 +81,6 @@ export async function buildNoticedWorld(
 
   if (evalCase.base === "big") {
     const grown = bigRecords(4000 - records.size, names);
-    // Spread over the 60 days before the case's clock, as before SYN's.
     const shift = Date.parse(now) - Date.parse("2026-10-29T09:00:00.000Z");
     for (const record of grown)
       records.set(record.id, {
@@ -97,8 +89,6 @@ export async function buildNoticedWorld(
       });
   }
   if (evalCase.base === "fresh") {
-    // Every item changed in the last week, and every chat message before
-    // that, so no stall and no late message shows that the case didn't plant.
     [...records.values()].forEach((record, i) => {
       record.updatedAt =
         record.facets.kind === "message" ? at(10 + (i % 5)) : at(1 + ((i * 5) % 7));
@@ -256,7 +246,6 @@ export async function buildNoticedWorld(
     ];
     const members = ids.flatMap((id): WorkstreamMember[] => {
       const record = records.get(id);
-      // A region's item a fixture edit deleted is no member now.
       return record ? [{ id: record.id, stableId: record.stableId }] : [];
     });
     return {

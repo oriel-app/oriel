@@ -1,9 +1,5 @@
-// Decision 0060's gate for writes: one `mcp_call` reaches the server at most
-// once, through an expired session, a 401, a URL elicitation and a dropped
-// connection. Against the real Claude Code, and a stand-in HTTP MCP server
-// that counts every `tools/call` it's sent. Skipped unless
-// ORIEL_LIVE_CLAUDE_CODE=1. No model runs, and the CLI keeps its state in a
-// folder of the test's own, never the person's `~/.claude`.
+// Skipped unless ORIEL_LIVE_CLAUDE_CODE=1. No model runs, and the CLI keeps its state in a folder
+// of the test's own, never the person's `~/.claude`.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -18,8 +14,6 @@ const skip = live ? false : "set ORIEL_LIVE_CLAUDE_CODE=1 to start the real Clau
 
 type Rpc = { jsonrpc: "2.0"; id?: number | string; method?: string; params?: unknown };
 
-// A streamable-HTTP MCP server with one tool per way a call can go wrong.
-// `sent` counts the `tools/call`s each tool got; `asked` is every request.
 function countingServer() {
   const sent = new Map<string, number>();
   const asked: string[] = [];
@@ -108,7 +102,6 @@ function countingServer() {
 }
 
 test("one mcp_call reaches the server at most once, however it goes wrong", { skip }, async () => {
-  // `mcp_call` needs no sign-in: no model runs.
   const cli = locateClaudeCode(process.env);
   assert.ok(cli, "Claude Code is installed");
   const { server, sent, asked } = countingServer();
@@ -121,7 +114,6 @@ test("one mcp_call reaches the server at most once, however it goes wrong", { sk
   const results: Record<string, string> = {};
   try {
     for (const tool of ["ok", "expired", "unauthorized", "elicit", "drop"]) {
-      // A host of its own for each, as a failed call closes its host.
       const host = await openToolHost({
         command: cli,
         args: [

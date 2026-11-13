@@ -1,21 +1,5 @@
-// The person's own Codex as a `Provider` and a `Titler` (decision 0048), a
-// preview beside Claude Code (decision 0037). Oriel starts `codex app-server`
-// for each turn, over its stdin and stdout, signed in however the person
-// signed it in, and gives it Oriel's constant system prompt in place of
-// Codex's own and one client tool, `run`, whose calls come back over the
-// same pipe.
-//
-// Synced content reaches this process, so it is locked down as far as Codex
-// lets it be: every feature switch that gives the model a tool or loads
-// something of the person's off, each MCP server and skill Codex reports off
-// for the thread, the read-only sandbox with no network, an approval policy
-// that sends every command and file change to Oriel, which declines it, an
-// empty temporary working directory, and an allowlisted environment. Codex
-// still loads the person's own `config.toml`, and it can't report the tools
-// it gives the model, so what it does report at thread start is checked, and
-// any item but a message, its reasoning or a `run` call stops the turn.
-// Oriel never reads Codex's credentials or changes its configuration: flags,
-// the thread's own settings and environment only.
+// Codex still loads the person's own `config.toml` and can't report the tools it gives the model,
+// so its thread-start report is checked and any unexpected item stops the turn.
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,21 +31,14 @@ import {
 } from "./provider.ts";
 import { type Titler, titleFrom, titlePrompt } from "./title.ts";
 
-// The Codex this was verified against, and the major version after it, which
-// Oriel refuses until it's checked: a release can add a tool Oriel doesn't
-// know to turn off.
+// Newer majors are refused until checked: a release can add a tool Oriel doesn't know to turn off.
 export const codexMinVersion = "0.166.0";
 const codexMaxMajor = 0;
 
 export type Codex = { path: string; version: string };
 
-// A model the person's Codex offers, from its own list.
 export type CodexModel = { id: string; label: string; isDefault: boolean };
 
-// The plan and the account's email, as Codex's `account/read` says them:
-// shown in the row, never stored. `personal`: signed in with a ChatGPT plan
-// that isn't a Business, Enterprise or Edu one, which OpenAI may train on if
-// the person allowed it; never for an API key.
 export type CodexAccount = { plan: string | null; email: string | null; personal: boolean };
 
 // ChatGPT plans OpenAI doesn't train on by default. Team is Business's old
@@ -71,13 +48,8 @@ const commercialPlans = ["team", "business", "enterprise", "edu"];
 export const spawnCodex: Spawn = (command, args, options) =>
   spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
-// Every feature switch Codex 0.166.0 has that gives the model a tool, loads
-// something of the person's or reaches past the turn: shells, images, goals,
-// sub-agents, plugins, apps, skills, hooks, memories, browsers, computer use
-// and the rest. A name Codex doesn't know stops it starting, so a release
-// that drops one fails closed. Code mode's host stays on: the models a
-// ChatGPT plan serves reach client tools, `run` among them, only through its
-// `exec`, a JavaScript isolate with no files, network or console.
+// A name Codex doesn't know stops it starting, so a release that drops one fails closed. Code
+// mode's host stays on: a ChatGPT plan's models reach `run` only through its `exec`.
 export const codexFeaturesOff = [
   "apps",
   "browser_annotation_api",
@@ -116,11 +88,8 @@ export const codexFeaturesOff = [
   "workspace_dependencies",
 ] as const;
 
-// Configuration Oriel sets on the command line, which outranks the person's
-// `config.toml` (but not a company's managed configuration, which the thread
-// start's report is checked against): no web search, no instructions files,
-// no skills, no notify command, no developer instructions, no history, no
-// update check, no analytics, and a shell environment of nothing.
+// The command line outranks the person's `config.toml`, but not a company's managed one, which
+// the thread start's report is checked against.
 export const codexConfig = [
   'web_search="disabled"',
   "project_doc_max_bytes=0",
@@ -139,8 +108,6 @@ export const codexConfig = [
   'shell_environment_policy.inherit="none"',
 ] as const;
 
-// The command line. `overrides`: more `-c` settings, for the live test's
-// stand-in model only; the server never passes any.
 export function codexArgs(overrides: readonly string[] = []): string[] {
   return [
     "app-server",
@@ -149,20 +116,12 @@ export function codexArgs(overrides: readonly string[] = []): string[] {
   ];
 }
 
-// The person's own variables from the harness's allowlist, with
-// `CODEX_HOME` in place of Claude Code's config directory. No API key, base
-// URL or Codex setting in Oriel's own environment reaches it.
 export function codexEnv(
   parent: Readonly<Record<string, string | undefined>>,
 ): Record<string, string> {
   return passedEnv(parent, "CODEX_HOME");
 }
 
-// What Oriel answers each request Codex makes of it, other than a `run`
-// call: every command, file change, permission, elicitation and question
-// Codex asks to make or ask is declined. This is the one place that decides
-// it. Writes to a connected folder will come through `run` as change sets,
-// never through Codex's own tools.
 export function codexAnswer(method: string): { result: unknown } | { error: string } {
   switch (method) {
     case "item/commandExecution/requestApproval":
@@ -182,10 +141,8 @@ export function codexAnswer(method: string): { result: unknown } | { error: stri
   }
 }
 
-// The items a locked-down thread may have: what the person said, what the
-// model said and thought, `run` calls, and a file change, which waits on
-// Oriel's approval and is declined. Anything else is a tool Oriel thought
-// was off, and stops the turn.
+// A file change waits on Oriel's approval, which declines it. Any other item is a tool Oriel
+// thought was off, and stops the turn.
 const allowedItems = new Set([
   "userMessage",
   "agentMessage",
@@ -195,14 +152,11 @@ const allowedItems = new Set([
   "contextCompaction",
 ]);
 
-// "codex-cli 0.166.0" → [0, 166, 0], or null.
 export function codexVersion(output: string): [number, number, number] | null {
   const match = /(?:^|\s)(\d+)\.(\d+)\.(\d+)\b/.exec(output.trim());
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
-// A major version past the ones checked, which Oriel's next update may
-// support; an older one, the person's own update fixes.
 export const codexTooNew = (version: [number, number, number]): boolean =>
   version[0] > codexMaxMajor;
 
@@ -232,18 +186,12 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 
 const number = (value: unknown) => (typeof value === "number" ? value : 0);
 
-// One running app server: requests to it, answered by ID; its notifications
-// and its requests of Oriel, queued in order for whoever reads the turn.
-// Closing it kills the process and removes its directory.
 export type Server = {
   cwd: string;
   request(method: string, params: unknown): Promise<unknown>;
   notify(method: string, params?: unknown): void;
   respond(id: unknown, answer: { result: unknown } | { error: string }): void;
-  // The next notification or request of Oriel's; rejects once the process
-  // has ended or been stopped, with why.
   take(): Promise<Message>;
-  // Stops it with a reason the turn reports.
   stop(why: string): void;
   close(): void;
 };
@@ -255,7 +203,6 @@ export type ServerOptions = {
   signal: AbortSignal;
   log: Log;
   overrides?: readonly string[];
-  // With no output from Codex for this long, it's stopped. Default 5 min.
   idleMs?: number;
 };
 
@@ -303,7 +250,7 @@ export function startServer(options: ServerOptions): Server {
     try {
       message = JSON.parse(line);
     } catch {
-      return; // Not a protocol line.
+      return;
     }
     if (!isObject(message) || ended) return;
     if (message.method === undefined && (message.id !== undefined || "error" in message)) {
@@ -391,8 +338,6 @@ export function startServer(options: ServerOptions): Server {
   };
 }
 
-// Opens the app server's session, as a client that takes experimental
-// fields: `run` as a client tool is one. Returns where Codex keeps its home.
 export async function initialize(server: Server): Promise<string> {
   const answer = await server.request("initialize", {
     clientInfo: { name: "oriel", title: "Oriel", version: "1" },
@@ -402,8 +347,7 @@ export async function initialize(server: Server): Promise<string> {
   return isObject(answer) ? text(answer.codexHome) : "";
 }
 
-// The thread's own settings: each MCP server and skill Codex reports, off.
-// Codex has no switch for all of them; it reports each by name.
+// Codex has no switch for every MCP server and skill, so each one it reports is turned off by name.
 export function threadConfig(effective: unknown, skills: unknown): Message {
   const config = isObject(effective) && isObject(effective.config) ? effective.config : {};
   const servers = isObject(config.mcp_servers) ? Object.keys(config.mcp_servers) : [];
@@ -427,10 +371,6 @@ const real = (path: string) => {
   }
 };
 
-// What Codex reported when the thread started, checked against what Oriel
-// asked for: the read-only sandbox with no network, every approval to Oriel,
-// its own working directory, and no instructions file but the person's own
-// in Codex's home. Null when it passes; else why not.
 export function checkStarted(started: unknown, cwd: string, codexHome: string): string | null {
   const report = isObject(started) ? started : {};
   const sandbox = isObject(report.sandbox) ? report.sandbox : {};
@@ -446,7 +386,6 @@ export function checkStarted(started: unknown, cwd: string, codexHome: string): 
   return null;
 }
 
-// Every MCP server the thread knows of is off, and it has no hooks.
 export function checkLoaded(servers: unknown, hooks: unknown): string | null {
   const list = isObject(servers) && Array.isArray(servers.data) ? servers.data : null;
   if (!list) return "it didn't say which MCP servers it loaded";
@@ -461,9 +400,6 @@ export function checkLoaded(servers: unknown, hooks: unknown): string | null {
 
 type Thread = { id: string; model: string };
 
-// A locked-down thread: Oriel's prompt in place of Codex's own, `run` or no
-// tool, the sandbox and approvals Oriel asks for, and every MCP server and
-// skill off. What Codex reports is checked before the model can act.
 async function openThread(
   server: Server,
   options: { system: string; tool: ToolSpec | null; model: string },
@@ -512,7 +448,6 @@ async function openThread(
   return { id, model };
 }
 
-// An item Codex started that isn't one a locked-down thread may have.
 function forbidden(message: Message): string | null {
   if (message.method !== "item/started") return null;
   const params = isObject(message.params) ? message.params : {};
@@ -524,7 +459,7 @@ function forbidden(message: Message): string | null {
   return null;
 }
 
-// Tokens from Codex's own count. Its input counts what was cached.
+// Codex's input count includes what was cached.
 function usageOf(breakdown: unknown): Usage {
   const b = isObject(breakdown) ? breakdown : {};
   return {
@@ -556,11 +491,8 @@ const most = (a: Usage, b: Usage): Usage => ({
   cacheWriteTokens: Math.max(a.cacheWriteTokens, b.cacheWriteTokens),
 });
 
-// A rough count of output so far, from what streamed: a response that runs
-// past what the thread's tokens leave is stopped.
 const estimate = (chars: number) => Math.ceil(chars / 4);
 
-// Codex's sentence for a failed turn, as the turn reports it.
 function turnFailure(turn: Message): ProviderError {
   const error = isObject(turn.error) ? turn.error : {};
   const said = text(error.message).trim().split("\n")[0]?.slice(0, 200);
@@ -571,20 +503,14 @@ function turnFailure(turn: Message): ProviderError {
 
 export type CodexOptions = {
   cli: Codex;
-  // One of the models Codex lists.
   model: string;
-  // Default "medium". Never Codex's own "ultra", which hands work to
-  // sub-agents.
+  // Never Codex's own "ultra", which hands work to sub-agents.
   effort?: Effort;
-  // The most output one response may use. Default 64000.
   maxTokens?: number;
   env?: Readonly<Record<string, string | undefined>>;
   spawn?: Spawn;
   idleMs?: number;
-  // More `-c` settings, for the live test's stand-in model only.
   overrides?: readonly string[];
-  // Told each response's tokens, as it ends, and whether it's a turn's
-  // first: counts for Settings, never content.
   counted?: (used: Usage, first: boolean) => void;
 };
 
@@ -603,15 +529,9 @@ export function codexProvider(options: CodexOptions): Provider {
       let server: Server | null = null;
       let thread: Thread | null = null;
       let turnId = "";
-      // The `run` calls Codex is waiting on: Oriel's answer goes back by the
-      // request's own ID.
       const pending = new Map<string, unknown>();
-      // Codex's running count for the thread, and how much of it the
-      // responses so far have reported. Codex counts a response that called
-      // `run` only after Oriel answers the call, so until then that response
-      // reports an estimate, at least its last response's input or, first,
-      // the request's size: the thread's cap then holds before the run, and
-      // the later count adds only what the estimate missed.
+      // Codex counts a response that called `run` only after Oriel answers the call, so until then it
+      // reports an estimate, and the thread's cap holds before the run.
       let total: Usage = noUsage;
       let reported: Usage = noUsage;
       let lastInput = 0;
@@ -622,8 +542,7 @@ export function codexProvider(options: CodexOptions): Provider {
       async function begin(current: Server): Promise<void> {
         thread = await openThread(current, { system: request.system, tool, model: options.model });
         const earlier = request.messages.slice(0, -1);
-        // Earlier turns as one stand-in `run` call by Oriel, whose result is
-        // the thread so far: source content stays in a tool result.
+        // Earlier turns go in as one stand-in `run` call, so source content stays in a tool result.
         if (earlier.length)
           await current.request("thread/inject_items", {
             threadId: thread.id,
@@ -730,8 +649,6 @@ export function codexProvider(options: CodexOptions): Provider {
                 continue;
               }
               if (message.id !== undefined) {
-                // A request of Oriel's: a `run` call ends this response;
-                // anything else gets the one answer Oriel gives.
                 if (
                   method === "item/tool/call" &&
                   params.tool === runToolName &&
@@ -780,7 +697,6 @@ export function codexProvider(options: CodexOptions): Provider {
                 throw turnFailure(turn);
               }
               if (estimate(chars) > limit) {
-                // Past the thread's room: the turn ends on its budget.
                 void current
                   .request("turn/interrupt", { threadId: thread?.id, turnId })
                   .catch(() => {});
@@ -815,9 +731,6 @@ export type CodexTitlerOptions = {
   counted?: (used: Usage) => void;
 };
 
-// Thread titles through the person's Codex, locked down as a turn is: the
-// constant title prompt in place of Codex's own, the person's message as the
-// only input, no tool, and low effort.
 export function codexTitler(options: CodexTitlerOptions): Titler {
   return async (input, { signal, log }) => {
     const server = startServer({
@@ -880,14 +793,11 @@ export function codexTitler(options: CodexTitlerOptions): Titler {
   };
 }
 
-// "plus" → "ChatGPT Plus".
 const planName = (plan: string) =>
   /^[a-z_]{1,20}$/.test(plan) && plan !== "unknown"
     ? `ChatGPT ${plan.charAt(0).toUpperCase()}${plan.slice(1).replace(/_/g, " ")}`
     : null;
 
-// The account Codex's `account/read` names, or null when it's signed out.
-// An API key of the person's own counts as signed in, with no plan.
 export function accountOf(answer: unknown): CodexAccount | null {
   const account = isObject(answer) && isObject(answer.account) ? answer.account : null;
   if (!account) return null;
@@ -901,7 +811,6 @@ export function accountOf(answer: unknown): CodexAccount | null {
   };
 }
 
-// The models Codex lists, the ones it hides left out.
 export function modelsOf(answer: unknown): CodexModel[] {
   const list = isObject(answer) && Array.isArray(answer.data) ? answer.data : [];
   return list
@@ -916,8 +825,6 @@ export function modelsOf(answer: unknown): CodexModel[] {
 
 const windowKinds: Record<number, PlanWindow["kind"]> = { 300: "session", 10080: "week" };
 
-// Codex's `account/rateLimits/read`, as numbers only: the five-hour session
-// and the week, each as much as is used and when it resets.
 export function codexPlanOf(answer: unknown): PlanUsage {
   const limits = isObject(answer) && isObject(answer.rateLimits) ? answer.rateLimits : null;
   if (!limits) return { none: "no-plan" };
@@ -948,7 +855,6 @@ const runVersion = (cli: string, env: Record<string, string>) =>
     );
   });
 
-// A short session with the app server, with no thread and no model request.
 async function ask<T>(
   cli: Codex,
   options: {
@@ -976,10 +882,6 @@ async function ask<T>(
 
 const installHint = "Install Codex and sign in to it, then restart Oriel.";
 
-// At startup and on each look: Codex is there, its version is one Oriel
-// checked, and it is signed in, by its own `account/read`, which makes no
-// model request. Also the models it offers and, for the row only, its plan
-// and email.
 export async function checkCodex(
   options: CodexCheckOptions = {},
 ): Promise<
@@ -1058,8 +960,6 @@ export async function checkCodex(
   }
 }
 
-// How much of the person's ChatGPT plan is used, from Codex's own
-// `account/rateLimits/read`, which makes no model request.
 export async function codexPlan(
   cli: Codex,
   options: { env?: Readonly<Record<string, string | undefined>>; spawn?: Spawn } = {},
@@ -1073,11 +973,8 @@ export async function codexPlan(
   }
 }
 
-// Codex's answers to `mcpServerStatus/list`, page by page, and `config/read`,
-// as Oriel looks servers up by: each one's name, whether it's usable, the
-// name it reports, its URL or command line from the person's configuration,
-// and its tools' names. Never its configuration's other fields, such as its
-// headers or environment, which may hold a secret.
+// Never a server's other configuration fields, such as its headers or environment, which may
+// hold a secret.
 export function codexServersOf(pages: readonly unknown[], effective: unknown): FoundServer[] {
   const config = isObject(effective) && isObject(effective.config) ? effective.config : {};
   const configured = isObject(config.mcp_servers) ? config.mcp_servers : {};
@@ -1112,9 +1009,6 @@ export function codexServersOf(pages: readonly unknown[], effective: unknown): F
     });
 }
 
-// The person's own MCP servers, as their Codex lists them: its app server's
-// `mcpServerStatus/list`, which starts each and lists its tools, with no
-// thread and no model request.
 export async function codexServers(
   cli: Codex,
   options: {
@@ -1138,12 +1032,8 @@ export async function codexServers(
   });
 }
 
-// A stdio MCP server Oriel adds to the agent's own for one process, in dev
-// only (OA-276): a stand-in for a source server, on the command line, never
-// in the person's configuration. The desktop app never names one.
 export type DevServer = { name: string; command: string; args: readonly string[] };
 
-// Dev servers as Codex's `-c` settings, in TOML.
 export const devOverrides = (dev: readonly DevServer[]): string[] =>
   dev.flatMap(({ name, command, args }) => [
     `mcp_servers.${name}.command=${JSON.stringify(command)}`,

@@ -1,7 +1,3 @@
-// Calls to a source server through Codex (decision 0059, OA-276), against
-// a fake of its app server: which servers and tools a process enables, and
-// that it calls them with no model. Claude Code's are tool-host.test.ts's.
-// No process starts.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
@@ -42,8 +38,6 @@ function child(onLine: (message: Message, emit: (message: Message) => void) => v
   return process;
 }
 
-// A stand-in for Codex's app server: the person has another server beside
-// the source server, and `status` is what it reports of the thread's.
 function fakeCodex(status: (config: Message) => Message) {
   const requests: { method: string; params: Message }[] = [];
   const spawn: Spawn = () =>

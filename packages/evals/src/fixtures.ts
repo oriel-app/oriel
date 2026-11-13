@@ -1,8 +1,3 @@
-// Every declared connector's fixture (decision 0049), loaded once a round: the
-// data a case's world is built from. A case names an item as its fixture
-// does, `<kind>:<name>`: most fixtures name an item by its key, so the name
-// is its ID (`jira:SYN-12`), and the folder's by its path
-// (`folder:meeting-notes.md`). A new connector's fixture needs nothing here.
 import {
   type FixtureRegion,
   type ItemId,
@@ -14,10 +9,8 @@ import { sources } from "@oriel/sources";
 
 export type Fixture = { declaration: SourceDeclaration; loaded: LoadedFixture };
 
-// By kind, in declared order.
 export type Fixtures = ReadonlyMap<string, Fixture>;
 
-// Each declaration's fixture, loaded. Tests may pass others, or fewer.
 export function loadFixtures(
   declarations: Readonly<Record<string, SourceDeclaration>> = sources,
 ): Fixtures {
@@ -29,7 +22,6 @@ export function loadFixtures(
   );
 }
 
-// The item a case names, or why a case can't hold it.
 export function itemNamed(fixtures: Fixtures, name: string): { id: ItemId } | { problem: string } {
   const at = name.indexOf(":");
   const kind = name.slice(0, at);
@@ -38,7 +30,6 @@ export function itemNamed(fixtures: Fixtures, name: string): { id: ItemId } | { 
   return fixture.loaded.item(name.slice(at + 1));
 }
 
-// A region of any fixture's, by its name.
 export function regionNamed(fixtures: Fixtures, name: string): FixtureRegion | undefined {
   for (const { loaded } of fixtures.values()) {
     const region = loaded.regions.find((r) => r.name === name);
@@ -47,6 +38,5 @@ export function regionNamed(fixtures: Fixtures, name: string): FixtureRegion | u
   return undefined;
 }
 
-// The fixture an item is from.
 export const fixtureOf = (fixtures: Fixtures, id: string): LoadedFixture | undefined =>
   fixtures.get(parseItemId(id)?.kind ?? "")?.loaded;

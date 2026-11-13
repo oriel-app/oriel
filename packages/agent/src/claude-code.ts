@@ -1,19 +1,5 @@
-// The local harness (decision 0035): the person's own Claude Code, signed in
-// however they signed it in, as a `Provider` and a `Titler`. Oriel spawns it
-// headless with streaming JSON in and out, gives it the constant system
-// prompt and one tool, `run`, and answers that tool's calls itself: `run` is
-// an MCP server hosted over the CLI's own control channel, so no other
-// process, socket or port exists.
-//
-// Synced content reaches this process, so it is locked down: every built-in
-// tool off, only Oriel's MCP server, none of the person's settings, hooks,
-// memory, plugins, skills or project instructions, an empty temporary working
-// directory, permissions never bypassed, and an allowlisted environment. The
-// CLI's own report of its tools, servers and permission mode is checked before
-// it can act, and a process that reports anything else is stopped. Oriel never
-// reads the CLI's credentials or changes its configuration: flags and
-// environment only. How much of the person's plan is used is the CLI's own
-// answer on its control channel, which it gets with its own sign-in.
+// Synced content reaches this process, so it is locked down, and the CLI's own report of its
+// tools, servers and permission mode is checked before it can act.
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { accessSync, constants, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,23 +22,18 @@ import {
 } from "./provider.ts";
 import { type Titler, titleFrom, titleModel, titlePrompt } from "./title.ts";
 
-// The oldest Claude Code whose flags and control channel this was verified
-// against, and the next major version, which it refuses until checked.
 export const claudeCodeMinVersion = "2.1.314";
 const claudeCodeMaxMajor = 2;
 
-// Oriel's MCP server as the CLI names it, and `run` as the model calls it.
 export const harnessServer = "oriel";
 export const harnessRunTool = `mcp__${harnessServer}__${runToolName}`;
 
-// A run's result is bounded by the run limits (result and console bytes, and
-// the lines Oriel adds). The CLI would save anything over its own default to a
-// file in the person's home and show the model a path it can't open.
+// Over its own default, the CLI would save a result to a file in the person's home and show the
+// model a path it can't open.
 const maxResultChars = 1_000_000;
 
 export type ClaudeCode = { path: string; version: string };
 
-// What starting the CLI needs, so tests can stand in for it.
 export type Spawn = (
   command: string,
   args: readonly string[],
@@ -62,10 +43,7 @@ export type Spawn = (
 export const spawnCli: Spawn = (command, args, options) =>
   spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
-// The person's environment, passed through: where they signed in (home and
-// the CLI's config directory), how they reach the network, and their locale.
-// Nothing else, so no API key, base URL or CLI setting in Oriel's own
-// environment reaches the CLI.
+// Nothing else, so no API key, base URL or CLI setting in Oriel's own environment reaches the CLI.
 const passed = [
   "HOME",
   "USER",
@@ -89,10 +67,6 @@ const passed = [
   "LOCALAPPDATA",
 ] as const;
 
-// The person's own variables from the allowlist above, with the CLI's config
-// directory, and nothing else. The first run's commands (decision 0038)
-// start the CLI and its installer with these, never with Oriel's whole
-// environment.
 export function passedEnv(
   parent: Readonly<Record<string, string | undefined>>,
   configDir: "CLAUDE_CONFIG_DIR" | "CODEX_HOME" = "CLAUDE_CONFIG_DIR",
@@ -111,8 +85,6 @@ export function harnessEnv(
 ): Record<string, string> {
   return {
     ...passedEnv(parent),
-    // No memory, no instructions files, no claude.ai connectors, no IDE, no
-    // self-update.
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
     // An `@path` in the user's text would otherwise attach that file.
@@ -122,9 +94,7 @@ export function harnessEnv(
     CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
     CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: "1",
     DISABLE_AUTOUPDATER: "1",
-    // Nothing of the run goes to Anthropic beyond the model's own requests:
-    // no `/feedback` (or `/bug`, `/share`), no session survey, which can send
-    // a transcript, no telemetry, no error reports. Not
+    // No feedback command, survey (which can send a transcript), telemetry or error reports; not
     // CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, which turns off more.
     DISABLE_FEEDBACK_COMMAND: "1",
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
@@ -142,11 +112,9 @@ export type HarnessArgs = {
   system: string;
   model: string;
   effort: Effort;
-  // With the run tool, or with no tool at all (titles).
   run: boolean;
 };
 
-// The command line. Each flag is listed in decision 0035.
 export function harnessArgs(options: HarnessArgs): string[] {
   const servers = options.run ? { [harnessServer]: { type: "sdk", name: harnessServer } } : {};
   return [
@@ -163,25 +131,18 @@ export function harnessArgs(options: HarnessArgs): string[] {
     options.model,
     "--effort",
     options.effort,
-    // No built-in tool: no shell, files, web, sub-agents or anything else.
     "--tools",
     "",
-    // Only Oriel's server, never one from the person's configuration.
     "--strict-mcp-config",
     "--mcp-config",
     JSON.stringify({ mcpServers: servers }),
-    // None of the person's settings, hooks, plugins, skills, agents or
-    // instructions files.
     "--setting-sources",
     "",
     "--settings",
     JSON.stringify({ disableAllHooks: true }),
     "--safe-mode",
     "--disable-slash-commands",
-    // Nothing of the conversation is written to the person's disk.
     "--no-session-persistence",
-    // Anything not allowed here is refused without asking; anything that would
-    // still ask comes to Oriel, which allows only `run`.
     "--permission-mode",
     "dontAsk",
     ...(options.run ? ["--allowed-tools", harnessRunTool] : []),
@@ -190,8 +151,6 @@ export function harnessArgs(options: HarnessArgs): string[] {
   ];
 }
 
-// Why Oriel can't use the CLI it found, said so a person can act on it.
-// `version`: the one found, when that is the problem.
 export type HarnessProblem = {
   kind: "missing" | "unsupported" | "signed-out";
   message: string;
@@ -200,14 +159,11 @@ export type HarnessProblem = {
 
 const installHint = "Install Claude Code and sign in to it, then restart Oriel.";
 
-// "2.1.314 (Claude Code)" → [2, 1, 314], or null.
 export function parseVersion(output: string): [number, number, number] | null {
   const match = /^(\d+)\.(\d+)\.(\d+)\b/.exec(output.trim());
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
-// A major version past the ones verified, which Oriel's next update may
-// support; an older one, Claude Code's own update fixes.
 export const tooNew = (version: [number, number, number]): boolean =>
   version[0] > claudeCodeMaxMajor;
 
@@ -221,8 +177,6 @@ export function supportedVersion(version: [number, number, number]): boolean {
   return true;
 }
 
-// The CLI on the person's PATH, or at `path` when one is configured: the
-// first executable named `claude`.
 export function locateClaudeCode(
   env: Readonly<Record<string, string | undefined>>,
   path?: string,
@@ -230,8 +184,6 @@ export function locateClaudeCode(
   return locateCli("claude", env, path);
 }
 
-// The first executable called `name` on the person's PATH, or the one at
-// `path` when one is configured.
 export function locateCli(
   name: string,
   env: Readonly<Record<string, string | undefined>>,
@@ -253,10 +205,8 @@ export function locateCli(
 }
 
 export type CheckOptions = {
-  // A configured path; else the PATH is searched.
   path?: string;
   env?: Readonly<Record<string, string | undefined>>;
-  // Runs `<cli> --version`; tests stand in for it.
   version?: (cli: string) => Promise<string>;
   spawn?: Spawn;
 };
@@ -268,10 +218,6 @@ const runVersion = (cli: string, env: Record<string, string>) =>
     );
   });
 
-// At startup: the CLI is there, its version has the flags Oriel relies on, and
-// it is signed in. Signing in is read from the CLI's own answer to
-// `initialize`, which makes no model request; Oriel keeps only whether there
-// is an account, never who it is.
 export async function checkClaudeCode(
   options: CheckOptions = {},
 ): Promise<{ ok: true; cli: ClaudeCode } | { ok: false; problem: HarnessProblem }> {
@@ -335,8 +281,6 @@ const isObject = (value: unknown): value is Message =>
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-// Whether the CLI's `initialize` answer names an account: a subscription, a
-// signed-in token, or a key or cloud provider of the person's own.
 export function signedIn(initialize: unknown): boolean {
   const account = isObject(initialize) && isObject(initialize.account) ? initialize.account : {};
   const set = (key: string) => text(account[key]) !== "" && account[key] !== "none";
@@ -373,18 +317,12 @@ async function probeAccount(
   }
 }
 
-// One window of the person's plan, as the CLI reports it: the five-hour
-// session or the week, how much of it is used, and when it resets.
 export type PlanWindow = { kind: "session" | "week"; usedPercent: number; resetsAt: string | null };
 
-// The plan's windows, or why there are none: the CLI says no plan limits
-// apply (an API key, a cloud provider), or it didn't answer.
 export type PlanUsage = { windows: PlanWindow[] } | { none: "no-plan" | "no-answer" };
 
 const windowKinds = { five_hour: "session", seven_day: "week" } as const;
 
-// The CLI's answer to `get_usage`, as numbers only: never the account, the
-// session's cost or anything else it carries.
 export function parsePlan(response: unknown): PlanUsage {
   if (!isObject(response) || response.rate_limits_available !== true) return { none: "no-plan" };
   const limits = isObject(response.rate_limits) ? response.rate_limits : {};
@@ -398,9 +336,6 @@ export function parsePlan(response: unknown): PlanUsage {
   return { windows };
 }
 
-// How much of the person's plan is used, from the CLI's `get_usage`, which it
-// answers with its own sign-in. Like the sign-in check, it makes no model
-// request.
 export async function claudeCodePlan(
   cli: ClaudeCode,
   options: { env?: Readonly<Record<string, string | undefined>>; spawn?: Spawn } = {},
@@ -430,12 +365,7 @@ export async function claudeCodePlan(
   }
 }
 
-// The command line that lists the person's own MCP servers (decision 0059):
-// the turns' lock-down but for the servers, which come from their own
-// user-level configuration, with every hook off. No message is ever sent,
-// so the model never runs and no tool is ever called: the CLI only starts
-// each server and lists its tools. Not `--safe-mode`, which loads no server,
-// nor the project's or local settings: its folder is an empty one.
+// No message is ever sent, so the model never runs. Not `--safe-mode`, which loads no server.
 export function discoveryArgs(dev: readonly DevServer[] = []): string[] {
   return [
     ...(dev.length ? ["--mcp-config", JSON.stringify(devConfig(dev))] : []),
@@ -468,10 +398,8 @@ export function discoveryArgs(dev: readonly DevServer[] = []): string[] {
 
 const serverStatuses = ["connected", "needs-auth", "failed", "pending", "disabled"] as const;
 
-// The CLI's answer to `mcp_status`, as Oriel looks servers up by: each one's
-// name, status, the name it reports, its URL or command line, and its tools'
-// names. Never its configuration's other fields, such as its headers or
-// environment, which may hold a secret.
+// Never a server's other configuration fields, such as its headers or environment, which may
+// hold a secret.
 export function claudeCodeServersOf(answer: unknown): FoundServer[] {
   const listed = isObject(answer) && Array.isArray(answer.mcpServers) ? answer.mcpServers : [];
   return listed.filter(isObject).flatMap((server): FoundServer[] => {
@@ -501,20 +429,14 @@ export function claudeCodeServersOf(answer: unknown): FoundServer[] {
   });
 }
 
-// Dev servers as Claude Code's `--mcp-config` names them.
 export const devConfig = (dev: readonly DevServer[]) => ({
   mcpServers: Object.fromEntries(
     dev.map(({ name, command, args }) => [name, { type: "stdio", command, args }]),
   ),
 });
 
-// A remote server's transports, as Claude Code's configuration names them.
 const remote = ["http", "sse"];
 
-// The person's own MCP servers, as their Claude Code lists them, from
-// `mcp_status` on its control channel, which, like `get_usage`, makes no
-// model request, so it spends none of their plan. A server still connecting
-// is asked about again, every `pollMs`, until `waitMs` has passed.
 export async function claudeCodeServers(
   cli: ClaudeCode,
   options: {
@@ -549,19 +471,11 @@ export async function claudeCodeServers(
   }
 }
 
-// One running CLI: its stdout read line by line, the control requests it sends
-// answered at once, and everything else queued for whoever reads the
-// conversation. Closing it kills the process and removes its directory.
 export type Session = {
   send(message: Message): void;
-  // The CLI's answer to `initialize`.
   initialized: Promise<unknown>;
-  // Oriel's own control request, and the CLI's answer; rejects if it refuses.
   request(request: Message): Promise<unknown>;
-  // The next message that isn't a control request; rejects once the process
-  // has ended, with why.
   take(): Promise<Message>;
-  // Answers `run` calls: the loop's results, each sent once the CLI asks.
   answer(results: readonly ToolResult[]): void;
   // The calls this response made, as the model streamed them, so a call the
   // CLI asks to run is answered only for the input the loop ran.
@@ -575,11 +489,9 @@ export type SessionOptions = {
   parent: Readonly<Record<string, string | undefined>>;
   args: string[];
   maxOutputTokens: number;
-  // The run tool, served over the control channel, or none.
   tool: ToolSpec | null;
   signal: AbortSignal;
   log: Log;
-  // With no output from the CLI for this long, it's stopped. Default 5 min.
   idleMs?: number;
 };
 
@@ -601,8 +513,6 @@ export function startSession(options: SessionOptions): Session {
   let wake: (() => void) | null = null;
   let ended: unknown = null;
   let closed = false;
-  // Set once the CLI's report of what it loaded has passed the check. Nothing
-  // the model says is taken before it.
   let ready = false;
   const notify = () => {
     const w = wake;
@@ -622,10 +532,8 @@ export function startSession(options: SessionOptions): Session {
   // Never unhandled: a session nobody initializes still ends.
   settleInit.promise.catch(() => {});
 
-  // A `run` call is answered once three things meet, in any order: the CLI
-  // asks to run it (often while the response is still streaming), the
-  // response ends with the call in it as the model wrote it, and the loop has
-  // its result.
+  // A `run` call is answered once the CLI asks (often mid-stream), the response ends with the call
+  // as the model wrote it, and the loop has its result, in any order.
   const results = new Map<string, ToolResult>();
   const asked = new Map<string, { input: unknown; answer: (result: ToolResult) => void }>();
   const inputs = new Map<string, unknown>();
@@ -662,7 +570,6 @@ export function startSession(options: SessionOptions): Session {
     close();
   };
 
-  // The CLI's report of what it loaded, checked before the model can act.
   const checkInit = (init: Message) => {
     const tools = Array.isArray(init.tools) ? init.tools : null;
     const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.filter(isObject) : null;
@@ -739,7 +646,6 @@ export function startSession(options: SessionOptions): Session {
           ? { behavior: "allow", updatedInput: request.input }
           : { behavior: "deny", message: "Only Oriel's run tool is available." },
       );
-    // Hooks, elicitations and anything added later: refused.
     refuse(id, "Oriel doesn't answer this request.");
   };
 
@@ -758,9 +664,8 @@ export function startSession(options: SessionOptions): Session {
     try {
       message = JSON.parse(line);
     } catch {
-      return; // Not a protocol line.
+      return;
     }
-    // Once it has been stopped, nothing more it says is read.
     if (!isObject(message) || ended) return;
     if (message.type === "control_request") return control(message);
     if (message.type === "control_response") {
@@ -851,7 +756,6 @@ export function startSession(options: SessionOptions): Session {
     },
     expect(calls) {
       for (const call of calls) inputs.set(call.id, call.input);
-      // A call the CLI asked about that no response of the model's made.
       for (const [callId, call] of asked)
         if (!inputs.has(callId)) {
           asked.delete(callId);
@@ -863,8 +767,7 @@ export function startSession(options: SessionOptions): Session {
   };
 }
 
-// A stand-in tool call that carries the thread so far, made by Oriel, not
-// the model: a fresh CLI keeps tool results only when they share one user
+// Made by Oriel, not the model: a fresh CLI keeps tool results only when they share one user
 // message with the text that follows them.
 export const historyCallId = "oriel_thread_so_far";
 export const historyScript =
@@ -896,8 +799,6 @@ export function historyText(messages: readonly ModelMessage[]): string {
   ].join("\n");
 }
 
-// The opening of a turn: the user's message, after the thread so far when
-// there is one.
 export function openingMessages(messages: readonly ModelMessage[]): Message[] {
   const last = messages.at(-1);
   if (last?.role !== "user")
@@ -934,7 +835,6 @@ export function openingMessages(messages: readonly ModelMessage[]): Message[] {
   ];
 }
 
-// The CLI's own stop, from a `result` message that came before a response.
 function resultError(message: Message): ProviderError {
   const said = text(message.result).trim().split("\n")[0]?.slice(0, 200);
   return new ProviderError(
@@ -946,25 +846,15 @@ function resultError(message: Message): ProviderError {
 
 export type ClaudeCodeOptions = {
   cli: ClaudeCode;
-  // Default `claude-opus-5-5`.
   model?: string;
-  // Default "medium".
   effort?: Effort;
-  // The most output one response may use. Default 64000.
   maxTokens?: number;
-  // The environment the person's own variables come from. Default
-  // `process.env`.
   env?: Readonly<Record<string, string | undefined>>;
   spawn?: Spawn;
   idleMs?: number;
-  // Told each response's tokens, as it ends, and whether it's a turn's
-  // first: counts for Settings, never content.
   counted?: (used: Usage, first: boolean) => void;
 };
 
-// A rough count of a response's output so far, from what it streamed and
-// the CLI's estimate of its thinking: a response that runs past what the
-// thread's tokens leave is stopped, as the API's `max_tokens` would.
 const estimate = (chars: number, thinking: number) => Math.ceil(chars / 4) + thinking;
 
 export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
@@ -1042,7 +932,6 @@ export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
           } catch (error) {
             current.close();
             if (signal.aborted) throw signal.reason;
-            // Cut off past the thread's room: the turn ends on its budget.
             if (over) {
               const used = usage ?? {
                 inputTokens: 0,
@@ -1081,7 +970,6 @@ export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
           const { stop, detail, usage: final } = reply;
           count(final);
           yield { kind: "end", stop, detail, model: reply.model, usage: final };
-          // A response that asked for nothing ends the turn.
           if (stop !== "calls") current.close();
         },
         close() {
@@ -1094,17 +982,12 @@ export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
 
 export type ClaudeCodeTitlerOptions = {
   cli: ClaudeCode;
-  // Default `claude-haiku-5-5`.
   model?: string;
   env?: Readonly<Record<string, string | undefined>>;
   spawn?: Spawn;
-  // Told the title's tokens, as the provider's `counted` is.
   counted?: (used: Usage) => void;
 };
 
-// Thread titles through the person's Claude Code: the small model, the
-// constant title prompt, the person's message as the only input, and no
-// tool at all.
 export function claudeCodeTitler(options: ClaudeCodeTitlerOptions): Titler {
   const model = options.model ?? titleModel;
   return async (input, { signal, log }) => {

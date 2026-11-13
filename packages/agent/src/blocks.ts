@@ -1,16 +1,4 @@
-// What a turn shows under its reply, for every agent: blocks (decision 0030)
-// and sketches (decision 0033). A run asks for a block with show(), naming a
-// read this turn ran, its arguments and the block's form; Oriel builds the
-// block from what that read answered, so a script never hands Oriel a
-// block's numbers. A run hands sketch() its HTML and a height; Oriel checks
-// the text and shows it in a sandboxed frame. What Oriel can't build or
-// show is refused with why, and the run goes on. A run that fails shows
-// nothing, as it proposes nothing. The turn shows what it asked for under
-// its reply, in the order asked, each once: at most `maxBlocksPerTurn`
-// blocks and `maxSketchesPerTurn` sketches. The escape hatch's blocks,
-// which Oriel shows unasked, don't count, nor does a waiting connection's
-// preview, which it shows unasked too (decision 0051). Each block is built from the
-// host's own copy of what the read answered, never a value the script
+// A block is built from the host's own copy of what a read answered, never a value the script
 // passes in.
 import {
   array,
@@ -46,7 +34,6 @@ import {
 } from "@oriel/core";
 import type { AgentEvent } from "./contract.ts";
 
-// What the host keeps of a read's answer, which a block is built from.
 export const answerOf = (
   bindings: Bindings,
   fn: string,
@@ -57,8 +44,6 @@ export const answerOf = (
   fields: bindings.fields?.(fn) ?? null,
 });
 
-// What the bindings say a read reached outside the region, checked before it
-// reaches the window.
 const searchHits = array(
   object({
     id: refine(string, isItemId, "expected an item ID"),
@@ -68,9 +53,6 @@ const searchHits = array(
   }),
 );
 
-// The keys a spec held that its form doesn't take, which show() ignored,
-// named as keys alone and capped: Oriel's note to the agent, whether the
-// block shows or not, so a guess such as `filter` is never taken as done.
 const ignored = (input: unknown): string => {
   const keys = ignoredKeys(input);
   if (!keys.length) return "";
@@ -78,38 +60,28 @@ const ignored = (input: unknown): string => {
   return ` show() ignored ${named.join(", ")}${keys.length > 5 ? " and more" : ""}: Oriel writes each block's caption and order, and only \`where\` keeps some rows.`;
 };
 
-// What a turn shows under its reply, in the order its runs asked for it.
 type Kept = { kind: "block"; block: Block } | { kind: "sketch"; sketch: Sketch };
 
-// What the agent reads after a sketch Oriel shows: the theme variables its
-// sheet sets, so the next sketch can use them.
 const sketchShown = (height: number) =>
   `Oriel shows your sketch under your reply, ${height} px high, captioned as yours. Its sheet sets ${sketchTokens.join(", ")}.`;
 
 export function turnShown(newId: () => Ulid) {
-  // What each read this turn answered, by its name and arguments.
   const answered = new Map<string, Answered>();
   const kept: { runId: Ulid; shown: Kept }[] = [];
-  // What runs asked for and Oriel refused, by the run that asked.
   const refused: AgentEvent[] = [];
 
   return {
-    // One run's: its show() and sketch(), its bindings watched so each read
-    // they answer is noted, Oriel's line for each thing it asked for, and
-    // `ran`, which keeps what it asked for if it finished.
     run(runId: Ulid, bindingsFor: (shown: Shown) => Bindings) {
       const shown: Kept[] = [];
       const said: string[] = [];
       const all = (kind: Kept["kind"]) =>
         [...kept.map((k) => k.shown), ...shown].filter((k) => k.kind === kind);
-      // The reads this turn ran, for a spec that names another.
       const ran = () => {
         const keys = [...answered.keys()].map((key) => key.slice(0, 80));
         if (!keys.length) return "This turn ran no read.";
         const more = keys.length > 8 ? ` and ${keys.length - 8} more` : "";
         return `This turn ran ${keys.slice(0, 8).join(", ")}${more}.`;
       };
-      // What the read a refused spec names declares, if this turn ran it.
       const declared = (input: unknown): string => {
         const read =
           typeof input === "object" && input !== null && "read" in input ? input.read : null;
@@ -137,7 +109,6 @@ export function turnShown(newId: () => Ulid) {
         const built = read ? buildBlock(spec, read) : null;
         if (!built?.ok) return refuse(`${built?.why ?? "its read is gone"}.`);
         const blocks = all("block");
-        // What it ignored, said whether it shows, or shows already.
         const extra = ignored(input);
         const every = extra && !spec.where ? " This one keeps every row." : "";
         if (
@@ -146,15 +117,12 @@ export function turnShown(newId: () => Ulid) {
           )
         )
           return `Oriel already shows that block from ${key}.${extra}${every}`;
-        // What search() found shows as the escape hatch's block already.
         if (spec.read === "search" && spec.form === "rows")
           return `Oriel already shows what ${key} found, under the run.${extra}${every}`;
         if (blocks.length >= maxBlocksPerTurn)
           return refuse(`a reply shows at most ${maxBlocksPerTurn} blocks you ask for.`);
         shown.push({ kind: "block", block: built.block });
         const said = `Oriel shows a ${spec.form} block from ${key} under your reply.${extra}${every}`;
-        // A chart's caption holds figures Oriel computed, such as a forecast,
-        // which the reply should use rather than work out again.
         return isChart(spec) ? `${said} Its caption: ${built.block.caption}.` : said;
       };
       const sketch = (html: unknown, height: unknown): string => {
@@ -186,12 +154,7 @@ export function turnShown(newId: () => Ulid) {
         show: (input) => say(block(input)),
         sketch: (html, height) => say(sketch(html, height)),
       });
-      // What the run reached outside the region, which the escape hatch's
-      // block shows unasked; the sandbox keeps only each read's hash. A
-      // run's reaches share the block, so an item two of them found is in
-      // it once, where it was first found.
       const hits = new Map<string, SearchHit>();
-      // What a waiting connection's preview read showed, as its block.
       const previews: Block[] = [];
       const watched: Bindings = {
         ...bindings,
@@ -210,9 +173,6 @@ export function turnShown(newId: () => Ulid) {
       return {
         bindings: watched,
         said,
-        // As the run finishes: what it reached outside the region, as the
-        // escape hatch, and the previews it read, whatever its outcome; and what it asked to show, if
-        // it finished.
         *ran(result: RunResult): Generator<AgentEvent> {
           if (hits.size) yield { kind: "search", runId, hits: [...hits.values()] };
           for (const block of previews) yield { kind: "block", runId, block };
@@ -221,8 +181,6 @@ export function turnShown(newId: () => Ulid) {
       };
     },
 
-    // What the turn shows, as it ends, and each thing it refused, for
-    // telemetry.
     *settle(): Generator<AgentEvent> {
       for (const { runId, shown } of kept)
         yield shown.kind === "block"
