@@ -1,18 +1,5 @@
-// The Slack fixture's shape, and the Web API as the fixture answers it, for
-// unit tests, evals and the dev server's synthetic workspace. The fixture is a workspace written down: its people,
-// its channels and each channel's messages, with replies under their
-// message. The fake answers the read methods the source calls, in Slack's
-// shapes, as the Web API reference documents them: history newest first
-// without replies, except those sent to the channel too; replies with their
-// message at the top of every page; pages by cursor; and Slack's error codes
-// for what isn't there. All names and content are made up.
-//
-// It writes too, to its own copy of the workspace, never the fixture: a post
-// or a reply by the person `auth.test` names (the fixture's first), and a
-// delete of their own message, as Slack answers `chat.postMessage` and
-// `chat.delete` for a user token. Its `fetch` answers each method at
-// slack.com's address, so the writer reaches it as it reaches Slack. Others'
-// edits and replies (`edit`, `replyAs`) are for tests of what a revert finds.
+// As Slack's Web API reference documents: history is newest first, without replies but with
+// those also sent to the channel; every replies page starts with their message.
 import { readFileSync } from "node:fs";
 import {
   array,
@@ -32,11 +19,9 @@ const ts = refine(string, (value) => /^[0-9]{10}\.[0-9]{6}$/.test(value), "expec
 
 const fields = {
   ts,
-  // The person who posted it; absent for an app that posted as itself.
   user: optional(string),
   text: string,
   subtype: optional(string),
-  // Set when an app posted it, for a person (with `user`) or as itself.
   bot_id: optional(string),
   app_id: optional(string),
   username: optional(string),
@@ -49,7 +34,6 @@ const fixtureMessage = object({ ...fields, replies: optional(array(reply)) });
 
 const slackFixtureShape: Validator<SlackFixture> = object({
   team: object({ id: string, url: string }),
-  // The channels the user picked; the others prove nothing else is read.
   picked: array(string),
   users: array(
     object({ id: string, real_name: string, display_name: string, deleted: optional(boolean) }),
@@ -76,8 +60,6 @@ export type SlackFixture = {
   channels: { id: string; name: string; messages: FixtureMessage[] }[];
 };
 
-// The shape, then what Slack itself guarantees: a `ts` is unique in its
-// channel, replies come after their message, and picked channels exist.
 export function parseSlackFixture(input: unknown): Result<SlackFixture> {
   const shaped = slackFixtureShape(input);
   if (!shaped.ok) return shaped;
@@ -105,7 +87,6 @@ export function parseSlackFixture(input: unknown): Result<SlackFixture> {
   return issues.length ? { ok: false, issues } : shaped;
 }
 
-// Where the fixture is kept.
 export const slackFixtureFile = new URL("../../../fixtures/slack/workspace.json", import.meta.url);
 
 export function loadSlackFixture(file: URL = slackFixtureFile): SlackFixture {
@@ -116,17 +97,12 @@ export function loadSlackFixture(file: URL = slackFixtureFile): SlackFixture {
 }
 
 export type FixtureApiOptions = {
-  // The most a page holds, whatever the caller asks for, so tests can make
-  // the source follow cursors.
   pageSize?: number;
-  // When a post lands; without it, a second after the workspace's latest
-  // message, so tests read no clock.
   now?: () => Instant;
 };
 
 export type FixtureCall = { method: string; params: Record<string, string> };
 
-// Where the fake answers, as Slack's Web API does.
 export const fixtureApiOrigin = "https://slack.com";
 
 export type FixtureWorkspace = ReturnType<typeof fixtureApi>;
@@ -137,7 +113,6 @@ export function fixtureApi(fixture: SlackFixture, options: FixtureApiOptions = {
   const copy = structuredClone(fixture);
   const channels = new Map(copy.channels.map((channel) => [channel.id, channel]));
   const users = new Map(copy.users.map((user) => [user.id, user]));
-  // Who the token is for.
   const self = copy.users[0]?.id;
 
   const paged = (
@@ -165,7 +140,6 @@ export function fixtureApi(fixture: SlackFixture, options: FixtureApiOptions = {
     return channel;
   };
 
-  // A message as history lists it: its replies summed up, not included.
   const listed = (m: FixtureMessage) => {
     const { replies = [], ...rest } = m;
     if (!replies.length) return structuredClone(rest);
@@ -178,8 +152,6 @@ export function fixtureApi(fixture: SlackFixture, options: FixtureApiOptions = {
     };
   };
 
-  // The next `ts`: a second after the latest in the workspace, or now if
-  // that is later.
   const nextTs = (): string => {
     const all = copy.channels.flatMap((c) =>
       c.messages.flatMap((m) => [m.ts, ...(m.replies ?? []).map((r) => r.ts)]),
@@ -296,9 +268,6 @@ export function fixtureApi(fixture: SlackFixture, options: FixtureApiOptions = {
   };
   const api: SlackApi = (method, params) => answer(method, params);
 
-  // Slack's Web API at its own address, for any method, reads and writes:
-  // a form body in, Slack's JSON out, and `ok: false` with its code for what
-  // it refuses.
   const fetchApi = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input);
     const method = url.pathname.replace(/^\/api\//, "");
@@ -317,14 +286,12 @@ export function fixtureApi(fixture: SlackFixture, options: FixtureApiOptions = {
     api,
     calls,
     fetch: fetchApi as typeof fetch,
-    // Someone else edits a message or reply, as Slack marks an edit.
     edit(channel: string, ts: string, text: string, by: string) {
       const { root, reply } = find("edit", { channel, ts });
       const found = root ?? reply;
       if (!found) throw new Error(`no message ${ts} in ${channel}`);
       Object.assign(found, { text, edited: { user: by, ts: nextTs() } });
     },
-    // Someone else replies in a conversation.
     replyAs(by: string, channel: string, thread: string, text: string) {
       const root = channelOf("replyAs", { channel }).messages.find((m) => m.ts === thread);
       if (!root) throw new Error(`no message ${thread} in ${channel}`);

@@ -1,40 +1,4 @@
-// Google's Sheets and Drive APIs, as they answer the reads `drive.file`
-// allows (decision 0050, as amended by OA-219), served from the fixture for
-// unit tests and evals. No network: its `fetch` answers at Google's own
-// addresses, so code reaches it as it reaches Google.
-//
-// It answers:
-// - Drive's `files.get`, for a spreadsheet's `version`, name and
-//   capabilities.
-//   https://developers.google.com/workspace/drive/api/reference/rest/v3/files/get
-// - Drive's `about.get`, for the account.
-//   https://developers.google.com/workspace/drive/api/reference/rest/v3/about/get
-// - Drive's `comments.list`.
-//   https://developers.google.com/workspace/drive/api/reference/rest/v3/comments/list
-// - The Sheets API's `spreadsheets.get`, with `ranges` and grid data.
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get
-//
-// Each takes Google's `fields` (fields.ts). Like Google, it leaves out a
-// field that is zero, false or empty in the Sheets API's answers: the first
-// tab has no `index`, and a range from row 1 no `startRowIndex`. Drive's
-// answers keep their `false`s. It keeps no cell formats, so no answer has
-// them.
-//
-// And the writes Oriel makes (decision 0050), each moving the spreadsheet's
-// version by one, refused with a `403` on a spreadsheet the account can only
-// view, and applied whole or not at all:
-// - `values.batchUpdate`, with `valueInputOption=RAW` only: each value is
-//   stored as it is, text starting with `=` as text, and an empty string
-//   empties the cell. It has no parser, so `USER_ENTERED` is refused.
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchUpdate
-// - `spreadsheets.batchUpdate`, with `insertDimension`, `updateCells` (of
-//   `userEnteredValue`) and `deleteDimension` rows. A `formulaValue` is
-//   kept as a formula, with no value computed, as a test can find.
-//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/batchUpdate
-// Any other method is refused.
-//
-// Nothing signs in to it (decision 0059): each request is kept in `calls`,
-// so a test can count them.
+// No network: its `fetch` answers at Google's own addresses, so code reaches it as it reaches Google.
 import {
   type A1Range,
   type Bounds,
@@ -64,25 +28,17 @@ import {
 export const driveOrigin = "https://www.googleapis.com";
 export const sheetsOrigin = "https://sheets.googleapis.com";
 
-// What Drive calls a spreadsheet.
 export const spreadsheetType = "application/vnd.google-apps.spreadsheet";
 
 export type StandInOptions = {
-  // Answers `spreadsheets.get` with every tab even when `ranges` names
-  // some, the other way Google's reference leaves open, so a test can show
-  // a reader keeps only the tabs it asked for.
   everyTab?: boolean;
-  // A write's `modifiedTime`; without it, a write moves only the version.
   now?: () => string;
 };
 
-// A write's call keeps its body too.
 export type StandInCall = { method: string; url: string; body?: unknown };
 
-// Google's error bodies. Drive's keeps the older shape, with `errors`; the
-// Sheets API's has a `status`.
+// Drive's error body keeps the older shape, with `errors`; the Sheets API's has a `status`.
 // https://developers.google.com/workspace/drive/api/guides/handle-errors
-// https://cloud.google.com/apis/design/errors#http_mapping
 type DriveReason = { reason: string; domain?: string; location?: string; locationType?: string };
 const driveError = (code: number, message: string, why: DriveReason) =>
   Response.json(
@@ -191,13 +147,12 @@ const spreadsheetSchema: Schema = {
     basicFilter: {
       range: gridRange,
       filterSpecs: { columnIndex: true, filterCriteria: { hiddenValues: true } },
-      // A map from a column's index to its criteria.
       criteria: true,
     },
   },
 };
 
-// Drops what is zero, false or empty, as the Sheets API's JSON does.
+// Drops what is zero, false or empty, as the Sheets API's JSON does; Drive's keeps its `false`s.
 function lean<T extends Record<string, unknown>>(fields: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(fields).filter(
@@ -213,9 +168,6 @@ const typed = (value: FixtureValue) =>
       ? { numberValue: value }
       : { boolValue: value };
 
-// A cell as Google's CellData has it: what was entered, what it computes
-// to, what it shows, and its note.
-// https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/cells#CellData
 function cellData(cell: FixtureCell | undefined): Record<string, unknown> {
   if (cell === null || cell === undefined) return {};
   const held = valueOf(cell);
@@ -244,8 +196,6 @@ const rangeOf = (sheetId: number, box: Partial<Box>) =>
 
 const boxOf = (tab: FixtureTab, range: string) => within(parseBounds(range) ?? {}, gridOf(tab));
 
-// Rows a filter hides: those below its header whose cell in its column
-// shows a hidden value.
 function filtered(tab: FixtureTab): Set<number> {
   const hidden = new Set<number>();
   if (!tab.filter) return hidden;
@@ -256,10 +206,6 @@ function filtered(tab: FixtureTab): Set<number> {
   return hidden;
 }
 
-// One GridData: the box's rows, each up to its last cell that holds
-// anything, and no rows after the last that does; then every row's and
-// column's metadata, hidden or not.
-// https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/sheets#GridData
 function gridData(tab: FixtureTab, box: Box) {
   const byFilter = filtered(tab);
   const byUser = new Set((tab.hiddenRows ?? []).map((n) => n - 1));
@@ -291,10 +237,6 @@ function gridData(tab: FixtureTab, box: Box) {
   });
 }
 
-// A tab as Google's Sheet has it. With ranges, only what meets them: their
-// grid data, and the merges in them. "Limiting the range returns only the
-// portions of the spreadsheet that intersect the requested ranges."
-// https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/sheets#Sheet
 function sheetOf(
   spreadsheet: FixtureSpreadsheet,
   tab: FixtureTab,
@@ -344,9 +286,7 @@ const escapeHtml = (text: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("\n", "<br>");
 
-// A comment as Drive's Comment has it. Its author has a name only: "The
-// author's email address and permission ID will not be populated."
-// https://developers.google.com/workspace/drive/api/reference/rest/v3/comments
+// Drive gives a comment's author a name only, no email or permission ID.
 function commentOf(comment: FixtureComment, me: string) {
   const author = (name: string) => ({ kind: "drive#user", displayName: name, me: name === me });
   const replies = (comment.replies ?? []).map((r) => ({
@@ -498,7 +438,6 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
       if (unknown) return sheetsError(400, `Invalid field selection ${unknown}`);
       mask = parsed;
     }
-    // "This parameter is ignored if a field mask was set in the request."
     const sheetsMask = mask?.get("sheets");
     const data =
       mask === null
@@ -519,8 +458,8 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
         picked.set(tab, [...(picked.get(tab) ?? []), within(bounds, grid)]);
       }
     }
-    // With ranges, only the tabs they name. Google's page doesn't say so,
-    // and a live read should confirm it; `everyTab` answers the other way.
+    // With ranges, only the tabs they name: Google's page doesn't say so, and a live read should
+    // confirm it; `everyTab` answers the other way.
     const tabs =
       picked && !options.everyTab ? file.tabs.filter((tab) => picked.has(tab)) : file.tabs;
     const answer = {
@@ -559,11 +498,8 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
     return isDrive ? drive(url.pathname, url.searchParams) : sheets(url.pathname, url.searchParams);
   };
 
-  // What runs just before the next write lands, as a person's edit racing
-  // it would.
   let racing: (() => void) | null = null;
 
-  // A write, whole or not at all: on a copy, kept only if all of it worked.
   const written = (path: string, body: unknown): Response => {
     const match = /^\/v4\/spreadsheets\/([^/:]+)(\/values:batchUpdate|:batchUpdate)$/.exec(path);
     if (!match?.[1]) return sheetsError(404, "Requested entity was not found.");
@@ -591,8 +527,6 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
   return {
     fetch: fetchApi as typeof fetch,
     calls,
-    // The spreadsheet's next written version: its changes made, its Drive
-    // version moved. Null when it has none left.
     advance(id: string): string | null {
       const file = fileFor(id);
       const next = file.spreadsheet.later[file.next];
@@ -606,17 +540,12 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
       file.next++;
       return next.version;
     },
-    // Runs `race` just before the next write lands, as a person's edit
-    // between Oriel finding a row and writing to it would.
     beforeNextWrite(race: () => void) {
       racing = race;
     },
-    // The spreadsheet as it is now.
     spreadsheet(id: string): FixtureSpreadsheet {
       return fileFor(id).spreadsheet;
     },
-    // A change a test makes, as a person editing the sheet would: the
-    // version moves by one.
     change(id: string, change: FixtureChange, modifiedTime?: string): string {
       const { spreadsheet } = fileFor(id);
       const problem = applyChange(spreadsheet, change);
@@ -628,7 +557,6 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
   };
 }
 
-// `values.batchUpdate`: each range's values, stored as they are.
 function valuesUpdate(spreadsheet: FixtureSpreadsheet, body: unknown): object | string {
   const update = body as { valueInputOption?: unknown; data?: unknown };
   if (update?.valueInputOption !== "RAW")
@@ -663,7 +591,6 @@ function valuesUpdate(spreadsheet: FixtureSpreadsheet, body: unknown): object | 
   return { totalUpdatedCells: cells };
 }
 
-// The cell a `userEnteredValue` makes; a formula keeps no computed value.
 function enteredCell(value: unknown): FixtureCell | { invalid: string } {
   if (value === undefined) return null;
   const v = value as Record<string, unknown>;
@@ -678,7 +605,6 @@ function enteredCell(value: unknown): FixtureCell | { invalid: string } {
 
 type Dimension = { sheetId?: number; dimension?: string; startIndex?: number; endIndex?: number };
 
-// `spreadsheets.batchUpdate`: rows inserted, filled and deleted, in order.
 function batchUpdate(spreadsheet: FixtureSpreadsheet, body: unknown): object | string {
   const requests = (body as { requests?: unknown })?.requests;
   if (!Array.isArray(requests) || !requests.length) return "Invalid requests: expected some.";
@@ -721,8 +647,7 @@ function batchUpdate(spreadsheet: FixtureSpreadsheet, body: unknown): object | s
   return { replies: requests.map(() => ({})) };
 }
 
-// A range's tab: by name, as Google matches it, ignoring case; with no
-// name, the first.
+// Google matches a range's tab name ignoring case; with no name, it's the first tab.
 function tabNamed(spreadsheet: FixtureSpreadsheet, name: string | null): FixtureTab | undefined {
   if (name === null) return spreadsheet.tabs[0];
   return (

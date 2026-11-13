@@ -1,5 +1,3 @@
-// The command whole, as a person or a client runs it: what it writes to
-// stdout and stderr, and above all what it never writes.
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,7 +10,6 @@ import { standIn } from "./stand-in.ts";
 import { backlogId, smallFixture } from "./testing.ts";
 import { clientFile, configFolder, tokenFile } from "./token-file.ts";
 
-// Made-up values; none is a real client or token.
 const clientId = "123456789012-fakeclient0abcdef.apps.googleusercontent.com";
 const clientSecret = "GOCSPX-fake-client-secret";
 const code = "4/0Afake-authorization-code";
@@ -21,7 +18,6 @@ const refreshToken = "1//fake-refresh-token";
 const env = { GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: clientSecret };
 const never: After = () => () => {};
 
-// Everything a run wrote, by stream.
 function harness(over: Partial<CliIo> & { lines?: unknown[] } = {}) {
   const out: string[] = [];
   const err: string[] = [];
@@ -52,15 +48,12 @@ function harness(over: Partial<CliIo> & { lines?: unknown[] } = {}) {
   };
 }
 
-// What must never show, whole or as its client's project number.
 const secrets = [clientId, "123456789012", clientSecret, code, accessToken, refreshToken];
 function showsNoSecret(...texts: string[]) {
   for (const text of texts)
     for (const secret of secrets) assert.ok(!text.includes(secret), `shown: ${secret}`);
 }
 
-// A browser that consents at once and follows Google back to the redirect;
-// what it was sent to is kept, to find the state and the challenge in.
 function browser(granted: readonly string[] = scopes) {
   const opened: URL[] = [];
   const open = async (address: string) => {
@@ -75,7 +68,6 @@ function browser(granted: readonly string[] = scopes) {
   return { open, opened };
 }
 
-// Google: its token endpoint, and the APIs as the stand-in answers them.
 function google(granted: readonly string[] = scopes) {
   const api = standIn(smallFixture(), { token: accessToken });
   const forms: URLSearchParams[] = [];
@@ -109,7 +101,6 @@ test("login keeps the refresh token and the client, and shows no secret", async 
   assert.deepEqual(run1.client().read(), { id: clientId, secret: clientSecret });
   assert.deepEqual(run1.out, []);
   showsNoSecret(...run1.out, ...run1.err);
-  // Nor the sign-in's own state and verifier.
   const verifier = g.forms[0]?.get("code_verifier") ?? "";
   const state = authorize.searchParams.get("state") ?? "";
   assert.ok(verifier.length >= 43 && state.length >= 43);

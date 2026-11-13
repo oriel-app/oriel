@@ -1,20 +1,5 @@
-// A local folder of markdown files as a source (decision 0019): read-only, so
-// it has no op catalogue and no writer. `sync` walks the folder into index
-// records and reads each file's text, and `read` walks it again to find each
-// file by its key, then opens it with the checks in `nofollow.ts`.
-//
-// No cursor. A folder has no change feed, so the only way to see a deletion
-// is to walk all of it, and every sync does: the walk reads metadata only, the
-// texts after it at most 32 MB in all, and the caps bound both. So every sync is a full listing with a null cursor, and
-// the sync worker's full sweep marks whatever the index has and the listing
-// lacks as gone: a file deleted, renamed, turned into a link, given a second
-// hard link or pushed past a cap. The index skips records that haven't
-// changed, so listing them again costs no snapshot. A modification-time
-// watermark would miss a file moved in with an older time (`mv`, unzip and
-// sync tools keep times), and a stored copy of the last listing would be a
-// second record of the folder that could disagree with the index; the worker
-// sweeps only when the cursor is null, so a stored cursor it couldn't trust
-// would lose deletions for good.
+// No cursor: the worker sweeps for deletions only on a null cursor, and an mtime watermark
+// would miss a file moved in with an older time (`mv`, unzip and sync tools keep times).
 import { isAbsolute } from "node:path";
 import {
   isUlid,
@@ -34,14 +19,8 @@ export type FolderSource = Source<"folder", FolderAttrs, FolderContent>;
 export type FolderPrefix = "folder" | `folder.${number}`;
 
 export type FolderSourceOptions = {
-  // The connected folder's own ID: the ULID the workspace gave it when the
-  // user picked it. Every key hashes it, so another folder gets other IDs.
   folderId: Ulid;
-  // The folder's real path, from `resolveFolder` when the user picked it. A
-  // walk refuses the folder if this path ever leads through a link.
   path: FolderPath;
-  // Its connection's prefix, which its IDs carry: `folder`, or a later
-  // folder's `folder.2` (decision 0049). `folder` when absent.
   prefix?: FolderPrefix;
   log: Log;
 };
@@ -56,13 +35,9 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
     kind: "folder",
     prefix,
 
-    // Every file, in one page: the caps keep a whole walk small enough for
-    // one. Any cursor is ignored, and none is kept.
     async *sync() {
       const scope = await walk(path, folderId);
-      // A folder that is missing (an unmounted drive, a renamed parent),
-      // unreadable or now behind a link throws, so the sync worker marks
-      // nothing gone.
+      // Throwing rather than yielding an empty page keeps the sync worker from marking all gone.
       if (scope === "missing")
         throw new Error("folder: the folder is missing or isn't a directory");
       if (scope === "forbidden")
@@ -74,9 +49,6 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
         });
       const skipped = Object.entries(scope.skipped).filter(([, count]) => count > 0);
       if (skipped.length) log("folder: skipped files", Object.fromEntries(skipped));
-      // Each file's text, for search and the references it makes: a file too
-      // large to read has none, and one that changed or went since the walk
-      // keeps what the index had.
       const texts: Record<string, string> = {};
       for (const file of scope.files) {
         if (file.tooLarge) continue;
@@ -91,16 +63,7 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
       };
     },
 
-    // Each ID is looked up in a fresh walk and opened. A file that changed
-    // between the walk and the open gets one more walk; one that changes again
-    // reads as forbidden. A folder that is missing reads every ID as deleted,
-    // and one that can't be read, or is now behind a link, as forbidden.
-    //
-    // Cost: every call walks the folder, opening each file once to check it,
-    // so a script that reads items one at a time walks once per item. Near
-    // the caps that is up to 10,000 metadata reads and 1,000 opens a call.
-    // Keeping the last walk between calls would fix it, but that is a cache,
-    // which SPEC §14 defers until one has a user.
+    // Every call walks the whole folder, so reading items one at a time walks once per item.
     async read(ids) {
       const results = new Map<string, ReadResult<"folder", FolderContent>>();
       let pending = [...new Set(ids)];
@@ -117,7 +80,6 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
           const parsed = parseItemId(id);
           const key = parsed?.prefix === prefix ? parsed.key : "";
           const entry = byKey.get(key);
-          // A file the walk found but couldn't read is forbidden, not deleted.
           const missing = scope.forbidden.has(key) ? "forbidden" : "vanished";
           const opened = entry ? await openEntry(entry) : ({ status: missing } as const);
           if (opened.status === "ok")
@@ -139,7 +101,6 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
   };
 }
 
-// A file as the index keeps it.
 export function recordOf(file: FileEntry, prefix: FolderPrefix = "folder"): FolderRecord {
   return {
     id: itemId(prefix, file.key) as FolderRecord["id"],

@@ -40,7 +40,6 @@ test("a message's arguments are checked: text a person can review, IDs of the ri
   assert.equal(spec("deleteReply").args({ ts: "../x" }).ok, false);
 });
 
-// The region's IDs, as a namespace's host sees them.
 const host = (ids: readonly string[]): NamespaceHost => ({
   has: (id): id is ItemId => ids.includes(id),
   created: new Map(),
@@ -69,9 +68,7 @@ test("the namespace posts as the context's person, beside the region's conversat
   const other = `slack:${weather}-1788444000.000100`;
   assert.throws(() => post.build([other, "Hi"], region));
   assert.throws(() => reply.build(["jira:SYN-47", "Hi"], region));
-  // One reply a conversation in a run: a second would read as an edit.
   assert.throws(() => reply.build([conversation, "And more."], region));
-  // A channel the server no longer reads.
   const elsewhere = writes({ channels: ["C0FW2RANDOM"], author: "U0FWAMARA1" });
   assert.throws(() =>
     (elsewhere.get("reply") as NamespaceWrite).build([conversation, "Hi"], region),

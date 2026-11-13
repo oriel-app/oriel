@@ -1,23 +1,7 @@
-// A mapped tab's rows as items (decision 0050), from its grid as Google
-// gave it: pure, so every edge of a sheet is tested here without a request.
-//
-// - Columns are found by their headers, so inserting or moving one changes
-//   nothing. A mapped column missing from the header row, or in it twice,
-//   stops the tab: the sync keeps what the index had and names the column.
-// - The table runs from the row under the header to its first blank row, or
-//   to the grid's end, by the mapping.
-// - A value merged down several rows is that value on each of them; one
-//   merged across columns belongs to the leftmost.
-// - Rows hidden by hand are skipped unless the mapping reads them; rows a
-//   filter hides are read. A hidden column is read only when mapped.
-// - A row's key is its key cell as shown, trimmed. Two rows with one key, or
-//   a row with none, aren't items until fixed, and are listed by row number.
 import type { State } from "@oriel/core";
 import { columnLetters } from "./a1.ts";
 import { type FieldName, mappedColumns, type TabMapping } from "./mapping.ts";
 
-// A cell as the sheet shows it, the number Google computed for it if any,
-// and its note. A writer's reads add what was entered (`Entered`).
 export type Cell = {
   shown: string;
   number: number | null;
@@ -25,21 +9,13 @@ export type Cell = {
   entered?: Entered;
 };
 
-// What a person entered in a cell, as Google's `userEnteredValue` has it:
-// text, a number or a boolean, or a formula, which is never text. Null for
-// an empty cell.
 export type Entered = string | number | boolean | { formula: string } | null;
 
-// A tab's grid from its header row down, as far as it was read.
 export type Grid = {
-  // The 0-based index of the first row in `rows`.
   startRow: number;
-  // Rows by their index from `startRow`; a missing cell is empty.
   rows: readonly (readonly (Cell | null)[])[];
-  // Row indices hidden by hand, and column indices hidden by hand.
   hiddenRows: ReadonlySet<number>;
   hiddenColumns: ReadonlySet<number>;
-  // Merged ranges, 0-based, ends exclusive.
   merges: readonly { startRow: number; endRow: number; startColumn: number; endColumn: number }[];
 };
 
@@ -50,35 +26,25 @@ export type RowFields = {
   assignee?: string | null;
   estimate?: number | null;
   link?: string | null;
-  // The key the parent column names, before it is found among the rows.
   parent?: string | null;
 };
 
 export type TableRow = {
-  // Its number as the sheet shows it now, which a sort changes.
   number: number;
   key: string;
   fields: RowFields;
-  // Every column read, in column order: its header and what the cell shows,
-  // with its note.
   cells: { header: string; value: string; note: string | null }[];
 };
 
 export type Table =
   | {
       rows: TableRow[];
-      // Each mapped field's column, 0-based.
       columns: Partial<Record<FieldName, number>>;
-      // The 0-based index of the table's last row, hidden, keyless and
-      // duplicate rows included; the header's when it has none. A new row
-      // goes after it.
+      // Hidden, keyless and duplicate rows included, since a new row goes after it.
       last: number;
-      // Row numbers of rows sharing a key, and of rows with none.
       duplicates: number[];
       keyless: number[];
-      // Rows hidden by hand that weren't read.
       hidden: number;
-      // Whether rows past the cap weren't read.
       capped: boolean;
     }
   | { stopped: string };
@@ -86,11 +52,8 @@ export type Table =
 const empty = (cell: Cell | null | undefined) => !cell || (cell.shown === "" && cell.note === null);
 const clean = (text: string) => text.normalize("NFC").trim();
 
-// What a column is called in a row's content: its header, or its letter when
-// it has none.
 const label = (header: string, column: number) => header || `Column ${columnLetters(column)}`;
 
-// `most` caps how many of the table's rows are read.
 export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table {
   const headerAt = mapping.header - 1 - grid.startRow;
   const headerRow = grid.rows[headerAt] ?? [];
@@ -112,7 +75,6 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
     !grid.hiddenColumns.has(c) || mapped.has(c) ? [{ column: c, header: label(h, c) }] : [],
   );
 
-  // Each row's cells with merged values filled down their leftmost column.
   const filled = grid.rows.map((row) => [...row]);
   for (const merge of grid.merges) {
     const top = filled[merge.startRow - grid.startRow]?.[merge.startColumn];
@@ -191,8 +153,6 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
   };
 }
 
-// The state a status means, by the mapping's values, ignoring case; null for
-// a status that means none.
 function stateOf(status: string, mapping: TabMapping): State | null {
   const states = mapping.states;
   if (!states) return null;
@@ -203,7 +163,6 @@ function stateOf(status: string, mapping: TabMapping): State | null {
   return found ?? null;
 }
 
-// A number Google computed, or text that reads as one; null otherwise.
 function estimateOf(cell: Cell | null | undefined): number | null {
   if (!cell) return null;
   if (cell.number !== null && Number.isFinite(cell.number)) return cell.number;
@@ -212,7 +171,6 @@ function estimateOf(cell: Cell | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-// An http(s) link, or null.
 function linkOf(text: string): string | null {
   const url = URL.parse(text);
   return url && (url.protocol === "https:" || url.protocol === "http:") ? url.href : null;

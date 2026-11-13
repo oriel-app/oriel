@@ -1,7 +1,3 @@
-// A fake of packages/sheets-mcp's tools over one spreadsheet held in memory,
-// for tests of the parser and the writer through it (OA-279): its answers
-// in the shapes the server gives, as `fixtures/sheets-mcp/` records them.
-// Every call is kept, so a test can say which were made.
 import type { ToolAnswer, ToolCall, ToolCaller } from "@oriel/core";
 import { columnIndex, columnLetters, parseRange, quoteTab } from "./a1.ts";
 import { type FixtureCell, shown, valueOf } from "./fixture.ts";
@@ -10,14 +6,8 @@ import type { StandIn } from "./stand-in.ts";
 export const fakeId = "1FakeSheetsMcpBacklog00";
 
 export type FakeServer = {
-  // The tab's rows as text, as the sheet shows them; a cell's formula, by
-  // `<row>,<column>` 0-based, shows here as its result.
   rows: string[][];
-  // Each cell as entered, where it isn't its text: a formula, or a number.
   formulas: Map<string, string | number | boolean>;
-  // Each cell's note, by `<row>,<column>` 0-based; the rows and columns
-  // hidden by hand, 0-based; and the comments, as `list_comments` gives
-  // them.
   notes: Map<string, string>;
   hiddenRows: Set<number>;
   hiddenColumns: Set<number>;
@@ -133,8 +123,7 @@ export function fakeServer(rows: string[][], title = "Backlog"): FakeServer {
         });
       }
       if (tool === "append_rows") {
-        // After the table that starts at the range's first row, within it,
-        // as Google's append finds it.
+        // After the table that starts at the range's first row, as Google's append finds it.
         const end = range.bounds.endRow ?? Infinity;
         let at = range.bounds.startRow ?? 0;
         while (at < end && server.rows[at]?.some((cell) => cell !== "")) at += 1;
@@ -153,7 +142,6 @@ export function fakeServer(rows: string[][], title = "Backlog"): FakeServer {
   return server;
 }
 
-// The Backlog tab, as a person maps it.
 export const fakePicks = {
   spreadsheets: [
     {
@@ -182,12 +170,6 @@ export const fakeRows = (): string[][] => [
   ["BL-3", "=Not a formula, as text", "In progress", "", "5"],
 ];
 
-// packages/sheets-mcp's read tools over the Sheets fixture's stand-in for
-// Google, for the spreadsheets `ids` names, as the server answers them for
-// its account: for tests of a connection through it to the fixture's
-// spreadsheets, where a test changes them as a person would (OA-280).
-// Nothing here signs in: the server's sign-in is its own. Every call is
-// kept.
 export function fixtureServer(
   standIn: StandIn,
   ids: readonly string[],
@@ -274,7 +256,6 @@ export function fixtureServer(
             author: each.author,
             createdTime: each.createdTime,
             content: each.content,
-            // Resolved by its last reply that resolved or reopened it.
             resolved: (each.replies ?? []).reduce(
               (was, reply) =>
                 reply.action === "resolve" ? true : reply.action === "reopen" ? false : was,

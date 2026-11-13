@@ -1,14 +1,4 @@
-// The Sheets fixture's shape (decision 0050, SPEC §8): spreadsheets written
-// down, as Google keeps them, for unit tests, evals and the seed script. Each
-// has its tabs, cells, notes, merges, hidden rows and columns, filter and
-// comments, its Drive version, and the versions after it, each a list of
-// changes. All names and content are made up.
-//
-// A cell is what a person entered: text, a number or a boolean, or an object
-// for a formula (with the value Google computed), a note, or a number shown
-// another way (a date is a number shown as one). Text starting with `=` is
-// text; only `formula` is a formula. Rows and columns are as the sheet shows
-// them: row 1 is the first, column A the first.
+// Text starting with `=` is text; only `formula` is a formula.
 import { readFileSync } from "node:fs";
 import {
   array,
@@ -35,7 +25,6 @@ export type FixtureCell =
       formula?: string;
       formatted?: string;
       note?: string;
-      // A value an array formula elsewhere put here: nobody entered it.
       spilled?: true;
     };
 
@@ -43,18 +32,12 @@ export type FixtureTab = {
   // Google's `sheetId`, which survives a rename.
   sheetId: number;
   title: string;
-  // The grid's size, when it is bigger than its rows; a new tab's is 1000
-  // rows by 26 columns.
   grid?: { rows: number; columns: number };
   frozenRows?: number;
   rows: FixtureCell[][];
-  // Ranges such as `B2:B5`. Only a merge's first cell holds anything.
   merges?: string[];
-  // Row numbers and column letters hidden by hand.
   hiddenRows?: number[];
   hiddenColumns?: string[];
-  // A filter over `range`, its first row the header, hiding the rows whose
-  // cell in `column` shows one of `hiddenValues`.
   filter?: { range: string; column: string; hiddenValues: string[] };
 };
 
@@ -63,57 +46,43 @@ export type FixtureReply = {
   author: string;
   content: string;
   createdTime: string;
-  // A reply can resolve its comment, or reopen it.
   action?: "resolve" | "reopen";
 };
 
 export type FixtureComment = {
   id: string;
-  // A display name; the account's own is `user.displayName`.
   author: string;
   content: string;
   createdTime: string;
   // A deleted comment keeps no content.
   deleted?: boolean;
-  // The text the comment was made on.
   quoted?: string;
-  // Where the comment points: opaque, as Google keeps it.
   anchor?: string;
   replies?: FixtureReply[];
 };
 
 export type FixtureChange =
   | { kind: "set"; sheetId: number; cell: string; value: FixtureCell }
-  // Rows of `range` sorted by `column`, A to Z, as a person sorts a range.
   | { kind: "sort"; sheetId: number; range: string; column: string }
   | { kind: "rename"; sheetId: number; title: string }
-  // An empty row inserted as row `row`, or row `row` deleted, as Google's
-  // `insertDimension` and `deleteDimension` do: the rows below move, and
-  // merges, hidden rows and the filter move with them.
   | { kind: "insert"; sheetId: number; row: number }
   | { kind: "delete"; sheetId: number; row: number };
 
 export type FixtureVersion = { version: string; modifiedTime: string; changes: FixtureChange[] };
 
 export type FixtureSpreadsheet = {
-  // What the seed script marks it with, to find it again.
   slug: string;
-  // Its Drive file ID.
   id: string;
   title: string;
-  // Drive's `version` and `modifiedTime` as the fixture starts.
   version: string;
   modifiedTime: string;
-  // False for a spreadsheet the account can only view.
   canEdit: boolean;
   tabs: FixtureTab[];
   comments: FixtureComment[];
-  // Later versions, oldest first.
   later: FixtureVersion[];
 };
 
 export type SheetsFixture = {
-  // The signed-in account, as Drive's `about.user` has it.
   user: { displayName: string; emailAddress: string; permissionId: string };
   spreadsheets: FixtureSpreadsheet[];
 };
@@ -209,14 +178,11 @@ export function gridOf(tab: FixtureTab): { rows: number; columns: number } {
   );
 }
 
-// What the cell holds, when it holds a value: a formula's is what Google
-// computed.
 export function valueOf(cell: FixtureCell | undefined): FixtureValue | null {
   if (cell === null || cell === undefined) return null;
   return typeof cell === "object" ? (cell.value ?? null) : cell;
 }
 
-// The cell as the sheet shows it.
 export function shown(cell: FixtureCell | undefined): string {
   const held = valueOf(cell);
   if (typeof cell === "object" && cell?.formatted !== undefined) return cell.formatted;
@@ -230,7 +196,6 @@ const isEmpty = (cell: FixtureCell | undefined) =>
   cell === undefined ||
   (typeof cell === "object" && Object.keys(cell).length === 0);
 
-// A range's bounds closed to the grid.
 export function within(bounds: Bounds, grid: { rows: number; columns: number }) {
   return {
     startRow: bounds.startRow ?? 0,
@@ -261,8 +226,6 @@ function compare(a: FixtureValue | null, b: FixtureValue | null): number {
   return Number(a) - Number(b);
 }
 
-// Makes one change to a spreadsheet, as a person would in Google's editor.
-// Returns why it can't be made, changing nothing.
 export function applyChange(spreadsheet: FixtureSpreadsheet, change: FixtureChange): string | null {
   const tab = spreadsheet.tabs.find((t) => t.sheetId === change.sheetId);
   if (!tab) return `no tab ${change.sheetId}`;
@@ -312,7 +275,6 @@ export function applyChange(spreadsheet: FixtureSpreadsheet, change: FixtureChan
       }
       while (tab.rows.length && (tab.rows.at(-1) ?? []).length === 0) tab.rows.pop();
       tab.grid = { rows: grid.rows + by, columns: grid.columns };
-      // A row at or below it moves; a range across it grows or shrinks.
       const moved = (row: number) => (row > at || (inserting && row === at) ? row + by : row);
       const shift = (range: string): string | null => {
         const box = parseBounds(range);
@@ -325,7 +287,6 @@ export function applyChange(spreadsheet: FixtureSpreadsheet, change: FixtureChan
       tab.merges = (tab.merges ?? []).flatMap((range) => {
         const next = shift(range);
         const box = next === null ? null : parseBounds(next);
-        // A merge left one cell isn't one.
         return next === null ||
           (box?.endRow ?? 0) -
             (box?.startRow ?? 0) +
@@ -381,7 +342,6 @@ export function applyChange(spreadsheet: FixtureSpreadsheet, change: FixtureChan
   }
 }
 
-// A range's text from bounds that have both ends.
 const rangeText = (box: Bounds) =>
   `${columnLetters(box.startColumn ?? 0)}${(box.startRow ?? 0) + 1}:${box.endColumn === undefined ? "" : columnLetters(box.endColumn - 1)}${box.endRow ?? ""}`;
 
@@ -394,9 +354,6 @@ const trimRow = (row: FixtureCell[]) => {
 // Google's editor takes tab names of up to 100 characters.
 const titleFits = (title: string) => title.trim() !== "" && [...title].length <= 100;
 
-// The shape, then what Google itself guarantees: IDs and tab names unique, a
-// merge's other cells empty, everything inside its grid, and each later
-// version newer and made of changes Google's editor could make.
 export function parseSheetsFixture(input: unknown): Result<SheetsFixture> {
   const shaped = fixtureShape(input);
   if (!shaped.ok) return shaped;
@@ -516,7 +473,6 @@ function tabProblems(tab: FixtureTab): string[] {
     const box = bounds && within(bounds, grid);
     if (!box || column === null || column < box.startColumn || column >= box.endColumn)
       problems.push("the filter's column isn't in its range");
-    // "You can't create a filter over a range containing vertical merges."
     else if (boxes.some((merge) => merge.endRow - merge.startRow > 1 && meets(merge, box)))
       problems.push("a filter can't cover a vertical merge");
   }
@@ -529,7 +485,6 @@ export const sheetsFixtureDir = new URL("../../../fixtures/sheets/", import.meta
 
 type Account = { user: SheetsFixture["user"]; spreadsheets: string[] };
 
-// The fixture, from account.json and the spreadsheets it names.
 export function loadSheetsFixture(dir: URL = sheetsFixtureDir): SheetsFixture {
   const read = (name: string): unknown =>
     JSON.parse(readFileSync(new URL(`${name}.json`, dir), "utf8"));

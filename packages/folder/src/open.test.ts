@@ -1,5 +1,3 @@
-// Races between the walk and the open, made deterministic: each test walks,
-// then changes the folder, then opens what the walk saw.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
@@ -64,8 +62,6 @@ test("a directory swapped for a link out of the folder is refused, even if the w
   const sub = join(folder.root, "sub");
   renameSync(sub, join(folder.root, "sub-old"));
   symlinkSync(join(folder.outside, "sub"), sub);
-  // As if the swap happened mid-walk: the walk saw the outside file's identity
-  // at the inside path. The device and inode match; the path check must not.
   const outside = lstatSync(outsideFile, { bigint: true });
   const fooled = { ...entry, dev: outside.dev, ino: outside.ino };
   const opened = await openEntry(fooled);

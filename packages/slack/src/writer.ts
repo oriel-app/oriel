@@ -1,20 +1,5 @@
-// The Slack writer (OA-28). Only packages/changeset imports this subpath
-// (checked by scripts/check-repo.ts), and `apply` takes only a request a
-// person approved: its type comes from `SourceWriter`, so nothing here can
-// mint one.
-//
-// It posts as the person whose token it holds, and only in the channels the
-// server reads: a message's `author` must be that person, and a channel any
-// other is refused before anything is sent. A message it posted is undone by
-// deleting it, and only while it is still that person's.
-//
-// Values are keyed by core's field names (`FieldValues`), for the
-// conversation an item is: "summary" (Oriel's title for it, as the index
-// has it), "description" (the message as plain text), "replies" (how many),
-// "reply:<ts>" (one reply as plain text, or null when there is no such
-// reply) and "updated" (the latest of its message, its replies and their
-// edits, so a reply or an edit since moves it). A post has no before values
-// and a deleted message no after values.
+// Only packages/changeset imports this subpath (checked by scripts/check-repo.ts), and `apply`
+// takes only an approved request, whose type nothing here can mint.
 import {
   type FieldValues,
   type ItemId,
@@ -56,27 +41,20 @@ export const writeMethods = ["chat.postMessage", "chat.delete"] as const;
 export type WriteMethod = (typeof writeMethods)[number];
 export type WriterApi = SlackApi<(typeof readMethods)[number] | WriteMethod>;
 
-// A fixture's in-memory workspace with the two methods a write sends,
-// beside the reads it makes before and after. Only this entry hands one
-// out.
 export function writeApi(send: typeof fetch): WriterApi {
   return memoryApi(send, [...readMethods, ...writeMethods], "the writer");
 }
 
 export type SlackWriterOptions = {
   api: WriterApi;
-  // The channels the server reads, by ID: the only ones it writes to.
   channels: readonly string[];
   log: Log;
-  // Through a source server: a conversation it can't place a message of
-  // stops the write, as it stops a sync.
   whole?: true;
 };
 
 const auth = object({ user_id: string });
 const answered = object({ ts: string });
 
-// Slack's codes for a write it made no change for, in a person's words.
 const refusals: Record<string, string> = {
   missing_scope: "Oriel's Slack token can't post: it needs the chat:write scope",
   not_in_channel: "the person Oriel posts as isn't in that channel",
@@ -94,7 +72,6 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
   const { api, log } = options;
   const allowed = new Set(options.channels);
 
-  // Who the token is for, asked once it answers.
   let me: Promise<string> | null = null;
   const self = (): Promise<string> => {
     me ??= api("auth.test", {}).then((body) => {
@@ -108,8 +85,6 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     return me;
   };
 
-  // Read as the source reads them, so a diff names a conversation as the
-  // window does.
   const reads = slackReads(api, log, options.whole);
 
   const where = (id: ItemId<"slack">) => {
@@ -119,8 +94,6 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     return parts;
   };
 
-  // A message and its replies, oldest first, or "gone": deleted, or in a
-  // channel the server doesn't read.
   const conversation = async (
     channel: string,
     ts: string,
@@ -137,9 +110,8 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     return { root, replies: thread.filter((m) => m.ts !== ts && posted.has(m.subtype)) };
   };
 
-  // The conversation's current values for `names`, or "gone". Its update
-  // time is the latest of its message, its replies and their edits, so any
-  // of them since moves it.
+  // The update time is the latest of its message, its replies and their edits, so any of them
+  // since moves it.
   const values = async (
     id: ItemId<"slack">,
     names: readonly string[],
@@ -172,8 +144,6 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     return { thread, values: Object.fromEntries(entries) };
   };
 
-  // The conversation a write targets, as it is now, so long as its handle
-  // still names the item with the stable ID expected of it.
   const existing = async (target: Target, names: readonly string[]) => {
     if (target === null) throw new Error("this operation needs a conversation");
     if (parseItemId(target.id)?.key !== target.stableId)
@@ -192,9 +162,8 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     };
   };
 
-  // Once Slack has taken a write, the change set must hear about it, so a
-  // failed read afterwards leaves `after` empty instead of throwing. Revert's
-  // conflict check then has nothing to match, and stops.
+  // Once Slack has taken a write the change set must hear of it, so a failed read afterwards
+  // leaves `after` empty; Revert's conflict check then has nothing to match, and stops.
   const afterwards = async (id: ItemId<"slack">, names: readonly string[]) => {
     try {
       const found = await values(id, [...names, "updated"]);
@@ -301,20 +270,16 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
 
   return {
     kind: "slack",
-    // A target must come with the stable ID it is expected to have, and a
-    // post with none. A failure before the write went out sent nothing.
     apply: ({ op, target, expectedStableId, args }) =>
       noteSent(async (sent) => {
-        // The one request that writes. Slack refusing it made no change, and
-        // the API throws what stops it going out, such as the time left,
-        // as sending nothing.
+        // Slack refusing it made no change, and what stops it going out, such as the time left, is
+        // thrown as sending nothing.
         const send: Send = async (method, params) => {
           sent();
           let body: unknown;
           try {
             body = await api(method, params);
           } catch (error) {
-            // Never sent, or turned away unprocessed: none of it landed.
             if (error instanceof WriteStalled)
               throw new SourceRefused(error.message, { sent: false, cause: error });
             if (error instanceof SlackError)
@@ -353,7 +318,6 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
       const key = parseItemId(id)?.key ?? "";
       return found === "gone" ? "gone" : { stableId: key, values: found.values };
     },
-    // A person by their user ID, or a channel the server reads by its ID.
     name: async (id) => {
       if (/^[UW][A-Z0-9]+$/.test(id)) return reads.personName(id);
       if (!allowed.has(id)) return null;
@@ -368,7 +332,6 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
 }
 
 type Target = { id: ItemId<"slack">; stableId: string } | null;
-// Sends the one write request; resolves to the `ts` Slack gave a post.
 type Send = (method: WriteMethod, params: Record<string, string>) => Promise<string>;
 
 function valid<O extends SlackOp>(op: O, args: unknown): SlackArgs<O> {
@@ -378,15 +341,9 @@ function valid<O extends SlackOp>(op: O, args: unknown): SlackArgs<O> {
   throw new Error(`${op}: bad arguments (${at})`);
 }
 
-// A Slack connection's writer, from what its open gave it: the line
-// packages/changeset/src/writers.ts has for Slack (decision 0049). Through a
-// source server, its post is the server's write tool, its reads its read
-// tools (decision 0059).
 export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slack"> {
   const { through, memory } = writes;
   if (through) {
-    // Each write, and each look at what it would change, lists the
-    // channels' names again, so a renamed one shows by its new name.
     const api = slackServerApi(through);
     const writer = slackWriter({ api, channels: writes.channels, log, whole: true });
     const fresh =

@@ -1,4 +1,3 @@
-// The in-memory Web API transport, against a fetch that answers from memory.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { memoryApi, type ReadMethod, readMethods } from "./api.ts";

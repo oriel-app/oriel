@@ -1,18 +1,12 @@
-// Reading one file the walk found: opened with the checks in `nofollow.ts`
-// against the device and inode the walk saw, then read up to the per-file cap
-// and decoded as UTF-8. Its title is the name the walk found.
 import type { FileHandle } from "node:fs/promises";
 import type { FolderContent } from "./attrs.ts";
 import { openChecked, type Refused } from "./nofollow.ts";
 import { type FileEntry, maxFileBytes } from "./walk.ts";
 
-// What a file holds, before its title is added.
 export type FileText = Omit<FolderContent, "title">;
 
 export type Opened = { status: "ok"; content: FolderContent } | Refused;
 
-// Reads the file the walk saw at `entry`. A file that is missing, swapped or
-// unreadable is a status, never a throw.
 export async function openEntry(entry: FileEntry): Promise<Opened> {
   const checked = await openChecked(entry.path, entry);
   if (checked.status !== "open") return checked;
@@ -43,8 +37,6 @@ async function readUpTo(handle: FileHandle, limit: number): Promise<Uint8Array> 
   return buffer.subarray(0, filled);
 }
 
-// The note a file too large to read gets as its text: Oriel's words and
-// numbers only.
 export function tooLarge(size: bigint): FileText {
   const note = `This file is ${size} bytes, over the ${maxFileBytes}-byte limit for reading one file, so its text isn't read.`;
   return { text: note, note };
@@ -53,8 +45,6 @@ export function tooLarge(size: bigint): FileText {
 export const replacedNote =
   "Some of this file's bytes aren't valid UTF-8. Each invalid sequence reads as U+FFFD (�).";
 
-// The file's text as UTF-8, decoded strictly. If that fails, invalid bytes are
-// replaced and the content says so. A leading byte order mark is dropped.
 export function decode(bytes: Uint8Array): FileText {
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), note: null };

@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// The `sheets-mcp` command, with this machine's own environment, streams,
-// clock and browser.
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { run } from "./cli.ts";

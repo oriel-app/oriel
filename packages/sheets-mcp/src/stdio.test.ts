@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { codes, type McpServer } from "./server.ts";
 import { lineMost, serveStdio } from "./stdio.ts";
 
-// A server that answers each request with its own params, after `wait`.
 function echo(wait: (id: unknown) => Promise<void> = async () => {}): McpServer {
   return {
     handle: async (message) => {
@@ -35,8 +34,6 @@ test("a line longer than the most is dropped whole, once, and what follows is re
     "tail\n",
     line(6),
   ]);
-  // One invalid-request error, with no ID to answer (the line had none it
-  // could read), then the next request answered.
   const [dropped, next, ...more] = answers as {
     jsonrpc: string;
     id: unknown;

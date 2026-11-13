@@ -52,7 +52,6 @@ test("the client is kept beside the token, 0600, with no secret when it has none
     id: "123456789012-fake.apps.googleusercontent.com",
     secret: "GOCSPX-fake",
   });
-  // One this didn't write is none.
   writeFileSync(client.path, JSON.stringify({ client_id: 7 }));
   assert.equal(client.read(), null);
   assert.equal(client.remove(), true);

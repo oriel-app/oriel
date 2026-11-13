@@ -1,6 +1,3 @@
-// The Ferrowick workspace as Slack's declared fixture (decision 0049):
-// `fixtures/slack/`, read by the real Slack source through the fixture's Web
-// API, in the channel the user picked there.
 import {
   type ItemId,
   itemId,
@@ -19,15 +16,11 @@ import { slackSource } from "./source.ts";
 
 export const slackDeclaredFixture: SourceFixture<SlackContext, SlackScope, SlackWrites> = {
   load: () => loaded(loadSlackFixture()),
-  // Recorded window cases had it on through its own connection.
   windowCase: true,
-  // The channel the user picked there.
   connection: () => {
     const fixture = loadSlackFixture();
     return { identity: fixture.team.url, options: { channels: fixture.picked } };
   },
-  // Opened through the fixture's Web API in memory, where change sets post,
-  // with no token. A test may give its own, to act in it as others do.
   open: (connection, via) =>
     openMemory(
       connection,
@@ -35,7 +28,6 @@ export const slackDeclaredFixture: SourceFixture<SlackContext, SlackScope, Slack
       via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
     ),
   memory: (connection, via) => openMemory(connection, via, via.fetch),
-  // Its public channels, for the agent to draft which it reads (decision 0051).
   preview: (_connection, via) =>
     slackPreview(
       memoryApi(
@@ -46,8 +38,6 @@ export const slackDeclaredFixture: SourceFixture<SlackContext, SlackScope, Slack
     ),
 };
 
-// What people posted in the fixture's picked channels: not replies, joins or
-// the placeholder a deleted message leaves.
 const posts = new Set([undefined, "bot_message", "file_share", "me_message"]);
 
 function loaded(fixture: SlackFixture): LoadedFixture<SlackContext> {
@@ -68,12 +58,10 @@ function loaded(fixture: SlackFixture): LoadedFixture<SlackContext> {
     edits: 0,
     firstEdit: null,
     regions: [],
-    // A message by its key, its channel and its `ts`.
     item: (key) =>
       posted.has(key)
         ? { id: itemId("slack", key) }
         : { problem: "not a message in the Slack fixture's picked channel" },
-    // By its author, a person or the app that posted as itself.
     called: (id) => {
       const message = messageOf(id);
       const person = fixture.users.find((user) => user.id === message?.user);
@@ -95,7 +83,6 @@ function loaded(fixture: SlackFixture): LoadedFixture<SlackContext> {
         log: () => {},
       });
       const { records, texts } = await listed(source.sync(null));
-      // It posts as the fixture's first person, in its picked channels.
       const author = fixture.users[0]?.id;
       if (!author) throw new Error("the Slack fixture has no people");
       return {

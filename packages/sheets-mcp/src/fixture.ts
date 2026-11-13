@@ -1,22 +1,16 @@
-// A set of spreadsheets held in memory, for `--fixture <file.json>` and for
-// tests: each with its tabs, and each tab's cells as rows of strings, the
-// first row first, with its notes and the rows and columns hidden by hand;
-// and its comments. A tab's grid is at least 1,000 rows by 26 columns, as a
-// new tab in Google's editor is, and grows to fit its rows.
+// A tab's grid is at least 1,000 rows by 26 columns, as a new tab in Google's editor is.
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { columnIndex, parseCell } from "./a1.ts";
 
 export type FixtureTab = {
   sheetId: number;
   title: string;
-  // Rows frozen at the top, such as a header row.
   frozenRows?: number;
   rowCount?: number;
   columnCount?: number;
   rows: string[][];
-  // Each note by its cell, such as `C3`.
   notes?: Record<string, string>;
-  // Row numbers and column letters hidden by hand.
+  // Row numbers as the sheet shows them, from 1, unlike the zero-based bounds.
   hiddenRows?: number[];
   hiddenColumns?: string[];
 };
@@ -24,14 +18,12 @@ export type FixtureTab = {
 export type FixtureReply = {
   author: string;
   content: string;
-  // RFC 3339.
   createdTime: string;
   deleted?: boolean;
 };
 
 export type FixtureComment = FixtureReply & {
   resolved?: boolean;
-  // The text the comment was made on.
   quoted?: string;
   replies?: FixtureReply[];
 };
@@ -39,9 +31,7 @@ export type FixtureComment = FixtureReply & {
 export type FixtureSpreadsheet = {
   id: string;
   name: string;
-  // RFC 3339, as Drive writes it.
   modifiedTime: string;
-  // False for a spreadsheet the account can only view.
   canEdit?: boolean;
   tabs: FixtureTab[];
   comments?: FixtureComment[];
@@ -54,7 +44,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const isCount = (value: unknown) => Number.isInteger(value) && (value as number) >= 0;
 const isTime = (value: unknown) => typeof value === "string" && !Number.isNaN(Date.parse(value));
 
-// What's wrong with a comment or a reply, or null when nothing is.
 function saidProblem(value: unknown, at: string): string | null {
   if (!isObject(value)) return `${at} isn't an object`;
   if (typeof value.author !== "string") return `${at}.author isn't text`;
@@ -68,7 +57,6 @@ function saidProblem(value: unknown, at: string): string | null {
   return null;
 }
 
-// What's wrong with a fixture, or null when nothing is.
 export function fixtureProblem(value: unknown): string | null {
   if (!isObject(value) || !Array.isArray(value.spreadsheets))
     return "a fixture is an object with a `spreadsheets` list";
@@ -150,10 +138,9 @@ export function loadFixture(path: string): Fixture {
   return value as Fixture;
 }
 
-// Writes a fixture whole beside it, then moves it over it, so a process
-// reading it never sees half of one.
 export function saveFixture(path: string, fixture: Fixture): void {
   const temporary = `${path}.${process.pid}.tmp`;
+  // Written whole beside it, then moved over it, so a reader never sees half a file;
   // `wx` never follows a link left at the temporary name.
   rmSync(temporary, { force: true });
   writeFileSync(temporary, `${JSON.stringify(fixture, null, 2)}\n`, { flag: "wx" });

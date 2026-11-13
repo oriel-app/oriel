@@ -1,5 +1,3 @@
-// The Slack source over the fixture's Web API, as the sync worker and a
-// region's reads use it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ItemId } from "@oriel/core";
@@ -45,7 +43,6 @@ test("a deleted message, a reply's ts, an unknown ts or another channel's messag
     { id: unknown, status: "gone", reason: "deleted" },
     { id: elsewhere, status: "gone", reason: "forbidden" },
   ]);
-  // A channel nobody picked is never asked about.
   assert.ok(calls.every((c) => c.params.channel !== "C0FW2RANDOM"));
 });
 

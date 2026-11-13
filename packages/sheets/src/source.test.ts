@@ -1,6 +1,3 @@
-// The Sheets source against the stand-in for Google's APIs, through the
-// fixture's spreadsheets (SPEC §8's checklist for Google Sheets), as each
-// case degrades by decision 0050.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SyncPage } from "@oriel/core";
@@ -49,7 +46,6 @@ function connect(
     picks: options.picks ?? fixturePicks(fixture),
     log: (message) => logged.push(message),
   });
-  // One sync's pages, and its cursor.
   const sync = async (cursor: string | null = null) => {
     const pages: SyncPage<"sheets", SheetsAttrs>[] = [];
     for await (const page of source.sync(cursor)) pages.push(page);
@@ -156,7 +152,6 @@ test("a mapped column renamed or removed stops its tab, names the column, and ho
   assert.deepEqual(held, [tabPart(tracker, 1100)]);
   assert.deepEqual(swept, [spreadsheetPart(tracker)]);
   assert.ok(source.report().spreadsheets[0]?.tabs[0]?.stopped);
-  // The other tabs read as ever.
   assert.equal(rowsOf(records, 2141).length, 4);
 });
 

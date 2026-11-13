@@ -19,8 +19,6 @@ test("a tool that writes never says it only reads", async () => {
   for (const name of ["update_range", "append_rows"])
     assert.equal(hints[name]?.readOnlyHint, false, name);
 });
-// What a structured result must be, by the tool's own output schema: the
-// part of JSON Schema the tools use.
 function conforms(value: unknown, schema: Record<string, unknown>, at = "$"): void {
   const types = [schema.type].flat();
   const kind =
@@ -62,7 +60,6 @@ async function checked(
 }
 
 test("read_range stops at the cell cap, and pages on to the rest", async () => {
-  // 60 columns by 200 rows: 12,000 cells.
   const rows = Array.from({ length: 200 }, (_, r) =>
     Array.from({ length: 60 }, (_, c) => `${r}:${c}`),
   );
@@ -91,7 +88,6 @@ test("read_range stops at the cell cap, and pages on to the rest", async () => {
   assert.deepEqual(ranges, ["Data!A1:BH200", "Data!A84:BH200", "Data!A167:BH200"]);
   assert.deepEqual(seen, rows);
 
-  // A row wider than the cap comes back cut, and says to ask for less.
   const wide: Fixture = {
     spreadsheets: [
       {
@@ -111,8 +107,6 @@ test("read_range stops at the cell cap, and pages on to the rest", async () => {
   assert.equal(cut.nextRange, undefined);
 });
 
-// Text a person or model wrote goes in as entered, never run as a formula,
-// unless USER_ENTERED is asked for.
 test("update_range and append_rows write values RAW by default", async () => {
   const { server, google } = overStandIn();
   const values = [['=IMPORTDATA("https://example.invalid/")']];

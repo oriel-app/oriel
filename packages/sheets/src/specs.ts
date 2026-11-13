@@ -1,13 +1,3 @@
-// How change sets treat Google Sheets' ops (decision 0050). Field names are
-// Oriel's, as a tab maps them (`key`, `title`, `status`, `assignee`,
-// `estimate`, `link`), each the cell's value as entered: text, a number, a
-// boolean, or null for an empty cell. `cells` is a digest of everything the
-// row holds, so any edit to the row moves it, and an edit elsewhere in the
-// spreadsheet doesn't.
-//
-// Apply writes a cell only while it holds what the diff showed, and never
-// over a formula. Reverting an edit stops if the cell changed since Oriel
-// wrote it; reverting an added row stops if anything in the row changed.
 import { type Conflict, type LineContext, op, type OpSpec, type OpSpecs } from "@oriel/core";
 import { type SheetsOp, sheetsOps } from "./ops.ts";
 
@@ -20,13 +10,11 @@ function quoted(value: unknown): string {
   return `“${short}”`;
 }
 
-// The row a line writes to, by its title as the change set leaves it.
 const rowOf = (context: LineContext) => {
   const title = context.subject?.title ?? null;
   return title === null ? "the row" : `the row ${quoted(title)}`;
 };
 
-// A tab, by its name and its spreadsheet's, where Oriel knows them.
 async function tabOf(context: LineContext, spreadsheet: string, sheetId: number): Promise<string> {
   const tab = await context.name(`${spreadsheet}/${sheetId}`);
   const file = await context.name(spreadsheet);
@@ -36,7 +24,6 @@ async function tabOf(context: LineContext, spreadsheet: string, sheetId: number)
 
 const ops: Record<SheetsOp, OpSpec> = {
   setField: op(sheetsOps.setField, {
-    // Writing a cell twice leaves it as writing it once does.
     idempotent: true,
     after: (a) => ({ [a.field]: a.value }),
     describe: (a, context) =>
@@ -55,7 +42,6 @@ const ops: Record<SheetsOp, OpSpec> = {
   addRow: op(sheetsOps.addRow, {
     creates: true,
     makes: "row",
-    // The fields it fills; one left out stays empty.
     after: (a) => Object.fromEntries(Object.entries(a.values).filter(([, v]) => v !== undefined)),
     describe: async (a, context) =>
       `Add a row after the last of ${await tabOf(context, a.spreadsheet, a.sheetId)}.`,
@@ -69,7 +55,6 @@ const ops: Record<SheetsOp, OpSpec> = {
   }),
 };
 
-// Why a revert stopped, naming the row by its title: its key is a hash.
 function explain(conflict: Conflict, title: string | null): string {
   const named = title === null ? "a spreadsheet row" : `the row ${quoted(title)}`;
   const { field, expected, actual } = conflict;
@@ -83,7 +68,6 @@ function explain(conflict: Conflict, title: string | null): string {
   return `${named}'s ${field} cell is now ${actual === null ? "empty" : quoted(actual)}, not ${expected === null ? "empty" : quoted(expected)}`;
 }
 
-// What the composition root hands change sets for Google Sheets.
 export const sheetsSpecs: OpSpecs = {
   name: "Google Sheets",
   titleField: "title",

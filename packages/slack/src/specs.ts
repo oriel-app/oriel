@@ -1,15 +1,3 @@
-// How change sets treat Slack's ops (OA-28). Field names are core's
-// (`FieldValues`), as the Slack writer reports them for the conversation an
-// item is: `summary`, `description` (the message), `replies` (how many),
-// `reply:<ts>` (one reply's text) and `updated`.
-//
-// Each line names where it posts, who it posts as, and its text exactly as it
-// will read, which the diff shows as a field. Once posted, a message can be
-// seen at once; a revert deletes it, and says people may have seen it
-// already. Reverting a post stops if the conversation was edited or replied
-// to since (its `updated` moved), and reverting a reply stops if the reply
-// was edited or another came after it, rather than delete what others said
-// around it.
 import {
   type Conflict,
   type LineContext,
@@ -41,7 +29,6 @@ async function who(context: LineContext, user: string): Promise<string> {
   return (await context.name(user)) ?? "a person Oriel can't name";
 }
 
-// The conversation a line writes to, and its channel's name.
 async function conversation(context: LineContext): Promise<{ named: string; channel: string }> {
   const subject: Subject = context.subject;
   const id = subject?.kind === "item" ? subject.id : null;
@@ -67,7 +54,6 @@ const ops: Record<SlackOp, OpSpec> = {
     undo: () => ({ op: "deleteMessage", args: {} }),
   }),
   reply: op(slackOps.reply, {
-    // Slack names the reply when it posts it; until then it is `reply:new`.
     after: (a) => ({ "reply:new": a.text }),
     describe: async (a, context) => {
       const { named, channel } = await conversation(context);
@@ -99,8 +85,6 @@ const ops: Record<SlackOp, OpSpec> = {
   }),
 };
 
-// Why a revert stopped, naming the conversation by its title: its key means
-// nothing to a person.
 function explain(conflict: Conflict, title: string | null): string {
   const named = title === null ? "a Slack message" : quoted(title);
   const { field, expected, actual } = conflict;
@@ -119,7 +103,6 @@ function explain(conflict: Conflict, title: string | null): string {
   return `${named}'s ${field} changed since Oriel wrote it`;
 }
 
-// What the composition root hands change sets for Slack.
 export const slackSpecs: OpSpecs = {
   name: "Slack",
   titleField: "summary",

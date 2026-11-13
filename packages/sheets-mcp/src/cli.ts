@@ -1,11 +1,4 @@
-// `sheets-mcp`: the stdio server with no argument, or with `--fixture
-// <file.json>` its tools over a fixture held in memory, or with `--shared`
-// too, over the file itself, read afresh by each call and written by each
-// write, so several processes share one; `sheets-mcp login`
-// signs in to Google once, in the browser, and `sheets-mcp logout` forgets
-// the sign-in. Everything it says goes to stderr; stdout carries the
-// protocol only. What it's given comes in as `io`, so tests can run it
-// whole with no network, no clock and no browser.
+// Everything it says goes to stderr: stdout carries the protocol only.
 import { parseArgs } from "node:util";
 import { type AccessSource, fixedAccess, googleAccess } from "./access.ts";
 import { type Fixture, loadFixture, saveFixture } from "./fixture.ts";
@@ -24,9 +17,7 @@ export type CliIo = {
   stdout: { write(text: string): unknown };
   stderr: { write(text: string): unknown };
   fetch: Fetch;
-  // Opens an address in the person's browser, never showing it.
   open: (url: string) => Promise<void>;
-  // Milliseconds since the epoch.
   now: () => number;
   random?: Random;
   after?: After;
@@ -46,7 +37,6 @@ one, from the environment, and keeps them beside the sign-in, so the server
 needs no environment. Set there, they win over what's kept.
 `;
 
-// The exit code.
 export async function run(argv: readonly string[], io: CliIo): Promise<number> {
   const say = (line: string) => io.stderr.write(`${line}\n`);
   let parsed;
@@ -135,8 +125,6 @@ export async function run(argv: readonly string[], io: CliIo): Promise<number> {
       : standIn(fixture, { now }).fetch;
     source = fixedAccess(standInToken);
   } else {
-    // The environment's client wins; else the one `login` kept, read at
-    // each refresh, so a `login` while the server runs is used at once.
     const given = googleClientOf(io.env);
     source = googleAccess({ client: () => given ?? keptClient.read(), file, fetch, now: io.now });
   }

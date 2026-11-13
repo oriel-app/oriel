@@ -1,13 +1,3 @@
-// A Google Sheets connection, opened (decision 0049) through sheets-mcp in
-// the person's agent (decision 0059): its options are the spreadsheets the
-// person picked and each one's mapped tabs, and whether it is read-only.
-//
-// It may propose changes unless its `readOnly` option is on (decision 0049):
-// then it gives no writes, so no writer is built and a write is
-// unreachable, and its namespace offers nothing. A spreadsheet the person
-// can only view is read-only either way. A mapped column gone from a tab's
-// header row stops that tab, and the connection waits for options that fit
-// (decision 0051).
 import {
   type IndexRecord,
   type Opened,
@@ -27,42 +17,23 @@ import { rowReader } from "./rows.ts";
 import { serverGoogle } from "./sheets-mcp.ts";
 import { type SheetsReport, type SheetsSource, sheetsSource } from "./source.ts";
 
-// What a Sheets connection's writer is built from, by its line in
-// packages/changeset/src/writers.ts.
 export type SheetsWrites = {
-  // The spreadsheets and mapped tabs the connection reads: the only ones
-  // written to.
   picks: SheetsPicks;
-  // Its connection's prefix, which its items' IDs carry.
   prefix: string;
-} &
-  // A fixture's stand-in of Google in memory, which a test, a shot or a
-  // timing made, as its own fetch: nothing signs in to it.
-  (
-    | { memory: typeof fetch }
-    // Through sheets-mcp (decision 0059): its reads and its writes, each from
-    // its own process.
-    | { server: { read: ToolCaller; write: ToolCaller } }
-  );
+} & ({ memory: typeof fetch } | { server: { read: ToolCaller; write: ToolCaller } });
 
 export type OpenedSheets = Opened<SheetsContext, unknown, SheetsWrites> & { source: SheetsSource };
 
-// Whether the person set the connection read-only, as core reads every
-// connector's `readOnly` option.
 export { readOnlyOf };
 
-// The picks a connection's options hold, or none when they aren't picks.
 export function picksOf(options: Readonly<Record<string, unknown>>): SheetsPicks {
   const read = sheetsPicks(options);
   return read.ok ? read.value : { spreadsheets: [] };
 }
 
-// What the person sees when the fixture's stand-in can't be read.
 export const memoryProblem = (): string =>
   "Google didn't answer, so Oriel couldn't read the spreadsheets.";
 
-// The fixture's stand-in of Google in memory, read as Google's APIs answer,
-// with no sign-in. Only a fixture gives `via.fetch`.
 const memoryOf = (via: OpenVia): typeof fetch => {
   if (!via.fetch) throw new Error("Sheets opens only through its source server");
   return via.fetch;
@@ -76,9 +47,6 @@ export function memoryGoogle(via: OpenVia) {
   });
 }
 
-// What reads a connection's spreadsheets, and what its writer writes with:
-// sheets-mcp, while Sheets is on through it (decision 0059), or the
-// fixture's stand-in in memory.
 function readerOf(via: OpenVia) {
   const server = via.server;
   if (server)
@@ -96,8 +64,6 @@ function readerOf(via: OpenVia) {
   };
 }
 
-// What the person sees when Sheets can't be read through its server, naming
-// it. A sync that fails this way keeps the index as it was.
 export function sheetsServerProblem(error: unknown, server: string): string {
   if (error instanceof ServerUnreadable)
     return `${server} answered in a way Oriel didn't expect, so Oriel kept the window as it was.`;
@@ -132,15 +98,12 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
     attrs: sheetsAttrs,
     about: `${count} ${count === 1 ? "spreadsheet" : "spreadsheets"}${reader.through}`,
     scope: undefined,
-    // Each mapped tab's fields, which its namespace offers to write.
     context: () => (readOnly ? undefined : context),
     ...(readOnly
       ? { fields: rowReader(google, picks, connection.prefix) }
       : {
           writes: { ...reader.with, picks, prefix: connection.prefix },
         }),
-    // Its cursor holds each spreadsheet's version: one that hasn't moved
-    // costs one request and isn't read again.
     incremental: true,
     problem: reader.problem,
     unfit: () => unfitOf(source.report()),
@@ -149,9 +112,7 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
   };
 }
 
-// Why the connection's options no longer fit its spreadsheets, from its last
-// sync: a mapped column gone from a tab's header row, or in it twice, or a
-// mapped tab gone. Titles and headers are the sheet's own, shown as text.
+// Titles and headers are the sheet's own, shown as text.
 function unfitOf(report: SheetsReport): string | null {
   for (const spreadsheet of report.spreadsheets)
     for (const tab of spreadsheet.tabs)
@@ -162,9 +123,6 @@ function unfitOf(report: SheetsReport): string | null {
   return null;
 }
 
-// The spreadsheets the person can only view, by Drive's `canEdit`, which
-// are read-only whatever the connection's option says (decision 0050). A
-// title is the spreadsheet's own, shown as text.
 function viewOnlyOf(records: readonly IndexRecord[]): { why: string; all: boolean } | null {
   const spreadsheets = records.flatMap((record) => {
     const attrs = sheetsAttrsOf(record);
@@ -184,8 +142,6 @@ function viewOnlyOf(records: readonly IndexRecord[]): { why: string; all: boolea
   };
 }
 
-// The spreadsheets and tabs its records name, by `<spreadsheet>` and
-// `<spreadsheet>/<sheetId>`, for what a change set wrote.
 function* sheetsNames(records: readonly IndexRecord[]): Iterable<readonly [string, string]> {
   for (const record of records) {
     const attrs = sheetsAttrsOf(record);

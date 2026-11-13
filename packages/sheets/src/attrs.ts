@@ -1,8 +1,5 @@
-// What the index keeps per Sheets item beyond core's fields, what a read
-// returns, and how Sheets shows in the window (decision 0050). An item is a
-// row of a mapped tab, or a whole picked spreadsheet, a doc. Every title,
-// header, cell, note, comment and tab name here is synced content: anyone
-// with edit access wrote it.
+// Every title, header, cell, note, comment and tab name here is synced content: anyone with
+// edit access wrote it.
 import { createHash } from "node:crypto";
 import {
   array,
@@ -22,14 +19,11 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// What an item is, in the declarations' `Item` (see `ItemDocs` in
-// bindings): shape only, never source text.
+// Goes into the declarations: shape only, never source text.
 export const sheetsItemDoc =
   "A sheets item is a row of a spreadsheet's mapped tab: its title is its title cell, its text each column read as `Header: value` lines, with cell notes. Or it is a picked spreadsheet itself: its title, its tabs' names and its comments. A row's update time is its spreadsheet's.";
 
-// A fixed-length hash, so no text a person wrote reaches a key: a row's of
-// its spreadsheet's ID, its tab's `sheetId` and its key cell, trimmed; a
-// spreadsheet's of its ID alone.
+// A fixed-length hash, so no text a person wrote reaches a key.
 export const sheetsKeyShape = /^[0-9a-f]{16}$/;
 
 const hash = (...parts: string[]) =>
@@ -52,7 +46,6 @@ export type SheetsAttrs =
       of: "row";
       spreadsheet: { id: string; title: string };
       tab: { sheetId: number; title: string };
-      // What its status cell shows, when the tab maps one.
       status: string | null;
     }
   | { of: "spreadsheet"; spreadsheet: { id: string; title: string }; canEdit: boolean };
@@ -73,21 +66,17 @@ export const sheetsAttrs: Validator<SheetsAttrs> = union(
 
 const said = { author: string, at: string, text: string };
 
-// A row read live: where it is now, and every column read, in order.
 export type RowContent = {
   of: "row";
   spreadsheet: { id: string; title: string };
   tab: { sheetId: number; title: string };
-  // Its number as the sheet shows it now.
   row: number;
   cells: { header: string; value: string; note: string | null }[];
-  // Oriel's words when the row is too long to read whole; null otherwise.
   note: string | null;
   title: string;
   text: string;
 };
 
-// A spreadsheet read live: its tabs' names and its comments, oldest first.
 export type SpreadsheetContent = {
   of: "spreadsheet";
   spreadsheet: { id: string; title: string };
@@ -100,8 +89,6 @@ export type SpreadsheetContent = {
     quoted: string | null;
     replies: { author: string; at: string; text: string }[];
   }[];
-  // Oriel's words when its comments are too long to read whole; null
-  // otherwise.
   note: string | null;
   title: string;
   text: string;
@@ -138,12 +125,8 @@ export const sheetsContent: Validator<SheetsContent> = union(
   }),
 );
 
-// The most characters one item's text holds; past it, the rest isn't read
-// and the item says so.
 export const maxItemChars = 50_000;
 
-// A row's text: each column read as `Header: value`, each note under its
-// cell. Cut at the cap, with Oriel's note.
 export function rowText(cells: RowContent["cells"]): { text: string; note: string | null } {
   const text = cells
     .map(
@@ -156,12 +139,8 @@ export function rowText(cells: RowContent["cells"]): { text: string; note: strin
   return { text: `${text.slice(0, maxItemChars)}\n\n${note}`, note };
 }
 
-// How much of a spreadsheet's text its tabs' names may take.
 const tabChars = 10_000;
 
-// A spreadsheet's text: its tabs, then each comment with its replies, as
-// many tab names and whole comments as fit the cap. The tabs and comments a
-// read returns are those the text holds, and the note says what wasn't read.
 export function spreadsheetText(
   content: Pick<SpreadsheetContent, "tabs" | "comments">,
 ): Pick<SpreadsheetContent, "tabs" | "comments" | "text" | "note"> {
@@ -205,14 +184,12 @@ export function spreadsheetText(
   return { tabs, comments: content.comments.slice(0, kept), text, note };
 }
 
-// A record's Sheets attrs, or null for another source's item.
 export function sheetsAttrsOf(record: IndexRecord): SheetsAttrs | null {
   if (parseItemId(record.id)?.kind !== "sheets") return null;
   const parsed = sheetsAttrs(record.attrs);
   return parsed.ok ? parsed.value : null;
 }
 
-// A row shows its status as the cell says it, and its tab as a label.
 export const sheetsDetails: DetailsOf = (record) => {
   const attrs = sheetsAttrsOf(record);
   if (!attrs) return null;
@@ -224,19 +201,13 @@ export const sheetsPresentation: Presentation = {
   name: "Google Sheets",
   inSentence: "Google Sheets",
   icon: "row",
-  // A key is a hash: a row is read by its title.
   keysReadAs: "Row",
   columns: ["assignee", "estimate"],
   details: sheetsDetails,
 };
 
-// What reads as one short fact; anything longer is a block of its own.
 const factChars = 120;
 
-// An item as the panel beside the page shows it, from a live read. A row:
-// its tab and number, then its cells, short ones as facts under their
-// headers and long ones as text, each note under its cell. A spreadsheet:
-// its tabs, then its comments with their replies.
 export const sheetsPanel: PanelOf = (content) => {
   const read = sheetsContent(content);
   if (!read.ok) return null;

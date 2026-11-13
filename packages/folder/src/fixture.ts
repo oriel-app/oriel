@@ -1,16 +1,5 @@
-// The folder fixture: `fixtures/folder/tree.json` is a manifest of files with
-// fixed text and modification times, and this builds it as a real tree in a
-// temporary directory: the folder the user picked, and a directory beside it
-// for links to point out to. Git can't store hard links, and a committed link
-// out of the repo is a hazard, so links and hard links are made here, never
-// committed. The text is synthetic, about Ferrowick, the fictional ferry app
-// of the SYN fixture.
-//
-// Some names depend on the disk: a case-insensitive one keeps one of `Plan.md`
-// and `plan.md`, and a normalization-insensitive one keeps one of the NFC and
-// NFD `café.md`. The first in the manifest is written; the other is reported
-// as folded, not written over it.
-// `scripts/fixtures/folder.ts` builds it for a person to look at.
+// Git can't store hard links, and a committed link out of the repo is a hazard, so links
+// and hard links are made here, never committed.
 import {
   linkSync,
   mkdirSync,
@@ -43,8 +32,6 @@ export const folderFixtureFile = new URL("../../../fixtures/folder/tree.json", i
 
 const instant = refine(string, isInstant, "expected a canonical instant");
 
-// A path inside the folder (or inside the directory beside it): relative,
-// forward slashes, no empty, `.` or `..` names.
 const relativePath = refine(
   string,
   (path) =>
@@ -54,8 +41,6 @@ const relativePath = refine(
   "expected a relative path with no empty, . or .. names",
 );
 
-// One file: its text as UTF-8, its text as Latin-1 (bytes that aren't valid
-// UTF-8), or only a size, written sparse.
 const fixtureFile = refine(
   object({
     path: relativePath,
@@ -68,8 +53,6 @@ const fixtureFile = refine(
   "expected exactly one of text, latin1 and size",
 );
 
-// A symbolic link, its target as written, relative to the link. `directory`
-// makes the target an empty directory when nothing else does.
 const fixtureLink = object({
   path: relativePath,
   to: string,
@@ -81,21 +64,15 @@ const fixtureHardLink = object({ path: relativePath, to: relativePath });
 const folderEdit = union(
   object({ kind: literal("delete"), path: relativePath }),
   object({ kind: literal("rename"), from: relativePath, to: relativePath }),
-  // A new modification time; the text stays.
   object({ kind: literal("touch"), path: relativePath, mtime: instant }),
 );
 
 const folderFixtureShape = object({
-  // In the folder, and in scope unless a cap, a link or the disk says
-  // otherwise.
   files: array(fixtureFile),
-  // In the folder, skipped by name: dotfiles, dot-directories, node_modules.
   skipped: array(fixtureFile),
   links: array(fixtureLink),
   hardLinks: array(fixtureHardLink),
-  // Beside the folder, where links point. Never read.
   outside: array(fixtureFile),
-  // Applied in order, after the tree is built.
   edits: array(folderEdit),
 });
 
@@ -103,10 +80,6 @@ export type FixtureFile = Infer<typeof fixtureFile>;
 export type FolderEdit = Infer<typeof folderEdit>;
 export type FolderFixture = Infer<typeof folderFixtureShape>;
 
-// The shape, then what a shape can't say: no path twice, every hard link and
-// edit names a file the folder holds by then, and no edit touches a file whose
-// presence depends on the disk, or a hard-linked one, which the folder source
-// never lists, so an edit to it would change nothing the source can see.
 export function parseFolderFixture(input: unknown): Result<FolderFixture> {
   const shaped = folderFixtureShape(input);
   if (!shaped.ok) return shaped;
@@ -156,13 +129,10 @@ export function loadFolderFixture(file: URL = folderFixtureFile): FolderFixture 
   throw new Error(`invalid folder fixture:\n${issues.join("\n")}`);
 }
 
-// A name as a case-insensitive, normalization-insensitive disk compares it.
 const folding = (path: string) => path.normalize("NFC").toLowerCase();
 
-// The files whose presence depends on the disk: each one whose path differs
-// from another's only in case or Unicode normalization. A disk that folds
-// either keeps one of them; one that folds neither keeps both, and the folder
-// source then refuses names that differ only in normalization.
+// A disk that folds case or normalization keeps one of each pair; one that folds neither
+// keeps both, and the folder source then refuses names differing only in normalization.
 export function diskDependent(fixture: Pick<FolderFixture, "files">): Set<string> {
   const counts = new Map<string, number>();
   for (const { path } of fixture.files)
@@ -172,8 +142,6 @@ export function diskDependent(fixture: Pick<FolderFixture, "files">): Set<string
   );
 }
 
-// The paths a file is known by once the first `edited` edits are applied:
-// deleted files are gone, and renamed ones go by their new name.
 export function filesAfter(fixture: FolderFixture, edited: number): Map<string, FixtureFile> {
   const files = new Map(fixture.files.map((f) => [f.path, f]));
   for (const edit of fixture.edits.slice(0, edited)) {
@@ -191,11 +159,8 @@ export function filesAfter(fixture: FolderFixture, edited: number): Map<string, 
 }
 
 export type BuiltFolder = {
-  // The folder, by its real path.
   root: string;
-  // The directory beside it, where links point out to.
   outside: string;
-  // Files the disk folded into an earlier name, so they weren't written.
   folded: string[];
 };
 
@@ -206,8 +171,6 @@ const setTime = (path: string, at: string) => {
 
 const codeOf = (error: unknown) => String((error as { code?: unknown } | null)?.code ?? "");
 
-// Writes one file, never over another: false when the disk already holds the
-// name, folded.
 function writeFile(base: string, file: FixtureFile): boolean {
   const path = join(base, ...file.path.split("/"));
   mkdirSync(dirname(path), { recursive: true });
@@ -223,8 +186,6 @@ function writeFile(base: string, file: FixtureFile): boolean {
   return true;
 }
 
-// Builds the fixture in `dir`, an empty directory: `folder/` and `outside/`
-// beside it, then the first `edited` edits.
 export function buildFolder(fixture: FolderFixture, dir: string, edited = 0): BuiltFolder {
   if (edited < 0 || edited > fixture.edits.length)
     throw new RangeError(`the folder fixture has ${fixture.edits.length} edits, not ${edited}`);
@@ -255,6 +216,5 @@ export function buildFolder(fixture: FolderFixture, dir: string, edited = 0): Bu
   return { root, outside, folded };
 }
 
-// A file's title as the folder source gives it: its name without `.md`, NFC.
 export const fileTitle = (path: string) =>
   posix.basename(path).normalize("NFC").replace(/\.md$/i, "");

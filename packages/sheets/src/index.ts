@@ -1,9 +1,4 @@
-// The Google Sheets connector (decisions 0049 and 0050): through
-// packages/sheets-mcp in the person's agent (decision 0059), reading the
-// picked spreadsheets' mapped tabs, its namespace and op specs for writes
-// through approved change sets, and the fixture with its stand-in for
-// Google's APIs. Its writer is the `./writer` export, which only
-// packages/changeset imports.
+// The writer is the `./writer` export, which only packages/changeset imports.
 export {
   type A1Range,
   type Bounds,

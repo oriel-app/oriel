@@ -1,15 +1,4 @@
-// The reads a Sheets connection makes of Google's APIs (decision 0050), as
-// few as it can, in the shapes sheets-mcp's answers are read into
-// (`serverGoogle`, decision 0059), and as the fixture's stand-in in memory
-// answers them (`fixtureGoogle`), with no sign-in: Drive's `files.get` for a
-// spreadsheet's version, name and whether the person may edit it, its
-// `comments.list`, and the Sheets API's
-// `spreadsheets.get`, first for its tabs and then for each mapped tab's grid
-// in chunks of rows. Each asks only the fields it reads.
-//
-// A `429` waits and goes again, exponentially longer each time, with some
-// jitter, as Google asks; while it waits, `waiting` hears how long. Any other
-// failure throws a `SheetsError`, whose message names no content.
+// A `429` retries with backoff and jitter, as Google asks; a `SheetsError` names no content.
 // https://developers.google.com/workspace/sheets/api/limits#exponential
 import {
   array,
@@ -26,14 +15,9 @@ import { driveOrigin, sheetsOrigin } from "./stand-in.ts";
 import type { Cell, Entered, Grid } from "./table.ts";
 
 export type GoogleReads = {
-  // The fixture's stand-in in memory, or one a test made: never the
-  // network's.
   fetch: typeof fetch;
-  // Waits `ms` before a request goes again; tests pass one that doesn't.
   wait: (ms: number) => Promise<void>;
-  // In [0, 1), for the jitter.
   random: () => number;
-  // Hears each wait before it starts, so the connection can show it.
   waiting?: (ms: number) => void;
 };
 
@@ -46,7 +30,6 @@ export class SheetsError extends Error {
   }
 }
 
-// How many times a `429` goes again, and the longest wait between.
 export const maxRetries = 6;
 export const maxBackoffMs = 64_000;
 const requestMs = 60_000;
@@ -119,7 +102,6 @@ const range = object({
   endColumnIndex: optional(number),
 });
 const hiddenByUser = array(object({ hiddenByUser: optional(boolean) }));
-// Google's ExtendedValue: one of its fields is set. An error is a formula's.
 const enteredValue = object({
   stringValue: optional(string),
   numberValue: optional(number),
@@ -166,7 +148,6 @@ const gridAnswer = object({
 const gridFields = (entered: boolean) =>
   `sheets(properties(sheetId),data(startRow,startColumn,rowData(values(formattedValue,effectiveValue(numberValue),${entered ? "userEnteredValue," : ""}note)),rowMetadata(hiddenByUser),columnMetadata(hiddenByUser)),merges)`;
 
-// What a cell holds as entered: a formula first, since only it is one.
 function enteredOf(value: Infer<typeof enteredValue> | undefined): Entered {
   if (!value) return null;
   if (value.formulaValue !== undefined) return { formula: value.formulaValue };
@@ -210,8 +191,7 @@ export function googleReads(io: GoogleReads) {
     new URL(`/v4/spreadsheets/${encodeURIComponent(id)}`, sheetsOrigin);
 
   return {
-    // Its version, name and capabilities; "gone" when Drive can't find it,
-    // as under `drive.file` for one deleted or no longer shared.
+    // Under `drive.file`, Drive can't find one deleted or no longer shared: that's "gone".
     async file(id: string): Promise<DriveFile | "gone"> {
       const url = fileUrl(id);
       url.searchParams.set("fields", "name,version,modifiedTime,trashed,capabilities(canEdit)");
@@ -226,8 +206,6 @@ export function googleReads(io: GoogleReads) {
       };
     },
 
-    // Its comments with their replies, oldest first; a deleted one is left
-    // out. Where each points stays opaque (decision 0050).
     async comments(id: string, most = 200): Promise<SheetComment[]> {
       const found: SheetComment[] = [];
       let token: string | undefined;
@@ -263,7 +241,6 @@ export function googleReads(io: GoogleReads) {
       return found.slice(0, most);
     },
 
-    // Its title and its tabs, with their sizes.
     async tabs(id: string): Promise<{ title: string; tabs: TabInfo[] } | "gone"> {
       const url = sheetUrl(id);
       url.searchParams.set(
@@ -283,11 +260,7 @@ export function googleReads(io: GoogleReads) {
       };
     },
 
-    // Rows `start` to `end` (0-based, end exclusive) of one tab, every
-    // column: its cells as shown, with notes, which rows and columns are
-    // hidden by hand, and the merges that meet it; with `entered`, what
-    // each cell holds as entered too, as a writer reads it. Only the tab
-    // asked for is kept, whatever else comes back.
+    // Only the tab asked for is kept: Google may answer with every tab.
     async rows(
       id: string,
       tab: TabInfo,

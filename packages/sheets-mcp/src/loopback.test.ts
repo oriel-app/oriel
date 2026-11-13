@@ -5,7 +5,6 @@ import { type After, loopback } from "./loopback.ts";
 
 const state = "this-sign-ins-state-0123456789abcdefghijklm";
 
-// A clock that never fires on its own: a test fires it.
 function fakeTimer() {
   const timers: { ms: number; fire: () => void; cancelled: boolean }[] = [];
   const after: After = (ms, fire) => {
@@ -16,8 +15,6 @@ function fakeTimer() {
   return { after, timers };
 }
 
-// Sends raw HTTP and resolves with everything answered before the connection
-// closed, or the connection's error code.
 function send(port: number, text: string): Promise<string> {
   return new Promise((resolve) => {
     const socket = connect(port, "127.0.0.1");
@@ -41,7 +38,6 @@ async function listening() {
   return { listener, timer, port: Number(url.port), url };
 }
 
-// What a refused request must leave out: its code, and its state.
 const echoes = (text: string) => /4\/abc|someone-elses|this-sign-ins-state/.test(text);
 
 test("a redirect with the wrong state is refused, and ends the sign-in", async () => {

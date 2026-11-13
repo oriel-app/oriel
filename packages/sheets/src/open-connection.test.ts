@@ -10,7 +10,6 @@ import { fixtureGoogle } from "./stand-in.ts";
 const fixture = loadSheetsFixture();
 const now = instant(new Date(Date.UTC(2026, 10, 3, 9)));
 
-// Over the fixture's stand-in of Google in memory.
 const opened = (options: Record<string, unknown> = {}) =>
   openSheets(
     {
@@ -31,9 +30,7 @@ test("a connection may propose changes unless it is set read-only, when no write
   const readOnly = await opened({ readOnly: true });
   assert.equal(readOnly.writes, undefined);
   assert.equal(readOnly.context(), undefined);
-  // Its change sets can still be shown.
   assert.ok(readOnly.fields);
-  // Only off, or no option, may propose changes.
   assert.equal((await opened({ readOnly: "no" })).writes, undefined);
   assert.ok((await opened({ readOnly: false })).writes);
 });

@@ -1,17 +1,11 @@
-// The loopback redirect of Google's sign-in for installed apps (RFC 8252):
-// for each sign-in, a listener on 127.0.0.1 and a port the system picks. It
-// takes one request, which must be the redirect to its one path with this
-// sign-in's `state`, answers it and closes. Nothing else is ever answered: a
-// second request finds the port closed, and a request that isn't the redirect
-// ends the sign-in. It closes after 5 minutes if no request comes.
+// Nothing but the one redirect is ever answered: a second request finds the port closed,
+// and one that isn't the redirect ends the sign-in.
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 export const signInMs = 5 * 60_000;
 
-// Calls `fire` once after `ms`, unless the function it returns is called
-// first. Tests pass their own, so none waits.
 export type After = (ms: number, fire: () => void) => () => void;
 
 export const after: After = (ms, fire) => {
@@ -25,12 +19,8 @@ export type Redirect =
   | { status: "timed-out" };
 
 export type Loopback = {
-  // The address Google sends the browser back to, such as
-  // `http://127.0.0.1:52144/`.
   redirectUri: string;
-  // Settles once: with the redirect's query, or why there is none.
   redirect: Promise<Redirect>;
-  // Stops listening, if it still is; `redirect` then settles as refused.
   close(): void;
 };
 
@@ -120,7 +110,6 @@ export async function loopback(state: string, wait: After = after): Promise<Loop
 
   server.on("request", (request: IncomingMessage, response: ServerResponse) => {
     const result = check(request, origin, state);
-    // A request after the first, on a connection opened before it closed.
     if (!shut(result)) {
       response.destroy();
       return;
