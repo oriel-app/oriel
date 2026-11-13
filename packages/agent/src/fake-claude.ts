@@ -12,6 +12,7 @@ type Fake = {
   ignoreTerm?: boolean;
   descendant?: boolean;
   silentStart?: boolean;
+  heldMs?: number;
 };
 
 const fake = JSON.parse(process.env.FAKE_CLAUDE ?? "{}") as Fake;
@@ -36,6 +37,8 @@ const error = (id: unknown, said: string) =>
 const textAnswer = (text: string) => ({ content: [{ type: "text", text }] });
 let asked = 0;
 let slow: unknown = null;
+// Answered together, `heldMs` after the first of them came in.
+let held: unknown[] = [];
 
 createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line) as Message;
@@ -74,6 +77,16 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return error(id, `MCP server not connected: ${server}`);
   journal(`call ${tool} ${request.result_not_for_model === true ? "not-for-model" : "for-model"}`);
   if (tool === "echo") return ok(id, textAnswer(JSON.stringify(request.arguments)));
+  if (tool === "held" || tool === "keep") {
+    held.push(id);
+    if (held.length === 1)
+      setTimeout(() => {
+        journal("released");
+        for (const each of held) ok(each, textAnswer("held"));
+        held = [];
+      }, fake.heldMs ?? 0);
+    return;
+  }
   if (tool === "slow") slow = id;
   if (tool === "hang" || tool === "slow")
     return out({

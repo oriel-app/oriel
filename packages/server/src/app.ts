@@ -443,8 +443,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   const callServer =
     options.callServer ??
-    ((server: FoundServer, tools: readonly string[]) =>
-      options.models?.serverCalls(store.get(), server, tools, log) ?? Promise.resolve(null));
+    ((server: FoundServer, tools: readonly string[], known: SourceServer) =>
+      options.models?.serverCalls(store.get(), server, tools, log, known.reads) ??
+      Promise.resolve(null));
   const lazyCalls = (server: Recognized, tools: readonly string[]) => {
     let current: Promise<Calling | null> | null = null;
     let quiet: ReturnType<typeof setTimeout> | null = null;

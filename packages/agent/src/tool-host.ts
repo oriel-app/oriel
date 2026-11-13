@@ -23,8 +23,12 @@ export type Grant =
   | { name: string; url: string }
   | { name: string; command: string; args: readonly string[] };
 
-export type Listed = { server: string; tool: string };
-export type HostCall = Listed & { args: Readonly<Record<string, unknown>> };
+// `read`: as its server's declaration or the person's settings list it. Anything else is a write.
+export type Listed = { server: string; tool: string; read?: boolean };
+export type HostCall = Omit<Listed, "read"> & { args: Readonly<Record<string, unknown>> };
+
+// Reads a host sends at once. A write goes alone: it waits for the reads out, and nothing starts while it's out.
+export const readsAtOnce = 4;
 
 export type ToolHostOptions = {
   command: string;
@@ -302,7 +306,19 @@ export async function openToolHost(
     throw error instanceof HostRefused ? error : new HostRefused(messageOf(error));
   }
 
-  let queue: Promise<unknown> = Promise.resolve();
+  type Waiting = { read: boolean; go: () => void };
+  const waiting: Waiting[] = [];
+  let reading = 0;
+  let writing = false;
+  const next = () => {
+    for (let first = waiting[0]; first; first = waiting[0]) {
+      if (writing || reading >= (first.read ? readsAtOnce : 1)) return;
+      waiting.shift();
+      if (first.read) reading += 1;
+      else writing = true;
+      first.go();
+    }
+  };
   const unsent = (why: string) => new WriteStalled(why);
 
   const once = async (call: HostCall, name: string, callSignal?: AbortSignal) => {
@@ -338,27 +354,38 @@ export async function openToolHost(
     close,
     call(call, callSignal) {
       const name = fullName(call.server, call.tool);
-      const listed = options.tools.some(
+      const listed = options.tools.find(
         (each) => each.server === call.server && each.tool === call.tool,
       );
       if (!name || !listed)
         return Promise.reject(unsent(`${call.tool} isn't a tool this caller may send`));
-      let started = false;
-      const turn = queue.then(() => {
-        started = true;
-        return once(call, name, callSignal);
-      });
-      queue = turn.catch(() => {});
-      if (!callSignal) return turn;
-      // A queued call fails as soon as its run ends, not when the call
-      // ahead settles; `once` then sees the abort and sends nothing.
+      const read = listed.read === true;
       return new Promise<ToolAnswer>((resolve, reject) => {
+        // A waiting call fails as soon as its run ends, not when a call ahead settles.
         const onAbort = () => {
-          if (!started) reject(unsent("the run ended before this call was sent"));
+          const at = waiting.indexOf(turn);
+          if (at === -1) return;
+          waiting.splice(at, 1);
+          reject(unsent("the run ended before this call was sent"));
+          next();
         };
-        if (callSignal.aborted) onAbort();
-        callSignal.addEventListener("abort", onAbort, { once: true });
-        turn.then(resolve, reject).finally(() => callSignal.removeEventListener("abort", onAbort));
+        const turn: Waiting = {
+          read,
+          go: () => {
+            callSignal?.removeEventListener("abort", onAbort);
+            once(call, name, callSignal)
+              .then(resolve, reject)
+              .finally(() => {
+                if (read) reading -= 1;
+                else writing = false;
+                next();
+              });
+          },
+        };
+        if (callSignal?.aborted) return reject(unsent("the run ended before this call was sent"));
+        callSignal?.addEventListener("abort", onAbort, { once: true });
+        waiting.push(turn);
+        next();
       });
     },
   };
