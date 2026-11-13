@@ -26,7 +26,7 @@ export type Tag =
   | { kind: "retried"; threadId: string }
   | { kind: "threadAction"; threadId: string }
   | { kind: "synced"; threadId: string; statuses: number }
-  | { kind: "diff"; changeSetId: string }
+  | { kind: "diff"; changeSetId: string; stored?: true }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   // Apart from the change set's own requests, since approving never waits on one.
   | { kind: "secondLook"; threadId: string; changeSetId: string }

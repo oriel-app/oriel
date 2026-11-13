@@ -191,6 +191,66 @@ test("a comment through the server lands, its ID found among the issue's, as the
   );
 });
 
+test("a 20-change status set's diff reads its items in one search and checks each kind of move once, after drawing from what Oriel holds", async (t) => {
+  let keys: string[] = [];
+  const it = await world(t, {
+    script: async () => ({
+      value: null,
+      writes: keys.map((key) => ["jira.setStatus", [`jira:${key}`, "Done"]]),
+    }),
+  });
+  await it.turnOn();
+  keys = Array.from({ length: 130 }, (_, n) => `SYN-${n + 1}`)
+    .filter((key) => it.site.issue(key)?.epic === "SYN-5")
+    .slice(0, 20);
+  assert.equal(keys.length, 20);
+  const moves = new Set(
+    keys.flatMap((key) => {
+      const issue = it.site.issue(key);
+      return issue && issue.status !== "Done" ? [`${issue.issueType} ${issue.status}`] : [];
+    }),
+  );
+  assert.ok(moves.size > 1);
+  const { id: workstreamId } = json<{ id: string }>(
+    await it.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10005" }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await it.post(`/api/workstreams/${workstreamId}/threads`, { text: "Close them" }),
+  );
+  await it.app.settled();
+  const view = json<ThreadView>(await it.get(`/api/threads/${threadId}`));
+  const entry = view.entries.find((each) => each.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  const asked = (from: number) =>
+    it.made.slice(from).map((each) => each.call.args.name ?? each.call.tool);
+
+  const before = it.made.length;
+  const drawn = json<DiffView>(await it.get(`/api/change-sets/${entry.changeSetId}/diff`));
+  assert.deepEqual(asked(before), []);
+  assert.equal(drawn.stored, true);
+  assert.equal(drawn.lines.length, 20);
+  assert.ok(drawn.lines.every((line) => line.checking));
+
+  const read = it.made.length;
+  const diff = json<DiffView>(await it.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  assert.deepEqual(
+    asked(read).toSorted(),
+    [
+      "searchJiraIssuesUsingJql",
+      "searchJiraIssuesUsingJql",
+      ...[...moves].map(() => "listJiraIssueTransitions"),
+    ].toSorted(),
+  );
+  assert.equal(diff.stored, undefined);
+  assert.ok(diff.lines.every((line) => !line.checking && !(line.check && "refused" in line.check)));
+  it.advance(1000);
+  const approved = await it.post(`/api/change-sets/${entry.changeSetId}/approve`, {
+    hash: diff.hash,
+  });
+  assert.equal(json<{ changeSet: { status: string } }>(approved).changeSet.status, "applied");
+  assert.ok(keys.every((key) => it.site.issue(key)?.status === "Done"));
+});
+
 test("an answer Oriel can't read stops the sync with the server named, and keeps the index", async (t) => {
   let garble = false;
   const it = await world(t, {

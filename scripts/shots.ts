@@ -6653,6 +6653,33 @@ scenes.push(
       await pointerAway(page);
     },
   },
+  {
+    // Its rows drawn from what Oriel holds while its source is read.
+    name: "change-set-checking",
+    path: "/",
+    on: unrejecting,
+    test: "a change set's rows show at once while its source is read, each checking, and it can't be approved until they're read",
+    act: async (page) => {
+      await page.route("**/diff", async (route) => {
+        if (route.request().method() === "POST") hung.push(route);
+        else await route.fallback();
+      });
+      const { id } = await post<{ id: string }>("/api/workstreams", checkout, unrejecting);
+      const threadId = await ask("Mark the built stories done", unrejecting, id);
+      await page.goto(new URL(`/threads/${threadId}`, unrejecting.url).href);
+      await page.locator(".diff-line .line-note", { hasText: "Checking…" }).first().waitFor();
+      await expectCount(page.locator('.diff-line[aria-busy="true"]'), 2);
+      const card = page.locator(".change-set");
+      await expectCount(card.getByRole("button", { name: /^Approve/, disabled: false }), 0);
+      await expectCount(card.getByRole("button", { name: "Reject", disabled: true }), 1);
+      await check(async () => {
+        await hung.pop()?.continue();
+        await card.getByRole("button", { name: /^Approve/, disabled: false }).waitFor();
+        await expectCount(card.locator(".diff-line[aria-busy]"), 0);
+        await expectCount(card.locator(".diff-line .side[data-side=before]"), 2);
+      });
+    },
+  },
 );
 
 // A chat taller than the window, on a server of its own: a thread's, or the

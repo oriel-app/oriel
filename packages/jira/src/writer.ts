@@ -16,6 +16,7 @@ import {
   type SourceWriter,
   string,
   unknown,
+  type Checked,
   type Validator,
   type WriteResult,
   WriteStalled,
@@ -44,6 +45,7 @@ import {
   type JiraResponse,
   memoryTransport,
   readOnly,
+  searchPath,
   type Transport,
 } from "./transport.ts";
 import type { JiraWrites } from "./open-connection.ts";
@@ -102,6 +104,18 @@ const issueTypes = object({
   issueTypes: array(object({ id: string, name: string, subtask: optional(boolean) })),
 });
 
+const valuesKey = (raw: unknown): string => {
+  const parsed = valuesIssue(raw);
+  if (!parsed.ok) throw new Error("Jira's answer had an issue Oriel can't read");
+  return parsed.value.key;
+};
+const searched = (body: unknown): unknown[] =>
+  typeof body === "object" && body !== null && "issues" in body && Array.isArray(body.issues)
+    ? body.issues
+    : [];
+// The most issues a search answers at once.
+const searchPage = 50;
+
 const valid = <T>(validate: Validator<T>, args: unknown, op: string): T => {
   const result = validate(args, "$.args");
   if (result.ok) return result.value;
@@ -140,10 +154,9 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return field;
   };
 
-  const values = async (
-    key: string,
-    names: readonly string[],
-  ): Promise<{ key: string; stableId: string; values: FieldValues } | "gone"> => {
+  type Values = { key: string; stableId: string; type: string; values: FieldValues };
+
+  const fieldsFor = (names: readonly string[], points: readonly string[]) => {
     const unknownName = names.find(
       (name) =>
         !isIssueField(name) &&
@@ -152,23 +165,22 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
         !name.startsWith("comment:"),
     );
     if (unknownName !== undefined) throw new RangeError(`not a Jira field: ${unknownName}`);
-    const points = names.includes("points") ? await boards.field(projectOf(key)) : undefined;
     const fields = ["summary", "description", "issuetype", "parent", "assignee", "updated"];
-    const extra = [...(names.includes("status") ? ["status"] : []), ...(points ? [points] : [])];
-    const request: JiraRequest = {
-      method: "GET",
-      path: `${api}/issue/${key}?fields=${[...fields, ...extra].join(",")}`,
-    };
-    const response = await transport(request);
-    if (response.status === 404 || response.status === 403) return "gone";
-    const found = await call(async () => response, request, valuesIssue);
-    // A move to another project can change which field holds points.
-    if (points !== undefined && projectOf(found.key) !== projectOf(key))
-      return values(found.key, names);
+    return [...fields, ...(names.includes("status") ? ["status"] : []), ...new Set(points)];
+  };
+
+  const valuesOf = async (
+    raw: unknown,
+    names: readonly string[],
+    points: string | undefined,
+  ): Promise<Values> => {
+    const parsed = valuesIssue(raw);
+    if (!parsed.ok) throw new Error(`Jira's answer had an issue Oriel can't read`);
+    const found = parsed.value;
     const read: Record<IssueField, () => unknown> = {
       summary: () => found.fields.summary,
       description: () => adfToText(found.fields.description),
-      points: () => pointsOf(rawField(response.body, points)),
+      points: () => pointsOf(rawField(raw, points)),
       assignee: () => found.fields.assignee?.accountId ?? null,
       epic: () => epicOf(found.fields),
       status: () => found.fields.status?.name ?? null,
@@ -184,7 +196,72 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
         return [name, await link(found.key, name.slice("link:".length))];
       }),
     );
-    return { key: found.key, stableId: found.id, values: Object.fromEntries(entries) };
+    return {
+      key: found.key,
+      stableId: found.id,
+      type: found.fields.issuetype.name,
+      values: Object.fromEntries(entries),
+    };
+  };
+
+  const values = async (key: string, names: readonly string[]): Promise<Values | "gone"> => {
+    const points = names.includes("points") ? await boards.field(projectOf(key)) : undefined;
+    const request: JiraRequest = {
+      method: "GET",
+      path: `${api}/issue/${key}?fields=${fieldsFor(names, points ? [points] : []).join(",")}`,
+    };
+    const response = await transport(request);
+    if (response.status === 404 || response.status === 403) return "gone";
+    const found = await call(async () => response, request, valuesIssue);
+    // A move to another project can change which field holds points.
+    if (points !== undefined && projectOf(found.key) !== projectOf(key))
+      return values(found.key, names);
+    return valuesOf(response.body, names, points);
+  };
+
+  // One search for many issues. Comments and links are each a call of their own, so those are read one by one, as is an
+  // issue the search doesn't answer for under the key asked, such as one moved since.
+  const valuesOfMany = async (
+    keys: readonly string[],
+    names: readonly string[],
+  ): Promise<Map<string, Values | "gone" | { failed: unknown }>> => {
+    const one = async (key: string) =>
+      [key, await values(key, names).catch((failed: unknown) => ({ failed }))] as const;
+    const each = async (some: readonly string[]) => new Map(await Promise.all(some.map(one)));
+    if (keys.length < 2 || names.some((name) => name.includes(":"))) return each(keys);
+    const projects = [...new Set(keys.map(projectOf))];
+    const points = new Map(
+      names.includes("points")
+        ? await Promise.all(projects.map(async (p) => [p, await boards.field(p)] as const))
+        : [],
+    );
+    const found = new Map<string, Values>();
+    for (let at = 0; at < keys.length; at += searchPage) {
+      const page = keys.slice(at, at + searchPage);
+      const response = await transport({
+        method: "POST",
+        path: searchPath,
+        body: {
+          jql: `key in (${page.join(", ")})`,
+          fields: fieldsFor(
+            names,
+            [...points.values()].flatMap((f) => (f ? [f] : [])),
+          ),
+          maxResults: page.length,
+        },
+      }).catch(() => null);
+      const issues = response?.status === 200 ? searched(response.body) : [];
+      for (const raw of issues) {
+        const key = valuesKey(raw);
+        if (!page.includes(key)) continue;
+        const read = await valuesOf(raw, names, points.get(projectOf(key)) ?? undefined).catch(
+          () => null,
+        );
+        if (read) found.set(key, read);
+      }
+    }
+    const rest = await each(keys.filter((key) => !found.has(key)));
+    return new Map(keys.map((key) => [key, found.get(key) ?? rest.get(key) ?? "gone"]));
   };
 
   const link = async (key: string, linkId: string) => {
@@ -388,17 +465,17 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     }
   };
 
-  const wayTo = async (
+  const waysFrom = async (key: string) =>
+    (
+      await call(transport, { method: "GET", path: `${api}/issue/${key}/transitions` }, transitions)
+    ).transitions.filter((t) => t.isAvailable !== false);
+
+  const wayIn = (
+    open: Awaited<ReturnType<typeof waysFrom>>,
     key: string,
     was: unknown,
     status: string,
-  ): Promise<{ id: string } | { refused: string }> => {
-    const offered = await call(
-      transport,
-      { method: "GET", path: `${api}/issue/${key}/transitions` },
-      transitions,
-    );
-    const open = offered.transitions.filter((t) => t.isAvailable !== false);
+  ): { id: string } | { refused: string } => {
     const way = open.find((t) => t.to.name === status);
     if (way) return { id: way.id };
     const allowed = [...new Set(open.map((t) => t.to.name))].filter((name) => name !== was);
@@ -421,7 +498,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const before = await existing(target, ["status"]);
     const was = before.values.status;
     if (was !== status) {
-      const way = await wayTo(before.key, was, status);
+      const way = wayIn(await waysFrom(before.key), before.key, was, status);
       if ("refused" in way) throw new SourceRefused(way.refused, { sent: false, final: true });
       await send({
         method: "POST",
@@ -521,21 +598,65 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
         return await write(send, op, { id: target, stableId: expectedStableId }, args);
       }),
     checks: ["setStatus"],
-    check: async (op, target, expectedStableId, args) => {
-      if (op !== "setStatus") return null;
-      const { status } = valid(jiraOps.setStatus.args, args, op);
-      const before = await existing({ id: target, stableId: expectedStableId }, ["status"]);
-      if (before.values.status === status) return null;
-      const way = await wayTo(before.key, before.values.status, status);
-      return "refused" in way ? way.refused : null;
+    // Asked once for each issue type, status and target status: a workflow is set per issue type.
+    check: async (op, asked) => {
+      const answers = new Map<ItemId<"jira">, Checked>();
+      if (op !== "setStatus") {
+        for (const { target } of asked) answers.set(target, { allowed: true });
+        return answers;
+      }
+      const read = await valuesOfMany(
+        asked.map(({ target }) => keyOf(target)),
+        ["status"],
+      );
+      const moves = new Map<string, { key: string; target: ItemId<"jira">; was: unknown }[]>();
+      const statusOf = new Map<ItemId<"jira">, string>();
+      for (const { target, expectedStableId, args } of asked) {
+        const status = jiraOps.setStatus.args(args);
+        const found = read.get(keyOf(target));
+        if (!status.ok || !found || found === "gone" || "failed" in found) continue;
+        if (found.stableId !== expectedStableId) continue;
+        const was = found.values.status;
+        if (was === status.value.status) {
+          answers.set(target, { allowed: true });
+          continue;
+        }
+        statusOf.set(target, status.value.status);
+        const move = JSON.stringify([found.type, was, status.value.status]);
+        moves.set(move, [...(moves.get(move) ?? []), { key: found.key, target, was }]);
+      }
+      await Promise.all(
+        [...moves.values()].map(async (alike) => {
+          const [first] = alike;
+          if (!first) return;
+          const open = await waysFrom(first.key).catch(() => null);
+          if (!open) return;
+          alike.forEach(({ key, target, was }, i) => {
+            const way = wayIn(open, key, was, statusOf.get(target) ?? "");
+            const answer: Checked = "id" in way ? { allowed: true } : way;
+            answers.set(target, i === 0 ? answer : { ...answer, alike: true });
+          });
+        }),
+      );
+      return answers;
     },
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);
       return found === "gone" ? "gone" : found.values;
     },
-    read: async (id, fields) => {
-      const found = await values(keyOf(id), fields);
-      return found === "gone" ? "gone" : { stableId: found.stableId, values: found.values };
+    read: async (ids, fields) => {
+      const found = await valuesOfMany(ids.map(keyOf), fields);
+      return new Map(
+        ids.map((id) => {
+          const each = found.get(keyOf(id)) ?? "gone";
+          return [
+            id,
+            each === "gone" || "failed" in each
+              ? each
+              : { stableId: each.stableId, values: each.values },
+          ];
+        }),
+      );
     },
   };
 }

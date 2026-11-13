@@ -44,6 +44,9 @@ export const windowRoutes: Record<string, ProgramWay> = {
   "GET /threads/:id/deletion": {
     not: "What deleting a thread would lose, which only the person does (decision 0024).",
   },
+  "GET /change-sets/:id/diff": {
+    not: "The window's first draw of a diff, before its sources answer; a program reads the diff itself.",
+  },
   "GET /threads/events": { door: "subscriptions/listen" },
   "GET /threads/:id/events": { door: "subscriptions/listen" },
   "POST /^\\/api\\/actions\\/([a-z]+\\.[a-z]+)$/": { not: undoLater },

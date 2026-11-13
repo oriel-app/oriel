@@ -18,6 +18,7 @@ import {
   type WriteLimit,
   type WriteRequest,
   type WriteResult,
+  readEach,
 } from "@oriel/core";
 import {
   fixtureSnapshot,
@@ -337,13 +338,16 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
       return result;
     },
     current,
-    async read(id, fields) {
-      await hooks.read?.(id);
-      const issue = find(id);
-      const found = issue ? { stableId: issue.id, values: pick(issue, fields) } : ("gone" as const);
-      await hooks.answered?.(id);
-      return found;
-    },
+    read: (ids, fields) =>
+      readEach(ids, async (id) => {
+        await hooks.read?.(id);
+        const issue = find(id);
+        const found = issue
+          ? { stableId: issue.id, values: pick(issue, fields) }
+          : ("gone" as const);
+        await hooks.answered?.(id);
+        return found;
+      }),
   };
 
   const reader: FieldReader<"jira"> = {

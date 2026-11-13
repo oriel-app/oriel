@@ -9,6 +9,7 @@ import {
   type Conflict,
   type IndexRecord,
   type Instant,
+  type Known,
   type ItemId,
   isInverse,
   isOverviewSection,
@@ -94,6 +95,7 @@ export type ApiDeps = {
   dispatch: Dispatch;
   undoLine(at: LinePlace, call: Call, actor: Actor): Promise<{ undo: Call | null }>;
   changeSets: ChangeSets;
+  known(): Known;
   turns: Turns;
   views: Views;
   reads: OrielReads;
@@ -1311,6 +1313,15 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const input = checked("thread.delete", { thread: id, via });
         const { undo: _, ...deleted } = await deps.dispatch("thread.delete", input, user);
         return json(200, deleted satisfies DeletedView);
+      },
+    },
+    {
+      method: "GET",
+      path: at("/change-sets/:id/diff"),
+      async run([id = ""]) {
+        const set = await mustChangeSet(id);
+        const diff = await changeSets.stored(set.id, deps.known());
+        return json(200, views.diff(diff, set, changeSets.applying(set.id)));
       },
     },
     {

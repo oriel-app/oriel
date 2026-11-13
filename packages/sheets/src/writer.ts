@@ -13,6 +13,7 @@ import {
   type WriteLimit,
   type WriteResult,
   WriteStalled,
+  readEach,
 } from "@oriel/core";
 import { rowKey } from "./attrs.ts";
 import { type Google, googleReads, maxBackoffMs, maxRetries } from "./google.ts";
@@ -399,7 +400,7 @@ export function sheetsWriter(
       const found = await values(id, fields);
       return found === "gone" ? found : found.values;
     },
-    read: values,
+    read: (ids, fields) => readEach(ids, (id) => values(id, fields)),
     name: async (id) => {
       const [spreadsheet = "", sheetId] = id.split("/");
       if (!picks.spreadsheets.some((s) => s.id === spreadsheet)) return null;

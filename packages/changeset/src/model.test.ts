@@ -12,6 +12,7 @@ import {
   parseItemId,
   type SourceWriter,
   type Ulid,
+  readEach,
 } from "@oriel/core";
 import { workstreamStore, open } from "@oriel/db";
 import { ChangeSetError, changeSetsOver, type Specs } from "./change-sets.ts";
@@ -138,22 +139,24 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     kind: "jira",
     current: jira.writer.current,
     // Notes the sent rows on the item it found without their value, and how many writes had landed by then (invariant 10).
-    async read(id, fields) {
-      // Landings so far: the read's answer can't reflect any later one.
-      const landed = jira.landings.length;
-      const found = await jira.writer.read(id, fields);
-      if (found === "gone") return found;
-      for (const [rowId] of known) {
-        const row = rows.mutation(rowId);
-        if (row?.status !== "failed" || row.target !== id) continue;
-        const field =
-          row.op === "setEstimate" ? "points" : row.op === "setSummary" ? "summary" : null;
-        const args = row.args as Record<string, unknown>;
-        if (field && !sameValue(found.values[field], args[field]))
-          absentReads.push({ row: rowId, landed });
-      }
-      return found;
-    },
+    read: (ids, fields) =>
+      readEach(ids, async (id) => {
+        // Landings so far: the read's answer can't reflect any later one.
+        const landed = jira.landings.length;
+        const found = (await jira.writer.read([id], fields)).get(id);
+        if (found === undefined || found === "gone") return "gone";
+        if ("failed" in found) throw found.failed;
+        for (const [rowId] of known) {
+          const row = rows.mutation(rowId);
+          if (row?.status !== "failed" || row.target !== id) continue;
+          const field =
+            row.op === "setEstimate" ? "points" : row.op === "setSummary" ? "summary" : null;
+          const args = row.args as Record<string, unknown>;
+          if (field && !sameValue(found.values[field], args[field]))
+            absentReads.push({ row: rowId, landed });
+        }
+        return found;
+      }),
     apply(request) {
       const row = rows.mutation(request.mutationId);
       const set = row ? rows.load(row.changeSetId) : null;

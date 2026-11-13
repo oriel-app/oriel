@@ -9,6 +9,7 @@ import {
   type SourceWriter,
   type WriteRequest,
   type WriteResult,
+  readEach,
 } from "@oriel/core";
 import { labelField, valuesOf } from "./fields.ts";
 import { type Issue, idOf, inTurn, issuesIn, isTrackerId, stableIdOf } from "./issues.ts";
@@ -177,7 +178,7 @@ export function trackerWriter(writes: TrackerWrites): SourceWriter<"tracker"> {
       const found = values(id, fields);
       return found === "gone" ? "gone" : found.values;
     },
-    read: async (id, fields) => values(id, fields),
+    read: (ids, fields) => readEach(ids, async (id) => values(id, fields)),
   };
 }
 

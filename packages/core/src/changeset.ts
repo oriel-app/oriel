@@ -72,6 +72,8 @@ export type Diff = {
   changeSetId: Ulid;
   // The hash of the rows these lines were built from, not a fresh read, so a person approves exactly what they saw.
   hash: string;
+  // Drawn from what Oriel holds, before its sources answer: nothing in it can be approved.
+  stored?: true;
   lines: {
     mutationId: Ulid;
     sentence: string;
@@ -80,6 +82,7 @@ export type Diff = {
     makes: string | null;
     source: string;
     check?: { refused: string } | { later: string };
+    checking?: true;
     fields: {
       name: string;
       before: unknown;
@@ -118,6 +121,8 @@ export interface ChangeSets {
   ofThread(threadId: Ulid): Promise<ChangeSet[]>;
   // Reads current values live, so `before` is true at review time.
   diff(id: Ulid): Promise<Diff>;
+  // Asks no source and records nothing, so it draws at once.
+  stored(id: Ulid, known: Known): Promise<Diff>;
   // Records nothing, so it never stands for what the person saw.
   look(id: Ulid): Promise<Diff>;
   extend(id: Ulid, mutations: readonly CapturedMutation[], max: number): Promise<ChangeSet>;

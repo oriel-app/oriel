@@ -10,6 +10,7 @@ import {
   type SourceWriter,
   type WriteRequest,
   type WriteResult,
+  readEach,
 } from "@oriel/core";
 import { isProjectKey, projectId } from "./items.ts";
 import { type LinearIssue, type LinearProject, linearReads, linearWrites } from "./linear-mcp.ts";
@@ -264,7 +265,7 @@ export function linearWriter(writes: LinearWrites): SourceWriter<"linear"> {
       const read = await values(id, fields);
       return read === "gone" ? "gone" : read.values;
     },
-    read: values,
+    read: (ids, fields) => readEach(ids, (id) => values(id, fields)),
   };
 }
 
