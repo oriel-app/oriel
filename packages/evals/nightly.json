@@ -1,6 +1,6 @@
 {
-  "date": "2026-11-18",
-  "commit": "745d9f4bf8b6494e3d4f4399adda20f64ad28fa8",
+  "date": "2026-11-20",
+  "commit": "837652bd1eac137995af6127531136e1bcccf85b",
   "firstDraw": {
     "train": {
       "passed": 21,
@@ -211,6 +211,6 @@
       "kept": true
     }
   },
-  "usd": 1.3747179999999999,
+  "usd": 1.4222478,
   "replay": "pass"
 }
